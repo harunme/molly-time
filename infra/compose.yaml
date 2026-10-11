@@ -1,0 +1,11 @@
+services:
+  jellyfin:
+    # P0 compatibility baseline; upgrade separately after TV regression checks.
+    image: jellyfin/jellyfin:10.10.7
+    ports:
+      - "127.0.0.1:8096:8096"
+    volumes:
+      - ../.local/jellyfin/config:/config
+      - ../.local/jellyfin/cache:/cache
+      - ../downloads/bbkt:/media/bbkt:ro
+    restart: unless-stopped
