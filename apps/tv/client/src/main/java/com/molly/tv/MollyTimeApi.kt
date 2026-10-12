@@ -15,7 +15,7 @@ class ApiFailure(val status: Int) : Exception(when (status) {
     else -> "媒体库请求失败（$status）"
 })
 
-class MollyTimeApi(private val session: SessionStore) {
+class MollyTimeApi(private val session: SessionStore, private val deviceName: () -> String) {
     private var pairingCode = ""
     private var pairingServer = ""
     @Volatile var homeSchemaVersion = 1
@@ -26,7 +26,7 @@ class MollyTimeApi(private val session: SessionStore) {
     @Synchronized fun pairingStart(): JSONObject {
         pairingCancel()
         val server = session.server
-        val result = json("POST", "/api/auth/pairing/start", JSONObject().put("name", "MollyTime TV"), false)
+        val result = json("POST", "/api/auth/pairing/start", JSONObject().put("name", deviceName()), false)
         require(server == session.server) { "媒体库地址已变化，请重新配对" }
         pairingCode = result.getString("deviceCode")
         pairingServer = server

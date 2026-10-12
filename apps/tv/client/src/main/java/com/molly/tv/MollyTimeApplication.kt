@@ -17,7 +17,7 @@ class MollyTimeApplication : Application() {
         session = SessionStore(this) { if (::media.isInitialized) media.synchronizeOwner() }
         // Upgrade legacy parent-token TV sessions to revocable device credentials at next login.
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
-        api = MollyTimeApi(session)
+        api = MollyTimeApi(session) { DeviceName.read(this) }
         updates = ClientUpdates(this)
         media = MediaStore(this, session, api)
         watchQueue = WatchQueue(this, session, api)
