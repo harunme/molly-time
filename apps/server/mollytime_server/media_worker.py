@@ -150,6 +150,7 @@ def process(task_id):
                         path=target.object_key if remote else str(destination.relative_to(root)),
                         mime=mime,
                         language=upload.language,
+                        is_default=upload.kind == "subtitle" and not old,
                         index=index,
                         size_bytes=upload.size,
                         sha256=digest.hexdigest(),

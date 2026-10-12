@@ -30,6 +30,9 @@ class PlaybackActivity : AppCompatActivity() {
     private var child = ""
     private var position = 0L
     private var completed = false
+    private var awaitingNext = false
+    private var advancing = false
+    private var resumeFromProgress = true
     private var playOnResume = true
     private var active = false
     private var loadGeneration = 0
@@ -63,6 +66,9 @@ class PlaybackActivity : AppCompatActivity() {
         child = intent.getStringExtra("childId") ?: ""
         position = state?.getLong("position") ?: 0
         playOnResume = state?.getBoolean("play", true) ?: true
+        awaitingNext = state?.getBoolean("awaitingNext", false) ?: false
+        completed = awaitingNext
+        resumeFromProgress = state?.getBoolean("resumeFromProgress", true) ?: true
         playerView = PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false) }
         status = TextView(this).apply { textSize = 22f; setTextColor(android.graphics.Color.WHITE); setPadding(24, 24, 24, 24) }
         val frame = FrameLayout(this)
@@ -77,30 +83,32 @@ class PlaybackActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         active = true
-        load()
+        if (awaitingNext) advance() else load()
     }
 
     private fun load() {
         val current = ++loadGeneration
+        val loadingEpisode = episodeId
         status.text = "正在加载视频…"
         app.io.execute {
             runCatching {
-                val detail = app.api.json("GET", "/api/episodes/$episodeId")
-                val resume = app.api.json("GET", app.api.progressPath(episodeId, child))
-                val body = JSONObject().put("episodeId", episodeId)
+                val detail = app.api.json("GET", "/api/episodes/$loadingEpisode")
+                val resume = app.api.json("GET", app.api.progressPath(loadingEpisode, child))
+                val body = JSONObject().put("episodeId", loadingEpisode)
                 if (child.isNotEmpty()) body.put("childId", child)
                 val watch = app.api.json("POST", "/api/playback/sessions", body)
                 val sessionId = watch.getString("sessionId")
                 val mediaId = Uri.parse(detail.getJSONArray("sources").optJSONObject(0)?.optString("url") ?: "").getQueryParameter("mediaId")
-                val info = app.api.json("GET", "/api/episodes/$episodeId/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
+                val info = app.api.json("GET", "/api/episodes/$loadingEpisode/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
                 detail.put("playback", info)
                 Triple(detail, resume, sessionId)
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
-                if (active && current == loadGeneration && !isDestroyed) {
+                if (active && current == loadGeneration && !isDestroyed && !isFinishing) {
                     watchId = sessionId
                     clock = PlayingClock(SystemClock.elapsedRealtime())
                     sequence = 0
-                    if (position == 0L && !resume.optBoolean("completed")) position = resume.optLong("positionMs")
+                    if (resumeFromProgress && position == 0L && !resume.optBoolean("completed")) position = resume.optLong("positionMs")
+                    resumeFromProgress = false
                     refreshAttempts = 0
                     prepare(detail)
                 }
@@ -135,7 +143,7 @@ class PlaybackActivity : AppCompatActivity() {
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) status.text = ""
-                if (state == Player.STATE_ENDED) { completed = true; report("progress"); finish() }
+                if (state == Player.STATE_ENDED) { completed = true; awaitingNext = true; advance() }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (BuildConfig.DEBUG) android.util.Log.d("MollyTimePlayback", "isPlaying=$isPlaying")
@@ -151,6 +159,45 @@ class PlaybackActivity : AppCompatActivity() {
         exo.playWhenReady = playOnResume
         handler.postDelayed(heartbeat, 15000)
         playerView.requestFocus()
+    }
+
+    private fun advance() {
+        if (advancing || !active || isFinishing) return
+        advancing = true
+        // Finalize the previous session before releasing its player or changing episodeId.
+        report("stop")
+        release()
+        val current = ++loadGeneration
+        val finishedEpisode = episodeId
+        status.text = "正在准备下一集…"
+        app.io.execute {
+            runCatching { app.api.json("GET", "/api/episodes/$finishedEpisode/next") }
+                .onSuccess { result -> runOnUiThread {
+                    if (!active || current != loadGeneration || isFinishing || isDestroyed) return@runOnUiThread
+                    advancing = false
+                    val next = if (result.isNull("episodeId")) "" else result.optString("episodeId")
+                    if (next.isEmpty()) {
+                        awaitingNext = false
+                        finish()
+                    } else {
+                        episodeId = next
+                        position = 0L
+                        completed = false
+                        awaitingNext = false
+                        resumeFromProgress = false
+                        playOnResume = true
+                        watchId = ""
+                        clock = null
+                        sourceInfo = null
+                        load()
+                    }
+                } }.onFailure { error -> runOnUiThread {
+                    if (!active || current != loadGeneration || isFinishing) return@runOnUiThread
+                    advancing = false
+                    if (error is ApiFailure && error.status in listOf(401, 403, 404)) finish()
+                    else status.text = "下一集加载失败。按确定重试，返回退出"
+                } }
+        }
     }
 
     private fun refreshSource() {
@@ -214,6 +261,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
     override fun onStop() {
         active = false
+        advancing = false
         loadGeneration++
         report("stop")
         release()
@@ -223,6 +271,8 @@ class PlaybackActivity : AppCompatActivity() {
         outState.putString("episodeId", episodeId)
         outState.putLong("position", player?.currentPosition ?: position)
         outState.putBoolean("play", player?.playWhenReady ?: playOnResume)
+        outState.putBoolean("awaitingNext", awaitingNext)
+        outState.putBoolean("resumeFromProgress", resumeFromProgress)
         super.onSaveInstanceState(outState)
     }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -243,7 +293,8 @@ class PlaybackActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.repeatCount == 0 && keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER) &&
             (player == null || player?.playerError != null)) {
-            report("stop"); release(); load(); return true
+            if (awaitingNext) advance() else { report("stop"); release(); load() }
+            return true
         }
         return super.onKeyDown(keyCode, event)
     }

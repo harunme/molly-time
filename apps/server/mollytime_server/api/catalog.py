@@ -310,6 +310,42 @@ def _get_item(db: Session, item_id: str, expected_type: str, family_id: str) -> 
     return item
 
 
+def _folder_playlist(db, series_id, family_id):
+    seasons = {
+        s.id: s
+        for s in db.query(Item)
+        .filter(Item.family_id == family_id, Item.parent_id == series_id, Item.type == "Season")
+        .all()
+    }
+    seasons[series_id] = db.get(Item, series_id)
+    episodes = sorted(
+        published_episodes(db, series_id, family_id),
+        key=lambda e: (
+            (seasons[e.parent_id].index_number or 0) if e.parent_id != series_id else 0,
+            seasons[e.parent_id].name,
+            e.index_number or 0,
+            e.name,
+            e.id,
+        ),
+    )
+    return seasons, episodes
+
+
+@router.get("/episodes/{episode_id}/next")
+def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSession):
+    episode = _get_item(db, episode_id, "Episode", user.family_id)
+    require_visible(db, episode, request)
+    folder_id = _series_id(db, episode)
+    if not folder_id:
+        return {"episodeId": None}
+    folder = _get_item(db, folder_id, "Series", user.family_id)
+    require_visible(db, folder, request)
+    _, episodes = _folder_playlist(db, folder_id, user.family_id)
+    index = next((i for i, item in enumerate(episodes) if item.id == episode_id), None)
+    following = episodes[index + 1] if index is not None and index + 1 < len(episodes) else None
+    return {"episodeId": following.id if following else None}
+
+
 @router.get("/series/{series_id}/playlist")
 def series_playlist(
     series_id: str, request: Request, user: CurrentUser, db: DbSession, childId: str | None = None
@@ -321,25 +357,7 @@ def series_playlist(
         child = db.get(ChildProfile, child_id)
         if child is None or child.family_id != user.family_id:
             raise HTTPException(404)
-    seasons = {
-        s.id: s
-        for s in db.query(Item)
-        .filter(
-            Item.family_id == user.family_id, Item.parent_id == series_id, Item.type == "Season"
-        )
-        .all()
-    }
-    seasons[series.id] = series
-    episodes = sorted(
-        published_episodes(db, series_id, user.family_id),
-        key=lambda e: (
-            (seasons[e.parent_id].index_number or 0) if e.parent_id != series_id else 0,
-            seasons[e.parent_id].name,
-            e.index_number or 0,
-            e.name,
-            e.id,
-        ),
-    )
+    seasons, episodes = _folder_playlist(db, series_id, user.family_id)
     progress = None
     if episodes:
         query = (

@@ -137,6 +137,11 @@ test("real device telemetry, reports, child management and mobile layout", async
       data: { username: "parent", password: "parent-e2e" },
     })
   ).json();
+  const parentSession = await (await page.request.get("/api/manage/auth/session")).json();
+  await page.request.patch(`/api/manage/devices/${auth.deviceId}`, {
+    headers: { "X-CSRF-Token": parentSession.csrfToken },
+    data: { name: "观看记录测试电视" },
+  });
   const headers = { Authorization: `Bearer ${auth.accessToken}` };
   const session = await (
     await page.request.post("/api/playback/sessions", {
@@ -172,6 +177,7 @@ test("real device telemetry, reports, child management and mobile layout", async
     .getByRole("navigation")
     .getByRole("button", { name: "观看记录" })
     .click();
+  await page.getByRole("combobox", { name: "儿童", exact: true }).selectOption("child");
   await expect(
     page.locator(".watch-summary").getByText("1 秒", { exact: true }),
   ).toBeVisible();
@@ -199,7 +205,7 @@ test("real device telemetry, reports, child management and mobile layout", async
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "取消配对", exact: true }).click();
+  await page.locator(".device-row").filter({ hasText: "观看记录测试电视" }).getByRole("button", { name: "取消配对", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "确认", exact: true })
@@ -529,6 +535,8 @@ test("browser TV resolves an authenticated video and reports playback without th
         (v as HTMLVideoElement).duration - 0.2;
     });
     expect((await finished).status()).toBe(200);
+    await expect(tv.locator("video")).toHaveAttribute("src", /mediaId=browser-next-media/);
+    await tv.getByRole("button", { name: "返回视频列表" }).click();
     await expect(tv.getByRole("dialog", { name: "视频播放" })).toHaveCount(0);
     await expect(tv.getByRole("dialog", { name: "选择剧集" })).toHaveCount(0);
     await expect(

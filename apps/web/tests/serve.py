@@ -29,12 +29,15 @@ with get_session_factory()() as db:
     db.add(User(id="parent", family_id="family", name="parent", password_hash=hash_password("parent-e2e")))
     db.add(User(id="operator", family_id="family", name="operator", role="superadmin", password_hash=hash_password("operator-e2e")))
     db.add(ChildProfile(id="child", family_id="family", name="小米"))
+    db.add(ChildProfile(id="autoplay-child", family_id="family", name="连播测试"))
     db.add_all([Item(id="series", family_id="family", type="Series", name="英语启蒙"),
                 Item(id="season", family_id="family", type="Season", name="第 1 季", parent_id="series"),
                 Item(id="episode", family_id="family", type="Episode", name="Hello", parent_id="season", runtime_ticks=20_000_000)])
     db.add(MediaFile(id="media", family_id="family", item_id="episode", kind="video", storage="local", path="sample.mp4", mime="video/mp4"))
-    db.add(Item(id="browser-episode", family_id="family", type="Episode", name="Browser fixture", parent_id="season", runtime_ticks=50_000_000))
+    db.add(Item(id="browser-episode", family_id="family", type="Episode", name="Browser fixture", parent_id="season", index_number=1, runtime_ticks=50_000_000))
     db.add(MediaFile(id="browser-media", family_id="family", item_id="browser-episode", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
+    db.add(Item(id="browser-next", family_id="family", type="Episode", name="Browser next", parent_id="season", index_number=2, runtime_ticks=50_000_000))
+    db.add(MediaFile(id="browser-next-media", family_id="family", item_id="browser-next", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
     db.commit()
 
 uvicorn.run(create_app(), host="127.0.0.1", port=8098, log_level="warning")

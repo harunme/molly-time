@@ -12,7 +12,7 @@ from mollytime_server import config, db
 from mollytime_server.auth import hash_password, issue_access_token
 from mollytime_server.management_models import ResourceState, WatchInterval, WatchSession
 from mollytime_server.media_worker import run_once
-from mollytime_server.models import Item, User
+from mollytime_server.models import Item, MediaFile, User
 from mollytime_server.storage.factory import build_storage
 
 
@@ -230,6 +230,46 @@ def test_real_resumable_upload_process_preview_publish(parent, mp4, monkeypatch,
     assert parent.post(f"/api/manage/resources/{ep}/publish").status_code == 200
     assert parent.get(f"/api/episodes/{ep}/play", headers=native_token()).content == mp4
     assert parent.get(f"/api/items/{ep}/image", headers=native_token()).status_code == 200
+
+
+def test_first_uploaded_subtitle_is_enabled_and_later_uploads_preserve_selection(parent):
+    with Session(db.get_engine()) as session:
+        session.delete(session.get(MediaFile, "s1"))
+        session.commit()
+
+    def upload_subtitle(name):
+        blob = b"1\n00:00:00,000 --> 00:00:02,000\nHello\n"
+        result = parent.post("/api/manage/uploads", json={
+            "itemId": "e1", "filename": name, "size": len(blob),
+            "fingerprint": name, "kind": "subtitle", "language": "en",
+        })
+        assert result.status_code == 200
+        key = result.json()["id"]
+        assert parent.put(f"/api/manage/uploads/{key}/chunks?offset=0", content=blob, headers={
+            "X-Chunk-SHA256": hashlib.sha256(blob).hexdigest(),
+            "Content-Type": "application/octet-stream",
+        }).status_code == 200
+        assert parent.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+        assert run_once()
+        assert parent.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+        return key
+
+    first = upload_subtitle("first.srt")
+    tracks = parent.get("/api/episodes/e1/playback").json()["subtitles"]
+    assert len(tracks) == 1 and tracks[0]["isDefault"]
+    response = parent.get(tracks[0]["url"])
+    assert response.status_code == 200
+    assert response.text == "WEBVTT\n\n1\n00:00:00.000 --> 00:00:02.000\nHello\n"
+
+    upload_subtitle("second.srt")
+    tracks = parent.get("/api/episodes/e1/playback").json()["subtitles"]
+    assert [track["isDefault"] for track in tracks] == [True, False]
+    assert parent.patch(f"/api/manage/resources/e1/subtitles/{first}", json={
+        "language": "en", "label": "first", "isDefault": False,
+    }).status_code == 200
+    upload_subtitle("third.srt")
+    tracks = parent.get("/api/episodes/e1/playback").json()["subtitles"]
+    assert not any(track["isDefault"] for track in tracks)
 
 
 def test_failed_processing_is_retryable_not_published(parent):

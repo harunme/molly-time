@@ -94,3 +94,46 @@ def test_parent_creates_folder_upload_target_and_moves_existing_video(parent):  
         parent.post("/api/manage/resources/e1/move", json={"folderId": "season"}).status_code == 422
     )
     assert parent.get("/api/episodes/e1", headers=native_token()).json()["seriesId"] == folder["id"]
+
+
+def test_next_episode_order_visibility_last_and_family_boundary(parent):  # noqa: F811
+    seed_videos()
+    headers = native_token()
+    assert parent.get("/api/episodes/e1/next", headers=headers).json() == {"episodeId": "next"}
+    assert parent.get("/api/episodes/next/next", headers=headers).json() == {"episodeId": None}
+    assert parent.get("/api/episodes/e2/next", headers=headers).status_code == 404
+    with Session(db.get_engine()) as session:
+        session.add_all(
+            [
+                Item(id="another-folder", family_id="f1", type="Series", name="Another"),
+                Item(
+                    id="another-video",
+                    family_id="f1",
+                    type="Episode",
+                    name="Another video",
+                    parent_id="another-folder",
+                ),
+                MediaFile(
+                    id="another-media",
+                    family_id="f1",
+                    item_id="another-video",
+                    kind="video",
+                    storage="local",
+                    path="video.mp4",
+                ),
+                ResourceState(item_id="next", status="draft", ready=True),
+            ]
+        )
+        session.commit()
+    assert parent.get("/api/episodes/e1/next", headers=headers).json() == {"episodeId": None}
+    assert parent.get("/api/episodes/next/next", headers=headers).status_code == 404
+    with Session(db.get_engine()) as session:
+        state = session.get(ResourceState, "next")
+        state.status, state.ready = "published", False
+        session.commit()
+    assert parent.get("/api/episodes/e1/next", headers=headers).json() == {"episodeId": None}
+    with Session(db.get_engine()) as session:
+        session.get(ResourceState, "next").ready = True
+        session.add(ResourceState(item_id="series", status="archived", ready=True))
+        session.commit()
+    assert parent.get("/api/episodes/e1/next", headers=headers).status_code == 404

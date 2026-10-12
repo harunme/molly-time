@@ -32,3 +32,5 @@ docker compose -f infra/compose.yaml up -d mollytime-server
 - `scripts/`：建库与管理员创建。
 
 接口、配置与限制见 [服务端文档](../../docs/server.md)，目标职责见 [架构文档](../../docs/architecture.md)。本目录源码采用 MIT License，不含 Jellyfin 服务端代码。
+
+播放正常结束后，网页 TV 和 Android TV 会按当前文件夹列表顺序自动播放下一部已发布且就绪的视频；最后一部结束返回列表。手动退出不会连播。`GET /api/episodes/{id}/next` 与文件夹列表使用相同排序及家庭/发布校验；每部视频独立创建观看会话。
