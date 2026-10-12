@@ -2,6 +2,7 @@
 
 import datetime as dt
 import fcntl
+import hashlib
 import json
 import logging
 import os
@@ -80,6 +81,32 @@ def read_release(package: PackageName) -> ClientRelease | None:
 
 def local_apk(release: ClientRelease) -> Path:
     return release_dir() / release.key
+
+
+def download_apk(release: ClientRelease) -> Path:
+    """Serve private OSS APKs through authenticated SDK reads, not forbidden URL signing."""
+    destination = local_apk(release)
+    if release.storage == "local":
+        return destination
+    from .storage import build_storage
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.with_suffix(".download.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if destination.is_file() and destination.stat().st_size == release.size:
+            with destination.open("rb") as handle:
+                if hashlib.file_digest(handle, "sha256").hexdigest() == release.sha256:
+                    return destination
+        with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
+            snapshot = Path(temporary) / "release.apk"
+            build_storage("oss").download(release.key, snapshot, release.size)
+            if snapshot.stat().st_size != release.size:
+                raise ValueError("Cloud APK size mismatch")
+            with snapshot.open("rb") as handle:
+                if hashlib.file_digest(handle, "sha256").hexdigest() != release.sha256:
+                    raise ValueError("Cloud APK checksum mismatch")
+            os.replace(snapshot, destination)
+        return destination
 
 
 def history_path(release: ClientRelease) -> Path:

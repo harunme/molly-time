@@ -67,23 +67,45 @@ def test_public_discovery_and_download_are_channel_specific(client):  # noqa: F8
     )
 
 
-def test_private_oss_urls_are_resigned_without_credentials(client, monkeypatch):  # noqa: F811 -- imported pytest fixture
-    release, _ = record(storage="oss")
+def test_private_oss_apks_use_verified_server_cache(client, monkeypatch):  # noqa: F811
+    release, apk = record(storage="oss")
     calls = []
 
     class Cloud:
-        def signed_url(self, key, ttl):
-            calls.append((key, ttl))
-            return f"https://bucket.example/{key}?signature={len(calls)}"
+        def download(self, key, path, expected_size):
+            assert expected_size == len(apk)
+            calls.append(key)
+            path.write_bytes(apk)
 
-    from mollytime_server.api import client_updates
+    from mollytime_server import storage
 
-    monkeypatch.setattr(client_updates, "build_storage", lambda kind: Cloud())
+    monkeypatch.setattr(storage, "build_storage", lambda kind: Cloud())
     one = client.get("/api/client/releases/latest").json()["release"]
     two = client.get("/api/client/releases/latest").json()["release"]
-    assert one["url"] != two["url"]
-    assert calls[0][0] == release.key
+    assert one["url"] == two["url"] and one["url"].startswith("/api/client/releases/")
+    assert client.get(one["url"]).content == apk
+    assert client.get(one["url"]).content == apk
+    assert calls == [release.key]
+    local_apk(release).write_bytes(b"x" * len(apk))
+    assert client.get(one["url"]).content == apk
+    assert calls == [release.key, release.key]
     assert "access_key" not in json.dumps(one)
+
+
+def test_oss_download_rejects_wrong_checksum_and_retries(client, monkeypatch):  # noqa: F811
+    release, apk = record(storage="oss")
+    from mollytime_server import storage
+
+    class Cloud:
+        def download(self, key, path, expected_size):
+            path.write_bytes(b"x" * expected_size)
+
+    monkeypatch.setattr(storage, "build_storage", lambda kind: Cloud())
+    url = client.get("/api/client/releases/latest").json()["release"]["url"]
+    assert client.get(url).status_code == 503
+    assert not local_apk(release).exists()
+    monkeypatch.setattr(Cloud, "download", lambda self, key, path, size: path.write_bytes(apk))
+    assert client.get(url).content == apk
 
 
 def test_corrupt_or_missing_release_fails_closed(client):  # noqa: F811 -- imported pytest fixture
@@ -228,24 +250,22 @@ def test_inventory_and_historical_files_require_superadmin(parent):  # noqa: F81
 
 
 def test_operator_oss_history_download_and_destination_guard(operator, monkeypatch):  # noqa: F811
-    release, _ = record(storage="oss")
+    release, apk = record(storage="oss")
     archive_release(release)
     manifest_path(release.packageName).unlink()
 
     class Cloud:
-        def size(self, key):
+        def download(self, key, path, expected_size):
             assert key == release.key
-            return release.size
+            assert expected_size == release.size
+            path.write_bytes(apk)
 
-        def signed_url(self, key, ttl):
-            return f"https://bucket.example/{key}?temporary=signature"
+    from mollytime_server import storage
 
-    from mollytime_server.api import manage_client_releases
-
-    monkeypatch.setattr(manage_client_releases, "build_storage", lambda backend: Cloud())
+    monkeypatch.setattr(storage, "build_storage", lambda backend: Cloud())
     path = f"/api/manage/operations/client-releases/{release.packageName}/{release.versionCode}/{release.sha256}"
-    assert operator.get(path + "/download-url").json()["url"].startswith("https://bucket.example/")
-    assert operator.get(path + "/file").status_code == 404
+    assert operator.get(path + "/download-url").json()["url"] == path + "/file"
+    assert operator.get(path + "/file").content == apk
     # Even retired OSS APKs must keep their original bucket accessible.
     from test_operations import body
 

@@ -5,9 +5,14 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from ..client_releases import PackageName, find_release, inventory, local_apk, release_identity
-from ..storage import build_storage
-from ..storage.settings import get_storage_settings
+from ..client_releases import (
+    PackageName,
+    download_apk,
+    find_release,
+    inventory,
+    local_apk,
+    release_identity,
+)
 from .operations import Operator
 
 router = APIRouter(prefix="/api/manage/operations/client-releases", tags=["operations"])
@@ -66,27 +71,21 @@ def require_release(package, version, digest):
 
 @router.get("/{package}/{version}/{digest}/download-url")
 def download_url(package: PackageName, version: int, digest: str, user: Operator):
-    release = require_release(package, version, digest)
-    if release.storage == "local":
-        return {"url": f"/api/manage/operations/client-releases/{package}/{version}/{digest}/file"}
-    try:
-        cloud = build_storage("oss")
-        if cloud.size(release.key) != release.size:
-            raise ValueError("Cloud APK is missing or changed")
-        return {"url": cloud.signed_url(release.key, get_storage_settings().oss_signed_url_ttl)}
-    except Exception:
-        logging.getLogger(__name__).exception("Cannot resolve client APK download")
-        raise HTTPException(503, "安装包下载不可用，请检查 OSS 文件和存储配置")
+    require_release(package, version, digest)
+    return {"url": f"/api/manage/operations/client-releases/{package}/{version}/{digest}/file"}
 
 
 @router.get("/{package}/{version}/{digest}/file")
 def download_file(package: PackageName, version: int, digest: str, user: Operator):
     release = require_release(package, version, digest)
-    if release.storage != "local":
-        raise HTTPException(404)
+    try:
+        path = download_apk(release)
+    except Exception:
+        logging.getLogger(__name__).exception("Cannot fetch client APK")
+        raise HTTPException(503, "安装包下载不可用，请检查 OSS 文件和存储配置")
     channel = "-debug" if package.endswith(".debug") else ""
     return FileResponse(
-        local_apk(release),
+        path,
         media_type="application/vnd.android.package-archive",
         filename=f"mollytime-tv{channel}-{release.versionName}.apk",
     )

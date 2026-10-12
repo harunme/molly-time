@@ -28,7 +28,7 @@ bash tools/publish-tv-release.sh --notes "新增客户端更新功能"
 bash tools/publish-tv-release.sh --storage oss --notes "修复播放器问题"
 ```
 
-APK 对象路径为 `releases/tv/<packageName>/<versionCode>/<sha256>.apk`。将 RAM 身份权限增加到 `releases/tv/*` 的上传和读取（包括 HEAD），保留 Bucket 私有权限。API 每次检查签署短期 HTTPS 下载地址，不给电视下发长期 OSS 密钥，电视下载不携带 Molly 登录令牌。发布工具上传及核验大小成功后才更新清单；上传失败保留上一版。
+APK 对象路径为 `releases/tv/<packageName>/<versionCode>/<sha256>.apk`。将 RAM 身份权限增加到 `releases/tv/*` 的上传和读取（包括 HEAD），保留 Bucket 私有权限。OSS 默认公网域名禁止通过签名 URL 下载 APK，因此电视和后台使用服务器的 HTTPS 下载地址。服务器以 SDK 认证请求读取 OSS 对象，校验大小及 SHA-256 后原子缓存到 `client-releases` 下，再提供文件下载；相同安装包复用缓存，不给电视下发长期 OSS 密钥。发布工具上传及核验大小成功后才更新清单；上传失败保留上一版。
 
 OSS 发布的版本清单也存于 API 的 `client-releases` 数据目录。若在本机发布到云端 OSS，还需将 `com.molly.tv.json` 原子部署到远程 API 的数据目录；API 必须使用同一 Bucket/Endpoint。
 
