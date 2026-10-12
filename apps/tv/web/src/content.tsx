@@ -91,7 +91,7 @@ export function HomeGreeting({ name }: { name?: string }) {
   const greeting = hour >= 5 && hour < 12 ? '早上好' : hour >= 12 && hour < 18 ? '下午好' : '晚上好';
   return <section className="home-greeting" aria-label="首页问候">
     <h1>{greeting}{name ? `，${name}` : ''}</h1>
-    <p>一起看个喜欢的故事吧。</p>
+    <p>，一起看个喜欢的故事吧。</p>
   </section>;
 }
 
