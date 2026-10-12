@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from ..auth import hash_password, verify_password
@@ -167,12 +167,18 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
     zone = ZoneInfo(config.timezone if config else "Asia/Shanghai")
     lower = dt.datetime.combine(start, dt.time.min, zone).astimezone(dt.UTC)
     upper = dt.datetime.combine(end + dt.timedelta(days=1), dt.time.min, zone).astimezone(dt.UTC)
+    # Earlier TV sessions without a child were incorrectly labeled as previews.
+    # Only authenticated device sessions qualify; parent previews stay excluded.
+    viewing = or_(
+        WatchSession.purpose.in_(("child_watch", "family_watch")),
+        and_(WatchSession.purpose == "parent_preview", WatchSession.device_id.is_not(None)),
+    )
     query = (
         db.query(WatchSession, WatchInterval)
         .join(WatchInterval, WatchInterval.session_id == WatchSession.id)
         .filter(
             WatchSession.family_id == user.family_id,
-            WatchSession.purpose == "child_watch",
+            viewing,
             WatchSession.started_at < upper,
         )
     )
@@ -197,7 +203,7 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
         bucket = contents.setdefault(content_id, {"id": content_id, "name": name, "playedMs": 0})
         bucket["playedMs"] += played
         if watch.id not in sessions:
-            child = db.get(ChildProfile, watch.child_id)
+            child = db.get(ChildProfile, watch.child_id) if watch.child_id else None
             device = db.get(Device, watch.device_id) if watch.device_id else None
             latest_event = (
                 db.query(WatchInterval)
@@ -207,7 +213,7 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
             sessions[watch.id] = {
                 "id": watch.id,
                 "name": watch.item_name,
-                "childName": child.name if child else "未知儿童",
+                "childName": child.name if child else "家庭观看",
                 "deviceName": device.name if device else "旧设备身份",
                 "startedAt": aware(watch.started_at).isoformat(),
                 "playedMs": 0,
@@ -229,7 +235,7 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
             days[local.date().isoformat()] += round((edge - a).total_seconds() * 1000)
             a = edge
     started_query = db.query(WatchSession).filter(
-        WatchSession.family_id == user.family_id, WatchSession.purpose == "child_watch"
+        WatchSession.family_id == user.family_id, viewing
     )
     started_query = (
         started_query.join(WatchInterval, WatchInterval.session_id == WatchSession.id)

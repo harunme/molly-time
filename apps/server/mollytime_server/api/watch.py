@@ -35,7 +35,9 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
         device_id=getattr(request.state, "device_id", None),
         item_id=episode.id,
         item_name=episode.name,
-        purpose="child_watch" if body.childId else "parent_preview",
+        purpose="child_watch" if body.childId else (
+            "family_watch" if getattr(request.state, "device_id", None) else "parent_preview"
+        ),
     )
     db.add(row)
     if row.device_id:

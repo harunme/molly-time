@@ -389,6 +389,42 @@ def test_watch_idempotency_pauses_seek_and_out_of_order(parent):
     assert report["sessions"][0]["positionMs"] == 90000 and report["sessions"][0]["ended"]
 
 
+def test_device_watch_without_child_is_reported_and_legacy_records_are_recovered(parent):
+    auth = parent.post(
+        "/api/auth/login", headers={"X-Molly-Client": "tv-shell/2"},
+        json={"username": "parent", "password": "test-parent"},
+    ).json()
+    headers = {"Authorization": f"Bearer {auth['accessToken']}"}
+    response = parent.post("/api/playback/sessions", headers=headers, json={"episodeId": "e1"})
+    assert response.status_code == 200
+    key = response.json()["sessionId"]
+    with Session(db.get_engine()) as session:
+        row = session.get(WatchSession, key)
+        assert row.purpose == "family_watch" and row.child_id is None
+        row.started_at = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=10)
+        session.commit()
+    assert parent.post(f"/api/playback/sessions/{key}/events", headers=headers, json=event()).status_code == 200
+    # An unbound bearer session and a parent-cookie preview must not become TV viewing.
+    preview = watch(parent, child=None)
+    assert parent.post(f"/api/playback/sessions/{preview}/events", headers=native_token(), json=event()).status_code == 200
+    assert parent.post("/api/playback/sessions", json={"episodeId": "e1"}).status_code == 403
+    day = dt.datetime.now(dt.UTC).astimezone(dt.timezone(dt.timedelta(hours=8))).date().isoformat()
+    path = f"/api/manage/reports/watch-time?start={day}&end={day}"
+    for legacy in (False, True):
+        if legacy:
+            with Session(db.get_engine()) as session:
+                session.get(WatchSession, key).purpose = "parent_preview"
+                session.commit()
+        report = parent.get(path).json()
+        assert report["totalPlayedMs"] == 1000
+        assert report["statisticsSince"] and report["lastSync"]
+        assert len(report["sessions"]) == 1
+        assert report["sessions"][0]["childName"] == "家庭观看"
+        assert report["sessions"][0]["ended"] is False
+        child_report = parent.get(path + "&childId=c1").json()
+        assert child_report["totalPlayedMs"] == 0 and child_report["statisticsSince"] is None
+
+
 def test_concurrent_overlap_is_rejected(parent):
     key = watch(parent)
     path = f"/api/playback/sessions/{key}/events"

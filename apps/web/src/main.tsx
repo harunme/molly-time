@@ -1994,6 +1994,15 @@ function Reports() {
   );
   const data = report.data,
     max = Math.max(...(data?.days.map((d) => d.playedMs) || [0]), 60000);
+  useEffect(() => {
+    const update = () => { if (!document.hidden) refresh((v) => v + 1); };
+    const timer = setInterval(update, 15000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
   return (
     <>
       <div className="page-title">
@@ -2064,7 +2073,7 @@ function Reports() {
         (!data.statisticsSince ? (
           <div className="empty">
             <h3>等待第一条正式播放记录</h3>
-            <p>更新后的 TV 客户端选择儿童并播放视频后，记录会出现在这里。</p>
+            <p>已绑定的 TV 客户端播放视频后，记录会出现在这里；选择儿童后可按儿童统计。</p>
             <p>原有记录仅用于续播，无法还原历史观看时长。</p>
           </div>
         ) : (
