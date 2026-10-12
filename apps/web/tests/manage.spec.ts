@@ -17,6 +17,11 @@ async function login(page: import("@playwright/test").Page) {
 test("real upload, parent preview, publish and homepage draft publication", async ({
   page,
 }) => {
+  // Public HTTP pages do not expose WebCrypto; exercise the compatibility path
+  // against the real API's fingerprint and chunk SHA-256 validation.
+  await page.addInitScript(() => {
+    Object.defineProperty(Crypto.prototype, 'subtle', { get: () => undefined });
+  });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const folder = mkdtempSync(join(tmpdir(), "mollytime-upload-"));
@@ -37,6 +42,7 @@ test("real upload, parent preview, publish and homepage draft publication", asyn
   ]);
   try {
     await login(page);
+    expect(await page.evaluate(() => crypto.subtle)).toBeUndefined();
     await page
       .getByRole("button", { name: "＋ 上传资源", exact: true })
       .click();

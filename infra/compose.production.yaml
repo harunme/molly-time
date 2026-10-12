@@ -1,0 +1,32 @@
+services:
+  mollytime-server:
+    image: mollytime-server:${MOLLYTIME_RELEASE:-production}
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prebuilt
+      args:
+        APT_MIRROR: ${MOLLYTIME_APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${MOLLYTIME_PIP_INDEX_URL:-https://pypi.org/simple}
+    container_name: mollytime-server
+    restart: unless-stopped
+    ports:
+      - "${MOLLYTIME_HTTP_BIND:-0.0.0.0:8096}:8096"
+    env_file:
+      - ../.env
+    environment:
+      MOLLYTIME_DATA_DIR: /data
+      MOLLYTIME_MEDIA_DIR: /data/media
+      MOLLYTIME_LISTEN_HOST: 0.0.0.0
+      MOLLYTIME_LISTEN_PORT: "8096"
+    volumes:
+      - ../data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

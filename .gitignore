@@ -34,6 +34,7 @@ dist/
 local.properties
 .env
 .env.*
+MollyTime_SSH.pem
 !.env.example
 !.env.*.example
 

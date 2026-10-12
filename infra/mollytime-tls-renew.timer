@@ -1,0 +1,11 @@
+[Unit]
+Description=Check MollyTime TLS certificate renewal twice daily
+
+[Timer]
+OnCalendar=*-*-* 00,12:00:00
+RandomizedDelaySec=900
+Persistent=true
+Unit=mollytime-tls-renew.service
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,6 @@
 import SparkMD5 from 'spark-md5';
 import { api, type Upload } from './api';
+import { sha256Blob as sha } from './file-hash';
 
 const files = new Map<string, File>();
 const paused = new Set<string>();
@@ -8,11 +9,6 @@ const running = new Set<string>();
 export const live = new Map<string, { offset: number; error: string; paused: boolean }>();
 let active = 0;
 function changed() { window.dispatchEvent(new Event('mollytime:uploads')); }
-async function sha(blob: Blob) {
-  if (!crypto.subtle) throw new Error('文件上传需要 HTTPS；本机开发可使用 localhost');
-  const value = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-  return Array.from(new Uint8Array(value), (b) => b.toString(16).padStart(2, '0')).join('');
-}
 async function fingerprint(file: File) {
   return `${file.size}:${await sha(new Blob([file.slice(0, 1024**2), file.slice(Math.max(0, file.size - 1024**2))]))}`;
 }
