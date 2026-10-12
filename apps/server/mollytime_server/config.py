@@ -12,6 +12,11 @@ from pydantic import AliasChoices, AliasGenerator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Source checkouts use apps/server/mollytime_server; images use /app/mollytime_server.
+_config_parents = Path(__file__).resolve().parents
+_project_root = _config_parents[3] if len(_config_parents) > 3 else _config_parents[1]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MOLLYTIME_",
@@ -42,7 +47,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024**3
     public_base_url: str = ""  # Phone-accessible server origin for pairing QR links.
     android_build_tools_dir: Path = (
-        Path(__file__).resolve().parents[3] / ".local/android-sdk/build-tools/36.0.0"
+        _project_root / ".local/android-sdk/build-tools/36.0.0"
     )
     android_java_home: Path | None = None  # Optional JRE/JDK location for APK verification.
 
