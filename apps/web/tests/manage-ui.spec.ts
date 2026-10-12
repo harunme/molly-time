@@ -1,0 +1,69 @@
+import { test, expect } from "@playwright/test";
+
+test("management layout, accessible dialogs, subtitle shortcut and mobile navigation", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/manage/");
+  await page.getByLabel("账号", { exact: true }).fill("parent");
+  await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "英语启蒙", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "../../artifacts/manage-redesign-library.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "英语启蒙", exact: true }).click();
+  await page
+    .getByRole("button", { name: "更多操作 Hello", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "上传字幕", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "上传文件 · Hello" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("文件用途")).toHaveValue("subtitle");
+  await expect(
+    page.getByText("UTF-8 编码的 SRT / VTT", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "../../artifacts/manage-redesign-subtitles.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "家庭设置" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "儿童档案", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "../../artifacts/manage-redesign-settings.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "账号菜单" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "../../artifacts/manage-redesign-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "账号菜单" }).click();
+  await page.getByRole("menuitem", { name: "退出账号", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "进入管理后台" }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
