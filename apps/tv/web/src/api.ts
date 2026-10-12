@@ -1,5 +1,5 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
-export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string };
+export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; serverUrl?: string; suggestedServerUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string };
 export type Child = { id: string; name: string };
 export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
 export type Season = { id: string; name: string; image?: { url: string }; indexNumber?: number; episodeCount?: number };
@@ -86,7 +86,7 @@ async function fetchApi(path: string, method = 'GET', body?: unknown, retry = tr
 }
 async function browserCall(method: string, args: Record<string, unknown>): Promise<unknown> {
   switch (method) {
-    case 'getCapabilities': return { bridgeVersion: 1, authenticated: !!refresh, childId: selectedChild, nativePlayback: false, devicePairing: true, devicePairingReset: true };
+    case 'getCapabilities': return { bridgeVersion: 1, serverUrl: location.origin, authenticated: !!refresh, childId: selectedChild, nativePlayback: false, devicePairing: true, devicePairingReset: true };
     case 'ready': return { ok: true };
     case 'pairingStart': {
       const attempt = ++pairingAttempt;

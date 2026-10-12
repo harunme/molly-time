@@ -10,6 +10,8 @@ class MollyTimeApplication : Application() {
     lateinit var media: MediaStore
     lateinit var watchQueue: WatchQueue
     lateinit var updates: ClientUpdates
+    lateinit var webBundles: WebBundleStore
+    val webUpdateExecutor = Executors.newSingleThreadExecutor()
     // Serial execution prevents refresh-token rotation races and preserves event order.
     val io = Executors.newSingleThreadExecutor()
     override fun onCreate() {
@@ -19,6 +21,7 @@ class MollyTimeApplication : Application() {
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
         api = MollyTimeApi(session) { DeviceName.read(this) }
         updates = ClientUpdates(this)
+        webBundles = WebBundleStore(this)
         media = MediaStore(this, session, api)
         watchQueue = WatchQueue(this, session, api)
         io.execute { watchQueue.flush() }

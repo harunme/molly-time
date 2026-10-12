@@ -127,6 +127,11 @@ footer { display: flex; flex-shrink: 0; align-items: center; gap: 1.6rem; paddin
 label { display: flex; flex-direction: column; gap: .5rem; font-size: 1rem; }
 input { width: 100%; padding: .85rem; color: var(--white); border: 2px solid #556183; background: #292d33; border-radius: .5rem; font-size: 1.15rem; }
 input:focus { outline: .2rem solid var(--white); border-color: transparent; }
+.connection-form, .client-update-panel { display: grid; gap: 1rem; width: min(100%, 42rem); margin: 0 auto; }
+.connection-form label { color: var(--muted); font-size: 1rem; }
+.connection-form input { min-height: 3.6rem; }
+.connection-form p, .client-update-panel p { color: var(--muted); line-height: 1.55; }
+.client-update-panel .primary, .connection-form .primary { justify-self: start; min-width: 12rem; }
 @media (max-width: 700px) and (orientation: portrait) {
   :root { font-size: 12px; }
   .topbar { padding: 0 1.5rem; }

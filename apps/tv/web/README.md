@@ -1,6 +1,6 @@
 # MollyTime 网页
 
-启动直接展示 TV 首页；已连接账号自动加载片单，首次连接在首页扫码弹层中完成，不设独立登录页，电视端不输入账号密码。
+TV 客户端从本地 WebView 加载同一套网页。未配置媒体库时显示网页地址配置页；已连接后自动加载片单，首次授权在首页扫码弹层中完成，电视端不输入账号密码。浏览器预览使用当前网页 origin 作为媒体库地址。
 
 React + TypeScript + Vite，Norigin Spatial Navigation 管理方向键焦点。登录、首页、季列表与剧集列表使用 MollyTime API，网页通过受限原生 Bridge 播放视频。
 
@@ -15,7 +15,7 @@ pnpm test
 
 开发地址 `http://127.0.0.1:5173/tv/`，Vite 将 `/api` 代理到本机 `8096`，可用 `MOLLYTIME_API_PROXY` 指定已有后台；真实登录和目录需要该后台可用。浏览器支持真实扫码绑定与目录预览，绑定保存在浏览器本地，刷新后自动恢复；视频播放需 TV 客户端。测试会启动独立 Vite 服务并验证遥控器焦点、返回、播放返回与登录错误恢复。
 
-生产输出 `dist/`，后台启动时在 `/tv/` 挂载；可用 `MOLLYTIME_TV_WEB_DIR` 指定部署目录。入口 HTML 禁止陈旧缓存，带哈希的资源长期缓存。部署时保留旧版资源并原子切换入口，确保旧页面仍能请求它引用的文件。`pnpm build` 只是本地构建，不等于线上原子部署。
+生产输出 `dist/`，后台启动时在 `/tv/` 挂载；可用 `MOLLYTIME_TV_WEB_DIR` 指定部署目录。`bash tools/build-tv-web.sh` 还会生成 `web-release.json` 和 `web-bundle.zip`，供 TV 客户端下载并缓存；清单包含网页版本、Bridge 兼容范围、包大小和 SHA-256。入口 HTML 与更新清单不缓存，哈希资源长期缓存。部署时保留旧版资源并原子切换入口，确保旧页面仍能请求它引用的文件。`pnpm build` 只构建网页；客户端构建脚本会生成完整发布包。
 
 ## 假数据预览
 
@@ -39,7 +39,7 @@ pnpm exec node tests/smoke-android.mjs
 
 新版参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)，采用右上角设置入口、首页独立横向内容行和文件夹纵向视频网格。焦点按屏幕/内容/弹层分组，跨行、页面返回与原生播放返回均保存卡片及滚动位置。设置和儿童弹层限制方向键焦点，返回恢复入口焦点。
 
-只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../../docs/tv-interface-design.md)。网页构建后重新打开 TV 壳子加载新入口，无需修改 Bridge。
+只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../../docs/tv-interface-design.md)。网页发布到 `/tv/` 后，客户端后台下载并校验更新包，下次启动加载缓存新版本，不中断当前播放。网页与 Bridge 版本不兼容时提示更新 APK。APK 内置网页作为首次启动和离线回退版本。
 
 ## 手机配对
 

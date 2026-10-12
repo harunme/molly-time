@@ -17,6 +17,8 @@ def client(tmp_path, monkeypatch):
     (settings.tv_web_dir / "index.html").write_text("<html>TV</html>")
     (settings.tv_web_dir / "assets").mkdir()
     (settings.tv_web_dir / "assets/app-hash.js").write_text("window.tv=true")
+    (settings.tv_web_dir / "web-release.json").write_text('{"webVersion":"abc123","minBridgeVersion":1,"maxBridgeVersion":1,"size":8,"sha256":"' + "a" * 64 + '"}')
+    (settings.tv_web_dir / "web-bundle.zip").write_bytes(b"web-bundle")
     monkeypatch.setattr(config, "_settings", settings)
     monkeypatch.setattr(db, "_engine", None)
     monkeypatch.setattr(db, "_SessionLocal", None)
@@ -107,5 +109,8 @@ def test_tv_cache_and_origin_policy(client):
     assert html.status_code == 200 and html.headers["cache-control"] == "no-store"
     assert "frame-src 'none'" in html.headers["content-security-policy"]
     assert "immutable" in client.get("/tv/assets/app-hash.js").headers["cache-control"]
+    assert client.get("/tv/web-release.json").headers["cache-control"] == "no-store"
+    assert client.get("/tv/web-bundle.zip").content == b"web-bundle"
+    assert client.get("/tv/web-bundle.zip").headers["cache-control"] == "no-store"
     assert client.get("/tv/missing.js").status_code == 404
     assert "access-control-allow-origin" not in client.get("/healthz", headers={"Origin": "https://untrusted.test"}).headers

@@ -9,6 +9,16 @@ plugins {
 val clientVersion = Properties().apply {
     file("version.properties").inputStream().use { load(it) }
 }
+val prepareTvWebAssets = tasks.register<Sync>("prepareTvWebAssets") {
+    doFirst {
+        check(file("../web/dist/index.html").isFile && file("../web/dist/web-release.json").isFile) {
+            "TV Web assets are missing; run tools/build-tv-web.sh before building the client"
+        }
+    }
+    from("../web/dist")
+    exclude("web-bundle.zip")
+    into(layout.buildDirectory.dir("generated/tvWebAssets"))
+}
 
 // Signing material stays outside versioned source. An override also supports CI.
 val releaseSigningFile = providers.environmentVariable("MOLLYTIME_SIGNING_PROPERTIES")
@@ -48,6 +58,7 @@ android {
             .getOrElse(clientVersion.getProperty("versionName"))
     }
     buildFeatures { buildConfig = true }
+    sourceSets.getByName("main").assets.srcDir(prepareTvWebAssets.map { it.destinationDir })
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
@@ -73,6 +84,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+tasks.named("preBuild").configure { dependsOn(prepareTvWebAssets) }
 // Never silently produce an unsigned release when signing material is absent.
 tasks.configureEach {
     if (name == "preReleaseBuild" || name == "validateSigningRelease") {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/android-env.sh"
+bash "$MOLLYTIME_ROOT/tools/build-tv-web.sh"
 BUILD_TYPE="${1:-debug}"
 case "$BUILD_TYPE" in
   debug) GRADLE_TASK=assembleDebug ;;

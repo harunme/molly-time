@@ -1,6 +1,6 @@
 # TV 客户端更新发布
 
-客户端 0.4.0（versionCode 3）开始支持启动检查和设置页“检查更新”。旧 APK 需先手动安装这一版。网页更新仍通过部署 `/tv/` 静态资源完成；原生播放器和 Bridge 更新走 APK 安装。
+客户端 0.4.0（versionCode 3）开始支持 APK 更新检查。TV 网页构建同时生成 `/tv/web-release.json` 与 `/tv/web-bundle.zip`；客户端校验后按服务器地址缓存网页包，并在下次启动激活。APK、原生播放器和 Bridge 更新仍通过 APK 安装。
 
 ## 发布到本地服务器
 
@@ -18,7 +18,7 @@ bash tools/publish-tv-release.sh --notes "新增客户端更新功能"
 <data_dir>/client-releases/releases/tv/com.molly.tv/3/<sha256>.apk
 ```
 
-首次上线需要部署新的 Python API 代码和 TV 网页构建产物，重启 API，再手动安装 `artifacts/mollytime-tv-release.apk`。远程服务器部署时，将上述 `client-releases` 目录完整复制到服务端实际数据目录；先传 APK，再替换清单。发布清单无需重启即可生效。正式客户端必须连接 HTTPS 后台。
+首次上线需要部署 TV 网页构建产物（包含网页更新包和清单），再手动安装 `artifacts/mollytime-tv-release.apk`。远程服务器部署时，将上述 `client-releases` 目录完整复制到服务端实际数据目录；先传 APK，再替换清单。发布清单无需重启即可生效。正式客户端必须连接 HTTPS 后台。
 
 ## 发布到私有 OSS
 

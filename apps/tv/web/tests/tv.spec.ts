@@ -11,10 +11,10 @@ for (const supported of [true, false]) {
       w.MollyBridge = { postMessage(raw) {
         const { id, method, args } = JSON.parse(raw);
         let result: unknown = { ok: true };
-        if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: '', nativePlayback: true, clientUpdates: supportsUpdates, shellVersion: '0.4.0' };
+        if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl: 'https://media.example.test', authenticated: true, childId: '', nativePlayback: true, clientUpdates: supportsUpdates, shellVersion: '0.4.0' };
         if (method === 'request' && args.path === '/api/home') result = { rows: [{ title: '媒体库', items: [{ id: 'story', name: '故事', episodeCount: 1 }] }] };
         if (method === 'request' && args.path === '/api/families/me/children') result = [];
-        if (method === 'checkUpdate') w.updateChecks++;
+        if (method === 'checkUpdate') { w.updateChecks++; result = { release: { versionName: '0.5.0', size: 2097152, notes: '网页显示更新说明' } }; }
         setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
       } };
     }, supported);
@@ -28,9 +28,32 @@ for (const supported of [true, false]) {
       await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
       await page.keyboard.press('Enter');
       await expect.poll(() => page.evaluate(() => (window as unknown as { updateChecks: number }).updateChecks)).toBe(1);
+      await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
+      await expect(page.getByText('发现新版本 0.5.0')).toBeVisible();
+      await expect(page.getByText('网页显示更新说明')).toBeVisible();
     } else await expect(page.locator('[data-focus="check-update"]')).toHaveCount(0);
   });
 }
+
+test('native connection screen is web UI and stores the server through the bridge', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
+    let serverUrl = '';
+    w.MollyBridge = { postMessage(raw) {
+      const { id, method, args } = JSON.parse(raw);
+      let result: unknown = { ok: true };
+      if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl, authenticated: false, childId: '', nativePlayback: true, clientUpdates: true };
+      if (method === 'connect') { serverUrl = args.serverUrl; result = { serverUrl, authenticated: false, childId: '' }; }
+      setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 1);
+    } };
+  });
+  await page.goto('/tv/');
+  await expect(page.getByText('输入家庭媒体库地址开始使用。')).toBeVisible();
+  await page.getByRole('button', { name: '设置媒体库地址' }).click();
+  await page.locator('#server-address').fill('https://media.example.test');
+  await page.getByRole('button', { name: '连接', exact: true }).click();
+  await expect(page.getByText('已连接媒体库，请绑定家庭电视。')).toBeVisible();
+});
 
 test('recent playback precedes library and supports remote playback and return', async ({ page }) => {
   await page.addInitScript(() => {

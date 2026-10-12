@@ -12,7 +12,7 @@ init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true
   domNodeFocusOptions: { preventScroll: true }, shouldUseNativeEvents: true });
 
 type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, number> };
-type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | null;
+type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | 'connection' | 'client-update' | null;
 const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
 const playbackTime = (ms: number) => {
@@ -45,18 +45,38 @@ function App() {
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [serverAddress, setServerAddress] = useState('');
+  const [serverEpoch, setServerEpoch] = useState(0);
+  const [clientUpdate, setClientUpdate] = useState<{ state: string; release?: { versionName: string; size: number; notes: string } }>();
+  const [webUpdateStatus, setWebUpdateStatus] = useState('');
+  const [bridgeCompatible, setBridgeCompatible] = useState(true);
+  const [compatibilityWarning, setCompatibilityWarning] = useState('');
   const contentFocus = useRef('');
   const restore = useRef<ViewSnapshot | undefined>(undefined);
   const overlayOrigin = useRef('');
   const viewport = useRef<HTMLDivElement>(null);
   const loadSerial = useRef(0);
   const updateRequestTime = useRef(-Infinity);
-  const checkClientUpdate = () => {
+  const checkClientUpdate = async () => {
     // Remote Enter may also dispatch a native button click for the same press.
     const now = performance.now();
     if (now - updateRequestTime.current < 1000) return;
     updateRequestTime.current = now;
-    void call('checkUpdate').catch(fail);
+    setClientUpdate({ state: '正在检查客户端更新…' });
+    try {
+      const result = await call<{ release: { versionName: string; size: number; notes: string } | null }>('checkUpdate');
+      setClientUpdate(result.release ? { state: `发现新版本 ${result.release.versionName}`, release: result.release } : { state: '当前已是最新版本' });
+    } catch (failure) { setClientUpdate({ state: failure instanceof Error ? failure.message : '检查更新失败' }); }
+  };
+  const connectServer = async () => {
+    setBusy(true); setError('');
+    try {
+      const result = await call<{ serverUrl: string; authenticated: boolean; childId: string }>('connect', { serverUrl: serverAddress });
+      setServerAddress(result.serverUrl); setAuthenticated(result.authenticated); setChild(result.childId);
+      setCapabilities((current) => current ? { ...current, serverUrl: result.serverUrl, authenticated: result.authenticated, childId: result.childId } : current);
+      setHome({ rows: [] }); setChildren([]); setFolder(undefined); setOverlay(null); setBusy(false); setServerEpoch((value) => value + 1);
+      void call('checkWebUpdate').catch(() => {});
+    } catch (failure) { setError(failure instanceof Error ? failure.message : '无法连接媒体库'); setBusy(false); }
   };
 
   const snapshot = (): ViewSnapshot => { finishScrolls(viewport.current); return { focus: contentFocus.current, scroll: viewport.current?.scrollTop ?? 0,
@@ -71,17 +91,48 @@ function App() {
   }, []);
   useEffect(() => {
     call<Capabilities>('getCapabilities').then((caps) => {
-      if (caps.bridgeVersion !== 1) throw new Error('网页与电视版本不兼容，请更新电视客户端');
-      setCapabilities(caps); setAuthenticated(caps.authenticated); setChild(caps.childId);
-      return call('ready');
+      setBridgeCompatible(caps.bridgeVersion === 1);
+      setCapabilities(caps); setAuthenticated(caps.authenticated); setChild(caps.childId); setServerAddress(caps.serverUrl || caps.suggestedServerUrl || '');
+      return call('ready', { webVersion: caps.webVersion ?? '' });
     }).catch(fail).finally(() => setBusy(false));
   }, [fail]);
+  useEffect(() => {
+    const progress = (event: Event, client: boolean) => {
+      const detail = (event as CustomEvent<{ received: number; total: number; state: string; version?: string; message?: string }>).detail;
+      const state = detail.state === 'downloading' ? `正在下载${client ? '客户端' : '网页'}更新 ${Math.floor(detail.received * 100 / Math.max(1, detail.total))}%` : detail.state === 'staged' ? `网页 ${detail.version} 已缓存，下次启动生效` : detail.state === 'downloaded' ? '下载完成，可以安装' : detail.state === 'error' ? detail.message ?? '更新失败' : detail.state;
+      if (client) setClientUpdate((current) => ({ ...current, state }));
+      else setWebUpdateStatus(state);
+    };
+    const webProgress = (event: Event) => progress(event, false);
+    const clientProgress = (event: Event) => progress(event, true);
+    window.addEventListener('molly:webUpdateProgress', webProgress);
+    window.addEventListener('molly:clientUpdateProgress', clientProgress);
+    return () => { window.removeEventListener('molly:webUpdateProgress', webProgress); window.removeEventListener('molly:clientUpdateProgress', clientProgress); };
+  }, []);
+  useEffect(() => {
+    const incompatible = () => {
+      setCompatibilityWarning('此网页版本需要更新电视客户端才能使用。');
+      setOverlay('client-update');
+      void checkClientUpdate();
+    };
+    window.addEventListener('molly:webUpdateIncompatible', incompatible);
+    return () => window.removeEventListener('molly:webUpdateIncompatible', incompatible);
+  }, []);
+  useEffect(() => {
+    const available = (event: Event) => {
+      const release = (event as CustomEvent<{ versionName: string; size: number; notes: string }>).detail;
+      setClientUpdate({ state: `发现新版本 ${release.versionName}`, release });
+      setOverlay('client-update');
+    };
+    window.addEventListener('molly:clientUpdateAvailable', available);
+    return () => window.removeEventListener('molly:clientUpdateAvailable', available);
+  }, []);
   useEffect(() => {
     if (!authenticated) return;
     let canceled = false;
     request<Child[]>('/api/families/me/children').then((data) => { if (!canceled) setChildren(data); }).catch((failure) => { if (!canceled) fail(failure); });
     return () => { canceled = true; };
-  }, [authenticated, fail]);
+  }, [authenticated, fail, serverEpoch]);
   useEffect(() => {
     if (!authenticated) return;
     const serial = ++loadSerial.current;
@@ -97,14 +148,14 @@ function App() {
     task.catch((error) => { if (serial === loadSerial.current) fail(error); })
       .finally(() => { if (serial === loadSerial.current) setBusy(false); });
     return () => { loadSerial.current++; };
-  }, [authenticated, folder, reload, fail]);
+  }, [authenticated, folder, reload, fail, serverEpoch]);
 
   useEffect(() => {
     if (busy || playing) return;
     const timer = setTimeout(() => {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' : overlay === 'children' ? `child-${child || children[0]?.id}` :
-        overlay === 'settings' ? (window.MollyBridge ? 'connection' : authenticated ? 're-pair' : 'connect-account') : !authenticated ? 'connect-home' : error ? 'retry' :
+        overlay === 'settings' ? (window.MollyBridge ? 'connection' : authenticated ? 're-pair' : 'connect-account') : overlay === 'connection' ? 'server-address' : overlay === 'client-update' ? 'check-client-update' : !authenticated ? (capabilities?.serverUrl ? 'connect-account' : 'connect-home') : error ? 'retry' :
         (folder ? (videos.length ? `episode-${resumeId || videos[0].id}` : 'settings') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'settings');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
@@ -119,7 +170,12 @@ function App() {
       restore.current = undefined;
     }, 60);
     return () => clearTimeout(timer);
-  }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, children, child]);
+  }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, children, child, serverAddress, capabilities?.serverUrl]);
+  useEffect(() => {
+    if (overlay !== 'connection') return;
+    const timer = window.setTimeout(() => document.querySelector<HTMLInputElement>('#server-address')?.focus(), 80);
+    return () => window.clearTimeout(timer);
+  }, [overlay]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -224,9 +280,9 @@ function App() {
   const topbarArrow = (direction: string) => {
     if (direction !== 'down') return true;
     const saved = contentFocus.current;
-    const first = document.querySelector<HTMLButtonElement>('.poster:not(:disabled)');
+      const first = document.querySelector<HTMLButtonElement>('.poster:not(:disabled)');
     setFocus(saved && document.querySelector(`[data-focus="${saved}"]`) ? saved :
-      first?.dataset.focus ?? (!authenticated ? 'connect-home' : error ? 'retry' : 'settings'));
+      first?.dataset.focus ?? (!authenticated ? capabilities?.serverUrl ? 'connect-account' : 'connect-home' : error ? 'retry' : 'settings'));
     return false;
   };
 
@@ -244,7 +300,7 @@ function App() {
       </div>
         {authenticated && (folder ? <DetailHeader series={folder} total={videos.length} loading={busy} /> : <HomeGreeting name={selectedChild?.name} />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
-          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
+          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1>{capabilities?.serverUrl ? <><p>已连接媒体库，请绑定家庭电视。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></> : <><p>输入家庭媒体库地址开始使用。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('connection')}>设置媒体库地址</FocusButton></>}</div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
             {videos.map((item) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
               onArrow={cardArrow(true)} onFocus={() => remember(`episode-${item.id}`)} onClick={() => { void play(item.id); }}>
               <Cover item={item}><span>{item.id === resumeId ? '继续观看 · ' : ''}{watchedPosition(item) || duration(item.runtimeMs)}</span><Icon name="play" /></Cover><div className="card-copy"><strong>{item.name}</strong></div>
@@ -270,19 +326,34 @@ function App() {
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
       <FocusRegion focusKey="overlay" className={`overlay-panel ${overlay === 'children' ? 'profiles-panel' : overlay === 'pairing' ? 'account-panel' : 'settings-panel'}`} boundary>
-        <h1 id="overlay-title">{overlay === 'children' ? '谁在看？' : overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : '电视设置'}</h1>
+        <h1 id="overlay-title">{overlay === 'children' ? '谁在看？' : overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : overlay === 'connection' ? '媒体库连接' : overlay === 'client-update' ? '客户端更新' : '电视设置'}</h1>
         {overlay === 're-pair' ? <div className="re-pair-confirm">
           <p>重新配对会断开当前家庭媒体库，需要家长再次输入配对码确认。</p>
           {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
           <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
             <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
+        </div> : overlay === 'connection' ? <div className="connection-form">
+          <label htmlFor="server-address">媒体库地址</label>
+          <input id="server-address" data-focus="server-address" autoComplete="url" inputMode="url" placeholder="https://你的媒体库地址" value={serverAddress} onChange={(event) => setServerAddress(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void connectServer(); }} />
+          <p>输入媒体库根地址，不要添加路径。正式客户端需要 HTTPS。</p>
+          {error && <p role="alert" className="error">{error}</p>}
+          <FocusButton focusKey="save-server" className="primary" disabled={busy || !serverAddress.trim()} onClick={() => { void connectServer(); }}>{busy ? '正在连接…' : '连接'}</FocusButton>
+        </div> : overlay === 'client-update' ? <div className="client-update-panel">
+          {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
+          <p role="status">{clientUpdate?.state ?? '尚未检查'}</p>
+          {clientUpdate?.release && <><p>当前版本 {capabilities?.shellVersion} · 更新包 {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p>
+            <FocusButton focusKey="download-client-update" className="primary" onClick={() => { setClientUpdate({ ...clientUpdate, state: '正在下载客户端更新…' }); void call('downloadUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>下载更新</FocusButton>
+            {clientUpdate.state === '下载完成，可以安装' && <FocusButton focusKey="install-client-update" className="primary" onClick={() => { void call('installUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>安装更新</FocusButton>}
+          </>}
+          <FocusButton focusKey="check-client-update" className="text-button" onClick={() => { void checkClientUpdate(); }}>重新检查</FocusButton>
         </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : overlay === 'children' ? <div className="children-list">{children.map((profile) => <FocusButton key={profile.id} focusKey={`child-${profile.id}`} className="child"
           ariaLabel={profile.name} selected={profile.id === child} disabled={selectingChild} onClick={() => selectChild(profile.id)}>
           <span className="avatar" style={{ '--avatar-tone': tone(profile.id) } as CSSProperties}>{profile.name.slice(0, 1)}</span>
           <strong>{profile.name}</strong><span className="profile-status">{profile.id === child ? <><Icon name="check" />正在观看</> : '选择这个片单'}</span>
         </FocusButton>)}</div> : <div className="settings-list">
-          {window.MollyBridge && <FocusButton focusKey="connection" className="settings-item" onClick={() => { void call('connection').catch(fail); }}><Icon name="settings" /><span><strong>连接设置</strong><small>修改家庭媒体库地址</small></span><span>›</span></FocusButton>}
-          {window.MollyBridge && capabilities?.clientUpdates && <FocusButton focusKey="check-update" className="settings-item" onClick={checkClientUpdate}><Icon name="settings" /><span><strong>检查更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
+          {window.MollyBridge && <FocusButton focusKey="connection" className="settings-item" onClick={() => { setError(''); setOverlay('connection'); }}><Icon name="settings" /><span><strong>连接设置</strong><small>{serverAddress || '设置家庭媒体库地址'}</small></span><span>›</span></FocusButton>}
+          {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
+          {window.MollyBridge && capabilities?.serverUrl && <FocusButton focusKey="check-web-update" className="settings-item" onClick={() => { setWebUpdateStatus('正在检查网页更新…'); void call('checkWebUpdate').catch(fail); }}><Icon name="settings" /><span><strong>检查网页更新</strong><small>{webUpdateStatus || `网页版本 ${capabilities?.webVersion ?? ''}`}</small></span><span>›</span></FocusButton>}
           {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { setError(''); setOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
         </div>}
         {selectingChild && <p role="status" className="state">正在打开片单…</p>}
