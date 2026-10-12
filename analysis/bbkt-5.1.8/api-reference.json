@@ -1,0 +1,92 @@
+[
+  {
+    "method": "POST",
+    "path": "app-api/player/activation-code/active",
+    "declaration": "activateDevice",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/app-version/check",
+    "declaration": "checkAppVersion",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/device-record/create",
+    "declaration": "createDeviceInfo",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/user-info/create",
+    "declaration": "createUserInfo",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/recommend-info/page",
+    "declaration": "getRecommendInfo",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/user-info/getSetupInfo",
+    "declaration": "getSetupInfo",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/video-diversity/get2",
+    "declaration": "getVideoDiversity",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/video-diversity/get-first2",
+    "declaration": "getVideoDiversityFirst",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/video-diversity/page",
+    "declaration": "getVideoDiversityList",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/video-history/page",
+    "declaration": "getVideoHistoryList",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/video-info/page",
+    "declaration": "getVideoInfo",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/player/video-category/page",
+    "declaration": "getVideoSort",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/member/auth/sms-login",
+    "declaration": "login",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/member/auth/logout",
+    "declaration": "logout",
+    "verification": "static declaration only; not called"
+  },
+  {
+    "method": "POST",
+    "path": "app-api/member/auth/send-sms-code",
+    "declaration": "sendSmsCode",
+    "verification": "static declaration only; not called"
+  }
+]

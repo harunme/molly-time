@@ -1,0 +1,125 @@
+[
+  {
+    "file": "apktool/res/layout/activity_main.xml",
+    "root": "FrameLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/activity_settings.xml",
+    "root": "FrameLayout",
+    "text": [
+      "返回",
+      "登录",
+      "历史",
+      "关于"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/activity_video_player.xml",
+    "root": "androidx.constraintlayout.widget.ConstraintLayout",
+    "text": [
+      "字幕"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/custom_dialog.xml",
+    "root": "RelativeLayout",
+    "text": [
+      " Ok "
+    ]
+  },
+  {
+    "file": "apktool/res/layout/dialog_active_code.xml",
+    "root": "androidx.constraintlayout.widget.ConstraintLayout",
+    "text": [
+      "确 认"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/dialog_ad.xml",
+    "root": "RelativeLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/dialog_app_desc.xml",
+    "root": "ScrollView",
+    "text": [
+      "",
+      "确  定"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/dialog_app_update.xml",
+    "root": "LinearLayout",
+    "text": [
+      "发现新版本",
+      "1、软件更新",
+      "",
+      "  暂 不  ",
+      "  更 新  "
+    ]
+  },
+  {
+    "file": "apktool/res/layout/dialog_complaint.xml",
+    "root": "ScrollView",
+    "text": [
+      "取  消",
+      "提  交"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/dialog_privacy.xml",
+    "root": "ScrollView",
+    "text": [
+      "拒绝",
+      "同意"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/fragment_category.xml",
+    "root": "FrameLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/fragment_special.xml",
+    "root": "ScrollView",
+    "text": [
+      "大家都在看 热门推荐"
+    ]
+  },
+  {
+    "file": "apktool/res/layout/item_app_grid.xml",
+    "root": "androidx.constraintlayout.widget.ConstraintLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/item_category.xml",
+    "root": "androidx.constraintlayout.widget.ConstraintLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/item_recommend_image.xml",
+    "root": "FrameLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/item_tv_video.xml",
+    "root": "androidx.constraintlayout.widget.ConstraintLayout",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/item_video_diversity.xml",
+    "root": "androidx.cardview.widget.CardView",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/item_video_speed.xml",
+    "root": "androidx.cardview.widget.CardView",
+    "text": []
+  },
+  {
+    "file": "apktool/res/layout/item_video_subtitle.xml",
+    "root": "androidx.cardview.widget.CardView",
+    "text": []
+  }
+]

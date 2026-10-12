@@ -1,0 +1,12 @@
+{
+  "api_concurrency": 1,
+  "api_gap_seconds": [3, 6],
+  "reads_per_batch": 10,
+  "batch_rest_seconds": [30, 60],
+  "download_concurrency": 1,
+  "download_bytes_per_second": 8388608,
+  "download_gap_seconds": [1, 3],
+  "retry_backoff_seconds": [60, 180, 600],
+  "free_space_reserve_bytes": 21474836480,
+  "parameter_source": "observed normal ChildPlayer catalogue and playback requests"
+}

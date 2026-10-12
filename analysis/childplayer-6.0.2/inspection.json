@@ -1,0 +1,23 @@
+{
+  "app": "ChildPlayer",
+  "version": "6.0.2",
+  "source_cache": "/Users/binwang/Library/Containers/com.bbketang.app/Data/Documents/TXCache/tp_dp_file/6A7EEA75069F036B2E98567761BC5B9B/6A7EEA75069F036B2E98567761BC5B9B",
+  "sample_file": "analysis/childplayer-6.0.2/samples/Maisy_S3_17_Ice_Cream_Parade.mp4",
+  "bytes": 31716987,
+  "expected_mp4_box_end": 31716987,
+  "subtitles": [
+    {
+      "file": "Maisy_S3_en_17.Ice Cream Parade.srt",
+      "source_url": "https://bbkt.oss-rg-china-mainland.aliyuncs.com/Maisy/Maisy_S3_en_17.Ice%20Cream%20Parade.srt",
+      "bytes": 4492
+    }
+  ],
+  "status": "full local video and audio decode succeeded; ffmpeg exit code 0",
+  "episode_association": "player UI title confirms 第17集Ice Cream Parade; matches cached subtitle filename",
+  "resolution": "1920x1080",
+  "duration_seconds": 289.898005,
+  "video_codec": "H.264",
+  "audio_codec": "AAC",
+  "sha256": "c5767467dd2f05178742815e90bc8ce373441d6d97b24f139727cafe02da98ef",
+  "subtitle_cues": 71
+}

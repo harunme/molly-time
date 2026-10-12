@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>BBKT Crawler Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-elev: #161c24;
+    --bg-elev2: #1c232c;
+    --line: #2a313a;
+    --text: #d8dde4;
+    --text-dim: #7d8694;
+    --accent: #4a9eff;
+    --ok: #4ade80;
+    --warn: #f59e0b;
+    --err: #ef4444;
+    --pending: #94a3b8;
+    --running: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue',
+      'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    font-size: 13px; line-height: 1.45;
+    height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; background: var(--bg-elev);
+    border-bottom: 1px solid var(--line); height: 44px;
+  }
+  header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+  .stats { display: flex; gap: 18px; font-size: 12px; color: var(--text-dim); }
+  .stats b { color: var(--text); font-weight: 500; }
+  .layout { display: grid; grid-template-rows: 1fr 220px; height: calc(100vh - 44px); }
+  .top { display: grid; grid-template-columns: 260px 280px 1fr; overflow: hidden; }
+  .pane { overflow-y: auto; border-right: 1px solid var(--line); background: var(--bg); }
+  .pane:last-child { border-right: none; }
+  .pane-header {
+    padding: 8px 12px; font-size: 11px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    background: var(--bg-elev); position: sticky; top: 0;
+    border-bottom: 1px solid var(--line); z-index: 1;
+  }
+  .row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; border-bottom: 1px solid var(--line);
+    cursor: pointer; user-select: none;
+  }
+  .row:hover { background: var(--bg-elev); }
+  .row.active { background: var(--bg-elev2); }
+  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .count { color: var(--text-dim); font-size: 11px; margin-left: 8px; font-variant-numeric: tabular-nums; }
+  .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 10px;
+    font-size: 10px; background: var(--bg-elev2); color: var(--text-dim);
+    margin-left: 4px;
+  }
+  .badge.ok { background: rgba(74, 222, 128, 0.15); color: var(--ok); }
+  .badge.run { background: rgba(56, 189, 248, 0.15); color: var(--running); }
+  .badge.err { background: rgba(239, 68, 68, 0.15); color: var(--err); }
+  .badge.pend { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+  .ep {
+    padding: 8px 12px; border-bottom: 1px solid var(--line);
+    display: grid; grid-template-columns: 60px 1fr; gap: 10px;
+  }
+  .ep-cover {
+    width: 60px; height: 40px; object-fit: cover; border-radius: 3px;
+    background: var(--bg-elev2);
+  }
+  .ep-name { font-size: 12px; margin-bottom: 4px; }
+  .ep-name .dur { color: var(--text-dim); font-size: 10px; margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .ep-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px; font-size: 10px;
+    background: var(--bg-elev2); color: var(--text-dim);
+    border: 1px solid var(--line); cursor: pointer;
+    transition: background 0.1s;
+  }
+  .pill:hover { background: var(--line); }
+  .pill[data-state="done"] { background: rgba(74, 222, 128, 0.1); color: var(--ok); border-color: rgba(74, 222, 128, 0.3); }
+  .pill[data-state="running"] { background: rgba(56, 189, 248, 0.15); color: var(--running); border-color: rgba(56, 189, 248, 0.3); }
+  .pill[data-state="failed"] { background: rgba(239, 68, 68, 0.15); color: var(--err); border-color: rgba(239, 68, 68, 0.3); }
+  .pill[data-state="pending"] { background: rgba(245, 158, 11, 0.1); color: var(--warn); border-color: rgba(245, 158, 11, 0.3); }
+  .bottom {
+    border-top: 1px solid var(--line); background: var(--bg-elev);
+    display: grid; grid-template-rows: 28px 1fr;
+  }
+  .bottom-header {
+    padding: 6px 12px; font-size: 11px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between;
+  }
+  .progress-list {
+    overflow-y: auto; padding: 8px 12px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px; align-content: start;
+  }
+  .progress-card {
+    background: var(--bg-elev2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 8px 10px; font-size: 11px;
+  }
+  .progress-card .top-line {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 4px;
+  }
+  .progress-card .kind { color: var(--text-dim); font-size: 10px; }
+  .progress-card .bar {
+    height: 4px; background: var(--line); border-radius: 2px;
+    overflow: hidden; margin: 4px 0;
+  }
+  .progress-card .bar > div {
+    height: 100%; background: var(--accent);
+    transition: width 0.2s;
+  }
+  .progress-card.done .bar > div { background: var(--ok); }
+  .progress-card.failed .bar > div { background: var(--err); }
+  .progress-card .meta { color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .empty { padding: 16px; color: var(--text-dim); font-size: 12px; text-align: center; }
+  .pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 6px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .offline .pulse { background: var(--err); animation: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="pulse" id="connDot"></span>BBKT 爬虫控制台</h1>
+  <div class="stats" id="stats">
+    <span>目录 <b id="sCats">-</b></span>
+    <span>节目 <b id="sSeries">-</b></span>
+    <span>剧集 <b id="sEps">-</b></span>
+    <span>已下载 <b id="sDone">-</b></span>
+    <span>活动中 <b id="sActive">-</b></span>
+    <span>队列 <b id="sQueue">-</b></span>
+  </div>
+</header>
+<div class="layout">
+  <div class="top">
+    <div class="pane" id="catPane">
+      <div class="pane-header">分类</div>
+    </div>
+    <div class="pane" id="seriesPane">
+      <div class="pane-header">节目</div>
+      <div class="empty">选一个分类</div>
+    </div>
+    <div class="pane" id="epPane">
+      <div class="pane-header">剧集</div>
+      <div class="empty">选一个节目</div>
+    </div>
+  </div>
+  <div class="bottom">
+    <div class="bottom-header">
+      <span>活动下载</span>
+      <span id="queueInfo"></span>
+    </div>
+    <div class="progress-list" id="progressList">
+      <div class="empty">没有活动下载</div>
+    </div>
+  </div>
+</div>
+<script>
+const FIELDS = {
+  videoUrl: { label: '视频', kind: 'video', cls: '视频' },
+  srtEnUrl: { label: '英文字幕', kind: 'subtitle', cls: '字幕' },
+  srtCnEnUrl: { label: '中英字幕', kind: 'subtitle', cls: '字幕' },
+  imgUrl: { label: '封面', kind: 'cover', cls: '封面' },
+};
+const STATE_LABEL = {
+  done: '已下载', running: '下载中', failed: '失败', pending: '待下',
+};
+let selectedCategory = null, selectedSeries = null;
+let epStates = new Map(); // episode_id -> {field -> state}
+let eventSource = null;
+
+async function get(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ': ' + r.status);
+  return r.json();
+}
+
+async function post(url) {
+  const r = await fetch(url, { method: 'POST' });
+  if (!r.ok) throw new Error(url + ': ' + r.status);
+  return r.json();
+}
+
+function fmtBytes(n) {
+  if (n == null) return '-';
+  if (n < 1024) return n + 'B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + 'KB';
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + 'MB';
+  return (n/1024/1024/1024).toFixed(2) + 'GB';
+}
+
+function stateBadge(state) {
+  if (!state) return '';
+  const label = STATE_LABEL[state] || state;
+  return `<span class="badge ${state === 'done' ? 'ok' : state === 'running' ? 'run' : state === 'failed' ? 'err' : 'pend'}">${label}</span>`;
+}
+
+async function loadCategories() {
+  const cats = await get('/api/categories');
+  const pane = document.getElementById('catPane');
+  pane.innerHTML = '<div class="pane-header">分类</div>';
+  for (const c of cats) {
+    const row = document.createElement('div');
+    row.className = 'row' + (selectedCategory === c.id ? ' active' : '');
+    row.innerHTML = `<span class="name">${c.name}</span><span class="count">${c.series}</span>`;
+    row.onclick = () => selectCategory(c.id);
+    pane.appendChild(row);
+  }
+}
+
+async function selectCategory(id) {
+  selectedCategory = id;
+  selectedSeries = null;
+  document.querySelectorAll('#catPane .row').forEach(r => r.classList.remove('active'));
+  await loadCategories();
+  const list = await get('/api/series?category_id=' + id);
+  const pane = document.getElementById('seriesPane');
+  pane.innerHTML = '<div class="pane-header">节目</div>';
+  for (const s of list) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="name">${s.name}</span>` +
+      `<span class="count">${s.episodes}${stateBadge(s.cover_state)}</span>`;
+    row.onclick = () => selectSeries(s.id, row);
+    pane.appendChild(row);
+  }
+  document.getElementById('epPane').innerHTML = '<div class="pane-header">剧集</div><div class="empty">选一个节目</div>';
+}
+
+async function selectSeries(id, rowEl) {
+  selectedSeries = id;
+  document.querySelectorAll('#seriesPane .row').forEach(r => r.classList.remove('active'));
+  if (rowEl) rowEl.classList.add('active');
+  const eps = await get('/api/episodes?series_id=' + id);
+  epStates.clear();
+  const pane = document.getElementById('epPane');
+  pane.innerHTML = '<div class="pane-header">剧集</div>';
+  for (const ep of eps) {
+    epStates.set(ep.id, ep.states);
+    const card = renderEpisode(ep);
+    pane.appendChild(card);
+  }
+}
+
+function renderEpisode(ep) {
+  const card = document.createElement('div');
+  card.className = 'ep';
+  card.dataset.episodeId = ep.id;
+  const states = epStates.get(ep.id) || {};
+  // Try to find a cover URL — we use /api/file/{id} for any done resource,
+  // or scan the episode's resources via detail endpoint.
+  card.innerHTML = `
+    <img class="ep-cover" src="/api/cover/${ep.id}" onerror="this.style.background='var(--bg-elev2)';this.removeAttribute('src')">
+    <div>
+      <div class="ep-name">${ep.name || '(无标题)'}<span class="dur">${ep.duration || ''}</span></div>
+      <div class="ep-actions" data-ep="${ep.id}"></div>
+    </div>
+  `;
+  // We don't know resource IDs from the episodes list — fetch detail to get them.
+  fetchEpisodeResources(ep.id, card);
+  return card;
+}
+
+async function fetchEpisodeResources(epId, card) {
+  try {
+    const ep = await get('/api/episode/' + epId);
+    const actions = card.querySelector('.ep-actions');
+    actions.innerHTML = '';
+    for (const r of ep.resources) {
+      const meta = FIELDS[Object.keys(FIELDS).find(k => k === r.field)];
+      // map resource by field for state lookup
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.dataset.state = r.state;
+      pill.dataset.resourceId = r.id;
+      const label = meta ? meta.label : r.field;
+      pill.innerHTML = `${label} ${STATE_LABEL[r.state] || r.state}`;
+      if (r.state === 'done') {
+        pill.title = '点击预览';
+        pill.style.cursor = 'pointer';
+        pill.onclick = () => window.open('/api/file/' + r.id, '_blank');
+      } else if (r.state === 'failed') {
+        pill.title = '失败: ' + (r.error || '');
+      } else {
+        pill.onclick = () => enqueue(r.id, pill);
+      }
+      actions.appendChild(pill);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function enqueue(resourceId, pill) {
+  try {
+    pill.dataset.state = 'pending';
+    pill.innerHTML = pill.innerHTML.replace(/[\u4e00-\u9fa5]+$/, '排队中');
+    const r = await post('/api/download/' + resourceId);
+    if (!r.enqueued && r.state === 'already_done') {
+      pill.dataset.state = 'done';
+      pill.innerHTML = pill.innerHTML.replace(/排队中|待下/, '已下载');
+    }
+  } catch (e) {
+    console.error(e);
+    pill.dataset.state = 'failed';
+  }
+}
+
+function renderProgress(events) {
+  // events: map of resource_id -> {kind, state, bytes, speed, error}
+  const list = document.getElementById('progressList');
+  const existing = new Map();
+  list.querySelectorAll('.progress-card').forEach(c => {
+    existing.set(c.dataset.resourceId, c);
+  });
+  for (const [rid, e] of Object.entries(events)) {
+    let card = existing.get(rid);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'progress-card';
+      card.dataset.resourceId = rid;
+      card.innerHTML = `
+        <div class="top-line">
+          <span class="rid">${rid.slice(0,10)}…</span>
+          <span class="kind">${e.kind || ''}</span>
+        </div>
+        <div class="bar"><div></div></div>
+        <div class="meta"></div>
+      `;
+      list.appendChild(card);
+      existing.set(rid, card);
+    }
+    card.classList.toggle('done', e.state === 'done');
+    card.classList.toggle('failed', e.state === 'failed');
+    card.querySelector('.kind').textContent = e.kind || '';
+    const meta = card.querySelector('.meta');
+    if (e.state === 'done') {
+      meta.textContent = `完成 · ${fmtBytes(e.bytes)}`;
+      card.querySelector('.bar > div').style.width = '100%';
+    } else if (e.state === 'failed') {
+      meta.textContent = '失败 · ' + (e.error || '');
+      card.querySelector('.bar > div').style.width = '100%';
+    } else if (e.state === 'queued') {
+      meta.textContent = '排队中';
+      card.querySelector('.bar > div').style.width = '0%';
+    } else {
+      const speedTxt = e.speed ? ` · ${fmtBytes(e.speed)}/s` : '';
+      meta.textContent = `${fmtBytes(e.bytes)}${speedTxt}`;
+      card.querySelector('.bar > div').style.width = '5%';
+    }
+  }
+  // Remove cards that no longer have active state
+  for (const [rid, card] of existing) {
+    if (!events[rid]) card.remove();
+  }
+  if (list.children.length === 0 || (list.children.length === 1 && list.firstElementChild.classList.contains('empty'))) {
+    if (!list.querySelector('.progress-card')) {
+      list.innerHTML = '<div class="empty">没有活动下载</div>';
+    }
+  }
+}
+
+let activeEvents = {};
+
+function applyEvent(evt) {
+  if (evt.type === 'started') {
+    activeEvents[evt.resource_id] = { kind: '(加载中)', state: 'running', bytes: 0, speed: 0 };
+    refreshActivePills(evt.resource_id, 'running');
+  } else if (evt.type === 'progress') {
+    activeEvents[evt.resource_id] = {
+      kind: '(下载中)', state: 'running',
+      bytes: evt.bytes || 0, speed: evt.speed || 0,
+    };
+  } else if (evt.type === 'finished') {
+    if (evt.result && evt.result.bytes) {
+      activeEvents[evt.resource_id] = { kind: '(完成)', state: 'done', bytes: evt.result.bytes };
+    } else {
+      delete activeEvents[evt.resource_id];
+    }
+    refreshActivePills(evt.resource_id, 'done');
+  } else if (evt.type === 'failed') {
+    delete activeEvents[evt.resource_id];
+    refreshActivePills(evt.resource_id, 'failed');
+  } else if (evt.type === 'queued') {
+    activeEvents[evt.resource_id] = { kind: evt.kind || '', state: 'queued' };
+  }
+  renderProgress(activeEvents);
+  refreshStats();
+}
+
+async function refreshActivePills(resourceId, state) {
+  document.querySelectorAll(`.pill[data-resource-id="${resourceId}"]`).forEach(p => {
+    p.dataset.state = state;
+    const label = p.textContent.replace(/\s+\S*$/, '');
+    const stateName = STATE_LABEL[state] || state;
+    p.innerHTML = `${label} ${stateName}`;
+  });
+}
+
+async function refreshCurrentEpisodes() {
+  if (!selectedSeries) return;
+  // Refresh episode list state without re-rendering covers.
+  try {
+    const eps = await get('/api/episodes?series_id=' + selectedSeries);
+    let changed = 0;
+    for (const ep of eps) {
+      const prev = epStates.get(ep.id) || {};
+      const next = ep.states || {};
+      if (JSON.stringify(prev) !== JSON.stringify(next)) {
+        epStates.set(ep.id, next);
+        changed++;
+      }
+    }
+    // Also refresh each episode's resource pills (in case the DB state changed
+    // via the background downloader).
+    document.querySelectorAll('.ep').forEach(card => {
+      const epId = parseInt(card.dataset.episodeId, 10);
+      const actions = card.querySelector('.ep-actions');
+      if (!actions || !actions.children.length) {
+        // Episode not yet detailed; trigger a fetch.
+        fetchEpisodeResources(epId, card);
+      } else {
+        // Re-pull the detail to read the canonical resource state.
+        fetchEpisodeResources(epId, card);
+      }
+    });
+  } catch (e) {
+    console.error('refreshCurrentEpisodes:', e);
+  }
+}
+
+async function refreshStats() {
+  try {
+    const ov = await get('/api/overview');
+    document.getElementById('sCats').textContent = ov.categories;
+    document.getElementById('sSeries').textContent = ov.series;
+    document.getElementById('sEps').textContent = ov.episodes;
+    document.getElementById('sDone').textContent = (ov.resources.done || 0) +
+      ' (' + fmtBytes(ov.downloaded_bytes) + ')';
+    document.getElementById('sActive').textContent = ov.active.length;
+    document.getElementById('sQueue').textContent = ov.queue_size;
+    document.getElementById('queueInfo').textContent =
+      `${ov.active.length} 个正在下载 · 队列 ${ov.queue_size}`;
+    // Apply active resource states to pills currently shown
+    for (const rid of ov.active) {
+      refreshActivePills(rid, 'running');
+    }
+  } catch (e) {
+    document.body.classList.add('offline');
+  }
+}
+
+function connectSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/api/events');
+  eventSource.onmessage = (e) => {
+    try {
+      const evt = JSON.parse(e.data);
+      if (evt.type) applyEvent(evt);
+    } catch {}
+  };
+  eventSource.onerror = () => {
+    document.body.classList.add('offline');
+    setTimeout(connectSSE, 3000);
+  };
+  eventSource.onopen = () => {
+    document.body.classList.remove('offline');
+  };
+}
+
+// Initial load
+loadCategories().catch(e => console.error(e));
+refreshStats();
+setInterval(refreshStats, 5000);
+setInterval(refreshCurrentEpisodes, 10000);
+connectSSE();
+</script>
+</body>
+</html>

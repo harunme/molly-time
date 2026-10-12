@@ -1,0 +1,68 @@
+{
+  "source": "/Users/binwang/Working/易福门/email/bbkt_5.1.8_dangbei.apk",
+  "bytes": 21356554,
+  "sha256": "88b6d8272f4b95d476499a6daff49d383212fbea51388d393de34f640bbb2067",
+  "dex": [
+    {
+      "file": "classes4.dex",
+      "bytes": 8699168,
+      "strings": 62248,
+      "classes": 6808,
+      "example_classes": [
+        "Lcom/google/android/material/R$anim;",
+        "Lcom/google/android/material/R$animator;",
+        "Lcom/google/android/material/R$attr;",
+        "Lcom/google/android/material/R$bool;",
+        "Lcom/google/android/material/R$color;",
+        "Lcom/google/android/material/R$dimen;",
+        "Lcom/google/android/material/R$drawable;",
+        "Lcom/google/android/material/R$id;",
+        "Lcom/google/android/material/R$integer;",
+        "Lcom/google/android/material/R$interpolator;",
+        "Lcom/google/android/material/R$layout;",
+        "Lcom/google/android/material/R$plurals;"
+      ]
+    },
+    {
+      "file": "classes3.dex",
+      "bytes": 596,
+      "strings": 7,
+      "classes": 1,
+      "example_classes": [
+        "Landroid/media/MediaDrmThrowable;"
+      ]
+    },
+    {
+      "file": "classes2.dex",
+      "bytes": 7883108,
+      "strings": 62675,
+      "classes": 6943,
+      "example_classes": [
+        "Landroid/support/v4/app/INotificationSideChannel;",
+        "Landroid/support/v4/app/INotificationSideChannel$Default;",
+        "Landroid/support/v4/app/INotificationSideChannel$Stub$Proxy;",
+        "Landroid/support/v4/app/INotificationSideChannel$Stub;",
+        "Landroid/support/v4/app/INotificationSideChannel$_Parcel;",
+        "Landroidx/core/app/RemoteActionCompatParcelizer;",
+        "Landroid/support/v4/app/RemoteActionCompatParcelizer;",
+        "Landroidx/core/graphics/drawable/IconCompatParcelizer;",
+        "Landroid/support/v4/graphics/drawable/IconCompatParcelizer;",
+        "Landroidx/media/AudioAttributesCompatParcelizer;",
+        "Landroid/support/v4/media/AudioAttributesCompatParcelizer;",
+        "Landroidx/media/AudioAttributesImplApi21Parcelizer;"
+      ]
+    },
+    {
+      "file": "classes.dex",
+      "bytes": 14540,
+      "strings": 202,
+      "classes": 4,
+      "example_classes": [
+        "Ls/h/e/l/l/A;",
+        "Ls/h/e/l/l/N;",
+        "Ls/h/e/l/l/S;",
+        "Ls/h/e/l/l/a8/p;"
+      ]
+    }
+  ]
+}
