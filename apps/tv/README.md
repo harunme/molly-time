@@ -1,89 +1,22 @@
-<h1 align="center">Jellyfin Android TV</h1>
-<h3 align="center">Part of the <a href="https://jellyfin.org">Jellyfin Project</a></h3>
+# Molly TV 电视端
 
----
+电视端由网页界面和轻量 Android 客户端组成，共用 `apps/server/` 后台。家长管理网页位于 `apps/web/`。
 
-<p align="center">
-<img alt="Logo banner" src="https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/SVG/banner-logo-solid.svg?sanitize=true"/>
-<br/><br/>
-<a href="https://github.com/jellyfin/jellyfin-androidtv">
-<img alt="GPL 2.0 License" src="https://img.shields.io/github/license/jellyfin/jellyfin-androidtv.svg"/>
-</a>
-<a href="https://github.com/jellyfin/jellyfin-androidtv/releases">
-<img alt="Current Release" src="https://img.shields.io/github/release/jellyfin/jellyfin-androidtv.svg"/>
-</a>
-<a href="https://translate.jellyfin.org/projects/jellyfin-android/jellyfin-androidtv/">
-<img alt="Translation Status" src="https://translate.jellyfin.org/widgets/jellyfin-android/-/jellyfin-androidtv/svg-badge.svg"/>
-</a>
-<br/>
-<a href="https://opencollective.com/jellyfin">
-<img alt="Donate" src="https://img.shields.io/opencollective/all/jellyfin.svg?label=backers"/>
-</a>
-<a href="https://features.jellyfin.org">
-<img alt="Feature Requests" src="https://img.shields.io/badge/fider-vote%20on%20features-success.svg"/>
-</a>
-<a href="https://matrix.to/#/+jellyfin:matrix.org">
-<img alt="Chat on Matrix" src="https://img.shields.io/matrix/jellyfin:matrix.org.svg?logo=matrix"/>
-</a>
-<a href="https://www.reddit.com/r/jellyfin">
-<img alt="Join our Subreddit" src="https://img.shields.io/badge/reddit-r%2Fjellyfin-%23FF5700.svg"/>
-</a>
-<br/>
-<a href="https://play.google.com/store/apps/details?id=org.jellyfin.androidtv">
-<img width="153" alt="Jellyfin on Google Play" src="https://jellyfin.org/images/store-icons/google-play.png"/>
-</a>
-<a href="https://www.amazon.com/gp/aw/d/B07TX7Z725">
-<img width="153" alt="Jellyfin on Amazon Appstore" src="https://jellyfin.org/images/store-icons/amazon.png"/>
-</a>
-<a href="https://f-droid.org/en/packages/org.jellyfin.androidtv/">
-<img width="153" alt="Jellyfin on F-Droid" src="https://jellyfin.org/images/store-icons/fdroid.png"/>
-</a>
-<br/>
-<a href="https://repo.jellyfin.org/releases/client/androidtv/">Download archive</a>
-</p>
+| 目录 | 用途 |
+| --- | --- |
+| [`web/`](web/README.md) | React TV 界面、遥控器焦点导航，构建输出 `web/dist/` |
+| [`client/`](client/README.md) | Kotlin WebView 壳子与原生 Media3 播放器，Gradle 模块 `:client` |
+| `app/`、`playback/`、`preference/` | 上游历史代码，保留作参考，未纳入当前构建 |
+| `gradle/`、`build.gradle.kts`、`settings.gradle.kts` | Android 构建配置与工具 |
 
-Jellyfin Android TV is a Jellyfin client for Android TV, Nvidia Shield, and Amazon Fire TV devices.
-We welcome all contributions and pull requests! If you have a larger feature in mind please open an
-issue so we can discuss the implementation before you start. 
+日常开发在仓库根目录执行，只启动 TV 网页服务：
 
-## Translating
+```bash
+bash tools/run-tv-web.sh
+```
 
-Translations can be improved very easily from our
-[Weblate](https://translate.jellyfin.org/projects/jellyfin-android/jellyfin-androidtv) instance.
-Look through the following graphic to see if your native language could use some work!
+打开 `http://127.0.0.1:5173/tv/` 在浏览器中调试。真实登录和目录使用已有 Molly API，默认代理本机 `8096`；需要时可单独运行本地 Python 后台。日常不启动 Docker、Android 模拟器或客户端。
 
-<a href="https://translate.jellyfin.org/engage/jellyfin-android/">
-<img alt="Detailed Translation Status" src="https://translate.jellyfin.org/widgets/jellyfin-android/-/jellyfin-androidtv/multi-auto.svg"/>
-</a>
+发版前构建网页和 APK，使用 Android 客户端验证 WebView 与原生播放。完整步骤见[项目说明](../../README.md)和[客户端说明](client/README.md)。生产环境由后台在 `/tv/` 提供构建后的静态文件。
 
-## Build Process
-
-### Dependencies
-
-- Android Studio
-
-### Build
-
-1. Clone or download this repository
-
-   ```sh
-   git clone https://github.com/jellyfin/jellyfin-androidtv.git
-   cd jellyfin-androidtv
-   ```
-
-2. Open the project in Android Studio and run it from there or build an APK directly through Gradle:
-
-   ```sh
-   ./gradlew assembleDebug
-   ```
-   
-   Add the Android SDK to your PATH environment variable or create the ANDROID_SDK_ROOT variable for
-   this to work.
-
-### Deploy to device/emulator
-
-   ```sh
-   ./gradlew installDebug
-   ```
-
-*You can also replace the "Debug" with "Release" to get an optimized release binary.*
+上游版权与许可证保留于 [LICENSE](LICENSE)，原始项目说明完整保留于 [README.upstream.md](README.upstream.md)，来源及历史修改见[上游说明](../../docs/upstream.md)。

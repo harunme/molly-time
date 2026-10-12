@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { writeFileSync } from 'node:fs';
 
-const adb = resolve('../../.local/android-sdk/platform-tools/adb');
+const adb = resolve('../../../.local/android-sdk/platform-tools/adb');
 const [device] = await _android.devices();
 if (!device) throw new Error('Connect an Android TV emulator first');
 const webview = await device.webView({ pkg: 'com.molly.tv.debug' });
@@ -45,7 +45,7 @@ try {
     await expect(page.locator('.poster').first()).toBeVisible({ timeout: 20000 });
   }
   console.log('Native Bridge login and real catalog: OK');
-  await page.screenshot({ path: '../../artifacts/tv-webview-home.png' });
+  await page.screenshot({ path: '../../../artifacts/tv-webview-home.png' });
   await page.getByRole('button', { name: /L1开口动画/ }).click();
   await expect(page.locator('.season').first()).toBeVisible();
   await page.getByRole('button', { name: /古力小超人/ }).click();
@@ -62,13 +62,13 @@ try {
   }
   // Allow the real decoder to produce frames, then retain a visual playback artifact.
   await page.waitForTimeout(6000);
-  writeFileSync('../../artifacts/tv-native-playback.png', await device.screenshot());
+  writeFileSync('../../../artifacts/tv-native-playback.png', await device.screenshot());
   if (process.env.MOLLY_SMOKE_PAUSE === '1') {
     // SPACE is the player's keyboard toggle; system media keys may be intercepted by the TV OS.
     await setNativePaused(true);
     await page.waitForTimeout(4000);
     expect(nativePlaying()).toBe('false');
-    writeFileSync('../../artifacts/tv-native-paused.png', await device.screenshot());
+    writeFileSync('../../../artifacts/tv-native-paused.png', await device.screenshot());
     await setNativePaused(false);
     await page.waitForTimeout(3000);
     console.log('Native pause/resume interval exercised: OK');

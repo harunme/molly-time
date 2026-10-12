@@ -2,6 +2,8 @@
 
 React + TypeScript + Vite，Norigin Spatial Navigation 管理方向键焦点。登录、首页、季列表与剧集列表使用 Molly API，网页通过受限原生 Bridge 播放视频。
 
+日常从仓库根目录执行 `bash tools/run-tv-web.sh`，只运行 Vite，在浏览器中开发；不启动 Docker 或 Android。也可在本目录执行：
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
@@ -9,11 +11,11 @@ pnpm build
 pnpm test
 ```
 
-开发地址 `http://127.0.0.1:5173/tv/`，Vite 将 `/api` 代理到本机 `8096`。浏览器支持真实账号登录与目录预览，凭证仅在内存中；视频播放需 TV 客户端。测试会启动独立 Vite 服务并验证遥控器焦点、返回、播放返回与登录错误恢复。
+开发地址 `http://127.0.0.1:5173/tv/`，Vite 将 `/api` 代理到本机 `8096`，可用 `MOLLY_API_PROXY` 指定已有后台；真实登录和目录需要该后台可用。浏览器支持真实账号登录与目录预览，凭证仅在内存中；视频播放需 TV 客户端。测试会启动独立 Vite 服务并验证遥控器焦点、返回、播放返回与登录错误恢复。
 
 生产输出 `dist/`，后台启动时在 `/tv/` 挂载；可用 `MOLLY_TV_WEB_DIR` 指定部署目录。入口 HTML 禁止陈旧缓存，带哈希的资源长期缓存。部署时保留旧版资源并原子切换入口，确保旧页面仍能请求它引用的文件。`pnpm build` 只是本地构建，不等于线上原子部署。
 
-## Android 实测
+## 发版前 Android 实测
 
 在连接模拟器、安装 debug APK、配置后台地址并打开网页后运行：
 
@@ -29,4 +31,4 @@ pnpm exec node tests/smoke-android.mjs
 
 新版参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)，采用固定侧栏、随焦点变化的内容预览和独立横向内容行。焦点按屏幕/侧栏/内容行/弹层分组，跨行、页面返回与原生播放返回均保存卡片及滚动位置。设置和儿童弹层限制方向键焦点，返回恢复原菜单。
 
-只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../docs/tv-interface-design.md)。网页构建后重新打开 TV 壳子加载新入口，无需修改 Bridge。
+只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../../docs/tv-interface-design.md)。网页构建后重新打开 TV 壳子加载新入口，无需修改 Bridge。

@@ -1,6 +1,6 @@
 # 开源基线
 
-客户端源码位于 `apps/tv`，以源码快照方式纳入本仓库，保留上游 LICENSE、版权说明和 README，不依赖嵌套 Git 仓库。
+客户端源码位于 `apps/tv`，以源码快照方式纳入本仓库，保留上游 LICENSE、版权说明和 [原始 README](../apps/tv/README.upstream.md)，不依赖嵌套 Git 仓库。
 
 - 仓库：https://github.com/jellyfin/jellyfin-androidtv
 - 标签：v0.19.10

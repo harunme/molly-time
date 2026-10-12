@@ -9,13 +9,13 @@
 bash tools/build-server.sh
 bash tools/init-server.sh                  # 新数据库初始化；已有库不需重新初始化
 bash tools/build-tv-web.sh
-bash tools/build-parent-web.sh
+bash tools/build-web.sh
 bash tools/run-server.sh                   # 加载新版 API 和两个静态网页
 ```
 
 打开 `http://127.0.0.1:8096/manage/`。如果旧服务已经运行，先停止旧实例再启动，网页构建不会给正在运行的 Python 进程增加新路由。开发默认账号为 `admin / molly`，也可用自己的家庭账号。
 
-前端开发：`cd apps/parent-web && pnpm dev`，打开 `http://127.0.0.1:5174/manage/`。Vite 默认代理本机 8096；可用 `MOLLY_API_PROXY` 指向另一端口。代理保留原 Host，使来源校验生效。正式部署采用同源 HTTPS；远程 HTTP 页面无法使用浏览器的安全文件校验接口。
+前端开发：`cd apps/web && pnpm dev`，打开 `http://127.0.0.1:5174/manage/`。Vite 默认代理本机 8096；可用 `MOLLY_API_PROXY` 指向另一端口。代理保留原 Host，使来源校验生效。正式部署采用同源 HTTPS；远程 HTTP 页面无法使用浏览器的安全文件校验接口。
 
 ## 已接通的能力
 
@@ -54,10 +54,10 @@ Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体�
 
 ```bash
 apps/server/.venv/bin/python -m pytest apps/server/tests -q
-pnpm --dir apps/parent-web build
-pnpm --dir apps/parent-web test
-pnpm --dir apps/tv-web build
-pnpm --dir apps/tv-web test
+pnpm --dir apps/web build
+pnpm --dir apps/web test
+pnpm --dir apps/tv/web build
+pnpm --dir apps/tv/web test
 # Android：:client:assembleDebug :client:testDebugUnitTest :client:lintDebug
 ```
 

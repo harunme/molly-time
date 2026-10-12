@@ -1,17 +1,17 @@
-FROM node:22-slim AS tv-web
-WORKDIR /web
+FROM node:22-slim AS frontend-build
+WORKDIR /tv-web
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
-COPY apps/tv-web/package.json apps/tv-web/pnpm-lock.yaml ./
+COPY apps/tv/web/package.json apps/tv/web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
-COPY apps/tv-web/index.html apps/tv-web/tsconfig.json apps/tv-web/vite.config.ts ./
-COPY apps/tv-web/src ./src
+COPY apps/tv/web/index.html apps/tv/web/tsconfig.json apps/tv/web/vite.config.ts ./
+COPY apps/tv/web/src ./src
 RUN pnpm build
 
-WORKDIR /parent
-COPY apps/parent-web/package.json apps/parent-web/pnpm-lock.yaml ./
+WORKDIR /web
+COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
-COPY apps/parent-web/index.html apps/parent-web/tsconfig.json apps/parent-web/vite.config.ts ./
-COPY apps/parent-web/src ./src
+COPY apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts ./
+COPY apps/web/src ./src
 RUN pnpm build
 
 FROM python:3.12-slim
@@ -20,8 +20,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
-    MOLLY_TV_WEB_DIR=/app/tv-web \
-    MOLLY_PARENT_WEB_DIR=/app/parent-web
+    MOLLY_TV_WEB_DIR=/app/tv/web \
+    MOLLY_PARENT_WEB_DIR=/app/web
 
 # Uploads require actual codec validation and thumbnail extraction.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
@@ -32,8 +32,8 @@ WORKDIR /app
 COPY apps/server/pyproject.toml /app/pyproject.toml
 RUN python -c "import pathlib, subprocess, sys, tomllib; deps = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']; subprocess.run([sys.executable, '-m', 'pip', 'install', *deps], check=True)"
 COPY apps/server/molly_server /app/molly_server
-COPY --from=tv-web /web/dist /app/tv-web
-COPY --from=tv-web /parent/dist /app/parent-web
+COPY --from=frontend-build /tv-web/dist /app/tv/web
+COPY --from=frontend-build /web/dist /app/web
 
 EXPOSE 8096
 CMD ["python", "-m", "molly_server.main"]

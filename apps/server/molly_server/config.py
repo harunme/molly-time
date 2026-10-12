@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     listen_port: int = 8096
     server_name: str = "Molly Server"
     server_version: str = "0.2.0"
-    tv_web_dir: Path = Path(__file__).resolve().parents[2] / "tv-web" / "dist"
-    parent_web_dir: Path = Path(__file__).resolve().parents[2] / "parent-web" / "dist"
+    tv_web_dir: Path = Path(__file__).resolve().parents[2] / "tv" / "web" / "dist"
+    parent_web_dir: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
     media_worker_enabled: bool = True
     max_upload_bytes: int = 10 * 1024**3
 

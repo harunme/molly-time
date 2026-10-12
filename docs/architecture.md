@@ -28,14 +28,14 @@
 | 部分 | 技术与职责 |
 | --- | --- |
 | `apps/tv/client/` | Kotlin：WebView、受限 Bridge、凭证保存与刷新、遥控器/返回键衔接、原生播放、诊断 |
-| `apps/tv-web/` | React + TypeScript + Vite：登录/绑定、儿童选择、首页、系列、剧集；Norigin Spatial Navigation 管理焦点 |
+| `apps/tv/web/` | React + TypeScript + Vite：登录/绑定、儿童选择、首页、系列、剧集；Norigin Spatial Navigation 管理焦点 |
 | `apps/server/` | FastAPI + SQLAlchemy + SQLite：唯一业务与媒体 API，保存家庭、儿童、目录、授权、配置、进度与事件 |
-| `apps/parent-web/` | 已实现家长管理界面，使用同一后台；资源上传、首页编排、观看记录与设备管理见 [使用说明](../apps/parent-web/README.md) |
+| `apps/web/` | 已实现家长管理界面，使用同一后台；资源上传、首页编排、观看记录与设备管理见 [使用说明](../apps/web/README.md) |
 | 本地媒体目录 | 视频、字幕、封面，直接播放，不默认转码 |
 
 TV 网页通过受限 Bridge 调用原生 API 客户端访问后台；原生播放器直接读取后台授权后的媒体流。第一版网页不持有 refresh token，不重复实现认证流程。后台是权限、目录和进度的权威来源。
 
-开发时加载 Vite 服务；家庭部署时网页与 API 使用同一 HTTPS 入口。FastAPI 可直接提供构建后的静态文件，避免新增常驻前端服务。SQLite 用于单主机家庭阶段，有并发写入或部署需求后再迁移 PostgreSQL。不另建 `services/business-api/`。
+日常开发只启动 TV 网页 Vite 服务，在浏览器中调试；API 按需使用已有后台或本地 Python 服务，不启动 Docker 和 Android。发版前再用 Android 客户端验证 WebView、Bridge 与原生播放。家庭部署时网页与 API 使用同一 HTTPS 入口。FastAPI 可直接提供构建后的静态文件，避免新增常驻前端服务。SQLite 用于单主机家庭阶段，有并发写入或部署需求后再迁移 PostgreSQL。不另建 `services/business-api/`。
 
 ## 4. 网页与原生接口
 

@@ -32,7 +32,7 @@ Molly TV 的唯一业务与媒体后台；家庭、儿童、上传、首页与�
 
 token 通过 `Authorization: Bearer <token>` 或 `?token=` 查询串传入。新版壳子使用设备身份和 Authorization 请求头；管理网页采用同源 HttpOnly Cookie，修改操作校验 CSRF。`tv-shell/2` 登录会返回独立 `deviceId`；`user.id` 仍是账号 ID，设备撤销同时阻止访问和 refresh。
 
-管理接口位于 `/api/manage/*`，包含资源、上传、处理任务、首页配置与历史、观看报表、儿童、设备和设置。播放统计由 `/api/playback/sessions` 和其 `/events` 接收实际播放区间；旧 `/progress` 只用于兼容续播。具体使用、部署及限制见 [管理后台说明](../apps/parent-web/README.md)。
+管理接口位于 `/api/manage/*`，包含资源、上传、处理任务、首页配置与历史、观看报表、儿童、设备和设置。播放统计由 `/api/playback/sessions` 和其 `/events` 接收实际播放区间；旧 `/progress` 只用于兼容续播。具体使用、部署及限制见 [管理后台说明](../apps/web/README.md)。
 
 ## 当前实现限制
 
@@ -153,7 +153,7 @@ P0 默认 local。OSS 接口已经预留但未实际验证（无凭证）。
 
 ## TV 网页部署
 
-先执行 `bash tools/build-tv-web.sh` 和 `bash tools/build-parent-web.sh`，再启动后台。构建目录默认分别为 `apps/tv-web/dist` 和 `apps/parent-web/dist`，可用 `MOLLY_TV_WEB_DIR`、`MOLLY_PARENT_WEB_DIR` 指定；启动时挂载 `/tv/`、`/manage/`。HTML 使用 no-store，哈希资源长期缓存。Docker 镜像包含两个网页构建阶段与 FFmpeg。
+先执行 `bash tools/build-tv-web.sh` 和 `bash tools/build-web.sh`，再启动后台。构建目录默认分别为 `apps/tv/web/dist` 和 `apps/web/dist`，可用 `MOLLY_TV_WEB_DIR`、`MOLLY_PARENT_WEB_DIR` 指定；启动时挂载 `/tv/`、`/manage/`。HTML 使用 no-store，哈希资源长期缓存。Docker 镜像包含两个网页构建阶段与 FFmpeg。
 
 ## 本地运行
 

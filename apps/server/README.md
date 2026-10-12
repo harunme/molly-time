@@ -4,7 +4,7 @@ Molly TV 的唯一业务与媒体后台，采用 FastAPI + SQLAlchemy + SQLite�
 
 当前包含认证、家庭与儿童管理、可撤销 TV 设备、目录与发布状态、本地视频 Range 响应、字幕、封面、分块上传与媒体处理、首页草稿/发布和实际观看时长统计。管理网页入口 `/manage/`，TV 网页入口 `/tv/`。OSS 在线播放尚未接通。
 
-家庭、儿童、上传、首页与统计在本应用内按模块实现，不另建 `services/business-api/`。两个网页与原生壳子共用同一后台。上传处理需要 FFmpeg/FFprobe；观看统计需要新版 APK。使用与限制见 [管理后台说明](../parent-web/README.md)。
+家庭、儿童、上传、首页与统计在本应用内按模块实现，不另建 `services/business-api/`。两个网页与原生壳子共用同一后台。上传处理需要 FFmpeg/FFprobe；观看统计需要新版 APK。使用与限制见 [管理后台说明](../web/README.md)。
 
 ## 本地运行
 
@@ -12,7 +12,7 @@ Molly TV 的唯一业务与媒体后台，采用 FastAPI + SQLAlchemy + SQLite�
 bash tools/build-server.sh
 bash tools/init-server.sh
 bash tools/build-tv-web.sh
-bash tools/build-parent-web.sh
+bash tools/build-web.sh
 bash tools/run-server.sh
 ```
 

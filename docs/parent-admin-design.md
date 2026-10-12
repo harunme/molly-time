@@ -1,6 +1,6 @@
 # Molly 家长管理后台设计
 
-日期：2026-10-12。状态：设计基线，基础管理页面与接口已实施；实际范围、设计差异和运行方法见 [后台说明](../apps/parent-web/README.md)。
+日期：2026-10-12。状态：设计基线，基础管理页面与接口已实施；实际范围、设计差异和运行方法见 [后台说明](../apps/web/README.md)。
 
 ## 1. 产品定位与入口
 
@@ -176,8 +176,8 @@ Molly · 我的家庭                         [孩子/家庭] [账号]
 ## 7. 工程组织与上线顺序
 
 ```text
-apps/parent-web/             React + TypeScript + Vite；构建后静态部署
-apps/tv-web/                 TV 页面；复用展示组件与 DTO
+apps/web/                    React + TypeScript + Vite；构建后静态部署
+apps/tv/web/                 TV 页面；复用展示组件与 DTO
 apps/tv/client/              原生播放器、设备身份、正式播放区间上报
 apps/server/molly_server/    manage、uploads、home_config、reporting 等模块
 同一个 HTTPS 入口 → 同一个 FastAPI 服务 → SQLite + 本地媒体

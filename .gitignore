@@ -8,11 +8,11 @@ artifacts/
 apps/tv/local.properties
 apps/tv/app/src/main/assets/molly/
 node_modules/
-apps/tv-web/dist/
-apps/tv-web/test-results/
-apps/tv-web/playwright-report/
-apps/parent-web/test-results/
-apps/parent-web/playwright-report/
+apps/tv/web/dist/
+apps/tv/web/test-results/
+apps/tv/web/playwright-report/
+apps/web/test-results/
+apps/web/playwright-report/
 apps/server/.venv/
 
 # Local OS/editor files, environments, and build caches.
