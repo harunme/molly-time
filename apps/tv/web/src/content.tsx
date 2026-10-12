@@ -70,50 +70,41 @@ export function Cover({ item, large = false }: { item: Series | Episode; large?:
   </div>;
 }
 
-export function Shelf({ focusKey, title, total, position, children, kind = '' }: {
-  focusKey: string; title: string; total: number; position?: number; children: ReactNode; kind?: string;
+export function Shelf({ focusKey, title, children, kind = '' }: {
+  focusKey: string; title: string; children: ReactNode; kind?: string;
 }) {
   const { ref, hasFocusedChild } = useFocusable({ focusKey, saveLastFocusedChild: true, trackChildren: true });
   return <FocusContext.Provider value={focusKey}><section ref={ref} className={`shelf ${hasFocusedChild ? 'active-shelf' : ''} ${kind}`}>
-    <div className="shelf-heading"><h2>{title}</h2><span className="row-position">{hasFocusedChild && position ? `${position} / ${total}` : `${total} ${kind === 'season-shelf' ? '季' : kind === 'episode-shelf' ? '集' : '部'}`}</span></div>
+    <div className="shelf-heading"><h2>{title}</h2></div>
     <div className="rail-track" data-rail={focusKey}><div className="rail-content">{children}</div></div>
   </section></FocusContext.Provider>;
 }
 
-export function Feature({ item, eyebrow, description, meta, label, loading = false }: {
-  item?: Series | Episode; eyebrow: string; description: string; meta: string; label: string; loading?: boolean;
-}) {
-  const [settled, setSettled] = useState({ item, eyebrow, description, meta, label });
+export function HomeGreeting({ name }: { name?: string }) {
+  const [hour, setHour] = useState(() => new Date().getHours());
   useEffect(() => {
-    const timer = setTimeout(() => setSettled({ item, eyebrow, description, meta, label }), 150);
-    return () => clearTimeout(timer);
-  }, [item, eyebrow, description, meta, label, loading]);
-  const shown = !item?.image?.url || loading ? { item, eyebrow, description, meta, label } : settled;
-  return <section className="feature" aria-label="选中内容预览">
-    <div className="feature-art" aria-hidden="true">{shown.item && <Cover item={shown.item} large />}</div>
-    <div className="feature-copy">{shown.eyebrow && <p className="eyebrow">{shown.eyebrow}</p>}
-      <h1>{loading ? '正在打开媒体库…' : shown.item?.name ?? '媒体库'}</h1>
-      {shown.meta && !loading && <p className="feature-meta"><span className="media-tag">{shown.label}</span>{shown.meta}</p>}
-      <p className="feature-description">{loading ? '' : shown.description}</p>
-    </div>
+    const update = () => setHour(new Date().getHours());
+    const timer = setInterval(update, 60000);
+    document.addEventListener('visibilitychange', update);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', update); };
+  }, []);
+  const greeting = hour >= 5 && hour < 12 ? '早上好' : hour >= 12 && hour < 18 ? '下午好' : '晚上好';
+  return <section className="home-greeting" aria-label="首页问候">
+    <h1>{greeting}{name ? `，${name}` : ''}</h1>
+    <p>一起看个喜欢的故事吧。</p>
   </section>;
 }
 
-
-export function DetailHeader({ series, title, total, kind, selected, meta, loading }: {
-  series: Series; title: string; total: number; kind: 'series' | 'season';
-  selected?: Series | Episode; meta: string; loading: boolean;
+export function DetailHeader({ series, total, loading }: {
+  series: Series; total: number; loading: boolean;
 }) {
-  return <section className="detail-header" aria-label="片单详情">
+  return <section className="detail-header" aria-label="文件夹详情">
     <div className="detail-context">
-      <p className="eyebrow">{kind === 'series' ? '系列' : series.name}</p>
-      <h1>{title}</h1>
-      <p className="detail-count">{loading ? '正在加载…' : `${total} ${kind === 'series' ? '季' : '集'}`}</p>
-      {!loading && selected && <div className="detail-selection">
-        <span>{kind === 'series' ? '当前选中' : '当前剧集'}</span>
-        <strong>{selected.name}</strong>{meta && <small>{meta}</small>}
-      </div>}
+      <p className="eyebrow">我的媒体库</p>
+      <h1>{series.name}</h1>
+      <p className="detail-count">{loading ? '正在加载…' : `${total} 个视频`}</p>
+      {series.overview && <p className="detail-description">{series.overview}</p>}
     </div>
-    <div className="detail-cover" aria-hidden="true"><Cover item={series} /></div>
+    {series.image?.url && <div className="detail-art" aria-hidden="true"><Cover item={series} large /></div>}
   </section>;
 }

@@ -24,6 +24,8 @@ test('recent playback precedes library and supports remote playback and return',
   });
   await page.goto('/tv/');
   await expect(page.locator('.shelf-heading h2')).toHaveText(['最近播放', '我的媒体库']);
+  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)，小朋友$/);
+  await expect(page.getByRole('region', { name: '文件夹详情' })).toHaveCount(0);
   const recent = page.locator('[data-focus="series-recent"]');
   await expect(recent).toBeFocused();
   await expect(recent.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
@@ -66,6 +68,7 @@ test('remote navigation, playback return, folder restoration and durable binding
   });
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
+  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)$/);
   await expect(page.locator('.sidebar')).toBeHidden();
   expect(await page.locator('.content-shell').evaluate((node) => node.getBoundingClientRect().left)).toBe(0);
   await page.keyboard.press('ArrowLeft');
@@ -79,6 +82,10 @@ test('remote navigation, playback return, folder restoration and durable binding
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-focus="episode-e1"]')).toBeFocused();
+  await expect(page.locator('.home-greeting')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: '文件夹详情' }).getByRole('heading')).toHaveText('一起学颜色');
+  await expect(page.locator('.detail-count')).toHaveText('2 个视频');
+  await expect(page.locator('.detail-art')).toHaveCount(0);
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
   await page.keyboard.press('Enter');
@@ -89,9 +96,11 @@ test('remote navigation, playback return, folder restoration and durable binding
   await page.screenshot({ path: 'test-results/tv-episodes.png' });
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
+  await expect(page.locator('.home-greeting')).toBeVisible();
   await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '选择儿童' }).click();
   await page.getByRole('button', { name: '小朋友' }).click();
+  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)，小朋友$/);
   await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.getByRole('button', { name: '退出账号' })).toHaveCount(0);
@@ -187,7 +196,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   });
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
-  const heroY = await page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top);
+  await expect(page.getByRole('region', { name: '选中内容预览' })).toHaveCount(0);
   const navigationY = await page.locator('.topbar').evaluate((node) => node.getBoundingClientRect().top);
   const firstRail = page.locator('[data-rail="home-row-0"]');
   await page.evaluate(() => {
@@ -214,7 +223,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   for (let index = 0; index < 8; index++) await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s10"]')).toBeFocused();
   await expect.poll(() => firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
-  await expect(page.locator('.feature h1')).toHaveText('自然小课堂 10');
+  await expect(page.locator('[data-focus="series-s10"] .card-copy strong')).toHaveText('自然小课堂 10');
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => page.locator('[data-rail="home-row-1"] .focused').count()).toBe(1);
   await page.keyboard.press('ArrowRight');
@@ -226,7 +235,6 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => page.locator('[data-rail="home-row-2"] .focused').count()).toBe(1);
   await expect.poll(() => page.locator('.shelves-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-  await expect.poll(() => page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top)).toBeLessThan(heroY);
   await expect.poll(() => page.locator('.topbar').evaluate((node) => node.getBoundingClientRect().top)).toBeLessThan(navigationY);
   await page.screenshot({ path: 'test-results/tv-page-scroll.png' });
   expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
@@ -273,7 +281,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   expect(await firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
 });
 
-test('real covers settle after fast navigation, resume progress and flat folders', async ({ page }) => {
+test('card covers and resume progress with background artwork only inside folders', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
     accessToken: 'presentation-access', refreshToken: 'presentation-refresh', deviceId: 'device', childId: 'child',
   })));
@@ -298,21 +306,25 @@ test('real covers settle after fast navigation, resume progress and flat folders
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-a"]')).toBeFocused();
   await expect(page.getByRole('progressbar', { name: '观看进度' })).toHaveAttribute('aria-valuenow', '25');
-  await expect(page.locator('.feature-art img')).toBeVisible();
+  await expect(page.locator('[data-focus="series-a"] .cover img')).toBeVisible();
+  await expect(page.getByRole('region', { name: '选中内容预览' })).toHaveCount(0);
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('.feature h1')).toHaveText('自然课堂');
-  await expect.poll(() => page.locator('.feature-art img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
-  expect(heroRequests).not.toContain('/api/items/b/image');
+  await expect(page.locator('[data-focus="series-c"]')).toBeFocused();
+  await expect.poll(() => page.locator('[data-focus="series-c"] .cover img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
+  expect(heroRequests).toEqual([]);
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('.feature h1')).toHaveText('小鼠波波 2026版');
-  await expect(page.locator('.feature-art img')).toHaveCount(0);
-  await expect(page.locator('.feature-art .cover-letter')).toHaveText('小鼠');
-  await expect(page.locator('.feature-copy')).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('[data-focus="series-d"]')).toBeFocused();
+  await expect(page.locator('[data-focus="series-d"] .cover img')).toHaveCount(0);
+  await expect(page.locator('[data-focus="series-d"] .cover-letter')).toHaveText('小鼠');
   await page.keyboard.press('ArrowLeft');
-  await expect(page.locator('.feature h1')).toHaveText('自然课堂');
+  await expect(page.locator('[data-focus="series-c"]')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-focus="episode-ready"]')).toBeFocused();
+  await expect(page.getByRole('region', { name: '文件夹详情' }).getByRole('heading')).toHaveText('自然课堂');
+  await expect(page.locator('.detail-count')).toHaveText('1 个视频');
+  await expect.poll(() => page.locator('.detail-art img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
+  expect(heroRequests).toEqual(['/api/items/c/image']);
   await expect(page.locator('[data-focus="season-empty"]')).toHaveCount(0);
   await expect(page.getByText('0 集', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-focus="episode-ready"] .cover img')).toBeVisible();

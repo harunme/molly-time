@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { ApiError, call, request, type Capabilities, type Child, type Episode, type Home, type Series } from './api';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
-import { Cover, Feature, Icon, Shelf, tone } from './content';
+import { Cover, DetailHeader, HomeGreeting, Icon, Shelf, tone } from './content';
 import { PairingPanel } from './pairing';
 import './style.css';
 
@@ -36,8 +36,6 @@ function App() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
-  const [preview, setPreview] = useState<Series | Episode>();
-  const [activePositions, setActivePositions] = useState<Record<string, number>>({});
   const [playing, setPlaying] = useState(false);
   const contentFocus = useRef('');
   const restore = useRef<ViewSnapshot | undefined>(undefined);
@@ -50,7 +48,7 @@ function App() {
       .map((node) => [node.dataset.rail!, node.scrollLeft])) }; };
   const fail = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) {
-      setAuthenticated(false); setFolder(undefined); setHome({ rows: [] }); setPreview(undefined); setChildren([]);
+      setAuthenticated(false); setFolder(undefined); setHome({ rows: [] }); setChildren([]);
       setOverlay((current) => current === 'pairing' ? 'pairing' : null);
     }
     setError(error instanceof Error ? error.message : '连接失败，请检查网络后重试');
@@ -71,11 +69,11 @@ function App() {
   useEffect(() => {
     if (!authenticated) return;
     const serial = ++loadSerial.current;
-    setBusy(true); setError(''); setActivePositions({});
+    setBusy(true); setError('');
     const task = folder ? request<{ episodes: (Episode & { seasonName: string })[]; episodeId: string | null; hasProgress: boolean }>(`/api/series/${folder.id}/playlist`).then((data) => {
-      if (serial === loadSerial.current) { setVideos(data.episodes); setResumeId(data.hasProgress ? data.episodeId ?? '' : ''); setPreview(data.episodes.find((e) => e.id === data.episodeId) ?? data.episodes[0]); }
+      if (serial === loadSerial.current) { setVideos(data.episodes); setResumeId(data.hasProgress ? data.episodeId ?? '' : ''); }
     }) : request<Home>('/api/home').then((data) => {
-      if (serial === loadSerial.current) { setHome(data); setPreview(data.rows[0]?.items[0]); }
+      if (serial === loadSerial.current) { setHome(data); }
     });
     task.catch((error) => { if (serial === loadSerial.current) fail(error); })
       .finally(() => { if (serial === loadSerial.current) setBusy(false); });
@@ -189,8 +187,7 @@ function App() {
     try {
       await call('pairingReset');
       loadSerial.current++;
-      setAuthenticated(false); setFolder(undefined); setChild(''); setChildren([]); setHome({ rows: [] }); setPreview(undefined);
-      setActivePositions({});
+      setAuthenticated(false); setFolder(undefined); setChild(''); setChildren([]); setHome({ rows: [] });
       restore.current = undefined; contentFocus.current = '';
       setOverlay('pairing');
     } catch (failure) { setError(failure instanceof Error ? failure.message : '无法断开，请检查网络后重试'); }
@@ -204,9 +201,8 @@ function App() {
     }).catch(fail).finally(() => setSelectingChild(false));
   };
   const selectedChild = children.find((c) => c.id === child);
-  const remember = (key: string, item: Series | Episode, rowKey: string, position: number) => {
-    setMenuOpen(false); contentFocus.current = key; setPreview(item);
-    setActivePositions((old) => old[rowKey] === position ? old : { ...old, [rowKey]: position });
+  const remember = (key: string) => {
+    setMenuOpen(false); contentFocus.current = key;
   };
   const cardArrow = (index: number) => (direction: string) => {
     if (direction === 'left' && index === 0) { showMenu(); return false; }
@@ -216,10 +212,6 @@ function App() {
     if (direction === 'right') { hideMenu(); return false; }
     return true;
   };
-
-  const featured = preview;
-  const description = (preview && 'overview' in preview ? preview.overview : '') || (preview && 'type' in preview && preview.type === 'episode' ? '从上次看到的位置继续。' : '');
-  const metadata = featured && 'type' in featured && featured.type === 'episode' ? duration(featured.runtimeMs) : featured && 'episodeCount' in featured && featured.episodeCount !== undefined ? `${featured.episodeCount} 个视频` : '';
 
   return <FocusRegion focusKey="screen" className="app">
     {menuOpen && <button type="button" className="menu-scrim" tabIndex={-1} aria-label="关闭菜单" onClick={hideMenu} />}
@@ -242,20 +234,18 @@ function App() {
         {folder && <FocusButton focusKey="folder-back" className="route-back" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton>}
         <span className="topbar-label">{selectedChild?.name}</span>
       </div>
-        {authenticated && !folder && <Feature item={featured} loading={busy}
-          eyebrow={home.rows.find((row) => row.items.some((item) => item.id === featured?.id))?.title ?? ''}
-          description={description} meta={metadata} label={(featured as Series)?.type === 'episode' ? episodeAction(featured as Series) : '文件夹'} />}
+        {authenticated && (folder ? <DetailHeader series={folder} total={videos.length} loading={busy} /> : <HomeGreeting name={selectedChild?.name} />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
-          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title={folder.name} total={videos.length} position={activePositions['folder-videos']}>
+          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
             {videos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
-              onArrow={cardArrow(index)} onFocus={() => remember(`episode-${item.id}`, item, 'folder-videos', index + 1)} onClick={() => { void play(item.id); }}>
+              onArrow={cardArrow(index)} onFocus={() => remember(`episode-${item.id}`)} onClick={() => { void play(item.id); }}>
               <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.id === resumeId ? '继续观看 · ' : ''}{duration(item.runtimeMs)}<Icon name="play" /></span></div>
             </FocusButton>)}
           </Shelf> : home.rows.map((row, rowIndex) => {
             const rowKey = `home-row-${rowIndex}`;
-            return <Shelf key={rowKey} focusKey={rowKey} title={row.title} total={row.items.length} position={activePositions[rowKey]}>
+            return <Shelf key={rowKey} focusKey={rowKey} title={row.title}>
               {row.items.map((item, index) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
-                onArrow={cardArrow(index)} onFocus={() => remember(key, item, rowKey, index + 1)}
+                onArrow={cardArrow(index)} onFocus={() => remember(key)}
                 onClick={() => { if (item.type === 'episode') void play(item.id); else { homeSnapshot.current = snapshot(); setFolder(item); } }}>
                 <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.type === 'episode' ? episodeAction(item) : item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}<Icon name="play" /></span></div>
               </FocusButton>; })}
