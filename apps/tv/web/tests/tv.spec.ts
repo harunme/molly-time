@@ -29,13 +29,14 @@ test('recent playback precedes library and supports remote playback and return',
   const recent = page.locator('[data-focus="series-recent"]');
   await expect(recent).toBeFocused();
   await expect(recent.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+  await expect(recent.locator('.cover-action')).toContainText('继续观看 · 已看 00:30 / 02:00');
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-focus="home-1-folder"]')).toBeFocused();
   await page.keyboard.press('ArrowUp');
   await expect(recent).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-finished"]')).toBeFocused();
-  await expect(page.locator('[data-focus="series-finished"] .card-copy')).toContainText('再次播放');
+  await expect(page.locator('[data-focus="series-finished"] .cover')).toContainText('再次播放');
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => (window as unknown as { playbackId: string }).playbackId)).toBe('finished');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:playbackClosed')));

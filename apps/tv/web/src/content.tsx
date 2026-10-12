@@ -18,7 +18,7 @@ export function Icon({ name }: { name: 'home' | 'people' | 'settings' | 'back' |
 const tones = ['#526b80', '#85735e', '#5b7772', '#756782', '#7e6269'];
 export function tone(id: string) { return tones[Array.from(id).reduce((sum, c) => sum + c.charCodeAt(0), 0) % tones.length]; }
 
-export function Cover({ item, large = false }: { item: Series | Episode; large?: boolean }) {
+export function Cover({ item, large = false, children }: { item: Series | Episode; large?: boolean; children?: ReactNode }) {
   const imagePath = item.image?.url ?? '';
   const [loaded, setLoaded] = useState({ path: '', src: '' });
   const src = loaded.path === imagePath ? loaded.src : '';
@@ -64,6 +64,7 @@ export function Cover({ item, large = false }: { item: Series | Episode; large?:
     {src ? <img src={src} alt="" decoding="async" onError={() => setLoaded({ path: imagePath, src: '' })} /> : <div className="cover-fallback" aria-hidden="true">
       <span className="cover-letter">{item.name.slice(0, 2)}</span><span className="cover-name">{item.name}</span>
     </div>}
+    {children && <div className="cover-action">{children}</div>}
     {progress !== undefined && <div className="watch-progress" role="progressbar" aria-label="观看进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
       <span style={{ width: `${progress}%` }} />
     </div>}

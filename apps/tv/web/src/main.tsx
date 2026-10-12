@@ -15,7 +15,19 @@ type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, numbe
 type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | null;
 const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
-const episodeAction = (item: Series) => item.completed ? '再次播放' : item.positionMs ? '继续观看' : '播放';
+const playbackTime = (ms: number) => {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+};
+const watchedPosition = (item: Series) => {
+  if (!Number.isFinite(item.positionMs) || !item.positionMs || item.positionMs < 0 || item.completed) return '';
+  const runtime = item.runtimeMs;
+  const hasRuntime = runtime !== undefined && Number.isFinite(runtime) && runtime > 0;
+  const position = hasRuntime ? Math.min(item.positionMs, runtime) : item.positionMs;
+  return `已看 ${playbackTime(position)}${hasRuntime ? ` / ${playbackTime(runtime)}` : ''}`;
+};
+const episodeAction = (item: Series) => item.completed ? '再次播放' : watchedPosition(item) ? `继续观看 · ${watchedPosition(item)}` : '播放';
 
 function App() {
   const [capabilities, setCapabilities] = useState<Capabilities>();
@@ -239,7 +251,7 @@ function App() {
           {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
             {videos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
               onArrow={cardArrow(index)} onFocus={() => remember(`episode-${item.id}`)} onClick={() => { void play(item.id); }}>
-              <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.id === resumeId ? '继续观看 · ' : ''}{duration(item.runtimeMs)}<Icon name="play" /></span></div>
+              <Cover item={item}><span>{item.id === resumeId ? '继续观看 · ' : ''}{watchedPosition(item) || duration(item.runtimeMs)}</span><Icon name="play" /></Cover><div className="card-copy"><strong>{item.name}</strong></div>
             </FocusButton>)}
           </Shelf> : home.rows.map((row, rowIndex) => {
             const rowKey = `home-row-${rowIndex}`;
@@ -247,7 +259,7 @@ function App() {
               {row.items.map((item, index) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
                 onArrow={cardArrow(index)} onFocus={() => remember(key)}
                 onClick={() => { if (item.type === 'episode') void play(item.id); else { homeSnapshot.current = snapshot(); setFolder(item); } }}>
-                <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.type === 'episode' ? episodeAction(item) : item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}<Icon name="play" /></span></div>
+                <Cover item={item}>{item.type === 'episode' && <><span>{episodeAction(item)}</span><Icon name="play" /></>}</Cover><div className="card-copy"><strong>{item.name}</strong>{item.type !== 'episode' && <span>{item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}</span>}</div>
               </FocusButton>; })}
             </Shelf>;
           }))}
