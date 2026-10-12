@@ -1,0 +1,79 @@
+name: Deploy MollyTime
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mollytime-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: |
+            apps/web/pnpm-lock.yaml
+            apps/tv/web/pnpm-lock.yaml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m venv apps/server/.venv
+          apps/server/.venv/bin/pip install -e 'apps/server[dev]'
+          pnpm --dir apps/web install --frozen-lockfile
+          pnpm --dir apps/tv/web install --frozen-lockfile
+          pnpm --dir apps/web exec playwright install --with-deps chromium
+      - name: Build and test
+        run: |
+          pnpm --dir apps/web build
+          pnpm --dir apps/tv/web build
+          apps/server/.venv/bin/python -m pytest apps/server/tests -q
+          apps/server/.venv/bin/python -m pytest tools/tests/test_github_deploy.py -q
+          pnpm --dir apps/tv/web test
+          pnpm --dir apps/web exec playwright test tests/file-hash.spec.ts tests/manage.spec.ts --grep 'upload SHA-256|real upload'
+      - name: Package release
+        run: |
+          tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
+            apps/server/pyproject.toml apps/server/mollytime_server \
+            apps/web/dist apps/tv/web/dist \
+            infra/Dockerfile.prebuilt infra/compose.production.yaml \
+            infra/compose.tls.yaml infra/nginx-tls.conf
+      - name: Deploy and verify
+        env:
+          DEPLOY_KEY: ${{ secrets.MOLLYTIME_DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.MOLLYTIME_DEPLOY_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/mollytime-deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/mollytime-deploy ~/.ssh/known_hosts
+          ssh -i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            root@118.89.122.66 "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            --retry-delay 3 --connect-timeout 10 --max-time 30 \
+            https://118.89.122.66:8096/healthz
