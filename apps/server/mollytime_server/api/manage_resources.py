@@ -102,6 +102,34 @@ def resources(user: Parent, db: DbSession, parentId: str | None = None):
     return [dto(db, i) for i in query.order_by(Item.index_number, Item.sort_name, Item.name).all()]
 
 
+@router.get("/folders/{folder_id}/videos")
+def folder_videos(folder_id: str, user: Parent, db: DbSession):
+    folder = owned(db, Item, folder_id, user.family_id)
+    if folder.type != "Series":
+        raise HTTPException(422, "请选择文件夹")
+    parents = [folder.id] + [
+        i.id
+        for i in db.query(Item)
+        .filter(
+            Item.family_id == user.family_id,
+            Item.parent_id == folder.id,
+            Item.type == "Season",
+        )
+        .all()
+    ]
+    return [
+        dto(db, i)
+        for i in db.query(Item)
+        .filter(
+            Item.family_id == user.family_id,
+            Item.type == "Episode",
+            Item.parent_id.in_(parents),
+        )
+        .order_by(Item.index_number, Item.name)
+        .all()
+    ]
+
+
 class ResourceBody(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     type: str = Field(default="Series", pattern="^(Series|Season|Episode)$")
@@ -117,11 +145,11 @@ def create(body: ResourceBody, user: Parent, db: DbSession):
     if not name:
         raise HTTPException(422, "名称不能为空")
     parent = owned(db, Item, body.parentId, user.family_id) if body.parentId else None
-    expected = {"Season": "Series", "Episode": "Season"}.get(body.type)
-    if (expected and (parent is None or parent.type != expected)) or (
+    expected = {"Season": ("Series",), "Episode": ("Series", "Season")}.get(body.type)
+    if (expected and (parent is None or parent.type not in expected)) or (
         body.type == "Series" and parent
     ):
-        raise HTTPException(422, "请先选择正确的系列或季")
+        raise HTTPException(422, "请先选择正确的文件夹")
     duplicates = (
         db.query(Item)
         .filter(
@@ -160,6 +188,38 @@ def create(body: ResourceBody, user: Parent, db: DbSession):
 @router.get("/resources/{item_id}")
 def detail(item_id: str, user: Parent, db: DbSession):
     return dto(db, owned(db, Item, item_id, user.family_id))
+
+
+class MoveBody(BaseModel):
+    folderId: str
+
+
+@router.post("/resources/{item_id}/move")
+def move_video(item_id: str, body: MoveBody, user: Parent, db: DbSession):
+    item = owned(db, Item, item_id, user.family_id)
+    folder = owned(db, Item, body.folderId, user.family_id)
+    if item.type != "Episode" or folder.type != "Series":
+        raise HTTPException(422, "只能把视频移到文件夹")
+    duplicate = (
+        db.query(Item)
+        .filter(
+            Item.family_id == user.family_id,
+            Item.parent_id == folder.id,
+            Item.type == "Episode",
+            Item.name == item.name,
+            Item.id != item.id,
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(409, "文件夹已有同名视频")
+    item.parent_id = folder.id
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "文件夹已有同名视频") from exc
+    return dto(db, item)
 
 
 class EditBody(BaseModel):

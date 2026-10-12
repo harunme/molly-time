@@ -195,3 +195,5 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 
 .watch-progress { position: absolute; inset: auto .7rem .6rem; height: .18rem; background: #ffffff40; border-radius: 1rem; overflow: hidden; box-shadow: 0 1px 4px #0009; }
 .watch-progress span { display: block; height: 100%; background: #fff; border-radius: inherit; }
+
+.detail-page .topbar { position: relative; inset: auto; padding-top: 1rem; padding-bottom: 1rem; }

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('remote navigation, playback return, route restoration and durable binding settings', async ({ page }) => {
+test('remote navigation, playback return, folder restoration and durable binding settings', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as {
       MollyBridge: { postMessage: (message: string) => void; onmessage?: (e: { data: string }) => void };
@@ -16,8 +16,7 @@ test('remote navigation, playback return, route restoration and durable binding 
           { id: 's1', name: '动物小故事', episodeCount: 2 }, { id: 's2', name: '一起学颜色', episodeCount: 3 },
         ] }] };
         if (path === '/api/families/me/children') result = [{ id: 'c1', name: '小朋友' }];
-        if (path === '/api/series/s2') result = { seasons: [{ id: 'season1', name: '第一季', episodeCount: 2 }] };
-        if (path === '/api/seasons/season1') result = { episodes: [
+        if (path === '/api/series/s2/playlist') result = { episodeId: 'e1', episodes: [
           { id: 'e1', name: '红色在哪里', runtimeMs: 120000 }, { id: 'e2', name: '蓝色的天空', runtimeMs: 180000 },
         ] };
       }
@@ -39,8 +38,6 @@ test('remote navigation, playback return, route restoration and durable binding 
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-focus="season-season1"]')).toBeFocused();
-  await page.keyboard.press('Enter');
   await expect(page.locator('[data-focus="episode-e1"]')).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
@@ -48,9 +45,8 @@ test('remote navigation, playback return, route restoration and durable binding 
   await expect.poll(() => page.evaluate(() => (window as unknown as { playbackId: string }).playbackId)).toBe('e2');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:playbackClosed')));
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
+  await expect(page.locator('.player-status')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/tv-episodes.png' });
-  await page.keyboard.press('Escape');
-  await expect(page.locator('[data-focus="season-season1"]')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await page.getByRole('button', { name: '打开菜单' }).click();
@@ -235,7 +231,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   expect(await firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
 });
 
-test('real covers settle after fast navigation, resume progress and empty seasons', async ({ page }) => {
+test('real covers settle after fast navigation, resume progress and flat folders', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
     accessToken: 'presentation-access', refreshToken: 'presentation-refresh', deviceId: 'device', childId: 'child',
   })));
@@ -253,9 +249,8 @@ test('real covers settle after fast navigation, resume progress and empty season
     const width = url.pathname.includes('/c/') ? 720 : 640;
     return route.fulfill({ contentType: 'image/svg+xml', body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="360"><rect width="100%" height="100%" fill="#446655"/></svg>` });
   });
-  await page.route('**/api/series/c', (route) => route.fulfill({ json: { seasons: [
-    { id: 'empty', name: '没有内容的一季', episodeCount: 0 },
-    { id: 'ready', name: '第一季', episodeCount: 1, image: { url: '/api/items/c/image?v=third' } },
+  await page.route('**/api/series/c/playlist', (route) => route.fulfill({ json: { episodeId: 'ready', episodes: [
+    { id: 'ready', name: '动物', runtimeMs: 60000, image: { url: '/api/items/c/image?v=third' } },
   ] } }));
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-a"]')).toBeFocused();
@@ -267,8 +262,8 @@ test('real covers settle after fast navigation, resume progress and empty season
   await expect.poll(() => page.locator('.feature-art img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
   expect(heroRequests).not.toContain('/api/items/b/image');
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-focus="season-ready"]')).toBeFocused();
+  await expect(page.locator('[data-focus="episode-ready"]')).toBeFocused();
   await expect(page.locator('[data-focus="season-empty"]')).toHaveCount(0);
   await expect(page.getByText('0 集', { exact: true })).toHaveCount(0);
-  await expect(page.locator('[data-focus="season-ready"] .cover img')).toBeVisible();
+  await expect(page.locator('[data-focus="episode-ready"] .cover img')).toBeVisible();
 });

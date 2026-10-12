@@ -128,7 +128,7 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
       if (match) { selectedChild = match[1]; saveBinding(); }
       return result;
     }
-    case 'playEpisode': window.dispatchEvent(new CustomEvent('molly:browserPlay', { detail: String(args.episodeId) })); return { ok: true };
+    case 'playEpisode': window.dispatchEvent(new CustomEvent('molly:browserPlay', { detail: args })); return { ok: true };
     case 'connection': throw new ApiError('请在电视客户端中修改媒体库连接');
     default: throw new ApiError('浏览器仅供预览，请在电视客户端播放');
   }

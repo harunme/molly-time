@@ -20,7 +20,7 @@ test('real upload, parent preview, publish and homepage draft publication', asyn
   try {
     await login(page);
     await page.getByRole('button', { name: '＋ 上传资源', exact: true }).click();
-    await page.getByLabel('新系列名称').fill('自然与发现');
+    await page.getByLabel('新文件夹名称').fill('自然与发现');
     await page.getByLabel('选择上传文件').setInputFiles(file);
     await page.getByRole('button', { name: '开始上传 1 个文件' }).click();
     await expect(page.locator('dialog')).not.toBeVisible();
@@ -28,7 +28,6 @@ test('real upload, parent preview, publish and homepage draft publication', asyn
     await expect(page.getByText('文件就绪', { exact: true })).toBeVisible({ timeout: 20000 });
     await page.getByRole('navigation').getByRole('button', { name: '资源库' }).click();
     await page.getByRole('button', { name: '自然与发现', exact: true }).click();
-    await page.getByRole('button', { name: '第 1 季', exact: true }).click();
     await page.getByRole('button', { name: '自然小故事', exact: true }).click();
     await expect(page.getByText('预览不计入儿童观看时长，也不修改儿童续播位置。')).toBeVisible();
     await expect(page.locator('video')).toHaveAttribute('src', /mediaId=/);
@@ -47,6 +46,21 @@ test('real upload, parent preview, publish and homepage draft publication', asyn
     await page.screenshot({ path: '../../artifacts/parent-resources.png', fullPage: true });
     expect(errors).toEqual([]);
   } finally { rmSync(folder, { recursive: true }); }
+});
+
+test('parents create learning folders and move videos without uploading them again', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: '新建文件夹', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('小动物学习');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.getByRole('button', { name: '自然与发现', exact: true }).click();
+  await page.getByRole('checkbox', { name: '选择 自然小故事' }).check();
+  await page.getByLabel('移动到文件夹').selectOption({ label: '小动物学习' });
+  await expect(page.getByRole('button', { name: '自然小故事', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '全部文件夹' }).click();
+  await page.getByRole('button', { name: '小动物学习', exact: true }).click();
+  await expect(page.getByRole('button', { name: '自然小故事', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '新建季', exact: true })).toHaveCount(0);
 });
 
 test('real device telemetry, reports, child management and mobile layout', async ({ page }) => {
@@ -106,6 +120,7 @@ test('TV QR pairing survives parent login and requires explicit mobile confirmat
     await tv.reload();
     await expect(tv.locator('.poster').first()).toBeVisible();
     await expect(tv.getByRole('button', { name: '绑定家庭媒体库' })).toHaveCount(0);
+    await tv.getByRole('button', { name: '打开菜单' }).click();
     await tv.getByRole('button', { name: '设置', exact: true }).click();
     await tv.getByRole('button', { name: '重新配对', exact: true }).click();
     await tv.getByRole('button', { name: '取消', exact: true }).click();
@@ -193,7 +208,6 @@ test('browser TV resolves an authenticated video and reports playback without th
     });
     await tv.goto('http://127.0.0.1:8098/tv/');
     await tv.locator('[data-focus="series-series"]').click();
-    await tv.locator('[data-focus="season-season"]').click();
     const resolved = tv.waitForResponse((r) => r.url().includes('/api/episodes/browser-episode/playback') && r.status() === 200);
     await tv.locator('[data-focus="episode-browser-episode"]').click();
     const info = await (await resolved).json();
@@ -206,7 +220,31 @@ test('browser TV resolves an authenticated video and reports playback without th
     expect(capabilities.webm).not.toBe('');
     await tv.locator('video').evaluate((v) => (v as HTMLVideoElement).play());
     await expect.poll(async () => tv.locator('video').evaluateAll((videos) => videos.some((v) => (v as HTMLVideoElement).currentTime > 0))).toBe(true);
-    await tv.getByRole('button', { name: '返回媒体库', exact: true }).click();
+    await expect(tv.getByRole('button', { name: '选集', exact: true })).toHaveCount(0);
+    const progress = tv.waitForResponse((r) => /playback\/sessions\/.+\/events/.test(r.url()) && r.request().postDataJSON()?.stopped);
+    await tv.keyboard.press('Escape');
+    expect((await progress).status()).toBe(200);
     await expect(tv.getByRole('dialog', { name: '视频播放' })).toHaveCount(0);
+    await expect(tv.locator('[data-focus="episode-browser-episode"]')).toBeFocused();
+    const headers = { Authorization: `Bearer ${auth.accessToken}` };
+    const saved = await (await tv.request.get('http://127.0.0.1:8098/api/episodes/browser-episode/progress?childId=child', { headers })).json();
+    expect(saved.positionMs).toBeGreaterThan(0);
+    expect(saved.completed).toBe(false);
+    await tv.locator('[data-focus="episode-browser-episode"]').click();
+    await expect.poll(() => tv.locator('video').evaluateAll((videos, savedMs) => videos.some((v) => (v as HTMLVideoElement).currentTime >= savedMs / 1000), saved.positionMs)).toBe(true);
+    const finished = tv.waitForResponse((r) => /playback\/sessions\/.+\/events/.test(r.url()) && r.request().postDataJSON()?.stopped && r.request().postDataJSON()?.completed);
+    await tv.locator('video').evaluate((v) => { (v as HTMLVideoElement).currentTime = (v as HTMLVideoElement).duration - 0.2; });
+    expect((await finished).status()).toBe(200);
+    await expect(tv.getByRole('dialog', { name: '视频播放' })).toHaveCount(0);
+    await expect(tv.getByRole('dialog', { name: '选择剧集' })).toHaveCount(0);
+    await expect(tv.locator('[data-focus="episode-browser-episode"]')).toBeFocused();
+    await expect(tv.locator('video')).toHaveCount(0);
+    const ended = await (await tv.request.get('http://127.0.0.1:8098/api/episodes/browser-episode/progress?childId=child', { headers })).json();
+    expect(ended.completed).toBe(true);
+    // Reopening a completed video starts it again instead of advancing to another video.
+    await tv.locator('[data-focus="episode-browser-episode"]').click();
+    await expect.poll(() => tv.locator('video').evaluateAll((videos) => videos.some((v) => !(v as HTMLVideoElement).paused && (v as HTMLVideoElement).currentTime < 2))).toBe(true);
+    await tv.getByRole('button', { name: '返回视频列表', exact: true }).click();
+    await expect(tv.locator('[data-focus="episode-browser-episode"]')).toBeFocused();
   } finally { await context.close(); }
 });

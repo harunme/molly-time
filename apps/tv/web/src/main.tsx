@@ -2,18 +2,16 @@ import { BrowserPlaybackHost } from './playback';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
-import { ApiError, call, request, type Capabilities, type Child, type Episode, type Home, type Season, type Series } from './api';
+import { ApiError, call, request, type Capabilities, type Child, type Episode, type Home, type Series } from './api';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
-import { Cover, DetailHeader, Feature, Icon, Shelf, tone } from './content';
+import { Cover, Feature, Icon, Shelf, tone } from './content';
 import { PairingPanel } from './pairing';
 import './style.css';
 
 init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true,
   domNodeFocusOptions: { preventScroll: true }, shouldUseNativeEvents: true });
 
-type Route = { kind: 'home' } | { kind: 'series'; series: Series } | { kind: 'season'; series: Series; season: Season };
 type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, number> };
-type RouteSnapshot = ViewSnapshot & { route: Route };
 type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | null;
 const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
@@ -21,11 +19,11 @@ const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
 function App() {
   const [capabilities, setCapabilities] = useState<Capabilities>();
   const [authenticated, setAuthenticated] = useState(false);
-  const [route, setRoute] = useState<Route>({ kind: 'home' });
+  const [folder, setFolder] = useState<Series>();
+  const [videos, setVideos] = useState<(Episode & { seasonName: string })[]>([]);
+  const [resumeId, setResumeId] = useState('');
+  const homeSnapshot = useRef<ViewSnapshot | undefined>(undefined);
   const [home, setHome] = useState<Home>({ rows: [] });
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [seriesDetail, setSeriesDetail] = useState<Series>();
   const [children, setChildren] = useState<Child[]>([]);
   const [child, setChild] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -40,7 +38,6 @@ function App() {
   const [preview, setPreview] = useState<Series | Episode>();
   const [activePositions, setActivePositions] = useState<Record<string, number>>({});
   const [playing, setPlaying] = useState(false);
-  const history = useRef<RouteSnapshot[]>([]);
   const contentFocus = useRef('');
   const restore = useRef<ViewSnapshot | undefined>(undefined);
   const overlayOrigin = useRef('');
@@ -52,8 +49,8 @@ function App() {
       .map((node) => [node.dataset.rail!, node.scrollLeft])) }; };
   const fail = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) {
-      setAuthenticated(false); setHome({ rows: [] }); setPreview(undefined); setChildren([]);
-      setOverlay((current) => current === 'pairing' ? 'pairing' : null); history.current = []; setRoute({ kind: 'home' });
+      setAuthenticated(false); setFolder(undefined); setHome({ rows: [] }); setPreview(undefined); setChildren([]);
+      setOverlay((current) => current === 'pairing' ? 'pairing' : null);
     }
     setError(error instanceof Error ? error.message : '连接失败，请检查网络后重试');
   }, []);
@@ -74,17 +71,15 @@ function App() {
     if (!authenticated) return;
     const serial = ++loadSerial.current;
     setBusy(true); setError(''); setActivePositions({});
-    const task = route.kind === 'home' ? request<Home>('/api/home').then((data) => {
+    const task = folder ? request<{ episodes: (Episode & { seasonName: string })[]; episodeId: string | null; hasProgress: boolean }>(`/api/series/${folder.id}/playlist`).then((data) => {
+      if (serial === loadSerial.current) { setVideos(data.episodes); setResumeId(data.hasProgress ? data.episodeId ?? '' : ''); setPreview(data.episodes.find((e) => e.id === data.episodeId) ?? data.episodes[0]); }
+    }) : request<Home>('/api/home').then((data) => {
       if (serial === loadSerial.current) { setHome(data); setPreview(data.rows[0]?.items[0]); }
-    }) : route.kind === 'series' ? request<{ series?: Series; seasons: Season[] }>(`/api/series/${route.series.id}`).then((data) => {
-      if (serial === loadSerial.current) { setSeriesDetail(data.series ?? route.series); setSeasons(data.seasons.filter((season) => season.episodeCount !== 0)); setPreview(route.series); }
-    }) : request<{ episodes: Episode[] }>(`/api/seasons/${route.season.id}`).then((data) => {
-      if (serial === loadSerial.current) { setEpisodes(data.episodes); setPreview(data.episodes[0]); }
     });
     task.catch((error) => { if (serial === loadSerial.current) fail(error); })
       .finally(() => { if (serial === loadSerial.current) setBusy(false); });
     return () => { loadSerial.current++; };
-  }, [authenticated, route, reload, fail]);
+  }, [authenticated, folder, reload, fail]);
 
   useEffect(() => {
     if (busy || playing) return;
@@ -92,8 +87,7 @@ function App() {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' : overlay === 'children' ? `child-${child || children[0]?.id}` :
         overlay === 'settings' ? (window.MollyBridge ? 'connection' : authenticated ? 're-pair' : 'connect-account') : !authenticated ? 'connect-home' : error ? 'retry' :
-        route.kind === 'home' ? (home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'menu') :
-        route.kind === 'series' ? `season-${seasons[0]?.id}` : `episode-${episodes[0]?.id}`;
+        (folder ? (videos.length ? `episode-${resumeId || videos[0].id}` : 'menu') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'menu');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
       const target = canRestore ? saved.focus : fallback;
@@ -111,7 +105,7 @@ function App() {
       restore.current = undefined;
     }, 60);
     return () => clearTimeout(timer);
-  }, [busy, playing, authenticated, route, home, seasons, episodes, error, overlay, children, child]);
+  }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, children, child]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -144,7 +138,6 @@ function App() {
     return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', resumed); };
   }, [authenticated, fail]);
 
-  const navigate = (next: Route) => { history.current.push({ route, ...snapshot() }); setRoute(next); };
   const openOverlay = (next: Overlay) => {
     overlayOrigin.current = getCurrentFocusKey() || 'back'; setError(''); setOverlay(next);
   };
@@ -159,11 +152,9 @@ function App() {
   const back = useCallback(() => {
     if (overlay) { closeOverlay(); return true; }
     if (menuOpen) { hideMenu(); return true; }
-    const last = history.current.pop();
-    if (last) { restore.current = last; setRoute(last.route); return true; }
-    if (route.kind !== 'home') { setRoute({ kind: 'home' }); return true; }
+    if (folder) { restore.current = homeSnapshot.current; setFolder(undefined); return true; }
     return false;
-  }, [overlay, closeOverlay, route.kind, menuOpen, hideMenu]);
+  }, [folder, overlay, closeOverlay, menuOpen, hideMenu]);
   useEffect(() => {
     window.mollyBack = back;
     const onKey = (event: KeyboardEvent) => {
@@ -177,11 +168,11 @@ function App() {
   useEffect(() => {
     const returned = () => {
       setPlaying(false);
-      if (route.kind === 'home') setReload((value) => value + 1);
+      setReload((value) => value + 1);
     };
     window.addEventListener('molly:playbackClosed', returned);
     return () => window.removeEventListener('molly:playbackClosed', returned);
-  }, [route.kind]);
+  }, []);
 
   const completePairing = useCallback(() => {
     setError(''); setOverlay(null); setMenuOpen(false); restore.current = undefined; setAuthenticated(true);
@@ -197,18 +188,18 @@ function App() {
     try {
       await call('pairingReset');
       loadSerial.current++;
-      setAuthenticated(false); setChild(''); setChildren([]); setHome({ rows: [] }); setPreview(undefined);
-      setSeasons([]); setEpisodes([]); setSeriesDetail(undefined); setActivePositions({});
-      history.current = []; restore.current = undefined; contentFocus.current = '';
-      setRoute({ kind: 'home' }); setOverlay('pairing');
+      setAuthenticated(false); setFolder(undefined); setChild(''); setChildren([]); setHome({ rows: [] }); setPreview(undefined);
+      setActivePositions({});
+      restore.current = undefined; contentFocus.current = '';
+      setOverlay('pairing');
     } catch (failure) { setError(failure instanceof Error ? failure.message : '无法断开，请检查网络后重试'); }
     finally { setBusy(false); }
   };
   const selectChild = (id: string) => {
     setSelectingChild(true); setError('');
     void request(`/api/children/${id}/select`, 'POST').then(() => {
-      setChild(id); setOverlay(null); setMenuOpen(false); history.current = []; restore.current = undefined;
-      setRoute({ kind: 'home' }); setReload((value) => value + 1);
+      setChild(id); setFolder(undefined); setOverlay(null); setMenuOpen(false); restore.current = undefined;
+      setReload((value) => value + 1);
     }).catch(fail).finally(() => setSelectingChild(false));
   };
   const selectedChild = children.find((c) => c.id === child);
@@ -225,22 +216,16 @@ function App() {
     return true;
   };
 
-  const onHome = route.kind === 'home';
   const featured = preview;
-  const description = route.kind === 'series' ? seriesDetail?.overview || '' : route.kind === 'season' ?
-    `来自「${route.series.name}」 · ${route.season.name}` : (preview && 'overview' in preview ? preview.overview : '') || (preview && 'type' in preview && preview.type === 'episode' ? '从上次看到的位置继续。' : '');
-  const metadata = route.kind === 'season' ? duration((preview as Episode)?.runtimeMs) :
-    featured && 'type' in featured && featured.type === 'episode' ? duration(featured.runtimeMs) : featured && 'episodeCount' in featured && featured.episodeCount !== undefined ? (featured.episodeCount === 0 ? '暂无剧集' : `${featured.episodeCount} 集`) : '';
+  const description = (preview && 'overview' in preview ? preview.overview : '') || (preview && 'type' in preview && preview.type === 'episode' ? '从上次看到的位置继续。' : '');
+  const metadata = featured && 'type' in featured && featured.type === 'episode' ? duration(featured.runtimeMs) : featured && 'episodeCount' in featured && featured.episodeCount !== undefined ? `${featured.episodeCount} 个视频` : '';
 
   return <FocusRegion focusKey="screen" className="app">
     {menuOpen && <button type="button" className="menu-scrim" tabIndex={-1} aria-label="关闭菜单" onClick={hideMenu} />}
     <FocusRegion focusKey="sidebar" className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`} hidden={!menuOpen} boundary={menuOpen}>
       <div className="wordmark">MollyTime</div>
       <nav aria-label="电视导航">
-        <FocusButton focusKey="back" className={`nav-item ${onHome ? 'active' : ''}`} disabled={!!overlay || !menuOpen} onArrow={sidebarArrow} onClick={() => {
-          if (onHome) hideMenu();
-          else { setMenuOpen(false); history.current = []; setRoute({ kind: 'home' }); }
-        }}><Icon name="home" /><span>首页</span></FocusButton>
+        <FocusButton focusKey="back" className="nav-item active" disabled={!!overlay || !menuOpen} onArrow={sidebarArrow} onClick={() => { if (folder) { restore.current = homeSnapshot.current; setFolder(undefined); } hideMenu(); }}><Icon name="home" /><span>首页</span></FocusButton>
         {children.length > 0 && <FocusButton focusKey="children" className="nav-item" ariaLabel={selectedChild?.name ?? '选择儿童'} disabled={!!overlay || !menuOpen}
           onArrow={sidebarArrow} onClick={() => openOverlay('children')}><Icon name="people" /><span>谁在看</span></FocusButton>}
         <FocusButton focusKey="settings" className="nav-item" disabled={!!overlay || !menuOpen} onArrow={sidebarArrow} onClick={() => openOverlay('settings')}>
@@ -249,50 +234,40 @@ function App() {
       {!authenticated ? <FocusButton focusKey="connect-sidebar" className="viewer connect-viewer" disabled={!!overlay || !menuOpen} onClick={() => openOverlay('pairing')}><Icon name="people" /><span>绑定电视</span></FocusButton> : <div className="viewer"><span className="viewer-avatar">{selectedChild?.name.slice(0, 1) ?? <Icon name="people" />}</span>
         <div><strong>{selectedChild?.name ?? '家庭媒体库'}</strong>{selectedChild && <span>正在观看</span>}</div></div>}
     </FocusRegion>
-    <main className={`content-shell ${onHome ? 'home-page' : 'detail-page'}`}>
+    <main className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
       <div className="topbar"><FocusButton focusKey="menu" className="menu-trigger" ariaLabel="打开菜单" disabled={!!overlay || menuOpen} onClick={showMenu} onArrow={(direction) => { if (direction === 'left') { showMenu(); return false; } return true; }}><Icon name="menu" /></FocusButton>
-        <span className="topbar-brand">MollyTime</span>{!onHome && <FocusButton focusKey="route-back" className="route-back" disabled={!!overlay}
-        onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton>}
-        {!onHome && <span className="breadcrumbs">{route.series.name}{route.kind === 'season' && <><b>/</b>{route.season.name}</>}</span>}
+        <span className="topbar-brand">MollyTime</span>
+        {folder && <><FocusButton focusKey="folder-back" className="route-back" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton><span className="breadcrumbs">{folder.name}</span></>}
         <span className="topbar-label">{selectedChild?.name}</span>
       </div>
       <FocusRegion focusKey="content" className="content-panels">
-        {authenticated && (onHome ? <Feature item={featured} loading={busy}
+        {authenticated && !folder && <Feature item={featured} loading={busy}
           eyebrow={home.rows.find((row) => row.items.some((item) => item.id === featured?.id))?.title ?? ''}
-          description={description} meta={metadata} label={(featured as Series)?.type === 'episode' ? '继续观看' : '系列'} /> :
-          <DetailHeader series={seriesDetail ?? route.series} title={route.kind === 'series' ? route.series.name : route.season.name}
-            total={route.kind === 'series' ? seasons.length : episodes.length} kind={route.kind}
-            selected={featured} meta={metadata} loading={busy} />)}
+          description={description} meta={metadata} label={(featured as Series)?.type === 'episode' ? '继续观看' : '文件夹'} />}
         <FocusRegion focusKey="shelves" className="shelves-scroll" scrollRef={viewport}>
-          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (onHome ? home.rows.map((row, rowIndex) => {
+          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title={folder.name} total={videos.length} position={activePositions['folder-videos']}>
+            {videos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
+              onArrow={cardArrow(index)} onFocus={() => remember(`episode-${item.id}`, item, 'folder-videos', index + 1)} onClick={() => { void play(item.id); }}>
+              <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.id === resumeId ? '继续观看 · ' : ''}{duration(item.runtimeMs)}<Icon name="play" /></span></div>
+            </FocusButton>)}
+          </Shelf> : home.rows.map((row, rowIndex) => {
             const rowKey = `home-row-${rowIndex}`;
             return <Shelf key={rowKey} focusKey={rowKey} title={row.title} total={row.items.length} position={activePositions[rowKey]}>
               {row.items.map((item, index) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
                 onArrow={cardArrow(index)} onFocus={() => remember(key, item, rowKey, index + 1)}
-                onClick={() => item.type === 'episode' ? void play(item.id) : navigate({ kind: 'series', series: item })}>
-                <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.type === 'episode' ? '继续观看' : item.episodeCount === 0 ? '暂无剧集' : item.episodeCount === undefined ? '' : `${item.episodeCount} 集`}<Icon name="play" /></span></div>
+                onClick={() => { if (item.type === 'episode') void play(item.id); else { homeSnapshot.current = snapshot(); setFolder(item); } }}>
+                <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.type === 'episode' ? '继续观看' : item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}<Icon name="play" /></span></div>
               </FocusButton>; })}
             </Shelf>;
-          }) : route.kind === 'series' ? <Shelf focusKey="seasons-row" title="选择一季" total={seasons.length} position={activePositions['seasons-row']} kind="season-shelf">
-            {seasons.map((season, index) => <FocusButton key={season.id} focusKey={`season-${season.id}`} className="poster season" disabled={!!overlay}
-              onArrow={cardArrow(index)} onFocus={() => remember(`season-${season.id}`, { ...seriesDetail ?? route.series, id: season.id, name: season.name, episodeCount: season.episodeCount, image: season.image ?? (seriesDetail ?? route.series).image }, 'seasons-row', index + 1)}
-              onClick={() => navigate({ kind: 'season', series: route.series, season })}>
-              <Cover item={{ ...route.series, id: season.id, name: season.name, image: season.image ?? route.series.image }} /><div className="card-copy"><strong>{season.name}</strong><span>{season.episodeCount === undefined ? '' : `${season.episodeCount} 集`}<Icon name="play" /></span></div>
-            </FocusButton>)}
-          </Shelf> : <Shelf focusKey="episodes-row" title="选择剧集" total={episodes.length} position={activePositions['episodes-row']} kind="episode-shelf">
-            {episodes.map((episode, index) => <FocusButton key={episode.id} focusKey={`episode-${episode.id}`} className="poster" disabled={!!overlay}
-              onArrow={cardArrow(index)} onFocus={() => remember(`episode-${episode.id}`, episode, 'episodes-row', index + 1)} onClick={() => { void play(episode.id); }}>
-              <Cover item={episode} /><div className="card-copy"><strong>{episode.name}</strong><span>{duration(episode.runtimeMs) || '播放'}<Icon name="play" /></span></div>
-            </FocusButton>)}
-          </Shelf>)}
-          {authenticated && !busy && !error && (onHome ? home.rows.length === 0 : route.kind === 'series' ? seasons.length === 0 : episodes.length === 0) &&
-            <div className="state empty-state"><h2>{onHome ? '媒体库还没有内容' : '这里还没有可看的剧集'}</h2><p>请家长在管理后台上传并发布视频。</p></div>}
+          }))}
+          {authenticated && !busy && !error && (folder ? videos.length === 0 : home.rows.length === 0) &&
+            <div className="state empty-state"><h2>媒体库还没有内容</h2><p>请家长在管理后台上传并发布视频。</p></div>}
           {authenticated && !overlay && error && <div className="state"><p role="alert" className="error">{error}</p><FocusButton focusKey="retry" className="primary" onClick={() => {
             setError(''); setReload((value) => value + 1);
           }}>重试</FocusButton></div>}
         </FocusRegion>
       </FocusRegion>
-      <footer><span><span className="keycap">↑ ↓ ← →</span> 选择</span><span><span className="keycap">确定</span> {route.kind === 'season' ? '播放' : '打开'}</span><span><span className="keycap">返回</span> 上一页</span>
+      <footer><span><span className="keycap">↑ ↓ ← →</span> 选择</span><span><span className="keycap">确定</span> {folder ? '播放' : '打开'}</span><span><span className="keycap">返回</span> 上一页</span>
         {playing && <span role="status" className="player-status">正在打开播放器…</span>}</footer>
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">

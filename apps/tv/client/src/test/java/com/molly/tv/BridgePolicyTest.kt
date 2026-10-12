@@ -21,6 +21,8 @@ class BridgePolicyTest {
     }
     @Test fun catalogReadsAreAllowed() {
         assertTrue(BridgePolicy.allows("GET", "/api/home"))
+        assertTrue(BridgePolicy.allows("GET", "/api/series/folder-1/playlist"))
+        assertFalse(BridgePolicy.allows("POST", "/api/series/folder-1/playlist"))
         assertTrue(BridgePolicy.allows("GET", "/api/episodes/episode-1"))
         assertFalse(BridgePolicy.allows("GET", "/api/episodes/"))
     }

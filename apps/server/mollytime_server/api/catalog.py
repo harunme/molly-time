@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from ..deps import CurrentUser, DbSession
 from ..images import image_url
-from ..models import Item, MediaFile
+from ..management_models import WatchProgress, WatchSession
+from ..models import ChildProfile, Item, MediaFile
 from ..resource_policy import published_episodes, require_visible, visible
 
 router = APIRouter(prefix="/api", tags=["catalog"])
@@ -281,7 +282,7 @@ def _series_id(db: Session, episode: Item) -> str:
     season = db.get(Item, episode.parent_id)
     if season is None:
         return ""
-    return season.parent_id or ""
+    return season.id if season.type == "Series" else season.parent_id or ""
 
 
 def _season_episodes(db, season_id, family_id, request):
@@ -307,3 +308,82 @@ def _get_item(db: Session, item_id: str, expected_type: str, family_id: str) -> 
     if item is None or item.family_id != family_id or item.type != expected_type:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return item
+
+
+@router.get("/series/{series_id}/playlist")
+def series_playlist(
+    series_id: str, request: Request, user: CurrentUser, db: DbSession, childId: str | None = None
+):
+    series = _get_item(db, series_id, "Series", user.family_id)
+    require_visible(db, series, request)
+    child_id = childId or request.headers.get("X-Molly-Child") or None
+    if child_id:
+        child = db.get(ChildProfile, child_id)
+        if child is None or child.family_id != user.family_id:
+            raise HTTPException(404)
+    seasons = {
+        s.id: s
+        for s in db.query(Item)
+        .filter(
+            Item.family_id == user.family_id, Item.parent_id == series_id, Item.type == "Season"
+        )
+        .all()
+    }
+    seasons[series.id] = series
+    episodes = sorted(
+        published_episodes(db, series_id, user.family_id),
+        key=lambda e: (
+            (seasons[e.parent_id].index_number or 0) if e.parent_id != series_id else 0,
+            seasons[e.parent_id].name,
+            e.index_number or 0,
+            e.name,
+            e.id,
+        ),
+    )
+    progress = None
+    if episodes:
+        query = (
+            db.query(WatchProgress)
+            .join(WatchSession, WatchSession.id == WatchProgress.session_id)
+            .filter(
+                WatchProgress.family_id == user.family_id,
+                WatchProgress.item_id.in_([e.id for e in episodes]),
+                WatchProgress.child_id == child_id,
+            )
+        )
+        if child_id is None:
+            query = query.filter(WatchSession.user_id == user.id)
+        progress = query.order_by(
+            WatchSession.last_reported_at.desc(),
+            WatchProgress.session_started_at.desc(),
+            WatchProgress.session_id.desc(),
+        ).first()
+    selected = episodes[0].id if episodes else None
+    position = 0
+    if progress:
+        selected = progress.item_id
+        if progress.completed:
+            index = next(i for i, e in enumerate(episodes) if e.id == selected)
+            if index + 1 < len(episodes):
+                selected = episodes[index + 1].id
+        else:
+            position = progress.position_ms
+    return {
+        "seriesId": series.id,
+        "name": series.name,
+        "episodeId": selected,
+        "positionMs": position,
+        "hasProgress": progress is not None,
+        "episodes": [
+            {
+                "id": e.id,
+                "name": e.name,
+                "seasonName": seasons[e.parent_id].name,
+                "seasonId": e.parent_id,
+                "indexNumber": e.index_number,
+                "runtimeMs": _runtime_ms(e.runtime_ticks),
+                "image": {"url": image_url(db, e)},
+            }
+            for e in episodes
+        ],
+    }

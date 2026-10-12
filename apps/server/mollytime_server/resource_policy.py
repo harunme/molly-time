@@ -1,6 +1,7 @@
 """Shared catalog publication rules; parent-cookie previews may inspect drafts."""
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 
 from .management_models import ResourceState
 from .models import Item, MediaFile
@@ -58,7 +59,7 @@ def published_episodes(db, series_id, family_id):
         .filter(
             Item.family_id == family_id,
             Item.type == "Episode",
-            Item.parent_id.in_(seasons),
+            or_(Item.parent_id == series_id, Item.parent_id.in_(seasons)),
             MediaFile.kind == "video",
         )
         .distinct()

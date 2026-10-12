@@ -59,7 +59,7 @@ class PlaybackActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        episodeId = intent.getStringExtra("episodeId") ?: run { finish(); return }
+        episodeId = state?.getString("episodeId") ?: intent.getStringExtra("episodeId") ?: run { finish(); return }
         child = intent.getStringExtra("childId") ?: ""
         position = state?.getLong("position") ?: 0
         playOnResume = state?.getBoolean("play", true) ?: true
@@ -135,7 +135,7 @@ class PlaybackActivity : AppCompatActivity() {
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) status.text = ""
-                if (state == Player.STATE_ENDED) { completed = true; finish() }
+                if (state == Player.STATE_ENDED) { completed = true; report("progress"); finish() }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (BuildConfig.DEBUG) android.util.Log.d("MollyTimePlayback", "isPlaying=$isPlaying")
@@ -220,6 +220,7 @@ class PlaybackActivity : AppCompatActivity() {
         super.onStop()
     }
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("episodeId", episodeId)
         outState.putLong("position", player?.currentPosition ?: position)
         outState.putBoolean("play", player?.playWhenReady ?: playOnResume)
         super.onSaveInstanceState(outState)
