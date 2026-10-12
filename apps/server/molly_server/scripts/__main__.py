@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import sys
 
-from . import create_admin, init_db, scan_bbkt
+from . import create_admin, init_db
 
 _DISPATCH = {
     "init_db": init_db.main,
     "create_admin": create_admin.main,
-    "scan_bbkt": scan_bbkt.main,
 }
 
 

@@ -12,17 +12,10 @@ class LocalStorage:
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
-        # Only mkdir if root is explicitly a directory we own (not the
-        # read-only bbkt_root).
-        if not self.root.exists():
-            self.root.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
 
     def _abspath(self, key: str) -> Path:
-        # Keys may be either:
-        #   - a path relative to `self.root` (typical for media uploaded into
-        #     our managed media directory), or
-        #   - an absolute path (typical for imported library files where we
-        #     record the source location as-is and want to read it directly).
+        # Resolve relative or existing absolute media keys within the configured root.
         p = Path(key)
         target = p.resolve() if p.is_absolute() else (self.root / key).resolve()
         # Reject path traversal: keys must resolve under root.

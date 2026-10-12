@@ -29,6 +29,6 @@ docker compose -f infra/compose.yaml up -d molly-server
 - `auth.py` / `deps.py`：认证与请求依赖。
 - `storage/`：本地与 OSS 存储适配。
 - `utils/`：封面处理与 ffprobe。
-- `scripts/`：建库、管理员创建与导入。
+- `scripts/`：建库与管理员创建。
 
 接口、配置与限制见 [服务端文档](../../docs/server.md)，目标职责见 [架构文档](../../docs/architecture.md)。本目录源码采用 MIT License，不含 Jellyfin 服务端代码。

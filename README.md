@@ -12,11 +12,11 @@
 
 ## 当前实现
 
-- **服务端**：`apps/server/` Python 自研 REST（FastAPI + SQLAlchemy + SQLite/Pillow）；账号与设备认证、目录扫描、分块上传、文件检查、首页配置、真实播放统计；本地文件通过 HTTP Range 返回，不默认转码。OSS 适配与签名地址跳转尚未接通和验收。
+- **服务端**：`apps/server/` Python 自研 REST（FastAPI + SQLAlchemy + SQLite/Pillow）；账号与设备认证、分块上传、文件检查、首页配置、真实播放统计；本地文件通过 HTTP Range 返回，不默认转码。OSS 适配与签名地址跳转尚未接通和验收。
 - **家长后台**：`apps/parent-web/` React 网页，入口 `/manage/`；资源库、上传任务、首页编排、观看记录、家庭设置，使用同一个 FastAPI 后台。
 - **客户端**：`apps/tv/client/` 新写的轻量 Android TV 客户端；2 个 Activity（Shell/Playback）+ OkHttp + media3 ExoPlayer；不依赖 jellyfin-sdk、不依赖 jellyfin-androidtv UI tree。
 - 历史 fork：`apps/tv/app/` 保留上游 fork 仅作参考，已从 Gradle 构建中移除；包含 Molly 预览入口的早期版本。
-- 新客户端在线播放已导入的本地媒体；历史离线样本不进入新版 APK。
+- 新客户端在线播放后台上传并发布的媒体；历史离线样本不进入新版 APK。
 - 调试包名 `com.molly.tv.debug`，发布包名 `com.molly.tv`。
 - 本地 Android 工具链、构建、模拟器与安装脚本；本地服务端构建、初始化、运行脚本。
 
@@ -29,7 +29,7 @@
 ```bash
 # 服务端
 bash tools/build-server.sh           # 创建 .venv + 装依赖
-bash tools/init-server.sh            # 建库 + 创建 admin + 扫 bbkt
+bash tools/init-server.sh            # 建库 + 创建 admin
 bash tools/build-tv-web.sh           # 构建 TV 网页
 bash tools/build-parent-web.sh       # 构建家长管理网页
 bash tools/run-server.sh             # API + /tv/ + /manage/，监听 127.0.0.1:8096
@@ -45,13 +45,13 @@ bash tools/build-tv-client.sh
 
 模拟器启动脚本同时启用鼠标点击与 Mac 键盘输入：方向键选择、回车确认，返回可用模拟器右侧返回按钮或遥控器面板。鼠标用于开发便利，电视实机仍按遥控器验证。
 
-历史离线样本工具 `tools/prepare_samples.py` 仍保留，但新版构建不执行它。现有媒体通过后台目录导入后联网播放；文件存在不代表编码或完整性已通过实机验收。
+历史离线样本工具 `tools/prepare_samples.py` 仍保留，但新版构建不执行它。视频通过家长后台上传并发布后联网播放；文件存在不代表编码或完整性已通过实机验收。
 
 ## 本地 Molly Server
 
 ```bash
 bash tools/build-server.sh       # 创建 .venv
-bash tools/init-server.sh        # 建库 + 创建 admin + 扫 downloads/bbkt
+bash tools/init-server.sh        # 建库 + 创建 admin
 bash tools/build-tv-web.sh       # 构建 /tv/ 网页
 bash tools/build-parent-web.sh   # 构建 /manage/ 网页
 bash tools/run-server.sh         # 127.0.0.1:8096
@@ -63,7 +63,6 @@ bash tools/run-server.sh         # 127.0.0.1:8096
 docker compose -f infra/compose.yaml up -d molly-server
 docker compose -f infra/compose.yaml --profile tools run --rm admin-tools init_db
 docker compose -f infra/compose.yaml --profile tools run --rm admin-tools create_admin
-docker compose -f infra/compose.yaml --profile tools run --rm admin-tools scan_bbkt
 ```
 
 默认账号 `admin` / `molly`（`MOLLY_INITIAL_ADMIN_*` 覆盖）。服务设计、端点清单、配置项见 [`docs/server.md`](docs/server.md)。

@@ -4,7 +4,7 @@ Family is the unit of isolation (P0). A Family owns Users (parents) and
 later will own ChildProfiles (kids) + MediaItems.
 
 We keep `View`, `Item`, `MediaFile`, `PlaybackEvent` from the previous
-schema — `scan_bbkt.py` still writes into them. The API layer never
+schema for catalog, uploaded media and playback history. The API layer never
 exposes `View`; Items/MediaFiles/PlaybackEvents are accessed through our
 own shape in `api/catalog.py` and `api/playback.py`.
 """
@@ -107,7 +107,7 @@ class RefreshToken(Base):
 
 
 # ---------------------------------------------------------------------------
-# Catalog (still uses Items / MediaFiles for legacy scan_bbkt.py)
+# Catalog
 # ---------------------------------------------------------------------------
 
 

@@ -1,1 +1,1 @@
-"""Operational scripts (init_db, scan_bbkt, create_admin)."""
+"""Operational scripts (init_db, create_admin)."""

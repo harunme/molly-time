@@ -12,10 +12,7 @@ fi
 
 # Make all Molly paths absolute so the service is invariant to CWD.
 export MOLLY_DATA_DIR="${MOLLY_DATA_DIR:-$ROOT/.local/molly-server}"
-# MOLLY_MEDIA_DIR is left unset on purpose: when the storage backend is
-# "local", config.resolved_media_dir() defaults to MOLLY_BBKT_ROOT so the
-# LocalStorage backend resolves paths written by scan_bbkt directly.
-export MOLLY_BBKT_ROOT="${MOLLY_BBKT_ROOT:-$ROOT/downloads/bbkt}"
+# Uploaded media defaults to $MOLLY_DATA_DIR/media; MOLLY_MEDIA_DIR can override it.
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"

@@ -13,6 +13,7 @@ from molly_server.auth import hash_password, issue_access_token
 from molly_server.management_models import ResourceState, WatchInterval, WatchSession
 from molly_server.media_worker import run_once
 from molly_server.models import Item, User
+from molly_server.storage.factory import build_storage
 
 
 @pytest.fixture
@@ -168,7 +169,12 @@ def mp4(tmp_path_factory):
     return path.read_bytes()
 
 
-def test_real_resumable_upload_process_preview_publish(parent, mp4):
+@pytest.mark.parametrize("default_media_dir", [False, True])
+def test_real_resumable_upload_process_preview_publish(parent, mp4, monkeypatch, default_media_dir):
+    settings = config.get_settings()
+    if default_media_dir:
+        monkeypatch.setattr(settings, "media_dir", None)
+        build_storage.cache_clear()
     ep = parent.post(
         "/api/manage/resources",
         json={"type": "Episode", "name": "New episode", "parentId": "season"},
@@ -217,6 +223,8 @@ def test_real_resumable_upload_process_preview_publish(parent, mp4):
     assert parent.post(f"/api/manage/uploads/{key}/complete").status_code == 200
     assert run_once()
     assert parent.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    media_root = settings.data_dir / "media" if default_media_dir else settings.media_dir
+    assert (media_root / "managed" / "f1" / f"{key}.mp4").read_bytes() == mp4
     assert parent.get(f"/api/episodes/{ep}").json()["runtimeMs"] >= 900
     assert parent.get(f"/api/episodes/{ep}/play", headers=native_token()).status_code == 404
     assert parent.post(f"/api/manage/resources/{ep}/publish").status_code == 200
@@ -412,30 +420,6 @@ def test_schema_additive_and_repeatable(parent):
     db.init_db()
     assert parent.get("/api/episodes/e1/play", headers=native_token()).content == b"0123456789"
     assert config.get_settings().data_dir.exists()
-
-
-def test_new_scan_is_draft_and_repeat_scan_keeps_publication(parent, mp4, tmp_path):
-    from molly_server.scripts.scan_bbkt import _scan_episode
-
-    folder = tmp_path / "ImportedEpisode"
-    folder.mkdir()
-    (folder / "video.mp4").write_bytes(mp4)
-    with Session(db.get_engine()) as session:
-        series, season = session.get(Item, "series"), session.get(Item, "season")
-        episode = _scan_episode(session, folder, series, season, "f1")
-        session.commit()
-        key = episode.id
-        state = session.get(ResourceState, key)
-        assert state.status == "draft" and state.ready
-    assert parent.get(f"/api/episodes/{key}/play", headers=native_token()).status_code == 404
-    assert parent.post(f"/api/manage/resources/{key}/publish").status_code == 200
-    with Session(db.get_engine()) as session:
-        _scan_episode(
-            session, folder, session.get(Item, "series"), session.get(Item, "season"), "f1"
-        )
-        session.commit()
-        assert session.get(ResourceState, key).status == "published"
-    assert parent.get(f"/api/episodes/{key}/play", headers=native_token()).content == mp4
 
 
 def test_cover_replacement_changes_image_reference(parent):

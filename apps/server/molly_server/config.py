@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # ---- Paths ----------------------------------------------------------------
     data_dir: Path = Field(default=Path(".local/molly-server"))
-    media_dir: Path | None = None  # defaults to bbkt_root
+    media_dir: Path | None = None  # defaults to data_dir / "media"
     db_url: str | None = None
 
     # ---- Network --------------------------------------------------------------
@@ -57,8 +57,6 @@ class Settings(BaseSettings):
     oss_cdn_domain: str | None = None
     oss_signed_url_ttl: int = 60 * 60 * 4
 
-    bbkt_root: Path | None = None  # default: <repo>/downloads/bbkt
-
     # ---- Helpers ---------------------------------------------------------------
     def resolved_db_url(self) -> str:
         if self.db_url:
@@ -70,12 +68,7 @@ class Settings(BaseSettings):
     def resolved_media_dir(self) -> Path:
         if self.media_dir is not None:
             return self.media_dir
-        # Default: serve files from bbkt_root directly so absolute scan paths
-        # resolve; no mkdir.
-        return self.resolved_bbkt_root()
-
-    def resolved_bbkt_root(self) -> Path:
-        return self.bbkt_root or Path("downloads/bbkt")
+        return self.data_dir / "media"
 
 
 _settings: Settings | None = None

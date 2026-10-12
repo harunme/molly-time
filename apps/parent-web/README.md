@@ -7,7 +7,7 @@
 ```bash
 # 在仓库根目录运行；本机须安装 FFmpeg（含 FFprobe）。
 bash tools/build-server.sh
-bash tools/init-server.sh                  # 新数据库初始化；已有库不需重新扫描
+bash tools/init-server.sh                  # 新数据库初始化；已有库不需重新初始化
 bash tools/build-tv-web.sh
 bash tools/build-parent-web.sh
 bash tools/run-server.sh                   # 加载新版 API 和两个静态网页
@@ -28,7 +28,7 @@ bash tools/run-server.sh                   # 加载新版 API 和两个静态网
 
 新增上传剧集保持草稿；系列和季是目录容器，默认可见，但 TV 只显示有已发布且可播放剧集的内容。下架整个系列/季会一并阻止其子内容的新播放。
 
-已有扫描资源沿用此前发布状态，避免升级后整库突然消失；新版扫描产生的新剧集进入草稿。目录扫描不替代上传检查与 TV 实机编码验收，发布前须预览确认。没有视频文件的旧目录条目不会进入 TV 可播放列表。
+视频统一通过管理后台上传，不提供服务器目录扫描导入。上传检查不替代 TV 实机编码验收，发布前须预览确认。没有视频文件的旧目录条目不会进入 TV 可播放列表。
 
 视频替换保留剧集 ID，旧文件与媒体记录保留，已启动的播放器使用固定文件 ID；续播位置超过新视频长度时从头开始。新封面使用版本化 URL 刷新。归档只改变可见性，不删除历史和实体文件。
 
@@ -42,7 +42,7 @@ bash tools/run-server.sh                   # 加载新版 API 和两个静态网
 
 ## 部署与数据
 
-Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体任务线程，不运行 Node。镜像安装 FFmpeg；compose 的导入目录只读，上传目录 `.local/molly-server/media` 单独可写。`admin-tools` 复用同一服务镜像，具备数据库依赖与相同的数据路径。
+Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体任务线程，不运行 Node。镜像安装 FFmpeg；compose 的上传目录 `.local/molly-server/media` 单独可写。`admin-tools` 复用同一服务镜像，具备数据库依赖与相同的数据路径。
 
 首次升级使用附加表保存资源状态、上传任务、首页版本、设备与统计，不删除或改写旧事件；已有 SQLite 自动备份到同目录 `server.pre-management-v1.sqlite`，并记录 `management-v1` 修订。生产引擎启用外键、WAL 和写锁等待；读后校验再写的关键操作在 SQLite 中串行化。
 

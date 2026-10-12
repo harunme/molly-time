@@ -146,7 +146,7 @@ playback_events    (id, family_id, user_id, child_id, item_id, position_ms, dura
 
 | 路径 | 行为 |
 |---|---|
-| `storage_backend=local` | LocalStorage 把 `path` 当作 `bbkt_root` 下的相对路径读取；范围外路径拒绝 |
+| `storage_backend=local` | LocalStorage 在 `MOLLY_MEDIA_DIR` 下读取上传文件；默认根目录为 `MOLLY_DATA_DIR/media`，范围外路径拒绝 |
 | `storage_backend=oss`   | OssStorage 已有签名 URL 方法；播放路由 302 跳转尚未实现，CDN 配置尚未验证 |
 
 P0 默认 local。OSS 接口已经预留但未实际验证（无凭证）。
@@ -159,7 +159,7 @@ P0 默认 local。OSS 接口已经预留但未实际验证（无凭证）。
 
 ```bash
 bash tools/build-server.sh           # 创建 .venv
-bash tools/init-server.sh            # 建库 + 建 family + 建 admin + 扫 bbkt
+bash tools/init-server.sh            # 建库 + 建 family + 建 admin
 bash tools/run-server.sh             # 监听 127.0.0.1:8096
 ```
 
@@ -170,7 +170,7 @@ bash tools/run-server.sh             # 监听 127.0.0.1:8096
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `MOLLY_DATA_DIR` | `.local/molly-server` | SQLite + image cache |
-| `MOLLY_BBKT_ROOT` | `downloads/bbkt` | scan 源 + 默认 LocalStorage 根 |
+| `MOLLY_MEDIA_DIR` | `MOLLY_DATA_DIR/media` | 上传媒体存储根目录 |
 | `MOLLY_LISTEN_HOST` | `127.0.0.1` | |
 | `MOLLY_LISTEN_PORT` | `8096` | |
 | `MOLLY_AUTH_SECRET` | `dev-secret-do-not-use-in-prod` | HMAC 密钥；生产必改 |
@@ -190,7 +190,8 @@ bash tools/run-server.sh             # 监听 127.0.0.1:8096
 
 - 轻量客户端 `apps/tv/client/` 与 TV 网页直接使用 Molly `/api/*`，不绑定 Jellyfin 版本
 - 网页、API 与原生 Bridge 分别管理兼容性；新增原生能力需要 APK 更新
-- 媒体目录 `bbkt_root` 改变时，重跑 `scripts/scan_bbkt.py` 幂等更新
+- 视频统一通过家长后台上传、检查和发布，不提供本地目录扫描导入
+- 旧版本本机运行曾将上传文件存放在 `downloads/bbkt/managed`。已有上传文件需将该 `managed` 目录复制到 `MOLLY_DATA_DIR/media/managed`，或通过 `MOLLY_MEDIA_DIR` 指定原存储根目录；Docker 的上传挂载路径保持兼容。修改配置不会自动移动或删除文件。
 
 ## 许可
 
