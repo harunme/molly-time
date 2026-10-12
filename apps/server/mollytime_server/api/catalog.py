@@ -46,6 +46,7 @@ class EpisodeSummary(BaseModel):
 
 
 class SeasonSummary(BaseModel):
+    image: ImageRef | None = None
     id: str
     name: str
     indexNumber: int | None = None
@@ -200,6 +201,7 @@ def series_detail(series_id: str, request: Request, user: CurrentUser, db: DbSes
                 name=se.name,
                 indexNumber=se.index_number,
                 episodeCount=len(_season_episodes(db, se.id, user.family_id, request)),
+                image=ImageRef(url=image_url(db, se)),
             ).model_dump()
             for se in seasons
             if getattr(request.state, "parent_preview", False) or visible(db, se)

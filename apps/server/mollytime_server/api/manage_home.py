@@ -223,6 +223,7 @@ def render_home(content, db, family, child=None, modern=True):
                 .limit(100)
                 .all()
             )
+            positions = {p.item_id: p.position_ms for p in progresses}
             episodes = [db.get(Item, p.item_id) for p in progresses]
             episodes = [e for e in episodes if e and visible(db, e)][: row["limit"]]
             items = [
@@ -234,6 +235,7 @@ def render_home(content, db, family, child=None, modern=True):
                         image=ImageRef(url=image_url(db, e)),
                     ).model_dump(),
                     type="episode",
+                    positionMs=positions[e.id],
                 )
                 for e in episodes
             ]

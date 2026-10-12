@@ -1,18 +1,18 @@
 import { useEffect, type ReactNode, type RefObject } from 'react';
 import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 
-export function FocusRegion({ focusKey, children, className = '', boundary = false, scrollRef }: {
-  focusKey: string; children: ReactNode; className?: string; boundary?: boolean;
+export function FocusRegion({ focusKey, children, className = '', boundary = false, scrollRef, hidden = false }: {
+  focusKey: string; children: ReactNode; className?: string; boundary?: boolean; hidden?: boolean;
   scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
-  const { ref, hasFocusedChild } = useFocusable({ focusKey, trackChildren: true,
+  const { ref, hasFocusedChild } = useFocusable({ focusKey, focusable: !hidden, trackChildren: true,
     saveLastFocusedChild: true, isFocusBoundary: boundary });
   useEffect(() => {
     if (scrollRef) scrollRef.current = ref.current;
     return () => { if (scrollRef) scrollRef.current = null; };
   }, [ref, scrollRef]);
   return <FocusContext.Provider value={focusKey}>
-    <div ref={ref} className={`${className} ${hasFocusedChild ? 'has-focus' : ''}`} data-focus-region={focusKey}>{children}</div>
+    <div ref={ref} className={`${className} ${hasFocusedChild ? 'has-focus' : ''}`} data-focus-region={focusKey} aria-hidden={hidden || undefined} inert={hidden || undefined}>{children}</div>
   </FocusContext.Provider>;
 }
 
