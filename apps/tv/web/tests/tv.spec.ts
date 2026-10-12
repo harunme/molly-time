@@ -284,6 +284,7 @@ test('real covers settle after fast navigation, resume progress and flat folders
     { id: 'a', name: '第一集', type: 'episode', positionMs: 30000, runtimeMs: 120000, image: { url: '/api/items/a/image?v=first' } },
     { id: 'b', name: '第二集', type: 'episode', positionMs: 10, runtimeMs: 0, image: { url: '/api/items/b/image' } },
     { id: 'c', name: '自然课堂', episodeCount: 1, image: { url: '/api/items/c/image?v=third' } },
+    { id: 'd', name: '小鼠波波 2026版', episodeCount: 1 },
   ] }] } }));
   await page.route('**/api/items/*/image?*', (route) => {
     const url = new URL(route.request().url());
@@ -303,6 +304,13 @@ test('real covers settle after fast navigation, resume progress and flat folders
   await expect(page.locator('.feature h1')).toHaveText('自然课堂');
   await expect.poll(() => page.locator('.feature-art img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
   expect(heroRequests).not.toContain('/api/items/b/image');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.feature h1')).toHaveText('小鼠波波 2026版');
+  await expect(page.locator('.feature-art img')).toHaveCount(0);
+  await expect(page.locator('.feature-art .cover-letter')).toHaveText('小鼠');
+  await expect(page.locator('.feature-copy')).toHaveCSS('animation-name', 'none');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('.feature h1')).toHaveText('自然课堂');
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-focus="episode-ready"]')).toBeFocused();
   await expect(page.locator('[data-focus="season-empty"]')).toHaveCount(0);

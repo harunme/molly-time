@@ -16,10 +16,12 @@ from PIL import Image
 from sqlalchemy import or_, update
 
 from .config import get_settings
+from .covers import extract_cover
 from .db import get_session_factory, init_db
 from .management_models import MediaOptions, MediaTask, ResourceState, UploadSession, UploadTarget
 from .models import Item, MediaFile
 from .storage import build_storage
+from .utils.image import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -89,29 +91,13 @@ def process(task_id):
                 for block in iter(lambda: handle.read(1024 * 1024), b""):
                     digest.update(block)
             runtime = None
+            cover_data = None
             cover = folder / f"{upload.id}-cover.jpg"
             if upload.kind == "video":
                 runtime = inspect_video(source)
-                subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-v",
-                        "error",
-                        "-protocol_whitelist",
-                        "file",
-                        "-y",
-                        "-i",
-                        str(source),
-                        "-frames:v",
-                        "1",
-                        "-vf",
-                        "scale=640:-2",
-                        str(cover),
-                    ],
-                    capture_output=True,
-                    timeout=60,
-                    check=True,
-                )
+                cover_data = extract_cover(source, runtime)
+                if cover_data is not None:
+                    atomic_write(cover, cover_data)
                 mime = "video/mp4"
             elif upload.kind == "image":
                 with Image.open(source) as image:
@@ -169,7 +155,7 @@ def process(task_id):
                     db.add(state)
                 state.ready = True
                 if (
-                    not db.query(MediaFile.id)
+                    cover_data is not None and not db.query(MediaFile.id)
                     .filter(MediaFile.item_id == item.id, MediaFile.kind == "image")
                     .first()
                 ):

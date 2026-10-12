@@ -19,7 +19,9 @@ const tones = ['#526b80', '#85735e', '#5b7772', '#756782', '#7e6269'];
 export function tone(id: string) { return tones[Array.from(id).reduce((sum, c) => sum + c.charCodeAt(0), 0) % tones.length]; }
 
 export function Cover({ item, large = false }: { item: Series | Episode; large?: boolean }) {
-  const [src, setSrc] = useState('');
+  const imagePath = item.image?.url ?? '';
+  const [loaded, setLoaded] = useState({ path: '', src: '' });
+  const src = loaded.path === imagePath ? loaded.src : '';
   const [visible, setVisible] = useState(large);
   const loadedUrl = useRef('');
   useEffect(() => () => { if (loadedUrl.current.startsWith('blob:')) URL.revokeObjectURL(loadedUrl.current); }, []);
@@ -36,7 +38,7 @@ export function Cover({ item, large = false }: { item: Series | Episode; large?:
       if (canceled) return;
       const previous = loadedUrl.current;
       loadedUrl.current = url;
-      setSrc(url);
+      setLoaded({ path: imagePath, src: url });
       if (previous.startsWith('blob:') && previous !== url) URL.revokeObjectURL(previous);
     };
     if (!item.image?.url) replace('');
@@ -52,14 +54,14 @@ export function Cover({ item, large = false }: { item: Series | Episode; large?:
       canceled = true;
       if (pendingUrl.startsWith('blob:') && pendingUrl !== loadedUrl.current) URL.revokeObjectURL(pendingUrl);
     };
-  }, [item.image?.url, visible, large]);
+  }, [imagePath, visible, large]);
   const position = 'positionMs' in item ? item.positionMs : undefined;
   const runtime = 'runtimeMs' in item ? item.runtimeMs : undefined;
   const progress = !large && position !== undefined && runtime !== undefined &&
     Number.isFinite(position) && Number.isFinite(runtime) && position > 0 && runtime > 0
     ? Math.min(100, Math.max(0, position / runtime * 100)) : undefined;
   return <div ref={ref} className={`cover ${large ? 'cover-large' : ''}`} style={{ '--cover-tone': tone(item.id) } as CSSProperties}>
-    {src ? <img src={src} alt="" decoding="async" onError={() => setSrc('')} /> : <div className="cover-fallback" aria-hidden="true">
+    {src ? <img src={src} alt="" decoding="async" onError={() => setLoaded({ path: imagePath, src: '' })} /> : <div className="cover-fallback" aria-hidden="true">
       <span className="cover-letter">{item.name.slice(0, 2)}</span><span className="cover-name">{item.name}</span>
     </div>}
     {progress !== undefined && <div className="watch-progress" role="progressbar" aria-label="观看进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
@@ -86,10 +88,10 @@ export function Feature({ item, eyebrow, description, meta, label, loading = fal
     const timer = setTimeout(() => setSettled({ item, eyebrow, description, meta, label }), 150);
     return () => clearTimeout(timer);
   }, [item, eyebrow, description, meta, label, loading]);
-  const shown = !item || loading ? { item, eyebrow, description, meta, label } : settled;
+  const shown = !item?.image?.url || loading ? { item, eyebrow, description, meta, label } : settled;
   return <section className="feature" aria-label="选中内容预览">
     <div className="feature-art" aria-hidden="true">{shown.item && <Cover item={shown.item} large />}</div>
-    <div className="feature-copy" key={`${shown.item?.id}-${loading}`}>{shown.eyebrow && <p className="eyebrow">{shown.eyebrow}</p>}
+    <div className="feature-copy">{shown.eyebrow && <p className="eyebrow">{shown.eyebrow}</p>}
       <h1>{loading ? '正在打开媒体库…' : shown.item?.name ?? '媒体库'}</h1>
       {shown.meta && !loading && <p className="feature-meta"><span className="media-tag">{shown.label}</span>{shown.meta}</p>}
       <p className="feature-description">{loading ? '' : shown.description}</p>

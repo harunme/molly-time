@@ -370,7 +370,7 @@ def image(
     settings = get_settings()
     cache_dir = settings.data_dir / "image-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{file.id}_{target_w or 'orig'}.jpg"
+    cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w or 'orig'}.jpg"
     if not cache_path.exists():
         resize_to_file(storage.open(file.path), cache_path, target_w)
     data = cache_path.read_bytes()
