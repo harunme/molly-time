@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { ApiError, call, request, type Capabilities, type Child, type Episode, type Home, type Season, type Series } from './api';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
-import { Cover, Feature, Icon, Shelf, tone } from './content';
+import { Cover, DetailHeader, Feature, Icon, Shelf, tone } from './content';
 import { PairingPanel } from './pairing';
 import './style.css';
 
@@ -29,6 +29,8 @@ function App() {
   const [children, setChildren] = useState<Child[]>([]);
   const [child, setChild] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuIsOpen = useRef(false);
+  menuIsOpen.current = menuOpen;
   const menuTarget = useRef('back');
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [selectingChild, setSelectingChild] = useState(false);
@@ -96,6 +98,8 @@ function App() {
       const canRestore = saved && has(saved.focus);
       const target = canRestore ? saved.focus : fallback;
       const next = has(target) ? target : overlay ? 'close-overlay' : 'menu';
+      // A pending content refresh must not steal focus from an opened drawer.
+      if (menuIsOpen.current && !overlay && !['back', 'children', 'settings', 'connect-sidebar'].includes(next)) return;
       if (['back', 'children', 'settings', 'connect-sidebar'].includes(next) && !menuOpen) {
         menuTarget.current = next; setMenuOpen(true);
       } else setFocus(next);
@@ -245,16 +249,20 @@ function App() {
       {!authenticated ? <FocusButton focusKey="connect-sidebar" className="viewer connect-viewer" disabled={!!overlay || !menuOpen} onClick={() => openOverlay('pairing')}><Icon name="people" /><span>绑定电视</span></FocusButton> : <div className="viewer"><span className="viewer-avatar">{selectedChild?.name.slice(0, 1) ?? <Icon name="people" />}</span>
         <div><strong>{selectedChild?.name ?? '家庭媒体库'}</strong>{selectedChild && <span>正在观看</span>}</div></div>}
     </FocusRegion>
-    <main className="content-shell">
+    <main className={`content-shell ${onHome ? 'home-page' : 'detail-page'}`}>
       <div className="topbar"><FocusButton focusKey="menu" className="menu-trigger" ariaLabel="打开菜单" disabled={!!overlay || menuOpen} onClick={showMenu} onArrow={(direction) => { if (direction === 'left') { showMenu(); return false; } return true; }}><Icon name="menu" /></FocusButton>
         <span className="topbar-brand">MollyTime</span>{!onHome && <FocusButton focusKey="route-back" className="route-back" disabled={!!overlay}
         onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton>}
-        <span className="breadcrumbs">{onHome ? '首页' : route.series.name}{route.kind === 'season' && <><b>/</b>{route.season.name}</>}</span>
+        {!onHome && <span className="breadcrumbs">{route.series.name}{route.kind === 'season' && <><b>/</b>{route.season.name}</>}</span>}
         <span className="topbar-label">{selectedChild?.name}</span>
       </div>
       <FocusRegion focusKey="content" className="content-panels">
-        {authenticated && <Feature item={featured} loading={busy} eyebrow={onHome ? (featured && 'type' in featured && featured.type === 'episode' ? '继续观看' : '') : route.series.name} description={description} meta={metadata}
-          label={route.kind === 'season' ? '剧集' : route.kind === 'series' ? '季' : (featured as Series)?.type === 'episode' ? '继续观看' : '系列'} />}
+        {authenticated && (onHome ? <Feature item={featured} loading={busy}
+          eyebrow={home.rows.find((row) => row.items.some((item) => item.id === featured?.id))?.title ?? ''}
+          description={description} meta={metadata} label={(featured as Series)?.type === 'episode' ? '继续观看' : '系列'} /> :
+          <DetailHeader series={seriesDetail ?? route.series} title={route.kind === 'series' ? route.series.name : route.season.name}
+            total={route.kind === 'series' ? seasons.length : episodes.length} kind={route.kind}
+            selected={featured} meta={metadata} loading={busy} />)}
         <FocusRegion focusKey="shelves" className="shelves-scroll" scrollRef={viewport}>
           {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (onHome ? home.rows.map((row, rowIndex) => {
             const rowKey = `home-row-${rowIndex}`;
@@ -271,7 +279,7 @@ function App() {
               onClick={() => navigate({ kind: 'season', series: route.series, season })}>
               <Cover item={{ ...route.series, id: season.id, name: season.name, image: season.image ?? route.series.image }} /><div className="card-copy"><strong>{season.name}</strong><span>{season.episodeCount === undefined ? '' : `${season.episodeCount} 集`}<Icon name="play" /></span></div>
             </FocusButton>)}
-          </Shelf> : <Shelf focusKey="episodes-row" title={route.season.name} total={episodes.length} position={activePositions['episodes-row']} kind="episode-shelf">
+          </Shelf> : <Shelf focusKey="episodes-row" title="选择剧集" total={episodes.length} position={activePositions['episodes-row']} kind="episode-shelf">
             {episodes.map((episode, index) => <FocusButton key={episode.id} focusKey={`episode-${episode.id}`} className="poster" disabled={!!overlay}
               onArrow={cardArrow(index)} onFocus={() => remember(`episode-${episode.id}`, episode, 'episodes-row', index + 1)} onClick={() => { void play(episode.id); }}>
               <Cover item={episode} /><div className="card-copy"><strong>{episode.name}</strong><span>{duration(episode.runtimeMs) || '播放'}<Icon name="play" /></span></div>
@@ -284,7 +292,7 @@ function App() {
           }}>重试</FocusButton></div>}
         </FocusRegion>
       </FocusRegion>
-      <footer><span><span className="keycap">↑ ↓ ← →</span> 选择</span><span><span className="keycap">确定</span> 打开</span><span><span className="keycap">返回</span> 上一页</span>
+      <footer><span><span className="keycap">↑ ↓ ← →</span> 选择</span><span><span className="keycap">确定</span> {route.kind === 'season' ? '播放' : '打开'}</span><span><span className="keycap">返回</span> 上一页</span>
         {playing && <span role="status" className="player-status">正在打开播放器…</span>}</footer>
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">

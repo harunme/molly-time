@@ -96,3 +96,22 @@ export function Feature({ item, eyebrow, description, meta, label, loading = fal
     </div>
   </section>;
 }
+
+
+export function DetailHeader({ series, title, total, kind, selected, meta, loading }: {
+  series: Series; title: string; total: number; kind: 'series' | 'season';
+  selected?: Series | Episode; meta: string; loading: boolean;
+}) {
+  return <section className="detail-header" aria-label="片单详情">
+    <div className="detail-context">
+      <p className="eyebrow">{kind === 'series' ? '系列' : series.name}</p>
+      <h1>{title}</h1>
+      <p className="detail-count">{loading ? '正在加载…' : `${total} ${kind === 'series' ? '季' : '集'}`}</p>
+      {!loading && selected && <div className="detail-selection">
+        <span>{kind === 'series' ? '当前选中' : '当前剧集'}</span>
+        <strong>{selected.name}</strong>{meta && <small>{meta}</small>}
+      </div>}
+    </div>
+    <div className="detail-cover" aria-hidden="true"><Cover item={series} /></div>
+  </section>;
+}
