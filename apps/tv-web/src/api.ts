@@ -1,7 +1,7 @@
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean };
 export type Child = { id: string; name: string };
-export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; overview?: string; image?: { url: string } };
-export type Season = { id: string; name: string; episodeCount?: number };
+export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; overview?: string; image?: { url: string } };
+export type Season = { id: string; name: string; indexNumber?: number; episodeCount?: number };
 export type Episode = { id: string; name: string; runtimeMs?: number; image?: { url: string } };
 export type Home = { rows: { title: string; items: Series[] }[] };
 export class ApiError extends Error { constructor(message: string, public status = 0) { super(message); } }
@@ -78,11 +78,11 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
     default: throw new ApiError('浏览器仅供预览，请在电视客户端播放');
   }
 }
-export async function imageSource(path: string): Promise<string> {
+export async function imageSource(path: string, width = 480): Promise<string> {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !/^\/api\/items\/[A-Za-z0-9-]+\/image$/.test(url.pathname)) throw new ApiError('封面地址无效');
   const version = url.searchParams.get('v');
-  url.search = '?w=480';
+  url.search = `?w=${width === 960 ? 960 : 480}`;
   if (version && /^[A-Za-z0-9-]{1,64}$/.test(version)) url.searchParams.set('v', version);
   if (port) return url.toString();
   const result = await fetch(url, { headers: { Authorization: `Bearer ${access}` } });

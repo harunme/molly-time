@@ -160,6 +160,16 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
   </>;
 }
 
+function TvHomePreview({ home }: { home: Home }) {
+  const featured = home.rows[0]?.items[0];
+  const cover = (item: Home['rows'][number]['items'][number]) => <div className="tv-cover" key={item.image?.url || item.id}><span>{item.name.slice(0, 2)}</span>{item.image?.url && <img src={item.image.url} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}</div>;
+  return <div className="tv-preview"><div className="tv-sidebar"><div className="tv-wordmark">molly</div><span className="tv-nav-active">首页</span><span>谁在看</span><span>设置</span></div>
+    <div className="tv-preview-content"><small>我们的媒体库</small><div className="tv-feature"><div><small>现在想看什么？</small><h3>{featured?.name || '家庭放映室'}</h3>{featured && <p>确定 · {featured.type === 'episode' ? '继续播放' : '查看系列'}</p>}</div>{featured && cover(featured)}</div>
+      <div className="tv-preview-rows">{home.rows.map((row, index) => <div className="tv-shelf" key={index}><strong>{row.title}</strong><div>{row.items.map((item) => <button key={item.id} title={item.name}>{cover(item)}<span>{item.name}</span></button>)}</div></div>)}
+      {home.rows.length === 0 && <p>还没有可展示的内容。选择已发布系列，或为儿童添加播放记录。</p>}</div>
+    </div></div>;
+}
+
 function HomeEditor({ run, readonly, notify }: { run: Run; readonly: boolean; notify: (value: string) => void }) {
   const children = useData<Child[]>('/children', []), series = useData<Resource[]>('/resources', []);
   const [child, setChild] = useState(''), [config, setConfig] = useState<Config>(), [content, setContent] = useState<Content>({ schemaVersion: 1, rows: [] });
@@ -188,7 +198,7 @@ function HomeEditor({ run, readonly, notify }: { run: Run; readonly: boolean; no
       {row.source === 'manual' && <div className="series-picker"><p>按选择顺序显示系列</p>{row.itemIds.map((id, i) => <div className="picked-series" key={id}><span>{series.data.find((s) => s.id === id)?.name || '资源已不可用'}</span><button className="quiet" type="button" aria-label="前移系列" disabled={i === 0} onClick={() => { const ids = [...row.itemIds]; [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]]; editRow({ itemIds: ids }); }}>↑</button><button className="quiet" type="button" aria-label="移除系列" onClick={() => editRow({ itemIds: row.itemIds.filter((key) => key !== id) })}>×</button></div>)}<select aria-label="添加系列" value="" onChange={(e) => { if (e.target.value) editRow({ itemIds: [...row.itemIds, e.target.value] }); }}><option value="">＋ 选择系列</option>{series.data.filter((s) => !row.itemIds.includes(s.id)).map((s) => <option key={s.id} value={s.id}>{s.name}{s.status !== 'published' ? '（未发布）' : ''}</option>)}</select></div>}
       {row.source === 'continue' && <p className="muted">根据儿童的未完成剧集自动显示。旧 TV 客户端会跳过此栏目。</p>}
       <button type="button" className="danger quiet" onClick={() => { change({ ...content, rows: content.rows.filter((_, i) => i !== selected) }); setSelected(0); }}>删除栏目</button></fieldset>}
-    </section><section className="preview-panel"><div className="preview-label"><h2>TV 比例预览</h2><span>{children.data.find((c) => c.id === child)?.name || '家庭默认'}</span></div><div className="tv-preview"><div className="tv-wordmark">molly<span>TV</span></div><h3>好奇心，从这里开始。</h3>{preview.rows.map((r, i) => <div className="tv-shelf" key={i}><strong>{r.title}</strong><div>{r.items.map((item) => <button key={item.id} title={item.name}><div className="tv-cover"><span>{item.name.slice(0, 2)}</span><img src={item.image?.url} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /></div><span>{item.name}</span></button>)}</div></div>)}{preview.rows.length === 0 && <p>还没有可展示的内容。选择已发布系列，或为儿童添加播放记录。</p>}</div><p className="muted">预览会过滤未发布或下架内容。首页顺序不限制儿童访问其他已发布内容。</p></section></div>}
+    </section><section className="preview-panel"><div className="preview-label"><h2>TV 比例预览</h2><span>{children.data.find((c) => c.id === child)?.name || '家庭默认'}</span></div><TvHomePreview home={preview} /><p className="muted">预览会过滤未发布或下架内容。首页顺序不限制儿童访问其他已发布内容。</p></section></div>}
     {history && <Modal title="已发布版本" close={() => setHistory(undefined)}>{history.length ? history.map((r) => <div className="history-row" key={r.id}><span>{dateTime(r.createdAt)}</span><button disabled={readonly} onClick={() => { if (confirm('将这个版本恢复到草稿？发布后电视才会更新。')) { change(r.content); setHistory(undefined); } }}>恢复到草稿</button></div>) : <p className="empty">还没有发布记录</p>}</Modal>}
   </>;
 }

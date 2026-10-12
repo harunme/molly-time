@@ -24,3 +24,9 @@ pnpm exec node tests/smoke-android.mjs
 使用 Playwright Android 接口，默认本地测试账号 `admin` / `molly`，可用 `MOLLY_SMOKE_USERNAME` 和 `MOLLY_SMOKE_PASSWORD` 覆盖。默认使用现有资源中的 `L1开口动画 / 古力小超人 / Hello` 样本。截图写入根目录 `artifacts/`。
 
 遥控器上下左右移动，确定打开，返回回到上一层。播放结束/退出恢复剧集卡片焦点。网页与 Bridge 主版本不兼容时提示更新 APK。
+
+## 界面与焦点
+
+新版参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)，采用固定侧栏、随焦点变化的内容预览和独立横向内容行。焦点按屏幕/侧栏/内容行/弹层分组，跨行、页面返回与原生播放返回均保存卡片及滚动位置。设置和儿童弹层限制方向键焦点，返回恢复原菜单。
+
+只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../docs/tv-interface-design.md)。网页构建后重新打开 TV 壳子加载新入口，无需修改 Bridge。

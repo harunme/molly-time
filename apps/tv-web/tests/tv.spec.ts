@@ -46,6 +46,7 @@ test('remote navigation, playback return, route restoration and logout', async (
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await page.getByRole('button', { name: '选择儿童' }).click();
   await page.getByRole('button', { name: '小朋友' }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出账号' }).click();
   await expect(page.getByRole('heading', { name: '进入家庭媒体库' })).toBeVisible();
 });
@@ -66,4 +67,98 @@ test('browser login reports rejected credentials and recovers', async ({ page })
   await page.getByLabel('密码').fill('correct');
   await page.getByRole('button', { name: '进入媒体库' }).click();
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
+});
+
+test('independent TV rails, remembered row focus and modal boundaries', async ({ page }) => {
+  await page.addInitScript(() => {
+    let removedAfterPlayback = false;
+    const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
+    w.MollyBridge = { postMessage(raw) {
+      const { id, method, args } = JSON.parse(raw);
+      let result: unknown = { ok: true };
+      if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: 'c1', nativePlayback: true };
+      if (method === 'request' && args.path === '/api/families/me/children') result = [{ id: 'c1', name: '小米' }, { id: 'c2', name: '小麦' }];
+      if (method === 'request' && args.path === '/api/home') result = { rows: ['今晚一起看', '发现新故事', '继续观看'].map((title, row) => ({ title,
+        items: Array.from({ length: 12 }, (_, i) => ({ id: `s${i + 1}`, name: `${['自然小课堂', '奇妙动物', '一起学英语'][row]} ${i + 1}`, episodeCount: 12 + i,
+          ...(row === 2 ? { type: 'episode', runtimeMs: 180000 } : {}) })).filter((item) => !removedAfterPlayback || item.id !== 's10') })) };
+      if (method === 'playEpisode') removedAfterPlayback = true;
+      setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
+    } };
+  });
+  await page.goto('/tv/');
+  await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
+  const heroY = await page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top);
+  const firstRail = page.locator('[data-rail="home-row-0"]');
+  await page.evaluate(() => {
+    const rail = document.querySelector<HTMLElement>('[data-rail="home-row-0"]')!;
+    const trace: number[] = [];
+    (window as unknown as { motionTrace: number[] }).motionTrace = trace;
+    window.addEventListener('keydown', () => {
+      trace.push(rail.scrollLeft);
+      requestAnimationFrame(() => requestAnimationFrame(() => trace.push(rail.scrollLeft)));
+      setTimeout(() => trace.push(rail.scrollLeft), 350);
+    }, { once: true, capture: true });
+  });
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { motionTrace: number[] }).motionTrace.length)).toBe(3);
+  const trace = await page.evaluate(() => (window as unknown as { motionTrace: number[] }).motionTrace);
+  expect(trace[0]).toBe(0);
+  expect(trace[1]).toBeGreaterThan(trace[0]);
+  expect(trace[1]).toBeLessThan(trace[2]);
+  for (let index = 0; index < 8; index++) await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="series-s10"]')).toBeFocused();
+  await expect.poll(() => firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+  await expect(page.locator('.feature h1')).toHaveText('自然小课堂 10');
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(() => page.locator('[data-rail="home-row-1"] .focused').count()).toBe(1);
+  await page.keyboard.press('ArrowRight');
+  const secondFocus = await page.locator('[data-rail="home-row-1"] .focused').getAttribute('data-focus');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-focus="series-s10"]')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator(`[data-focus="${secondFocus}"]`)).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(() => page.locator('[data-rail="home-row-2"] .focused').count()).toBe(1);
+  await expect.poll(() => page.locator('.shelves-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  expect(await page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top)).toBe(heroY);
+  expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
+  const returnFocus = await page.locator('[data-rail="home-row-2"] .focused').getAttribute('data-focus');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => page.locator('[role="dialog"] .focused').count()).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-focus="settings"]')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator(`[data-focus="${returnFocus}"]`)).toBeFocused();
+  await page.screenshot({ path: 'test-results/tv-rails.png' });
+  await page.getByRole('button', { name: '小米', exact: true }).click();
+  await expect(page.locator('[data-focus="child-c1"]')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-focus="child-c1"]')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="child-c2"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.viewer strong')).toHaveText('小麦');
+  await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
+  await page.setViewportSize({ width: 960, height: 540 });
+  await page.screenshot({ path: 'test-results/tv-960.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  await page.screenshot({ path: 'test-results/tv-4k.png' });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.locator('[data-focus="home-2-s10"]').click();
+  await expect(page.getByRole('status')).toContainText('正在打开播放器');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:playbackClosed')));
+  await expect(page.locator('[data-focus="home-2-s10"]')).toHaveCount(0);
+  await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
+  await expect(page.locator('[data-focus="series-s1"]')).toBeInViewport();
+  expect(await page.locator('.shelves-scroll').evaluate((node) => node.scrollTop)).toBe(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('[data-focus="series-s1"]')).toHaveCSS('transform', 'none');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
+  expect(await firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
 });
