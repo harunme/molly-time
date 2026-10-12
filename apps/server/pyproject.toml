@@ -13,7 +13,7 @@ dependencies = [
   "bcrypt==4.0.1",
   "pillow>=10.4",
   "httpx>=0.27",
-  "boto3>=1.35",            # S3 / OSS 兼容协议
+  "oss2>=2.19,<3",          # Official Alibaba OSS SDK
   "aiofiles>=24.1",
   "qrcode>=8.0",
 ]

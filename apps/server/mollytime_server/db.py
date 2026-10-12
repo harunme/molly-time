@@ -65,11 +65,14 @@ def init_db() -> None:
                 with sqlite3.connect(database) as source, sqlite3.connect(backup) as target:
                     source.backup(target)
     Base.metadata.create_all(bind=engine)
-    # V1 is additive: no ALTER/drop or reinterpretation of old playback rows.
+    # Storage tables are additive: existing uploads/files need no ALTER or backfill.
     # Existing scan resources remain available; explicit state rows govern new uploads.
     with get_session_factory()() as session:
         if session.get(management_models.SchemaRevision, "management-v1") is None:
             session.add(management_models.SchemaRevision(id="management-v1"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "storage-v2") is None:
+            session.add(management_models.SchemaRevision(id="storage-v2"))
             session.commit()
 
 

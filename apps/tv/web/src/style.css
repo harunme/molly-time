@@ -26,7 +26,7 @@ button.focused, button:focus-visible { border-color: var(--focus); box-shadow: 0
 button:disabled { opacity: .55; cursor: wait; }
 .icon { width: 1.4rem; height: 1.4rem; flex-shrink: 0; }
 .app { position: relative; height: 100vh; height: 100dvh; display: flex; overflow: hidden; }
-.sidebar { position: absolute; inset: 0 auto 0 0; z-index: 6; width: 14rem; padding: 2.5rem 1.35rem 2rem; background: #20242aee; backdrop-filter: blur(24px); box-shadow: 1rem 0 3rem #0005; display: flex; flex-direction: column; transform: translateX(-105%); visibility: hidden; transition: transform .25s var(--ease), visibility .25s; }
+.sidebar { position: absolute; inset: 0 auto 0 0; z-index: 6; width: 12rem; padding: 2.2rem 1.1rem 1.4rem; background: #191c20; border-right: 1px solid #ffffff0d; box-shadow: .6rem 0 2rem #0003; display: flex; flex-direction: column; transform: translateX(-105%); visibility: hidden; transition: transform .25s var(--ease), visibility .25s; }
 .sidebar-open { transform: translateX(0); visibility: visible; transition: transform .25s var(--ease); }
 .menu-scrim { position: absolute; inset: 0; z-index: 5; border: 0; border-radius: 0; background: #0005; }
 .menu-trigger { display: flex; align-items: center; justify-content: center; padding: .55rem; flex-shrink: 0; }
@@ -35,20 +35,22 @@ button:disabled { opacity: .55; cursor: wait; }
 
 .wordmark { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; font-weight: 800; font-size: 2.7rem; letter-spacing: -.16rem; line-height: 1; }
 .wordmark span { display: block; font-family: "PingFang SC", sans-serif; font-size: .6rem; letter-spacing: .25rem; font-weight: 400; color: var(--muted); margin: .75rem 0 0 .15rem; }
-.sidebar.has-focus { background: #20242aee; }
-.sidebar .wordmark { padding: 0 .65rem; font-size: 1.6rem; letter-spacing: -.06rem; white-space: nowrap; }
-.sidebar nav { display: flex; flex-direction: column; gap: 1rem; margin-top: 4.2rem; }
-.nav-item { transition: background-color .2s var(--ease), color .2s var(--ease), transform .2s var(--ease); display: flex; align-items: center; gap: .9rem; padding: .9rem .8rem; font-size: 1.15rem; color: #c3c8db; width: 100%; min-height: 3.35rem; }
-.nav-item .icon { width: 1.25rem; height: 1.25rem; }
-.nav-item.active { color: var(--white); background: #30353d; }
-.nav-item.active::after { content: ''; width: .25rem; height: .25rem; border-radius: 50%; background: var(--mint); margin-left: auto; }
-.nav-item.focused { transform: translateX(.15rem); color: #191c20; background: var(--white); }
-.nav-item.focused.active::after { background: #394460; }
-.viewer { margin-top: auto; padding: 1.2rem .5rem 0; border-top: 1px solid #383d58; display: flex; align-items: center; gap: .65rem; min-width: 0; }
-.viewer-avatar { width: 2.3rem; height: 2.3rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1rem; }
+.sidebar.has-focus { background: #191c20; }
+.sidebar .wordmark { padding: 0 .6rem; font-size: 1.25rem; font-weight: 650; letter-spacing: -.045rem; white-space: nowrap; }
+.sidebar nav { display: flex; flex-direction: column; gap: .45rem; margin-top: 3rem; }
+.nav-item { position: relative; display: flex; align-items: center; gap: .7rem; padding: .75rem .65rem; min-height: 3rem; width: 100%; border: .1rem solid transparent; border-radius: .4rem; font-size: 1rem; font-weight: 500; color: #a1a6ae; transition: background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease); }
+.nav-item .icon { width: 1.1rem; height: 1.1rem; opacity: .8; }
+.nav-item.active { color: #f5f5f7; background: #ffffff06; }
+.nav-item.active::after { content: none; }
+.sidebar .nav-item.focused, .sidebar .nav-item:focus-visible { transform: none; color: #f5f5f7; background: #ffffff10; border-color: #ffffff80; box-shadow: none; }
+.sidebar .nav-item.focused .icon { opacity: 1; }
+.nav-item.active::before { content: ''; position: absolute; width: .13rem; height: .8rem; left: -.5rem; top: 50%; transform: translateY(-50%); border-radius: .1rem; background: #cdd8e4; }
+.viewer { margin-top: auto; padding: 1rem .6rem 0; border-top: 1px solid #ffffff12; display: flex; align-items: center; gap: .6rem; min-width: 0; color: #a1a6ae; }
+.viewer-avatar { width: 1.6rem; height: 1.6rem; border-radius: .4rem; background: #ffffff0a; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: .75rem; }
+.viewer-avatar .icon { width: 1rem; height: 1rem; }
 .viewer > div { overflow: hidden; }
-.viewer strong { display: block; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.viewer > div > span { display: block; font-size: .65rem; color: var(--muted); margin-top: .25rem; }
+.viewer strong { display: block; font-size: .75rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewer > div > span { display: block; font-size: .65rem; color: var(--muted); margin-top: .2rem; }
 .content-shell { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .topbar { position: absolute; inset: 1rem 0 auto; z-index: 3; min-height: 2.9rem; text-shadow: 0 .1rem .6rem #0008; display: flex; align-items: center; gap: 1.35rem; padding: 0 3rem; color: #bcc2d6; flex-shrink: 0; }
 .breadcrumbs { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -134,12 +136,12 @@ input { width: 100%; padding: .85rem; color: var(--white); border: 2px solid #55
 input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 @media (max-width: 700px) and (orientation: portrait) {
   :root { font-size: 12px; }
-  .sidebar { width: 14rem; padding: 2rem 1.2rem; }
-  .sidebar.has-focus { background: #20242aee; }
-  .sidebar .wordmark { font-size: 1.6rem; }
+  .sidebar { width: 12rem; padding: 2rem 1rem 1.4rem; }
+  .sidebar.has-focus { background: #191c20; }
+  .sidebar .wordmark { font-size: 1.25rem; }
   .wordmark span { letter-spacing: .03rem; }
   .nav-item { gap: .45rem; padding: .8rem .5rem; font-size: .9rem; }
-  .viewer { flex-direction: column; text-align: center; }
+  .viewer { flex-direction: row; text-align: left; }
   .topbar { padding: 0 1.5rem; }
   .topbar-label { display: none; }
   .feature { padding: 5.4rem 1.5rem 1.5rem; height: 25.9rem; position: relative; }

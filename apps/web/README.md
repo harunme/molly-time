@@ -48,7 +48,7 @@ Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体�
 
 默认在服务内运行一个媒体任务线程。需要独立进程时，API 设置 `MOLLYTIME_MEDIA_WORKER_ENABLED=false`，同环境启动 `python -m mollytime_server.media_worker`；不需要 Redis 或消息队列。管理静态目录可通过 `MOLLYTIME_PARENT_WEB_DIR` 覆盖，单个视频上限可通过 `MOLLYTIME_MAX_UPLOAD_BYTES` 覆盖（默认 10 GiB）。
 
-当前范围：本地存储、管理员和成员两种角色。永久删除、自动清理旧版本/过期上传、自动转码、儿童内容限制、观看限额、OSS/CDN 和离线网页包尚未实现。预览展示栏目比例和可见内容，完整遥控器交互仍在 TV 页面验收。
+当前支持本地/OSS 存储、管理员和成员两种角色、过期未完成上传清理、字幕设置及保存到电视任务。永久删除已入库素材、旧版本自动清理、自动转码、儿童内容限制、观看限额、CDN、支付和离线网页包尚未实现。OSS 配置与下载限制见 [部署说明](../../docs/oss-storage.md)。预览展示栏目比例和可见内容，完整遥控器交互仍在 TV 页面验收。
 
 ## 验证
 

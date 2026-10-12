@@ -36,6 +36,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation("androidx.webkit:webkit:1.14.0")
     implementation(libs.androidx.media3.exoplayer)
+    implementation("androidx.media3:media3-database:1.8.0")
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui)
     implementation(libs.okhttp)

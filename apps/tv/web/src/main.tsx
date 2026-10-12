@@ -1,3 +1,4 @@
+import { BrowserPlaybackHost } from './playback';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
@@ -241,8 +242,8 @@ function App() {
         <FocusButton focusKey="settings" className="nav-item" disabled={!!overlay || !menuOpen} onArrow={sidebarArrow} onClick={() => openOverlay('settings')}>
           <Icon name="settings" /><span>设置</span></FocusButton>
       </nav>
-      {!authenticated ? <FocusButton focusKey="connect-sidebar" className="viewer connect-viewer" disabled={!!overlay || !menuOpen} onClick={() => openOverlay('pairing')}><Icon name="people" /><span>绑定电视</span></FocusButton> : <div className="viewer"><span className="viewer-avatar" style={{ background: tone(child || 'family') }}>{selectedChild?.name.slice(0, 1) ?? '家'}</span>
-        <div><strong>{selectedChild?.name ?? '家庭观看'}</strong><span>{selectedChild ? '正在观看' : '我们的媒体库'}</span></div></div>}
+      {!authenticated ? <FocusButton focusKey="connect-sidebar" className="viewer connect-viewer" disabled={!!overlay || !menuOpen} onClick={() => openOverlay('pairing')}><Icon name="people" /><span>绑定电视</span></FocusButton> : <div className="viewer"><span className="viewer-avatar">{selectedChild?.name.slice(0, 1) ?? <Icon name="people" />}</span>
+        <div><strong>{selectedChild?.name ?? '家庭媒体库'}</strong>{selectedChild && <span>正在观看</span>}</div></div>}
     </FocusRegion>
     <main className="content-shell">
       <div className="topbar"><FocusButton focusKey="menu" className="menu-trigger" ariaLabel="打开菜单" disabled={!!overlay || menuOpen} onClick={showMenu} onArrow={(direction) => { if (direction === 'left') { showMenu(); return false; } return true; }}><Icon name="menu" /></FocusButton>
@@ -309,4 +310,4 @@ function App() {
     </div>}
   </FocusRegion>;
 }
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(<><App /><BrowserPlaybackHost /></>);

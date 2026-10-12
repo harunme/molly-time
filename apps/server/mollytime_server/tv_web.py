@@ -13,7 +13,7 @@ class TvWebFiles(StaticFiles):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' blob:; connect-src 'self'; frame-src 'none'; "
+            "img-src 'self' blob:; connect-src 'self'; media-src 'self' https:; frame-src 'none'; "
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
         )
         return response

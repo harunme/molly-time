@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import manage_auth
@@ -13,6 +13,7 @@ from .api import auth as api_auth
 from .api import (
     catalog,
     children,
+    downloads,
     manage_family,
     manage_home,
     manage_resources,
@@ -31,7 +32,9 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="MollyTime Server",
         version=settings.server_version,
-        description=("MollyTime media catalog. Own protocol under /api/*. No Jellyfin compatibility."),
+        description=(
+            "MollyTime media catalog. Own protocol under /api/*. No Jellyfin compatibility."
+        ),
     )
     app.add_middleware(
         CORSMiddleware,
@@ -39,6 +42,13 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def private_api(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.on_event("startup")
     def _startup() -> None:
@@ -82,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(playback.router)
     app.include_router(manage_auth.router)
+    app.include_router(downloads.router)
     app.include_router(manage_resources.router)
     app.include_router(manage_home.router)
     app.include_router(manage_family.router)

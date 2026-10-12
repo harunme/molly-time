@@ -6,14 +6,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from ..auth import hash_password, verify_password
 from ..config import get_settings
 from ..deps import DbSession
 from ..manage_auth import Parent, aware
-from ..management_models import Device, FamilySettings, WatchInterval, WatchSession
-from ..models import ChildProfile, Item
+from ..management_models import Device, FamilySettings, UploadSession, WatchInterval, WatchSession
+from ..models import ChildProfile, Item, MediaFile
 from .manage_resources import owned
 
 router = APIRouter(prefix="/api/manage", tags=["manage-family"])
@@ -102,7 +103,21 @@ def settings(user: Parent, db: DbSession):
     disk = shutil.disk_usage(path)
     return {
         "timezone": row.timezone if row else "Asia/Shanghai",
-        "storage": {"total": disk.total, "free": disk.free},
+        "storage": {
+            "total": disk.total,
+            "free": disk.free,
+            "backend": get_settings().storage_backend,
+            "usedBytes": db.query(func.coalesce(func.sum(MediaFile.size_bytes), 0))
+            .filter(MediaFile.family_id == user.family_id)
+            .scalar(),
+            "reservedBytes": db.query(func.coalesce(func.sum(UploadSession.size), 0))
+            .filter(
+                UploadSession.family_id == user.family_id,
+                UploadSession.status.in_(["uploading", "processing", "failed"]),
+            )
+            .scalar(),
+            "limitBytes": get_settings().family_storage_limit_bytes,
+        },
     }
 
 

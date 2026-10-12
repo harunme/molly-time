@@ -1,6 +1,7 @@
 """Durable SQLite media tasks. Embedded worker or `python -m ...media_worker`."""
 
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import logging
@@ -16,8 +17,9 @@ from sqlalchemy import or_, update
 
 from .config import get_settings
 from .db import get_session_factory, init_db
-from .management_models import MediaTask, ResourceState, UploadSession
+from .management_models import MediaOptions, MediaTask, ResourceState, UploadSession, UploadTarget
 from .models import Item, MediaFile
+from .storage import build_storage
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +67,21 @@ def process(task_id):
         task = db.get(MediaTask, task_id)
         upload = db.get(UploadSession, task.upload_id)
         item = db.get(Item, upload.item_id)
+        target = db.get(UploadTarget, upload.id)
+        remote = bool(target and target.backend == "oss")
         source = get_settings().data_dir / "uploads" / f"{upload.id}.part"
         root = get_settings().resolved_media_dir().resolve()
         folder = root / "managed" / upload.family_id
         folder.mkdir(parents=True, exist_ok=True)
         destination = folder / f"{upload.id}{Path(upload.filename).suffix.lower()}"
         try:
+            if remote:
+                source.parent.mkdir(parents=True, exist_ok=True)
+                if upload.size > get_settings().media_processing_max_bytes:
+                    raise ValueError("文件超出处理容量限制，请联系管理员")
+                if shutil.disk_usage(source.parent).free < upload.size + 64 * 1024**2:
+                    raise ValueError("处理磁盘空间不足，请稍后重试")
+                build_storage("oss").download(target.object_key, source, upload.size)
             if not source.is_file() or source.stat().st_size != upload.size:
                 raise ValueError("临时文件缺失或大小不一致，请重新上传")
             digest = hashlib.sha256()
@@ -115,9 +126,10 @@ def process(task_id):
                 ):
                     raise ValueError("字幕需要 UTF-8 编码，并包含有效的时间轴")
                 mime = "text/vtt" if destination.suffix == ".vtt" else "application/x-subrip"
-            staging = destination.with_suffix(destination.suffix + ".tmp")
-            shutil.copyfile(source, staging)
-            staging.replace(destination)
+            if not remote:
+                staging = destination.with_suffix(destination.suffix + ".tmp")
+                shutil.copyfile(source, staging)
+                staging.replace(destination)
             if db.get(MediaFile, upload.id) is None:
                 old = (
                     db.query(MediaFile)
@@ -134,8 +146,8 @@ def process(task_id):
                         family_id=upload.family_id,
                         item_id=item.id,
                         kind=upload.kind,
-                        storage="local",
-                        path=str(destination.relative_to(root)),
+                        storage="oss" if remote else "local",
+                        path=target.object_key if remote else str(destination.relative_to(root)),
                         mime=mime,
                         language=upload.language,
                         index=index,
@@ -143,6 +155,9 @@ def process(task_id):
                         sha256=digest.hexdigest(),
                     )
                 )
+            db.flush()
+            if db.get(MediaOptions, upload.id) is None:
+                db.add(MediaOptions(media_id=upload.id, retention="backup", label=upload.filename))
             if upload.kind == "image":
                 item.primary_image_tag = upload.id
             if runtime is not None:
@@ -176,7 +191,10 @@ def process(task_id):
             task.status, task.error, task.lease_until = "done", "", None
             db.commit()
             # Source can be removed only after the catalog transaction is durable.
-            source.unlink(missing_ok=True)
+            try:
+                source.unlink(missing_ok=True)
+            except OSError:
+                logger.exception("Committed media source cleanup failed for %s", upload.id)
         except Exception as error:  # noqa: BLE001 -- persist failure for any task error
             db.rollback()
             logger.warning("Media task %s failed: %s", task_id, type(error).__name__)
@@ -190,9 +208,27 @@ def process(task_id):
             task.status, task.error, task.lease_until = "failed", message, None
             upload.status, upload.error = "failed", message
             db.commit()
+        finally:
+            if remote:
+                try:
+                    source.unlink(missing_ok=True)
+                except OSError:
+                    logger.exception("Remote processing temporary cleanup failed for %s", upload.id)
 
 
 def run_once():
+    # Serialize processing across embedded workers/processes sharing this data directory.
+    folder = get_settings().data_dir
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / "media-worker.lock").open("a+b") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        return _run_once()
+
+
+def _run_once():
     with get_session_factory()() as db:
         now = dt.datetime.now(dt.UTC)
         eligible = or_(
@@ -220,8 +256,18 @@ def run_once():
 
 
 def loop(stop):
+    last_cleanup = None
     while not stop.is_set():
         try:
+            now = dt.datetime.now(dt.UTC)
+            if last_cleanup is None or (now - last_cleanup).total_seconds() >= 300:
+                from .remote_uploads import expire_uploads
+
+                last_cleanup = now
+                try:
+                    expire_uploads()
+                except Exception:  # Cleanup failure must not starve media tasks.
+                    logger.exception("Upload expiry cleanup failed")
             worked = run_once()
         except Exception:
             logger.exception("Media worker iteration failed")

@@ -1,0 +1,287 @@
+# ruff: noqa: F811 -- imported pytest fixtures
+import datetime as dt
+from pathlib import Path
+
+import pytest
+from sqlalchemy.orm import Session
+from test_management import mp4, parent  # noqa: F401
+from test_tv_playback import client  # noqa: F401
+
+from mollytime_server import config, db
+from mollytime_server.management_models import Device, MediaOptions, UploadTarget
+from mollytime_server.media_worker import run_once
+from mollytime_server.models import MediaFile
+from mollytime_server.remote_uploads import expire_uploads
+from mollytime_server.storage import build_storage
+from mollytime_server.utils.subtitles import webvtt
+
+
+class FakeOss:
+    name = "oss"
+
+    def __init__(self):
+        self.objects, self.uploaded, self.aborted = {}, {}, []
+        self.completed = 0
+
+    def initiate(self, key):
+        self.uploaded[key] = []
+        return "multipart"
+
+    def parts(self, key, upload_id):
+        return self.uploaded[key]
+
+    def size_if_exists(self, key):
+        return len(self.objects[key]) if key in self.objects else None
+
+    def size(self, key):
+        if key not in self.objects:
+            raise FileNotFoundError(key)
+        return len(self.objects[key])
+
+    def complete(self, key, upload_id, parts):
+        self.completed += 1
+        self.objects[key] = b"x" * sum(p["size"] for p in parts)
+
+    def abort(self, key, upload_id):
+        self.aborted.append(key)
+
+    def delete(self, key):
+        self.objects.pop(key, None)
+
+    def part_url(self, key, upload_id, number, ttl, md5):
+        return {
+            "url": f"https://bucket.example/{key}?part={number}",
+            "headers": {"Content-MD5": md5},
+        }
+
+    def signed_url(self, key, ttl):
+        return f"https://bucket.example/{key}?signed=1"
+
+    def download(self, key, path, expected_size):
+        Path(path).write_bytes(self.objects[key])
+
+    def open(self, key):
+        return self.objects[key]
+
+
+@pytest.fixture
+def remote(parent, monkeypatch):
+    fake, local = FakeOss(), build_storage("local")
+
+    def factory(backend=None):
+        return local if backend == "local" else fake
+
+    for module in ("api.manage_resources", "api.playback", "media_worker", "remote_uploads"):
+        monkeypatch.setattr(f"mollytime_server.{module}.build_storage", factory)
+    monkeypatch.setattr(config.get_settings(), "storage_backend", "oss")
+    return parent, fake
+
+
+def start(client, size=10):
+    response = client.post(
+        "/api/manage/uploads",
+        json={
+            "itemId": "e1",
+            "filename": "sample.mp4",
+            "size": size,
+            "fingerprint": "fingerprint",
+            "kind": "video",
+        },
+    )
+    assert response.status_code == 200
+    row = response.json()
+    with Session(db.get_engine()) as session:
+        return row["id"], session.get(UploadTarget, row["id"]).object_key
+
+
+def test_direct_upload_validation_and_recovery(remote):
+    client, oss = remote
+    key, obj = start(client)
+    assert client.get(f"/api/manage/uploads/{key}").json()["transport"] == "oss"
+    assert client.put(f"/api/manage/uploads/{key}/chunks?offset=0", content=b"x").status_code == 409
+    part = {"number": 2, "md5": "eHh4eHh4eHh4eHh4eHh4eA=="}
+    assert client.post(f"/api/manage/uploads/{key}/part-url", json=part).status_code == 422
+    part["number"] = 1
+    assert client.post(f"/api/manage/uploads/{key}/part-url", json=part).status_code == 200
+    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 409
+    oss.uploaded[obj] = [{"number": 1, "size": 9, "etag": "tag"}]
+    assert client.get(f"/api/manage/uploads/{key}/parts").status_code == 409
+    oss.uploaded[obj][0]["size"] = 10
+    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert oss.completed == 1
+    assert client.post(f"/api/manage/uploads/{key}/cancel").status_code == 409
+
+
+def test_remote_cancel_expiry_and_quota(remote):
+    client, oss = remote
+    key, obj = start(client)
+    with Session(db.get_engine()) as session:
+        session.get(UploadTarget, key).expires_at = dt.datetime.now(dt.UTC) - dt.timedelta(
+            seconds=1
+        )
+        session.commit()
+    assert client.get(f"/api/manage/uploads/{key}/parts").status_code == 410
+    expire_uploads()
+    assert obj in oss.aborted
+    assert client.get(f"/api/manage/uploads/{key}").json()["status"] == "cancelled"
+    config.get_settings().family_storage_limit_bytes = 1
+    assert (
+        client.post(
+            "/api/manage/uploads",
+            json={
+                "itemId": "e1",
+                "filename": "a.mp4",
+                "size": 10,
+                "fingerprint": "f",
+                "kind": "video",
+            },
+        ).status_code
+        == 507
+    )
+
+
+def test_mixed_playback_and_subtitle_cache(remote):
+    client, oss = remote
+    with Session(db.get_engine()) as session:
+        file = session.get(MediaFile, "v1")
+        file.storage, file.path, file.size_bytes, file.sha256 = "oss", "remote.mp4", 10, "abc"
+        sub = session.get(MediaFile, "s1")
+        sub.storage, sub.path, sub.sha256 = "oss", "remote.srt", "subtitle-version"
+        session.add(MediaOptions(media_id="s1", offset_ms=1000))
+        session.commit()
+    oss.objects["remote.srt"] = b"1\n00:00:01,000 --> 00:00:02,000\nHello\n"
+    info = client.get("/api/episodes/e1/playback").json()
+    assert info["url"].startswith("https://bucket.example/") and info["version"] == "abc"
+    assert client.get("/api/episodes/e1/play", follow_redirects=False).status_code == 302
+    assert client.get("/api/episodes/e2/playback").status_code == 404
+    path = info["subtitles"][0]["url"]
+    assert b"00:00:02.000 --> 00:00:03.000" in client.get(path).content
+    oss.objects.clear()
+    assert client.get(path).status_code == 200
+
+
+def test_remote_worker_failure_cleans_disk(remote):
+    client, oss = remote
+    key, obj = start(client)
+    oss.objects[obj] = b"not a mp4!"
+    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert run_once()
+    assert client.get(f"/api/manage/uploads/{key}").json()["status"] == "failed"
+    assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
+    assert obj in oss.objects
+
+
+def test_download_commands_and_status_ownership(parent):
+    from mollytime_server.auth import issue_access_token
+
+    with Session(db.get_engine()) as session:
+        session.add_all(
+            [
+                Device(id="d1", family_id="f1", user_id="u1", name="TV"),
+                Device(id="d2", family_id="f2", user_id="u1", name="Other"),
+            ]
+        )
+        session.get(MediaFile, "v1").size_bytes = 10
+        session.commit()
+    assert (
+        parent.post("/api/manage/resources/e1/downloads", json={"deviceId": "d2"}).status_code
+        == 404
+    )
+    response = parent.post("/api/manage/resources/e1/downloads", json={"deviceId": "d1"})
+    assert response.status_code == 200
+    download = response.json()
+    assert parent.get("/api/manage/resources/e1/downloads").json()[0]["status"] == "queued"
+    token, _ = issue_access_token(user_id="u1", family_id="f1", role="admin", device_id="d1")
+    parent.headers["Authorization"] = f"Bearer {token}"
+    assert parent.get("/api/device/downloads").json()[0]["playback"]["mediaId"] == "v1"
+    path = f"/api/device/downloads/{download['id']}/status"
+    body = {"version": "v1", "status": "saved", "downloadedBytes": 9}
+    assert parent.post(path, json=body).status_code == 409
+    body["downloadedBytes"] = 10
+    assert parent.post(path, json=body).status_code == 200
+    with Session(db.get_engine()) as session:
+        session.get(MediaFile, "v1").kind = "retired_video"
+        session.commit()
+    assert parent.get("/api/device/downloads").json()[0]["desired"] == "removed"
+    assert parent.get(f"/api/device/downloads/{download['id']}/playback").status_code == 409
+
+
+def test_webvtt_timing_and_unicode():
+    result = webvtt("1\r\n00:00:00,500 --> 00:00:02,000\r\n你好\r\n".encode(), -1000)
+    assert result.startswith(b"WEBVTT")
+    assert b"00:00:00.000 --> 00:00:01.000" in result
+    assert "你好" in result.decode()
+
+
+def test_remote_video_processes_and_preserves_cloud_source(remote, mp4):
+    import hashlib
+
+    web, oss = remote
+    data = mp4
+    key, obj = start(web, len(data))
+    oss.objects[obj] = data
+    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    with Session(db.get_engine()) as session:
+        file = session.get(MediaFile, key)
+        assert file.storage == "oss" and file.path == obj
+        assert file.sha256 == hashlib.sha256(data).hexdigest()
+        assert session.get(MediaOptions, key).retention == "backup"
+    assert oss.objects[obj] == data
+    assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
+    db.init_db()  # additive migration is safe to repeat
+    assert web.get("/api/episodes/e1/playback").json()["mediaId"] == key
+
+
+def test_failed_upload_can_be_discarded(remote):
+    web, oss = remote
+    key, obj = start(web)
+    oss.objects[obj] = b"not a mp4!"
+    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert run_once()
+    assert web.post(f"/api/manage/uploads/{key}/cancel").status_code == 200
+    assert obj not in oss.objects
+
+
+def test_remote_completion_recovers_after_database_interruption(remote):
+    web, oss = remote
+    key, obj = start(web)
+    # OSS has completed, but the original request never committed task creation.
+    oss.objects[obj] = b"x" * 10
+    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert oss.completed == 0
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "processing"
+
+
+def test_cross_family_cannot_sign_or_cancel_upload(remote):
+    from mollytime_server.auth import hash_password
+    from mollytime_server.models import User
+
+    web, _ = remote
+    key, _ = start(web)
+    with Session(db.get_engine()) as session:
+        session.add(
+            User(
+                id="other-parent",
+                family_id="f2",
+                name="other-parent",
+                password_hash=hash_password("other-password"),
+            )
+        )
+        session.commit()
+    auth = web.post(
+        "/api/manage/auth/login", json={"username": "other-parent", "password": "other-password"}
+    )
+    assert auth.status_code == 200
+    web.headers["X-CSRF-Token"] = auth.json()["csrfToken"]
+    assert web.get(f"/api/manage/uploads/{key}/parts").status_code == 404
+    assert (
+        web.post(
+            f"/api/manage/uploads/{key}/part-url",
+            json={"number": 1, "md5": "eHh4eHh4eHh4eHh4eHh4eA=="},
+        ).status_code
+        == 404
+    )
+    assert web.post(f"/api/manage/uploads/{key}/cancel").status_code == 404

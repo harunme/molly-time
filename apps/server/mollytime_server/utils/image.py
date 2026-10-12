@@ -42,3 +42,16 @@ def aspect_ratio_for(path: Path) -> float | None:
     except Exception as exc:  # pragma: no cover
         logger.debug("aspect ratio probe failed for %s: %s", path, exc)
         return None
+
+def atomic_write(path, data):
+    import os
+    import tempfile
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            temporary = handle.name
+            handle.write(data)
+        os.replace(temporary, path)
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)

@@ -6,17 +6,19 @@ import datetime as dt
 import re
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..deps import CurrentUser, DbSession
-from ..management_models import WatchProgress, WatchSession
+from ..management_models import MediaOptions, WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
 from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..storage.local import LocalStorage
 from ..utils.image import resize_to_file
+from ..utils.subtitles import webvtt
 
 router = APIRouter(prefix="/api", tags=["playback"])
 
@@ -73,19 +75,7 @@ def parse_range(header: str, total: int) -> tuple[int, int]:
     return start, end
 
 
-@router.api_route(
-    "/episodes/{episode_id}/play",
-    methods=["GET", "HEAD"],
-)
-def play(
-    episode_id: str,
-    request: Request,
-    user: CurrentUser,
-    db: DbSession,
-    mediaId: str | None = None,
-    sessionId: str | None = None,
-):
-    """Bounded-memory local playback; OSS delivery is a separate future step."""
+def authorized_file(db, episode_id, request, user, mediaId=None, sessionId=None):
     episode = _episode(db, episode_id, user.family_id)
     watch = db.get(WatchSession, sessionId) if sessionId else None
     valid_session = (
@@ -99,9 +89,94 @@ def play(
     if not valid_session:
         require_visible(db, episode, request)
     file = _pick_video_file(db, episode_id, user.family_id, mediaId)
-    storage = build_storage()
+    return file
+
+
+@router.get("/episodes/{episode_id}/playback")
+def resolve_playback(
+    episode_id: str,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+    mediaId: str | None = None,
+    sessionId: str | None = None,
+):
+    file = authorized_file(db, episode_id, request, user, mediaId, sessionId)
+    return playback_info(db, file, sessionId)
+
+
+def playback_info(db, file, session_id=None):
+    from urllib.parse import urlencode
+
+    storage = build_storage(file.storage)
+    ttl = get_settings().oss_signed_url_ttl
+    query = {"mediaId": file.id}
+    if session_id:
+        query["sessionId"] = session_id
+    if file.storage == "local":
+        url = f"/api/episodes/{file.item_id}/play?{urlencode(query)}"
+        expires = None
+    else:
+        url = storage.signed_url(file.path, ttl)
+        expires = (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=ttl)).isoformat()
+    subs = (
+        db.query(MediaFile)
+        .filter(MediaFile.item_id == file.item_id, MediaFile.kind == "subtitle")
+        .order_by(MediaFile.index)
+        .all()
+    )
+    tracks = []
+    for sub in subs:
+        options = db.get(MediaOptions, sub.id)
+        tracks.append(
+            {
+                "index": sub.index,
+                "language": sub.language or "und",
+                "label": options.label
+                if options and options.label
+                else sub.path.rsplit("/", 1)[-1],
+                "isDefault": sub.is_default,
+                "codec": "vtt",
+                "offsetMs": options.offset_ms if options else 0,
+                "url": f"/api/episodes/{file.item_id}/subtitles/{sub.index}?format=vtt&v={sub.sha256 or sub.id}",
+            }
+        )
+    return {
+        "mediaId": file.id,
+        "version": file.sha256 or file.id,
+        "size": file.size_bytes or storage.size(file.path),
+        "sha256": file.sha256,
+        "mime": file.mime or "video/mp4",
+        "storage": file.storage,
+        "url": url,
+        "expiresAt": expires,
+        "subtitles": tracks,
+        "headers": {},
+        "retention": "backup",
+    }
+
+
+@router.api_route(
+    "/episodes/{episode_id}/play",
+    methods=["GET", "HEAD"],
+)
+def play(
+    episode_id: str,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+    mediaId: str | None = None,
+    sessionId: str | None = None,
+):
+    """Legacy playback entry: local Range delivery or authorized OSS redirect."""
+    file = authorized_file(db, episode_id, request, user, mediaId, sessionId)
+    storage = build_storage(file.storage)
     if not isinstance(storage, LocalStorage):
-        raise HTTPException(status_code=503, detail="remote playback is not configured")
+        return RedirectResponse(
+            storage.signed_url(file.path, get_settings().oss_signed_url_ttl),
+            status_code=302,
+            headers={"Cache-Control": "no-store"},
+        )
     obj = storage.resolve(file.path)
     total = obj.size_bytes
     if not storage._abspath(file.path).is_file():
@@ -208,6 +283,7 @@ def subtitle(
     user: CurrentUser,
     db: DbSession,
     request: Request,
+    format: str | None = None,
 ):
     require_visible(db, _episode(db, episode_id, user.family_id), request)
     f = (
@@ -221,7 +297,21 @@ def subtitle(
     )
     if f is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    storage = build_storage()
+    storage = build_storage(f.storage)
+    options = db.get(MediaOptions, f.id)
+    if format == "vtt":
+        cache = get_settings().data_dir / "subtitle-cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        offset = options.offset_ms if options else 0
+        path = cache / f"{f.id}-{f.sha256 or f.id}-{offset}.vtt"
+        if not path.exists():
+            data = webvtt(storage.open(f.path), offset)
+            from ..utils.image import atomic_write
+
+            atomic_write(path, data)
+        return Response(
+            path.read_bytes(), media_type="text/vtt", headers={"Cache-Control": "private, no-cache"}
+        )
     blob = storage.open(f.path)
     return Response(
         content=blob,
@@ -271,8 +361,7 @@ def image(
     if file is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    storage = build_storage()
-    blob = storage.open(file.path)
+    storage = build_storage(file.storage)
     target_w = w if (w and w > 0) else 800
     if h is not None and h <= 0:
         h = None
@@ -284,6 +373,8 @@ def image(
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / f"{file.id}_{target_w or 'orig'}.jpg"
     if not cache_path.exists():
-        resize_to_file(blob, cache_path, target_w)
+        resize_to_file(storage.open(file.path), cache_path, target_w)
     data = cache_path.read_bytes()
-    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})
+    return Response(
+        content=data, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"}
+    )

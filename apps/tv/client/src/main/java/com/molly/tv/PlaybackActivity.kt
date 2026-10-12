@@ -15,8 +15,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.*
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -36,12 +34,21 @@ class PlaybackActivity : AppCompatActivity() {
     private var active = false
     private var loadGeneration = 0
     private var watchId = ""
+    private var sourceInfo: JSONObject? = null
+    private var refreshAttempts = 0
     private var clock: PlayingClock? = null
     private var sequence = 0
     private val handler = Handler(Looper.getMainLooper())
     private val heartbeat = object : Runnable {
         override fun run() {
             report("progress")
+            app.io.execute {
+                runCatching { app.api.json("GET", "/api/me") }.onFailure { error ->
+                    if (error is ApiFailure && error.status in listOf(401, 403)) runOnUiThread {
+                        player?.pause(); finish()
+                    }
+                }
+            }
             handler.postDelayed(this, 15000)
         }
     }
@@ -83,13 +90,18 @@ class PlaybackActivity : AppCompatActivity() {
                 val body = JSONObject().put("episodeId", episodeId)
                 if (child.isNotEmpty()) body.put("childId", child)
                 val watch = app.api.json("POST", "/api/playback/sessions", body)
-                Triple(detail, resume, watch.getString("sessionId"))
+                val sessionId = watch.getString("sessionId")
+                val mediaId = Uri.parse(detail.getJSONArray("sources").optJSONObject(0)?.optString("url") ?: "").getQueryParameter("mediaId")
+                val info = app.api.json("GET", "/api/episodes/$episodeId/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
+                detail.put("playback", info)
+                Triple(detail, resume, sessionId)
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
                 if (active && current == loadGeneration && !isDestroyed) {
                     watchId = sessionId
                     clock = PlayingClock(SystemClock.elapsedRealtime())
                     sequence = 0
                     if (position == 0L && !resume.optBoolean("completed")) position = resume.optLong("positionMs")
+                    refreshAttempts = 0
                     prepare(detail)
                 }
             } }.onFailure { error -> runOnUiThread {
@@ -101,25 +113,25 @@ class PlaybackActivity : AppCompatActivity() {
     private fun prepare(detail: JSONObject) {
         val runtime = detail.optLong("runtimeMs", 0)
         if (runtime > 0 && position >= runtime) position = 0
-        val source = detail.getJSONArray("sources").optJSONObject(0)
-        if (source == null) { status.text = "这集暂无可播放的视频，按返回选择其他内容"; return }
-        val dataSource = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(app.api.http)
-            .setDefaultRequestProperties(mapOf("Authorization" to "Bearer ${app.session.access}")))
+        val source = detail.getJSONObject("playback")
+        sourceInfo = source
+        val dataSource = app.media.factory()
         val exo = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(dataSource)).build()
         player = exo
         playerView.player = exo
         val subtitles = source.optJSONArray("subtitles")
         val configs = (0 until (subtitles?.length() ?: 0)).map { index ->
             val sub = subtitles!!.getJSONObject(index)
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(app.session.server +
-                "/api/episodes/$episodeId/subtitles/${sub.getInt("index")}"))
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(app.session.server + sub.getString("url")))
                 .setMimeType(if (sub.optString("codec") == "vtt") MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP)
                 .setLanguage(sub.optString("language", "und")).setLabel(sub.optString("label"))
                 .setSelectionFlags(if (sub.optBoolean("isDefault")) C.SELECTION_FLAG_DEFAULT else 0).build()
         }
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                status.text = "播放失败（${error.errorCodeName}）。按确定重试，返回退出"
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && refreshAttempts < 2) {
+                    refreshSource()
+                } else status.text = "播放失败（${error.errorCodeName}）。按确定重试，返回退出"
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) status.text = ""
@@ -132,14 +144,32 @@ class PlaybackActivity : AppCompatActivity() {
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
         })
-        val mediaPath = source.getString("url")
-        val mediaUri = Uri.parse(app.session.server + mediaPath).buildUpon().appendQueryParameter("sessionId", watchId).build()
-        exo.setMediaItem(MediaItem.Builder().setUri(mediaUri)
+        exo.setMediaItem(MediaItem.Builder().setUri(app.media.uri(source))
+            .setCustomCacheKey(app.media.key(source)).setMimeType(source.optString("mime", "video/mp4"))
             .setMediaId(episodeId).setSubtitleConfigurations(configs).build(), position)
         exo.prepare()
         exo.playWhenReady = playOnResume
         handler.postDelayed(heartbeat, 15000)
         playerView.requestFocus()
+    }
+
+    private fun refreshSource() {
+        val mediaId = sourceInfo?.optString("mediaId") ?: return
+        refreshAttempts++
+        position = player?.currentPosition?.coerceAtLeast(0) ?: position
+        playOnResume = player?.playWhenReady ?: true
+        sample(false)
+        release()
+        status.text = "正在刷新播放地址…"
+        val current = ++loadGeneration
+        app.io.execute {
+            runCatching { app.api.json("GET", "/api/episodes/$episodeId/playback?mediaId=$mediaId&sessionId=$watchId") }
+                .onSuccess { info -> runOnUiThread {
+                    if (active && current == loadGeneration) prepare(JSONObject().put("playback", info))
+                } }.onFailure { error -> runOnUiThread {
+                    if (active && current == loadGeneration) status.text = (error.message ?: "播放地址刷新失败") + "。按确定重试"
+                } }
+        }
     }
 
     private fun report(event: String) {

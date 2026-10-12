@@ -128,6 +128,7 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
       if (match) { selectedChild = match[1]; saveBinding(); }
       return result;
     }
+    case 'playEpisode': window.dispatchEvent(new CustomEvent('molly:browserPlay', { detail: String(args.episodeId) })); return { ok: true };
     case 'connection': throw new ApiError('请在电视客户端中修改媒体库连接');
     default: throw new ApiError('浏览器仅供预览，请在电视客户端播放');
   }
@@ -142,4 +143,20 @@ export async function imageSource(path: string, width = 480): Promise<string> {
   const result = await fetch(url, { headers: { Authorization: `Bearer ${access}` } });
   if (!result.ok) throw new ApiError('封面暂不可用');
   return URL.createObjectURL(await result.blob());
+}
+
+
+export const browserRequest = <T>(path: string, method = 'GET', body?: unknown) => {
+  if (port) return Promise.reject(new ApiError('请使用原生播放器')) as Promise<T>;
+  if (method === 'POST' && path === '/api/playback/sessions' && selectedChild) {
+    body = { ...(body as Record<string, unknown>), childId: selectedChild };
+  }
+  if (method === 'GET' && /\/progress$/.test(path) && selectedChild) path += `?childId=${encodeURIComponent(selectedChild)}`;
+  return fetchApi(path, method, body) as Promise<T>;
+};
+export function browserMediaUrl(path: string): string {
+  const url = new URL(path, location.origin);
+  // A token is needed by HTML video/track, and is never sent to an external origin.
+  if (url.origin === location.origin) url.searchParams.set('token', access);
+  return url.toString();
 }

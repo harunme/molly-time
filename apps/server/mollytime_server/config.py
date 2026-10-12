@@ -16,9 +16,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MOLLYTIME_",
         populate_by_name=True,
-        alias_generator=AliasGenerator(validation_alias=lambda field: AliasChoices(
-            "MOLLYTIME_" + field.upper(), "MOLLY_" + field.upper(),
-        )),
+        alias_generator=AliasGenerator(
+            validation_alias=lambda field: AliasChoices(
+                "MOLLYTIME_" + field.upper(),
+                "MOLLY_" + field.upper(),
+            )
+        ),
         env_file=".env",
         extra="ignore",
     )
@@ -44,7 +47,7 @@ class Settings(BaseSettings):
     # Override in production via MOLLYTIME_AUTH_SECRET. The literal "dev-secret-do-not-use-in-prod"
     # is the dev fallback so the service runs without env configuration.
     auth_secret: str = "dev-secret-do-not-use-in-prod"
-    access_token_ttl_seconds: int = 60 * 60           # 1h
+    access_token_ttl_seconds: int = 60 * 60  # 1h
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 days
 
     # ---- Admin bootstrap -------------------------------------------------------
@@ -59,8 +62,13 @@ class Settings(BaseSettings):
     oss_bucket: str | None = None
     oss_access_key_id: str | None = None
     oss_access_key_secret: str | None = None
-    oss_cdn_domain: str | None = None
-    oss_signed_url_ttl: int = 60 * 60 * 4
+    oss_internal_endpoint: str | None = None
+    oss_cdn_domain: str | None = None  # reserved; never rewrite a signed host
+    oss_upload_ttl: int = Field(default=900, ge=60, le=3600)
+    upload_expiry_hours: int = Field(default=72, ge=1)
+    family_storage_limit_bytes: int = Field(default=0, ge=0)  # 0 = unlimited
+    media_processing_max_bytes: int = Field(default=10 * 1024**3, gt=0)
+    oss_signed_url_ttl: int = Field(default=3600, ge=60, le=14400)
 
     # ---- Helpers ---------------------------------------------------------------
     def resolved_db_url(self) -> str:

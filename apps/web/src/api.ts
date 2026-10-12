@@ -1,7 +1,7 @@
 export type Session = { user: { id: string; name: string; role: string }; family: { id: string; name: string }; csrfToken: string };
-export type Resource = { id: string; name: string; type: 'Series' | 'Season' | 'Episode'; parentId: string | null; overview: string; indexNumber: number | null; status: string; ready: boolean; legacy: boolean; runtimeMs: number; imageUrl: string; files: { id: string; name: string; kind: string; size: number; language: string }[] };
+export type Resource = { id: string; name: string; type: 'Series' | 'Season' | 'Episode'; parentId: string | null; overview: string; indexNumber: number | null; status: string; ready: boolean; legacy: boolean; runtimeMs: number; imageUrl: string; files: { id: string; name: string; kind: string; size: number; language: string; storage: string; version: string; isDefault: boolean; offsetMs: number }[] };
 export type Child = { id: string; name: string };
-export type Upload = { id: string; itemId: string; filename: string; size: number; offset: number; status: string; fingerprint: string; kind: string; error: string; taskId: string | null; taskStatus: string | null };
+export type Upload = { id: string; itemId: string; filename: string; size: number; offset: number; status: string; fingerprint: string; kind: string; error: string; taskId: string | null; taskStatus: string | null; transport?: 'local' | 'oss'; partSize?: number };
 export type Row = { id: string; title: string; source: 'manual' | 'recent' | 'continue'; enabled: boolean; limit: number; itemIds: string[] };
 export type Content = { schemaVersion: number; rows: Row[] };
 export type Config = { revision: number; content: Content; followingFamily: boolean; publishedId: string | null };

@@ -138,3 +138,75 @@ test('TV QR pairing survives parent login and requires explicit mobile confirmat
     expect(await tv.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).toBeNull();
   } finally { await tvContext.close(); }
 });
+
+test('OSS upload resumes existing parts and sends video bytes only to the signed destination', async ({ page }) => {
+  await login(page);
+  const buffer = Buffer.from('direct upload bytes');
+  const row = { id: 'oss-test', itemId: 'episode', filename: 'direct.mp4', size: buffer.length,
+    offset: 0, status: 'uploading', fingerprint: '', kind: 'video', error: '', transport: 'oss', partSize: 8 };
+  const parts: number[] = [], received: Buffer[] = [];
+  let completed = false;
+  await page.route('**/api/manage/uploads', async (route) => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      await route.fulfill({ json: { ...row, fingerprint: input.fingerprint } });
+    } else await route.fulfill({ json: [] });
+  });
+  await page.route('**/api/manage/uploads/oss-test**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/parts')) await route.fulfill({ json: { partSize: 8, parts: [{ number: 1, size: 8 }] } });
+    else if (path.endsWith('/part-url')) {
+      const body = route.request().postDataJSON(); parts.push(body.number);
+      await route.fulfill({ json: { url: `https://oss-upload.example/part/${body.number}`, headers: { 'Content-MD5': body.md5, 'Content-Type': 'application/octet-stream' } } });
+    } else if (path.endsWith('/complete')) { completed = true; await route.fulfill({ json: { ...row, status: 'processing' } }); }
+    else if (path.endsWith('/chunks')) throw new Error('OSS bytes must not be proxied by Molly');
+    else await route.fulfill({ json: row });
+  });
+  await page.route('https://oss-upload.example/**', async (route) => {
+    if (route.request().method() === 'PUT') {
+      expect(route.request().headers()['authorization']).toBeUndefined();
+      expect(route.request().headers()['cookie']).toBeUndefined();
+      expect(route.request().headers()['content-md5']).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+      received.push(route.request().postDataBuffer()!);
+    }
+    await route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5174', 'Access-Control-Allow-Methods': 'PUT, OPTIONS', 'Access-Control-Allow-Headers': 'content-md5,content-type' } });
+  });
+  await page.evaluate(async ({ values }) => {
+    const { enqueue } = await import('/manage/src/uploads.ts');
+    await enqueue(new File([new Uint8Array(values)], 'direct.mp4', { type: 'video/mp4' }), 'episode', 'video');
+  }, { values: Array.from(buffer) });
+  await expect.poll(() => completed).toBe(true);
+  expect(parts).toEqual([2, 3]);
+  expect(Buffer.concat(received)).toEqual(buffer.subarray(8));
+});
+
+test('browser TV resolves an authenticated video and reports playback without the native bridge', async ({ page, browser }) => {
+  await login(page);
+  const auth = await (await page.request.post('/api/auth/login', {
+    headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent', password: 'parent-e2e' },
+  })).json();
+  const context = await browser.newContext();
+  const tv = await context.newPage();
+  try {
+    await tv.addInitScript((binding) => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), {
+      accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId, childId: 'child',
+    });
+    await tv.goto('http://127.0.0.1:8098/tv/');
+    await tv.locator('[data-focus="series-series"]').click();
+    await tv.locator('[data-focus="season-season"]').click();
+    const resolved = tv.waitForResponse((r) => r.url().includes('/api/episodes/browser-episode/playback') && r.status() === 200);
+    await tv.locator('[data-focus="episode-browser-episode"]').click();
+    const info = await (await resolved).json();
+    expect(info.mediaId).toBe('browser-media');
+    await expect(tv.getByRole('dialog', { name: '视频播放' })).toBeVisible();
+    await expect(tv.locator('video')).toHaveAttribute('src', /\/api\/episodes\/browser-episode\/play\?.*token=/);
+    const capabilities = await tv.locator('video').evaluate((v) => ({ webm: (v as HTMLVideoElement).canPlayType('video/webm'), error: (v as HTMLVideoElement).error?.code }));
+    const mediaResponse = await tv.request.get(await tv.locator('video').getAttribute('src') || '');
+    expect(mediaResponse.status(), JSON.stringify(capabilities)).toBe(200);
+    expect(capabilities.webm).not.toBe('');
+    await tv.locator('video').evaluate((v) => (v as HTMLVideoElement).play());
+    await expect.poll(async () => tv.locator('video').evaluateAll((videos) => videos.some((v) => (v as HTMLVideoElement).currentTime > 0))).toBe(true);
+    await tv.getByRole('button', { name: '返回媒体库', exact: true }).click();
+    await expect(tv.getByRole('dialog', { name: '视频播放' })).toHaveCount(0);
+  } finally { await context.close(); }
+});

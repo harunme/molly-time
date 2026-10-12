@@ -4,7 +4,7 @@ import android.content.Context
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 
-class SessionStore(context: Context) {
+class SessionStore(context: Context, private val onBindingChanged: () -> Unit = {}) {
     // New store intentionally does not inherit the previous client's credentials.
     private val prefs = context.getSharedPreferences("molly.shell.v1", Context.MODE_PRIVATE)
     val server: String get() = prefs.getString("server", "")!!
@@ -33,6 +33,7 @@ class SessionStore(context: Context) {
             edit.putString("server", normalized).putString("access", saved.optString("access"))
                 .putString("refresh", saved.optString("refresh")).putString("device", saved.optString("device"))
                 .putString("child", saved.optString("child")).commit()
+            onBindingChanged()
         }
     }
 
@@ -42,9 +43,11 @@ class SessionStore(context: Context) {
         if (clearChild) edit.remove("child")
         val device = json.opt("deviceId")
         if (device is String && device.isNotEmpty()) edit.putString("device", device)
+        val previousDevice = deviceId
         edit.commit()
+        if (previousDevice != deviceId) onBindingChanged()
     }
 
     fun clear() { prefs.edit().remove("access").remove("refresh").remove("child")
-        .remove("device").remove("binding:$server").commit() }
+        .remove("device").remove("binding:$server").commit(); onBindingChanged() }
 }

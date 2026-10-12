@@ -180,3 +180,36 @@ class WatchProgress(Base):
     seq: Mapped[int] = mapped_column(Integer)
     position_ms: Mapped[int] = mapped_column(Integer)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class UploadTarget(Base):
+    """Additive upload transport data; legacy sessions remain local."""
+
+    __tablename__ = "upload_targets"
+    upload_id: Mapped[str] = mapped_column(ForeignKey("upload_sessions.id"), primary_key=True)
+    backend: Mapped[str] = mapped_column(String(16), default="local")
+    object_key: Mapped[str] = mapped_column(String(1024), default="")
+    multipart_id: Mapped[str] = mapped_column(Text, default="")
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
+
+
+class MediaOptions(Base):
+    __tablename__ = "media_options"
+    media_id: Mapped[str] = mapped_column(ForeignKey("media_files.id"), primary_key=True)
+    retention: Mapped[str] = mapped_column(String(16), default="backup")
+    label: Mapped[str] = mapped_column(String(256), default="")
+    offset_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DeviceDownload(Base):
+    __tablename__ = "device_downloads"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    media_id: Mapped[str] = mapped_column(ForeignKey("media_files.id"), index=True)
+    desired: Mapped[str] = mapped_column(String(16), default="saved")
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    downloaded_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(String(256), default="")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
+    __table_args__ = (UniqueConstraint("device_id", "media_id"),)

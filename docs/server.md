@@ -8,7 +8,7 @@ MollyTime 的唯一业务与媒体后台；家庭、儿童、上传、首页与�
 - **自研协议**：API 字段命名用 camelCase，匹配 Kotlin data class；客户端无需协议映射层
 - **自研认证**：HMAC-SHA256 短期 access token（默认 1 小时）+ opaque refresh token（默认 30 天，存哈希）
 - **薄媒体能力**：仅 Range 直流 + HTTP Range 解析；不支持转码、不实现 DASH/HLS 主线（当前轻量客户端使用 Media3 直读 MP4/SRT）
-- **OSS 尚未接通**：已有存储适配与签名 URL 代码，播放路由尚未实现签名地址跳转；无真实凭证与 CDN 验收
+- **OSS 直传与直播放**：已接入官方 SDK、分片签名上传、播放解析与兼容 302；真实 Bucket 与 TV 验收见 [部署说明](oss-storage.md)
 
 ## 端点
 
@@ -24,7 +24,7 @@ MollyTime 的唯一业务与媒体后台；家庭、儿童、上传、首页与�
 | GET  | `/api/series/{id}` | ✓ | series 详情 + seasons 列表 |
 | GET  | `/api/seasons/{id}` | ✓ | season 详情 + episodes 列表 |
 | GET  | `/api/episodes/{id}` | ✓ | episode 详情 + sources（带字幕轨） |
-| GET  | `/api/episodes/{id}/play` | ✓ | 本地 MP4 Range 响应；OSS 跳转待实现 |
+| GET  | `/api/episodes/{id}/play` | ✓ | 本地 MP4 Range 响应；OSS 鉴权后 302 跳转 |
 | GET | `/api/episodes/{id}/progress?childId=` | ✓ | 读取儿童或当前账号的续播位置 |
 | POST | `/api/episodes/{id}/progress` | ✓ | 记录播放进度，支持校验后的 childId |
 | GET  | `/api/episodes/{id}/subtitles/{i}` | ✓ | SRT/VTT 直发 |
@@ -147,9 +147,9 @@ playback_events    (id, family_id, user_id, child_id, item_id, position_ms, dura
 | 路径 | 行为 |
 |---|---|
 | `storage_backend=local` | LocalStorage 在 `MOLLYTIME_MEDIA_DIR` 下读取上传文件；默认根目录为 `MOLLYTIME_DATA_DIR/media`，范围外路径拒绝 |
-| `storage_backend=oss`   | OssStorage 已有签名 URL 方法；播放路由 302 跳转尚未实现，CDN 配置尚未验证 |
+| `storage_backend=oss`   | 官方 OSS SDK、浏览器分片直传、签名直播放；CDN 暂不接入 |
 
-P0 默认 local。OSS 接口已经预留但未实际验证（无凭证）。
+默认 local，按文件存储类型路由，支持 local/oss 共存。配置与实体设备验收见 [OSS 与电视缓存](oss-storage.md)。
 
 ## TV 网页部署
 

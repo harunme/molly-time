@@ -1,3 +1,4 @@
+import SparkMD5 from 'spark-md5';
 import { api, type Upload } from './api';
 
 const files = new Map<string, File>();
@@ -51,6 +52,28 @@ function pump() {
 async function transfer(id: string) {
   const file = files.get(id)!;
   let row = await api<Upload>(`/uploads/${id}`);
+  if (row.transport === 'oss') {
+    const { parts, partSize } = await api<{ parts: { number: number; size: number }[]; partSize: number }>(`/uploads/${id}/parts`);
+    const existing = new Set(parts.map((p) => p.number));
+    let offset = parts.reduce((total, p) => total + p.size, 0);
+    for (let number = 1; number <= Math.ceil(file.size / partSize) && !paused.has(id); number++) {
+      if (existing.has(number)) continue;
+      const chunk = file.slice((number - 1) * partSize, number * partSize);
+      const md5 = btoa(SparkMD5.ArrayBuffer.hash(await chunk.arrayBuffer(), true));
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const signed = await api<{ url: string; headers: Record<string, string> }>(`/uploads/${id}/part-url`, 'POST', { number, md5 });
+          const result = await fetch(signed.url, { method: 'PUT', credentials: 'omit', headers: signed.headers, body: chunk });
+          if (!result.ok) throw new Error('云端上传失败，请重试；若持续失败请联系管理员检查跨域配置');
+          break;
+        } catch (error) { if (attempt === 2) throw error; }
+      }
+      offset += chunk.size;
+      live.set(id, { offset, error: '', paused: paused.has(id) }); changed();
+    }
+    if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST'); files.delete(id); live.delete(id); }
+    return;
+  }
   while (row.offset < file.size && !paused.has(id)) {
     const part = file.slice(row.offset, row.offset + 8 * 1024**2);
     const hash = await sha(part);
