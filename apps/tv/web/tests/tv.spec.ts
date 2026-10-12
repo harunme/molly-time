@@ -120,6 +120,13 @@ test('remote navigation, playback return, folder restoration and durable binding
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
 
+  await page.keyboard.press('ContextMenu');
+  await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
+  await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+  await page.keyboard.press('ContextMenu');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
+
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await page.keyboard.press('Enter');
@@ -130,8 +137,15 @@ test('remote navigation, playback return, folder restoration and durable binding
   await expect(page.locator('.detail-art')).toHaveCount(0);
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:menu')));
+  await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:menu')));
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => (window as unknown as { playbackId: string }).playbackId)).toBe('e2');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:menu')));
+  await expect(page.getByRole('heading', { name: '电视设置' })).toHaveCount(0);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:playbackClosed')));
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
   await expect(page.locator('.player-status')).toHaveCount(0);

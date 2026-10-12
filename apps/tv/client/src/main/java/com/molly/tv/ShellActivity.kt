@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.webkit.*
 import android.widget.*
@@ -53,6 +54,16 @@ class ShellActivity : AppCompatActivity() {
             }
         })
         if (app.session.server.isEmpty()) connection() else loadPage()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_MENU && pageReady && !playing) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('molly:menu'))", null)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun destroyWeb() {

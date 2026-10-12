@@ -137,9 +137,9 @@ function App() {
     return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', resumed); };
   }, [authenticated, fail]);
 
-  const openOverlay = (next: Overlay) => {
+  const openOverlay = useCallback((next: Overlay) => {
     overlayOrigin.current = getCurrentFocusKey() || 'settings'; setError(''); setOverlay(next);
-  };
+  }, []);
   const closeOverlay = useCallback(() => {
     if (selectingChild || (overlay === 're-pair' && busy)) return;
     finishScrolls(viewport.current);
@@ -155,14 +155,23 @@ function App() {
   }, [folder, overlay, closeOverlay]);
   useEffect(() => {
     window.mollyBack = back;
+    const menu = () => {
+      if (!playing && !overlay) openOverlay('settings');
+    };
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'ContextMenu' || event.key === 'Menu' || event.keyCode === 93) {
+        event.preventDefault();
+        if (!event.repeat) menu();
+        return;
+      }
       if (event.key === 'Escape' || event.key === 'BrowserBack' || event.keyCode === 461 || event.keyCode === 10009) {
         if (back()) event.preventDefault();
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => { delete window.mollyBack; window.removeEventListener('keydown', onKey); };
-  }, [back]);
+    window.addEventListener('molly:menu', menu);
+    return () => { delete window.mollyBack; window.removeEventListener('keydown', onKey); window.removeEventListener('molly:menu', menu); };
+  }, [back, playing, overlay, openOverlay]);
   useEffect(() => {
     const returned = () => {
       setPlaying(false);
