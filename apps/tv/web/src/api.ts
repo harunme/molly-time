@@ -1,3 +1,4 @@
+import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; devicePairing?: boolean; devicePairingReset?: boolean };
 export type Child = { id: string; name: string };
 export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
@@ -24,6 +25,7 @@ if (port) port.onmessage = (event) => {
 };
 
 export function call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (demoEnabled) return Promise.resolve().then(() => demoCall(method, args) as T);
   if (!port) return browserCall(method, args) as Promise<T>;
   if (pending.size >= 24) return Promise.reject(new ApiError('请求过多，请稍后重试'));
   return new Promise((resolve, reject) => {
@@ -52,7 +54,7 @@ function clearBinding() {
   access = ''; refresh = ''; deviceId = ''; selectedChild = '';
   try { localStorage.removeItem(bindingKey); } catch { /* Storage can be unavailable in a restricted browser. */ }
 }
-if (!port) {
+if (!port && !demoEnabled) {
   try {
     const saved = JSON.parse(localStorage.getItem(bindingKey) || 'null');
     if (saved && typeof saved.refreshToken === 'string' && typeof saved.accessToken === 'string' && typeof saved.deviceId === 'string') {
@@ -134,6 +136,7 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
   }
 }
 export async function imageSource(path: string, width = 480): Promise<string> {
+  if (demoEnabled) return demoImage(path);
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !/^\/api\/items\/[A-Za-z0-9-]+\/image$/.test(url.pathname)) throw new ApiError('封面地址无效');
   const version = url.searchParams.get('v');
@@ -147,6 +150,7 @@ export async function imageSource(path: string, width = 480): Promise<string> {
 
 
 export const browserRequest = <T>(path: string, method = 'GET', body?: unknown) => {
+  if (demoEnabled) return Promise.resolve().then(() => demoRequest(path) as T);
   if (port) return Promise.reject(new ApiError('请使用原生播放器')) as Promise<T>;
   if (method === 'POST' && path === '/api/playback/sessions' && selectedChild) {
     body = { ...(body as Record<string, unknown>), childId: selectedChild };

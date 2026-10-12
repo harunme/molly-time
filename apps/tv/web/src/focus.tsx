@@ -61,10 +61,15 @@ export function revealCard(node: HTMLElement) {
   const viewport = node.closest<HTMLElement>('.shelves-scroll');
   if (viewport && node.closest('.topbar')) glide(viewport, 0, 0);
   if (shelf && viewport) {
-    const top = shelf.offsetTop, bottom = top + shelf.offsetHeight;
+    let top = shelf.offsetTop, bottom = top + shelf.offsetHeight;
+    if (node.closest('.episode-grid')) {
+      top = 0;
+      for (let element: HTMLElement | null = node; element && element !== viewport; element = element.offsetParent as HTMLElement | null) top += element.offsetTop;
+      bottom = top + node.offsetHeight;
+    }
     const current = scrolling.get(viewport)?.top ?? viewport.scrollTop;
     const inset = Math.max(12, parseFloat(getComputedStyle(viewport).scrollPaddingTop) || 0);
-    if (top < current + inset) glide(viewport, 0, shelf === viewport.querySelector('.shelf') ? 0 : top - inset);
+    if (top < current + inset) glide(viewport, 0, !node.closest('.episode-grid') && shelf === viewport.querySelector('.shelf') ? 0 : top - inset);
     else if (bottom > current + viewport.clientHeight - 12) glide(viewport, 0, bottom - viewport.clientHeight + 12);
   }
   const panel = node.closest<HTMLElement>('.overlay-panel');
@@ -83,6 +88,21 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
     onArrowPress: (direction) => {
       if (onArrow?.(direction) === false) return false;
       const node = ref.current as HTMLButtonElement | null;
+      const grid = node?.closest<HTMLElement>('.episode-grid');
+      if (grid) {
+        const cards = Array.from(grid.querySelectorAll<HTMLButtonElement>('button[data-focus]:not(:disabled)'));
+        const index = cards.indexOf(node!);
+        const columns = cards.filter((card) => card.offsetTop === cards[0].offsetTop).length;
+        const row = Math.floor(index / columns);
+        let next = index;
+        if (direction === 'left' && index % columns > 0) next--;
+        if (direction === 'right' && index % columns < columns - 1 && index + 1 < cards.length) next++;
+        if (direction === 'up' && row === 0) return true;
+        if (direction === 'up' && row > 0) next -= columns;
+        if (direction === 'down' && (row + 1) * columns < cards.length) next = Math.min(index + columns, cards.length - 1);
+        if (next !== index) setFocus(cards[next].dataset.focus!);
+        return false;
+      }
       const rail = node?.closest<HTMLElement>('.rail-track');
       if (rail && (direction === 'left' || direction === 'right')) {
         const cards = Array.from(rail.querySelectorAll<HTMLButtonElement>('button[data-focus]:not(:disabled)'));

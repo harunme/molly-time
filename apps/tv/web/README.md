@@ -17,6 +17,12 @@ pnpm test
 
 生产输出 `dist/`，后台启动时在 `/tv/` 挂载；可用 `MOLLYTIME_TV_WEB_DIR` 指定部署目录。入口 HTML 禁止陈旧缓存，带哈希的资源长期缓存。部署时保留旧版资源并原子切换入口，确保旧页面仍能请求它引用的文件。`pnpm build` 只是本地构建，不等于线上原子部署。
 
+## 假数据预览
+
+开发服务打开 `http://127.0.0.1:5173/tv/?mock=1`，无需后台或绑定。包含 36 个文件夹、每个 80 集、12 条最近播放记录、不同封面和观看进度、两个儿童档案，可测试横向内容行、纵向视频网格和遥控器导航。假数据没有实际视频，点击播放会提示返回列表。
+
+仅 Vite 开发模式的浏览器启用；不请求真实 API，不修改本地绑定。移除 `mock=1` 恢复真实媒体库。
+
 ## 发版前 Android 实测
 
 在连接模拟器、安装 debug APK、配置后台地址并打开网页后运行：
@@ -31,7 +37,7 @@ pnpm exec node tests/smoke-android.mjs
 
 ## 界面与焦点
 
-新版参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)，采用固定侧栏、随焦点变化的内容预览和独立横向内容行。焦点按屏幕/侧栏/内容行/弹层分组，跨行、页面返回与原生播放返回均保存卡片及滚动位置。设置和儿童弹层限制方向键焦点，返回恢复原菜单。
+新版参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)，采用右上角设置入口、首页独立横向内容行和文件夹纵向视频网格。焦点按屏幕/内容/弹层分组，跨行、页面返回与原生播放返回均保存卡片及滚动位置。设置和儿童弹层限制方向键焦点，返回恢复入口焦点。
 
 只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../../docs/tv-interface-design.md)。网页构建后重新打开 TV 壳子加载新入口，无需修改 Bridge。
 

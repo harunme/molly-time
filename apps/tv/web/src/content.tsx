@@ -7,7 +7,7 @@ export function Icon({ name }: { name: 'home' | 'people' | 'settings' | 'back' |
     menu: <path d="M4 6h16M4 12h16M4 18h16" />,
     home: <><path d="m3 10 9-7 9 7v10H3Z" /><path d="M9 20v-7h6v7" /></>,
     people: <><circle cx="9" cy="8" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M19 15a5 5 0 0 1 2 5" /></>,
-    settings: <><path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 3 3-1 3 3 3-1 1-3 3-1 2-3-2-2 1-3-2-3-3 1-3-3Z" /><circle cx="12" cy="12" r="3" /></>,
+    settings: <><path d="M19.727 9.929L21.877 10.436L21.877 13.564L19.727 14.071L18.928 16.000L20.090 17.878L17.878 20.090L16.000 18.928L14.071 19.727L13.564 21.877L10.436 21.877L9.929 19.727L8.000 18.928L6.122 20.090L3.910 17.878L5.072 16.000L4.273 14.071L2.123 13.564L2.123 10.436L4.273 9.929L5.072 8.000L3.910 6.122L6.122 3.910L8.000 5.072L9.929 4.273L10.436 2.123L13.564 2.123L14.071 4.273L16.000 5.072L17.878 3.910L20.090 6.122L18.928 8.000Z" /><circle cx="12" cy="12" r="3" /></>,
     back: <path d="m14 5-7 7 7 7M7 12h14" />,
     play: <path d="m8 4 12 8-12 8Z" />,
     check: <path d="m5 12 4 4 10-10" />,
@@ -75,9 +75,34 @@ export function Shelf({ focusKey, title, children, kind = '' }: {
   focusKey: string; title: string; children: ReactNode; kind?: string;
 }) {
   const { ref, hasFocusedChild } = useFocusable({ focusKey, saveLastFocusedChild: true, trackChildren: true });
+  const grid = kind === 'episode-shelf' || kind === 'library-shelf';
+  const rail = useRef<HTMLDivElement>(null);
+  const [directions, setDirections] = useState({ left: false, right: false, center: 0 });
+  useEffect(() => {
+    const node = rail.current;
+    if (!node) return;
+    const cover = node.querySelector<HTMLElement>('.cover');
+    const update = () => {
+      let center = (cover?.offsetHeight ?? 0) / 2;
+      for (let element: HTMLElement | null = cover; element && element !== node.parentElement; element = element.offsetParent as HTMLElement | null) center += element.offsetTop;
+      setDirections({ left: node.scrollLeft > 2, right: node.scrollLeft + node.clientWidth < node.scrollWidth - 2, center });
+    };
+    update();
+    node.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    if (cover) observer.observe(cover);
+    if (node.firstElementChild) observer.observe(node.firstElementChild);
+    return () => { node.removeEventListener('scroll', update); observer.disconnect(); };
+  }, [children, grid]);
   return <FocusContext.Provider value={focusKey}><section ref={ref} className={`shelf ${hasFocusedChild ? 'active-shelf' : ''} ${kind}`}>
     <div className="shelf-heading"><h2>{title}</h2></div>
-    <div className="rail-track" data-rail={focusKey}><div className="rail-content">{children}</div></div>
+    {grid ? <div className="episode-grid" data-grid={focusKey}>{children}</div> :
+      <div className={`rail-shell ${directions.left ? 'fade-left' : ''} ${directions.right ? 'fade-right' : ''}`} style={{ '--rail-arrow-top': `${directions.center}px` } as CSSProperties}>
+        <div ref={rail} className="rail-track" data-rail={focusKey}><div className="rail-content">{children}</div></div>
+        <span aria-hidden="true" className={`rail-direction rail-direction-left ${directions.left ? 'available' : ''}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6" /></svg></span>
+        <span aria-hidden="true" className={`rail-direction rail-direction-right ${directions.right ? 'available' : ''}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg></span>
+      </div>}
   </section></FocusContext.Provider>;
 }
 

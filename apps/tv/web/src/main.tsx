@@ -39,10 +39,6 @@ function App() {
   const [home, setHome] = useState<Home>({ rows: [] });
   const [children, setChildren] = useState<Child[]>([]);
   const [child, setChild] = useState('');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuIsOpen = useRef(false);
-  menuIsOpen.current = menuOpen;
-  const menuTarget = useRef('back');
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [selectingChild, setSelectingChild] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -85,7 +81,10 @@ function App() {
     const task = folder ? request<{ episodes: (Episode & { seasonName: string })[]; episodeId: string | null; hasProgress: boolean }>(`/api/series/${folder.id}/playlist`).then((data) => {
       if (serial === loadSerial.current) { setVideos(data.episodes); setResumeId(data.hasProgress ? data.episodeId ?? '' : ''); }
     }) : request<Home>('/api/home').then((data) => {
-      if (serial === loadSerial.current) { setHome(data); }
+      if (serial === loadSerial.current) {
+        const order = (title: string) => title === '最近播放' ? 0 : title === '我的媒体库' ? 2 : 1;
+        setHome({ rows: [...data.rows].sort((a, b) => order(a.title) - order(b.title)) });
+      }
     });
     task.catch((error) => { if (serial === loadSerial.current) fail(error); })
       .finally(() => { if (serial === loadSerial.current) setBusy(false); });
@@ -98,16 +97,12 @@ function App() {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' : overlay === 'children' ? `child-${child || children[0]?.id}` :
         overlay === 'settings' ? (window.MollyBridge ? 'connection' : authenticated ? 're-pair' : 'connect-account') : !authenticated ? 'connect-home' : error ? 'retry' :
-        (folder ? (videos.length ? `episode-${resumeId || videos[0].id}` : 'menu') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'menu');
+        (folder ? (videos.length ? `episode-${resumeId || videos[0].id}` : 'settings') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'settings');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
       const target = canRestore ? saved.focus : fallback;
-      const next = has(target) ? target : overlay ? 'close-overlay' : 'menu';
-      // A pending content refresh must not steal focus from an opened drawer.
-      if (menuIsOpen.current && !overlay && !['back', 'children', 'settings', 'connect-sidebar'].includes(next)) return;
-      if (['back', 'children', 'settings', 'connect-sidebar'].includes(next) && !menuOpen) {
-        menuTarget.current = next; setMenuOpen(true);
-      } else setFocus(next);
+      const next = has(target) ? target : overlay ? 'close-overlay' : 'settings';
+      setFocus(next);
       finishScrolls(viewport.current);
       if (canRestore && viewport.current) {
         viewport.current.scrollTop = saved.scroll;
@@ -117,21 +112,6 @@ function App() {
     }, 60);
     return () => clearTimeout(timer);
   }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, children, child]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const frame = requestAnimationFrame(() => setFocus(menuTarget.current));
-    return () => cancelAnimationFrame(frame);
-  }, [menuOpen]);
-  const showMenu = () => { menuTarget.current = 'back'; setMenuOpen(true); };
-  const hideMenu = useCallback(() => {
-    setMenuOpen(false);
-    const saved = contentFocus.current;
-    const first = document.querySelector<HTMLButtonElement>('.poster:not(:disabled)');
-    const target = saved && document.querySelector(`[data-focus="${saved}"]`) ? saved :
-      first?.dataset.focus ?? (!authenticated ? 'connect-home' : error ? 'retry' : 'menu');
-    setFocus(target);
-  }, [authenticated, error]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -150,7 +130,7 @@ function App() {
   }, [authenticated, fail]);
 
   const openOverlay = (next: Overlay) => {
-    overlayOrigin.current = getCurrentFocusKey() || 'back'; setError(''); setOverlay(next);
+    overlayOrigin.current = getCurrentFocusKey() || 'settings'; setError(''); setOverlay(next);
   };
   const closeOverlay = useCallback(() => {
     if (selectingChild || (overlay === 're-pair' && busy)) return;
@@ -162,10 +142,9 @@ function App() {
   }, [selectingChild, overlay, busy]);
   const back = useCallback(() => {
     if (overlay) { closeOverlay(); return true; }
-    if (menuOpen) { hideMenu(); return true; }
     if (folder) { restore.current = homeSnapshot.current; setFolder(undefined); return true; }
     return false;
-  }, [folder, overlay, closeOverlay, menuOpen, hideMenu]);
+  }, [folder, overlay, closeOverlay]);
   useEffect(() => {
     window.mollyBack = back;
     const onKey = (event: KeyboardEvent) => {
@@ -186,7 +165,7 @@ function App() {
   }, []);
 
   const completePairing = useCallback(() => {
-    setError(''); setOverlay(null); setMenuOpen(false); restore.current = undefined; setAuthenticated(true);
+    setError(''); setOverlay(null); restore.current = undefined; setAuthenticated(true);
   }, []);
   const play = async (id: string) => {
     if (playing) return;
@@ -208,56 +187,56 @@ function App() {
   const selectChild = (id: string) => {
     setSelectingChild(true); setError('');
     void request(`/api/children/${id}/select`, 'POST').then(() => {
-      setChild(id); setFolder(undefined); setOverlay(null); setMenuOpen(false); restore.current = undefined;
+      setChild(id); setFolder(undefined); setOverlay(null); restore.current = undefined;
       setReload((value) => value + 1);
     }).catch(fail).finally(() => setSelectingChild(false));
   };
   const selectedChild = children.find((c) => c.id === child);
   const remember = (key: string) => {
-    setMenuOpen(false); contentFocus.current = key;
+    contentFocus.current = key;
   };
-  const cardArrow = (index: number) => (direction: string) => {
-    if (direction === 'left' && index === 0) { showMenu(); return false; }
+  const cardArrow = (firstRow: boolean) => (direction: string) => {
+    if (direction === 'up' && firstRow) {
+      const current = document.querySelector<HTMLElement>(`[data-focus="${getCurrentFocusKey()}"]`);
+      const first = current?.closest('.episode-grid')?.querySelector<HTMLElement>('.poster');
+      if (first && current!.offsetTop !== first.offsetTop) return true;
+      setFocus('settings'); return false;
+    }
     return true;
   };
-  const sidebarArrow = (direction: string) => {
-    if (direction === 'right') { hideMenu(); return false; }
-    return true;
+  const topbarArrow = (direction: string) => {
+    if (direction !== 'down') return true;
+    const saved = contentFocus.current;
+    const first = document.querySelector<HTMLButtonElement>('.poster:not(:disabled)');
+    setFocus(saved && document.querySelector(`[data-focus="${saved}"]`) ? saved :
+      first?.dataset.focus ?? (!authenticated ? 'connect-home' : error ? 'retry' : 'settings'));
+    return false;
   };
 
   return <FocusRegion focusKey="screen" className="app">
-    {menuOpen && <button type="button" className="menu-scrim" tabIndex={-1} aria-label="关闭菜单" onClick={hideMenu} />}
-    <FocusRegion focusKey="sidebar" className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`} hidden={!menuOpen} boundary={menuOpen}>
-      <div className="wordmark">MollyTime</div>
-      <nav aria-label="电视导航">
-        <FocusButton focusKey="back" className="nav-item active" disabled={!!overlay || !menuOpen} onArrow={sidebarArrow} onClick={() => { if (folder) { restore.current = homeSnapshot.current; setFolder(undefined); } hideMenu(); }}><Icon name="home" /><span>首页</span></FocusButton>
-        {children.length > 0 && <FocusButton focusKey="children" className="nav-item" ariaLabel={selectedChild?.name ?? '选择儿童'} disabled={!!overlay || !menuOpen}
-          onArrow={sidebarArrow} onClick={() => openOverlay('children')}><Icon name="people" /><span>谁在看</span></FocusButton>}
-        <FocusButton focusKey="settings" className="nav-item" disabled={!!overlay || !menuOpen} onArrow={sidebarArrow} onClick={() => openOverlay('settings')}>
-          <Icon name="settings" /><span>设置</span></FocusButton>
-      </nav>
-      {!authenticated ? <FocusButton focusKey="connect-sidebar" className="viewer connect-viewer" disabled={!!overlay || !menuOpen} onClick={() => openOverlay('pairing')}><Icon name="people" /><span>绑定电视</span></FocusButton> : <div className="viewer"><span className="viewer-avatar">{selectedChild?.name.slice(0, 1) ?? <Icon name="people" />}</span>
-        <div><strong>{selectedChild?.name ?? '家庭媒体库'}</strong>{selectedChild && <span>正在观看</span>}</div></div>}
-    </FocusRegion>
     <main className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
       <FocusRegion focusKey="content" className="content-panels shelves-scroll" scrollRef={viewport}>
-      <div className="topbar"><FocusButton focusKey="menu" className="menu-trigger" ariaLabel="打开菜单" disabled={!!overlay || menuOpen} onClick={showMenu} onArrow={(direction) => { if (direction === 'left') { showMenu(); return false; } return true; }}><Icon name="menu" /></FocusButton>
+      <div className="topbar">
+        {folder && <FocusButton focusKey="folder-back" className="route-back" ariaLabel="返回" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /></FocusButton>}
         <span className="topbar-brand">MollyTime</span>
-        {folder && <FocusButton focusKey="folder-back" className="route-back" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton>}
-        <span className="topbar-label">{selectedChild?.name}</span>
+        <div className="topbar-actions">
+          {children.length > 0 && <FocusButton focusKey="children" className="profile-trigger" ariaLabel={selectedChild?.name ?? '选择儿童'} disabled={!!overlay}
+            onArrow={topbarArrow} onClick={() => openOverlay('children')}><Icon name="people" /><span>{selectedChild?.name ?? '谁在看'}</span></FocusButton>}
+          <FocusButton focusKey="settings" className="settings-trigger" ariaLabel="设置" disabled={!!overlay} onArrow={topbarArrow} onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>
+        </div>
       </div>
         {authenticated && (folder ? <DetailHeader series={folder} total={videos.length} loading={busy} /> : <HomeGreeting name={selectedChild?.name} />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
-          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
-            {videos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
-              onArrow={cardArrow(index)} onFocus={() => remember(`episode-${item.id}`)} onClick={() => { void play(item.id); }}>
+          {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
+            {videos.map((item) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
+              onArrow={cardArrow(true)} onFocus={() => remember(`episode-${item.id}`)} onClick={() => { void play(item.id); }}>
               <Cover item={item}><span>{item.id === resumeId ? '继续观看 · ' : ''}{watchedPosition(item) || duration(item.runtimeMs)}</span><Icon name="play" /></Cover><div className="card-copy"><strong>{item.name}</strong></div>
             </FocusButton>)}
           </Shelf> : home.rows.map((row, rowIndex) => {
             const rowKey = `home-row-${rowIndex}`;
-            return <Shelf key={rowKey} focusKey={rowKey} title={row.title}>
-              {row.items.map((item, index) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
-                onArrow={cardArrow(index)} onFocus={() => remember(key)}
+            return <Shelf key={rowKey} focusKey={rowKey} title={row.title} kind={row.title === '我的媒体库' ? 'library-shelf' : ''}>
+              {row.items.map((item) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
+                onArrow={cardArrow(rowIndex === 0)} onFocus={() => remember(key)}
                 onClick={() => { if (item.type === 'episode') void play(item.id); else { homeSnapshot.current = snapshot(); setFolder(item); } }}>
                 <Cover item={item}>{item.type === 'episode' && <><span>{episodeAction(item)}</span><Icon name="play" /></>}</Cover><div className="card-copy"><strong>{item.name}</strong>{item.type !== 'episode' && <span>{item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}</span>}</div>
               </FocusButton>; })}

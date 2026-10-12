@@ -70,14 +70,23 @@ test('remote navigation, playback return, folder restoration and durable binding
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
   await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)$/);
-  await expect(page.locator('.sidebar')).toBeHidden();
+  await expect(page.locator('.sidebar')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开菜单' })).toHaveCount(0);
   expect(await page.locator('.content-shell').evaluate((node) => node.getBoundingClientRect().left)).toBe(0);
+  const settings = page.getByRole('button', { name: '设置', exact: true });
+  const bounds = await settings.boundingBox();
+  expect(bounds!.x).toBeGreaterThan(1920 / 2);
+  expect(bounds!.y).toBeLessThan(100);
   await page.keyboard.press('ArrowLeft');
-  await expect(page.locator('[data-focus="back"]')).toBeFocused();
-  await expect(page.locator('.sidebar')).toBeVisible();
-  await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
-  await expect(page.locator('.sidebar')).toBeHidden();
+  await page.keyboard.press('ArrowUp');
+  await expect(settings).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
 
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
@@ -98,11 +107,9 @@ test('remote navigation, playback return, folder restoration and durable binding
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await expect(page.locator('.home-greeting')).toBeVisible();
-  await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '选择儿童' }).click();
   await page.getByRole('button', { name: '小朋友' }).click();
   await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)，小朋友$/);
-  await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.getByRole('button', { name: '退出账号' })).toHaveCount(0);
   await page.getByRole('button', { name: '重新配对', exact: true }).click();
@@ -129,8 +136,8 @@ test('TV starts at home, pairs without a password, renews expired codes and open
   await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
   await page.goto('/tv/');
-  await expect(page.getByRole('navigation', { name: '电视导航', includeHidden: true })).toBeHidden();
-  await expect(page.getByRole('button', { name: '打开菜单' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '电视导航', includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '绑定家庭媒体库' }).click();
   await expect(page.locator('.pairing-code')).toHaveText('0123');
@@ -166,7 +173,6 @@ test('re-pair confirmation retains binding on failure and opens a new code only 
     verificationUriManual: '/manage/',
   } }));
   await page.goto('/tv/');
-  await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '重新配对', exact: true }).click();
   expect(attempts).toBe(0);
@@ -240,7 +246,6 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await page.screenshot({ path: 'test-results/tv-page-scroll.png' });
   expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
   const returnFocus = await page.locator('[data-rail="home-row-2"] .focused').getAttribute('data-focus');
-  await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.locator('[data-focus="connection"]')).toBeFocused();
@@ -248,10 +253,9 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await expect.poll(() => page.locator('[role="dialog"] .focused').count()).toBe(1);
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="settings"]')).toBeFocused();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
   await expect(page.locator(`[data-focus="${returnFocus}"]`)).toBeFocused();
   await page.screenshot({ path: 'test-results/tv-rails.png' });
-  await page.getByRole('button', { name: '打开菜单' }).click();
   await page.getByRole('button', { name: '小米', exact: true }).click();
   await expect(page.locator('[data-focus="child-c1"]')).toBeFocused();
   await page.keyboard.press('ArrowLeft');
@@ -260,7 +264,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await expect(page.locator('[data-focus="child-c2"]')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.locator('.viewer strong')).toHaveText('小麦');
+  await expect(page.locator('.profile-trigger span')).toHaveText('小麦');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
   await page.setViewportSize({ width: 960, height: 540 });
   await page.screenshot({ path: 'test-results/tv-960.png' });
@@ -329,4 +333,97 @@ test('card covers and resume progress with background artwork only inside folder
   await expect(page.locator('[data-focus="season-empty"]')).toHaveCount(0);
   await expect(page.getByText('0 集', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-focus="episode-ready"] .cover img')).toBeVisible();
+});
+
+
+test('folder videos form a vertical grid with remote row navigation', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
+    accessToken: 'test', refreshToken: 'test', deviceId: 'test', childId: '',
+  })));
+  await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
+  await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [{ title: '媒体库', items: [{ id: 'grid', name: '故事集', episodeCount: 26 }] }] } }));
+  await page.route('**/api/series/grid/playlist', (route) => route.fulfill({ json: {
+    episodes: Array.from({ length: 26 }, (_, index) => ({ id: `grid-${index}`, name: `第 ${index + 1} 集`, runtimeMs: 300000 })),
+  } }));
+  await page.goto('/tv/');
+  await expect(page.locator('[data-focus="series-grid"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  const cards = page.locator('.episode-grid .poster');
+  await expect(cards).toHaveCount(26);
+  await expect(cards.first()).toBeFocused();
+  const columns = await cards.evaluateAll((nodes) => nodes.filter((node) => (node as HTMLElement).offsetTop === (nodes[0] as HTMLElement).offsetTop).length);
+  expect(columns).toBeGreaterThan(1);
+  expect(columns).toBeLessThan(26);
+  await page.keyboard.press('ArrowDown');
+  await expect(cards.nth(columns)).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(cards.first()).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(cards.first()).toBeFocused();
+  for (let row = 1; row <= Math.floor(25 / columns); row++) {
+    await page.keyboard.press('ArrowDown');
+    await expect(cards.nth(row * columns)).toBeFocused();
+  }
+  await expect.poll(() => page.locator('.shelves-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  await expect(cards.nth(Math.floor(25 / columns) * columns)).toBeInViewport();
+  expect(await page.locator('.episode-grid').evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/tv-video-grid.png' });
+});
+
+test('mock preview browses 80 episodes without backend or binding changes', async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
+  await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', 'existing-binding'));
+  await page.goto('/tv/?mock=1');
+  await expect(page.locator('[data-focus="series-demo-series-1-episode-1"]')).toBeFocused();
+  await expect(page.locator('.shelf-heading h2')).toHaveText(['最近播放', '发现新故事', '我的媒体库']);
+  const recentRail = page.locator('.shelf').first();
+  const arrowCenterError = () => recentRail.evaluate((node) => {
+    const cover = node.querySelector<HTMLElement>('.cover')!;
+    let center = cover.offsetHeight / 2;
+    for (let element: HTMLElement | null = cover; element && element !== node.querySelector('.rail-shell'); element = element.offsetParent as HTMLElement | null) center += element.offsetTop;
+    const shell = node.querySelector('.rail-shell')!.getBoundingClientRect();
+    return Math.max(...Array.from(node.querySelectorAll('.rail-direction')).map((arrow) => {
+      const bounds = arrow.getBoundingClientRect();
+      return Math.abs(bounds.top + bounds.height / 2 - shell.top - center);
+    }));
+  });
+  await expect.poll(arrowCenterError).toBeLessThan(1);
+  await page.screenshot({ path: 'test-results/tv-home-directions.png' });
+  await expect(recentRail.locator('.rail-direction-right')).toHaveClass(/available/);
+  await expect(recentRail.locator('.rail-direction-left')).not.toHaveClass(/available/);
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="series-demo-series-1-episode-2"]')).toBeFocused();
+  await expect(recentRail.locator('.rail-direction-left')).toHaveClass(/available/);
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(() => page.locator('[data-rail="home-row-1"] .focused').count()).toBe(1);
+  await expect(page.locator('[data-grid="home-row-2"] .poster')).toHaveCount(36);
+  await expect(page.locator('.library-shelf .rail-track')).toHaveCount(0);
+  await page.locator('[data-focus="home-2-demo-series-1"]').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-focus="home-2-demo-series-5"]')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-focus="home-2-demo-series-1"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  const cards = page.locator('.episode-grid .poster');
+  await expect(cards).toHaveCount(80);
+  await expect(page.locator('[data-focus="episode-demo-series-1-episode-16"]')).toBeFocused();
+  await expect(cards.first().locator('img')).toHaveAttribute('src', /^data:image\/svg\+xml/);
+  const columns = await cards.evaluateAll((nodes) => nodes.filter((node) => (node as HTMLElement).offsetTop === (nodes[0] as HTMLElement).offsetTop).length);
+  let index = 15;
+  while ((Math.floor(index / columns) + 1) * columns < 80) {
+    index = Math.min(index + columns, 79);
+    await page.keyboard.press('ArrowDown');
+    await expect(cards.nth(index)).toBeFocused();
+  }
+  await expect(cards.nth(index)).toBeInViewport();
+  await expect.poll(() => cards.nth(index).evaluate((node) => node.getBoundingClientRect().bottom - node.closest('.shelves-scroll')!.getBoundingClientRect().bottom)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: 'test-results/tv-mock-grid.png' });
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('alert')).toContainText('没有实际视频');
+  await page.keyboard.press('Escape');
+  await expect(cards.nth(index)).toBeFocused();
+  expect(apiRequests).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).toBe('existing-binding');
 });
