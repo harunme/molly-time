@@ -27,6 +27,7 @@ subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=0x237a70:
 with get_session_factory()() as db:
     db.add(Family(id="family", name="我们的家庭"))
     db.add(User(id="parent", family_id="family", name="parent", password_hash=hash_password("parent-e2e")))
+    db.add(User(id="operator", family_id="family", name="operator", role="superadmin", password_hash=hash_password("operator-e2e")))
     db.add(ChildProfile(id="child", family_id="family", name="小米"))
     db.add_all([Item(id="series", family_id="family", type="Series", name="英语启蒙"),
                 Item(id="season", family_id="family", type="Season", name="第 1 季", parent_id="series"),

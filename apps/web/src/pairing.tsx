@@ -6,7 +6,7 @@ export function PairingPage({ initialCode, session, close }: { initialCode: stri
   const [code, setCode] = useState(initialCode), [selected, setSelected] = useState('');
   const [pending, setPending] = useState<Pending>(), [name, setName] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmed, setConfirmed] = useState(false);
-  const admin = session.user.role === 'admin';
+  const admin = ['admin', 'superadmin'].includes(session.user.role);
   const lookup = async (value: string) => {
     setBusy(true); setError(''); setPending(undefined);
     try {

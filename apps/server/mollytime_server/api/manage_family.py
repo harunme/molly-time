@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from ..auth import hash_password, verify_password
+from ..storage.settings import get_storage_settings
 from ..config import get_settings
 from ..deps import DbSession
 from ..manage_auth import Parent, aware
@@ -106,7 +107,7 @@ def settings(user: Parent, db: DbSession):
         "storage": {
             "total": disk.total,
             "free": disk.free,
-            "backend": get_settings().storage_backend,
+            "backend": get_storage_settings().storage_backend,
             "usedBytes": db.query(func.coalesce(func.sum(MediaFile.size_bytes), 0))
             .filter(MediaFile.family_id == user.family_id)
             .scalar(),

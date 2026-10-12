@@ -111,7 +111,7 @@ def start(body: Start, request: Request, response: Response, db: DbSession):
 @router.get("/api/manage/pairing/{code}")
 def preview(code: str, request: Request, response: Response, user: Parent, db: DbSession):
     response.headers["Cache-Control"] = "no-store"
-    if user.role != "admin":
+    if user.role not in ("superadmin", "admin"):
         raise HTTPException(403, "绑定电视需要家庭管理员")
     serialize_sqlite_write(db)
     limit(db, request, "confirm", 30, 60, principal=user.id)
@@ -127,7 +127,7 @@ def confirm(body: Confirm, request: Request, response: Response, user: Parent, d
     limit(db, request, "confirm", 30, 60, principal=user.id)
     # Recheck after acquiring the write lock; never bind from stale session state.
     user = db.get(User, user_id)
-    if user is None or user.is_disabled or user.role != "admin":
+    if user is None or user.is_disabled or user.role not in ("superadmin", "admin"):
         raise HTTPException(403, "绑定电视需要家庭管理员")
     row = find_code(db, body.code)
     row.user_id = user.id

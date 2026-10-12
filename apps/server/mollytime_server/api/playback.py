@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..storage.settings import get_storage_settings
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
 from ..management_models import MediaOptions, WatchProgress, WatchSession
@@ -109,7 +110,7 @@ def playback_info(db, file, session_id=None):
     from urllib.parse import urlencode
 
     storage = build_storage(file.storage)
-    ttl = get_settings().oss_signed_url_ttl
+    ttl = get_storage_settings().oss_signed_url_ttl
     query = {"mediaId": file.id}
     if session_id:
         query["sessionId"] = session_id
@@ -173,7 +174,7 @@ def play(
     storage = build_storage(file.storage)
     if not isinstance(storage, LocalStorage):
         return RedirectResponse(
-            storage.signed_url(file.path, get_settings().oss_signed_url_ttl),
+            storage.signed_url(file.path, get_storage_settings().oss_signed_url_ttl),
             status_code=302,
             headers={"Cache-Control": "no-store"},
         )
@@ -365,8 +366,6 @@ def image(
     target_w = w if (w and w > 0) else 800
     if h is not None and h <= 0:
         h = None
-
-    from ..config import get_settings
 
     settings = get_settings()
     cache_dir = settings.data_dir / "image-cache"

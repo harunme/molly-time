@@ -72,7 +72,7 @@ def parent_session(request: Request, db):
     if row is None or aware(row.expires_at) <= dt.datetime.now(dt.UTC):
         raise HTTPException(401, "请登录管理后台")
     user = db.get(User, row.user_id)
-    if user is None or user.is_disabled or user.role not in ("admin", "member"):
+    if user is None or user.is_disabled or user.role not in ("superadmin", "admin", "member"):
         raise HTTPException(401, "账号不可用")
     return row, user
 
@@ -83,7 +83,7 @@ def get_parent(request: Request, db: DbSession):
         check_origin(request)
         if not secrets.compare_digest(request.headers.get("x-csrf-token", ""), row.csrf):
             raise HTTPException(403, "页面已过期，请重新加载")
-        if user.role != "admin" and request.url.path not in (
+        if user.role not in ("superadmin", "admin") and request.url.path not in (
             "/api/manage/auth/logout",
             "/api/manage/home-config/preview",
         ):
@@ -121,7 +121,7 @@ def login(body: Login, request: Request, response: Response, db: DbSession):
     user = users[0]
     if (
         user.is_disabled
-        or user.role not in ("admin", "member")
+        or user.role not in ("superadmin", "admin", "member")
         or not verify_password(body.password, user.password_hash)
     ):
         raise HTTPException(401, "账号密码错误")

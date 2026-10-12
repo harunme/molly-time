@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
+from ..storage.settings import get_storage_settings
 from ..config import get_settings
 from ..deps import DbSession
 from ..images import image_url
@@ -288,7 +289,7 @@ def start_upload(body: UploadBody, user: Parent, db: DbSession):
         for r in db.query(UploadSession).filter(UploadSession.status == "uploading").all()
     )
     if (
-        get_settings().storage_backend == "local"
+        get_storage_settings().storage_backend == "local"
         and shutil.disk_usage(directory).free < body.size + remaining + 64 * 1024**2
     ):
         raise HTTPException(507, "磁盘剩余空间不足")
@@ -303,7 +304,7 @@ def start_upload(body: UploadBody, user: Parent, db: DbSession):
     )
     db.add(row)
     db.flush()
-    backend = get_settings().storage_backend
+    backend = get_storage_settings().storage_backend
     if backend not in ("local", "oss"):
         raise HTTPException(503, "上传存储配置错误")
     target = UploadTarget(
@@ -484,7 +485,7 @@ def part_url(upload_id: str, body: PartBody, user: Parent, db: DbSession):
     if body.number > (row.size + PART_SIZE - 1) // PART_SIZE:
         raise HTTPException(422, "分片编号超出文件范围")
     ttl = min(
-        get_settings().oss_upload_ttl,
+        get_storage_settings().oss_upload_ttl,
         max(1, int((aware(target.expires_at) - dt.datetime.now(dt.UTC)).total_seconds())),
     )
     return build_storage("oss").part_url(

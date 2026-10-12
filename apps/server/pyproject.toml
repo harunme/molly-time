@@ -13,6 +13,7 @@ dependencies = [
   "bcrypt==4.0.1",
   "pillow>=10.4",
   "httpx>=0.27",
+  "cryptography>=43",      # Encrypt operational storage credentials at rest
   "oss2>=2.19,<3",          # Official Alibaba OSS SDK
   "aiofiles>=24.1",
   "qrcode>=8.0",

@@ -22,7 +22,7 @@ def main() -> int:
     if fn is None:
         print(f"unknown subcommand: {cmd!r}", file=sys.stderr)
         return 2
-    rc = fn()
+    rc = fn(sys.argv[2:]) if cmd == "create_admin" else fn()
     return int(rc) if isinstance(rc, int) else 0
 
 

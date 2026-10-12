@@ -62,7 +62,7 @@ class User(Base):
     family_id: Mapped[str] = mapped_column(String(36), ForeignKey("families.id"), index=True)
     name: Mapped[str] = mapped_column(String(64), index=True)
     password_hash: Mapped[str] = mapped_column(String(128))
-    role: Mapped[str] = mapped_column(String(16), default="admin")  # 'admin' | 'member'
+    role: Mapped[str] = mapped_column(String(16), default="admin")  # 'superadmin' | 'admin' | 'member'
     is_disabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 

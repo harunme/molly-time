@@ -1,3 +1,4 @@
+import { Operations } from './operations';
 import { MediaPreview, TvDownloads, SubtitleSettings } from './media';
 import { PairingPage } from './pairing';
 import React, { useEffect, useRef, useState } from 'react';
@@ -15,7 +16,7 @@ function useData<T>(path: string, initial: T, serial = 0) {
   return { data, error, loading };
 }
 function Icon({ name }: { name: string }) {
-  const paths: Record<string, string> = { library: 'M4 4h6v16H4z M14 4h6v16h-6z M7 8h0 M17 8h0', upload: 'M12 16V3m-5 5 5-5 5 5 M4 15v5h16v-5', home: 'm3 11 9-8 9 8 M5 10v11h14V10 M9 21v-7h6v7', watch: 'M12 8v5l3 2 M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', family: 'M5 21v-3a7 7 0 0 1 14 0v3 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8' };
+  const paths: Record<string, string> = { library: 'M4 4h6v16H4z M14 4h6v16h-6z M7 8h0 M17 8h0', upload: 'M12 16V3m-5 5 5-5 5 5 M4 15v5h16v-5', home: 'm3 11 9-8 9 8 M5 10v11h14V10 M9 21v-7h6v7', watch: 'M12 8v5l3 2 M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', operations: 'M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h4', family: 'M5 21v-3a7 7 0 0 1 14 0v3 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8' };
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>;
 }
 function Modal({ title, children, close }: { title: string; children: React.ReactNode; close: () => void }) {
@@ -43,10 +44,11 @@ function App() {
     setPairCode(null); setPage('family');
   }} />;
   const names = [['library', '资源库'], ['upload', '上传任务'], ['home', '首页编排'], ['watch', '观看记录'], ['family', '家庭设置']];
-  const readonly = session.user.role !== 'admin';
+  if (session.user.role === 'superadmin') names.push(['operations', '运营设置']);
+  const readonly = !['admin', 'superadmin'].includes(session.user.role);
   return <div className="workspace"><aside><a className="wordmark" href="/manage/">MollyTime<span>家庭放映室</span></a><div className="family-name">{session.family.name}</div>
     <nav aria-label="管理导航">{names.map(([id, name]) => <button key={id} className={page === id ? 'active' : ''} onClick={() => { setPage(id); setError(''); setNotice(''); }}><Icon name={id} />{name}</button>)}</nav>
-    <div className="sidebar-bottom"><span>{session.user.name} · {readonly ? '家长成员' : '管理员'}</span><button className="quiet" onClick={() => { void run(async () => { await api('/auth/logout', 'POST'); stopUploads(); setSession(undefined); updateSession(undefined); }); }}>退出账号</button></div></aside>
+    <div className="sidebar-bottom"><span>{session.user.name} · {session.user.role === 'superadmin' ? '平台超管' : readonly ? '家长成员' : '家庭管理员'}</span><button className="quiet" onClick={() => { void run(async () => { await api('/auth/logout', 'POST'); stopUploads(); setSession(undefined); updateSession(undefined); }); }}>退出账号</button></div></aside>
     <main><header className="topbar"><span>给孩子的小小放映室</span><a href="/tv/" target="_blank" rel="noreferrer">打开 TV 网页 ↗</a></header>
       {error && <div className="banner error" role="alert">{error}<button className="quiet" aria-label="关闭错误" onClick={() => setError('')}>×</button></div>}
       {notice && <div className="banner notice" role="status">{notice}</div>}
@@ -55,6 +57,7 @@ function App() {
       {page === 'upload' && <Uploads run={run} readonly={readonly} />}
       {page === 'home' && <HomeEditor run={run} readonly={readonly} notify={setNotice} />}
       {page === 'watch' && <Reports />}
+      {page === 'operations' && session.user.role === 'superadmin' && <Operations notify={setNotice} />}
       {page === 'family' && <Family run={run} readonly={readonly} notify={setNotice} onPair={() => setPairCode('')} />}
     </main></div>;
 }

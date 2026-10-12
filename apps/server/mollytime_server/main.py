@@ -15,6 +15,7 @@ from .api import (
     children,
     downloads,
     manage_family,
+    operations,
     manage_home,
     manage_resources,
     pairing,
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_resources.router)
     app.include_router(manage_home.router)
     app.include_router(manage_family.router)
+    app.include_router(operations.router)
     app.include_router(watch.router)
     if (settings.tv_web_dir / "index.html").is_file():
         app.mount("/tv", TvWebFiles(directory=settings.tv_web_dir, html=True), name="tv-web")

@@ -1,0 +1,35 @@
+import { test, expect } from '@playwright/test';
+
+test('family admin has no operations access; superadmin saves and reloads storage settings', async ({ page }) => {
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('parent');
+  await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '运营设置', exact: true })).toHaveCount(0);
+  expect((await page.request.get('/api/manage/operations/storage')).status()).toBe(403);
+  await page.getByRole('button', { name: '退出账号' }).click();
+  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await expect(page.getByRole('heading', { name: '运营设置', exact: true })).toBeVisible();
+  await page.getByLabel('OSS Endpoint', { exact: true }).fill('https://oss-cn-hangzhou.aliyuncs.com');
+  await page.getByLabel('Bucket', { exact: true }).fill('molly-e2e');
+  await page.getByLabel('AccessKey ID', { exact: true }).fill('e2e-private-id');
+  await page.getByLabel('AccessKey Secret', { exact: true }).fill('e2e-private-secret');
+  await page.getByLabel('播放签名有效期（秒）').fill('1200');
+  await page.getByRole('button', { name: '保存存储配置' }).click();
+  await expect(page.getByRole('status')).toContainText('存储配置已保存并生效');
+  await expect(page.getByLabel('AccessKey Secret', { exact: true })).toHaveValue('');
+  await page.reload();
+  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await expect(page.getByLabel('Bucket', { exact: true })).toHaveValue('molly-e2e');
+  await expect(page.getByLabel('播放签名有效期（秒）')).toHaveValue('1200');
+  await expect(page.getByLabel('AccessKey Secret', { exact: true })).toHaveValue('');
+  expect(await (await page.request.get('/api/manage/operations/storage')).text()).not.toContain('e2e-private');
+  await page.screenshot({ path: '../../artifacts/operations-storage.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: '保存存储配置' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

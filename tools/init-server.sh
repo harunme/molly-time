@@ -17,4 +17,4 @@ source "$VENV_DIR/bin/activate"
 
 cd "$ROOT/apps/server"
 python -m mollytime_server.scripts init_db
-python -m mollytime_server.scripts create_admin
+python -m mollytime_server.scripts create_admin --superadmin

@@ -213,3 +213,12 @@ class DeviceDownload(Base):
     error: Mapped[str] = mapped_column(String(256), default="")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     __table_args__ = (UniqueConstraint("device_id", "media_id"),)
+
+
+class OperationsStorage(Base):
+    __tablename__ = "operations_storage"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    config: Mapped[dict] = mapped_column(JSON)
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)

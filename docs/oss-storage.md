@@ -2,7 +2,25 @@
 
 家长在 `/manage/` 上传 MP4、SRT/VTT 和封面，预览后发布给本家庭。OSS 模式下视频上传和播放不经过业务 API 的数据通道。支付和套餐不在本期实现中。
 
-## 服务端配置
+## 管理后台配置与超管
+
+管理后台的 **运营设置 → 文件存储** 仅平台超管（`superadmin`）可访问；家庭管理员（`admin`）和成员（`member`）没有运营权限。超管保留自己家庭的管理能力，不会因此获得其他家庭的媒体访问权。
+
+初始化 `bash tools/init-server.sh` 创建或提升初始账号为超管。已有部署可从仓库根目录执行：
+
+```bash
+apps/server/.venv/bin/python -m mollytime_server.scripts.create_admin --superadmin
+```
+
+命令使用 `MOLLYTIME_INITIAL_ADMIN_USERNAME` 等初始账号配置；已有账号保留密码。数据目录必须与 API 一致（默认 `.local/molly-server`）。已有其他超管时拒绝再创建第二个；普通执行 `create_admin` 不会自动提升权限。
+
+在运营设置中选择本地或 OSS，填写公共 Endpoint、私有 Bucket、AccessKey ID/Secret，可选同地域内网 Endpoint，设置上传与播放签名有效期。测试连接会在 `families/.operations-check/` 创建、读取并删除临时对象；启用 OSS 保存时也必须通过测试。此测试不验证浏览器 CORS 或全部分片权限，需要按下文配置并实际上传验收。
+
+后台保存的配置优先于环境变量，保存后 API 和 worker 读取新配置，无需重启。配置存于数据库 `operations_storage`，访问密钥加密保存且不回显；编辑时密钥留空保留原值。备份数据库时必须同时备份数据目录的 `operations-storage.key`（文件权限 0600），丢失密钥会导致已保存凭据无法解密。
+
+已有 OSS 文件或未结束的 OSS 上传时不能直接更换 Bucket/公共 Endpoint；需先迁移资源。切回本地只影响新上传，旧 OSS 文件仍使用保留的云端配置。运营配置保存采用版本校验，拒绝覆盖其他会话已更新的配置。
+
+## 服务端环境配置（后台未保存时生效）
 
 安装 `apps/server/pyproject.toml` 的依赖，并安装 FFmpeg/FFprobe。默认 `MOLLYTIME_STORAGE_BACKEND=local`，现有本地文件继续可用。启用 OSS 时在服务端环境配置：
 
