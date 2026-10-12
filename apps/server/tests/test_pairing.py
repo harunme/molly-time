@@ -20,9 +20,9 @@ def start(parent):
     assert response.status_code == 200
     assert response.headers['cache-control'] == 'no-store'
     result = response.json()
-    assert result['deviceCode'] not in result['qrSvg']
+    assert 'qrSvg' not in result
     assert result['deviceCode'] not in result['verificationUri']
-    assert '<svg' in result['qrSvg']
+    assert len(result['userCode']) == 4 and result['userCode'].isascii() and result['userCode'].isdigit()
     return result
 
 
@@ -186,3 +186,31 @@ def test_tv_reset_revokes_only_its_own_binding_and_parent_tokens_cannot_reset(pa
     with Session(db.get_engine()) as session:
         assert session.get(Device, first['deviceId']).revoked
         assert not session.get(Device, other['deviceId']).revoked
+
+
+def test_four_digit_codes_keep_leading_zero_and_resolve_collisions(parent, monkeypatch):
+    monkeypatch.setattr('mollytime_server.api.pairing.secrets.randbelow', lambda _: 7)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        rows = list(pool.map(lambda _: start(parent), range(2)))
+    assert {row['userCode'] for row in rows} == {'0007', '0008'}
+    for row in rows:
+        assert parent.get(f"/api/manage/pairing/{row['userCode']}").status_code == 200
+        assert parent.post('/api/manage/pairing/confirm', json={'code': row['userCode']}).status_code == 200
+
+
+def test_four_digit_code_space_exhaustion_and_expiry_reuse(parent, monkeypatch):
+    monkeypatch.setattr('mollytime_server.api.pairing.CODE_SPACE', 2)
+    monkeypatch.setattr('mollytime_server.api.pairing.secrets.randbelow', lambda _: 0)
+    first, second = start(parent), start(parent)
+    assert {first['userCode'], second['userCode']} == {'0000', '0001'}
+    parent.post('/api/auth/pairing/cancel', json={'deviceCode': first['deviceCode']})
+    assert parent.post('/api/auth/pairing/start', json={}).status_code == 503
+    with Session(db.get_engine()) as session:
+        session.get(DevicePairing, digest(first['deviceCode'])).expires_at = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1)
+        session.commit()
+    assert start(parent)['userCode'] == '0000'
+
+
+def test_pairing_rejects_non_numeric_and_wrong_length_codes(parent):
+    for code in ('abcd', '123', '12345', '１２３４', '12-34'):
+        assert parent.get(f"/api/manage/pairing/{code}").status_code == 404

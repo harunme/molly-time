@@ -272,9 +272,9 @@ function App() {
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
       <FocusRegion focusKey="overlay" className={`overlay-panel ${overlay === 'children' ? 'profiles-panel' : overlay === 'pairing' ? 'account-panel' : 'settings-panel'}`} boundary>
-        <h1 id="overlay-title">{overlay === 'children' ? '谁在看？' : overlay === 'pairing' ? '扫码绑定电视' : overlay === 're-pair' ? '重新配对？' : '电视设置'}</h1>
+        <h1 id="overlay-title">{overlay === 'children' ? '谁在看？' : overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : '电视设置'}</h1>
         {overlay === 're-pair' ? <div className="re-pair-confirm">
-          <p>重新配对会断开当前家庭媒体库，需要家长再次扫码确认。</p>
+          <p>重新配对会断开当前家庭媒体库，需要家长再次输入配对码确认。</p>
           {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
           <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
             <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>

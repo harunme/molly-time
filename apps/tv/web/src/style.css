@@ -184,10 +184,8 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 
 .pairing-panel { display: flex; flex-direction: column; align-items: center; gap: .85rem; margin-top: 1.4rem; text-align: center; }
 .pairing-panel p { margin: 0; font-size: 1rem; line-height: 1.5; }
-.pairing-qr { width: 13rem; height: 13rem; background: white; border-radius: .55rem; }
-.pairing-panel .pairing-code { color: var(--white); font-family: monospace; font-size: 2rem; letter-spacing: .16rem; }
+.pairing-panel .pairing-code { color: var(--white); font-family: monospace; font-size: 5rem; font-weight: 600; line-height: 1.2; letter-spacing: .65rem; padding-left: .65rem; margin: .6rem 0; font-variant-numeric: tabular-nums; }
 .pairing-panel .pairing-manual, .pairing-panel .pairing-status { color: var(--muted); font-size: .75rem; }
-.pairing-manual span { display: block; overflow-wrap: anywhere; }
 .account-panel { max-height: 92vh; overflow-y: auto; text-align: center; }
 
 .re-pair-confirm p{margin:1.5rem 0 2rem;color:var(--muted);font-size:1.05rem;line-height:1.7}

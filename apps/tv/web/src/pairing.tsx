@@ -3,7 +3,7 @@ import { ApiError, call, type Capabilities } from './api';
 import { FocusButton } from './focus';
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
 
-type Pairing = { userCode: string; verificationUri: string; verificationUriManual: string; expiresAt: string; interval: number; qrSvg: string };
+type Pairing = { userCode: string; verificationUri: string; verificationUriManual: string; expiresAt: string; interval: number };
 export function PairingPanel({ capabilities, done }: { capabilities?: Capabilities; done: () => void }) {
   const [pairing, setPairing] = useState<Pairing>();
   const [error, setError] = useState('');
@@ -12,7 +12,7 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!capabilities) return;
-    if (!capabilities.devicePairing) { setError('请先更新电视客户端，再扫码绑定。'); return; }
+    if (!capabilities.devicePairing) { setError('请先更新电视客户端，再绑定。'); return; }
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     setPairing(undefined); setError(''); setExpired(false);
@@ -46,10 +46,9 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
   const seconds = pairing ? Math.max(0, Math.ceil((Date.parse(pairing.expiresAt) - now) / 1000)) : 0;
   return <div className="pairing-panel">
     {pairing && !expired ? <>
-      <p>用手机扫码，在家长后台确认绑定</p>
-      <img className="pairing-qr" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pairing.qrSvg)}`} alt="电视绑定二维码" />
+      <p>在家长后台输入以下配对码</p>
       <p className="pairing-code" aria-label="配对码">{pairing.userCode}</p>
-      <p className="pairing-manual">也可打开 <span>{pairing.verificationUriManual}</span>，输入配对码</p>
+      <p className="pairing-manual">打开家长后台 · 绑定电视</p>
       <p className="pairing-status" role="status">等待家长确认 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</p>
     </> : expired ? <p role="status">配对码已过期，请重新生成</p> : !error ? <p role="status">正在生成配对码…</p> : null}
     {error && <p role="alert" className="error">{error}</p>}

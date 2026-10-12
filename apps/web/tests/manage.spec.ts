@@ -208,7 +208,7 @@ test("real device telemetry, reports, child management and mobile layout", async
   expect((await page.request.get("/api/home", { headers })).status()).toBe(401);
 });
 
-test("TV QR pairing survives parent login and requires explicit mobile confirmation", async ({
+test("TV four-digit pairing survives parent login and requires explicit mobile confirmation", async ({
   page,
   browser,
 }) => {
@@ -223,16 +223,21 @@ test("TV QR pairing survives parent login and requires explicit mobile confirmat
     const code = await tv.locator(".pairing-code").innerText();
     await expect(tv.getByLabel("密码")).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/manage/?pair=" + encodeURIComponent(code));
+    await page.goto("/manage/?pair=");
     await page.getByLabel("账号", { exact: true }).fill("parent");
     await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "绑定电视", exact: true }),
     ).toBeVisible();
+    expect(code).toMatch(/^[0-9]{4}$/);
+    const codeInput = page.getByLabel("电视配对码");
+    await expect(codeInput).toHaveAttribute("inputmode", "numeric");
+    await codeInput.fill(code);
+    await page.getByRole("button", { name: "查看电视" }).click();
     await expect(page.locator(".pairing-summary")).toContainText(code);
     await expect(tv.getByRole("dialog")).toBeVisible();
-    await page.getByLabel("电视名称").fill("客厅电视扫码");
+    await page.getByLabel("电视名称").fill("客厅电视");
     await page.screenshot({
       path: "../../artifacts/parent-pairing-mobile.png",
       fullPage: true,

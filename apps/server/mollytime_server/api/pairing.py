@@ -1,15 +1,12 @@
-"""One-time, parent-approved TV pairing. Never put the device secret in a QR link."""
+"""One-time, parent-approved TV pairing with a four-digit public code."""
 
 import datetime as dt
 import hashlib
 import hmac
-import io
 import re
 import secrets
 from urllib.parse import urlsplit
 
-import qrcode
-import qrcode.image.svg
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
@@ -22,7 +19,7 @@ from ..models import Family, RefreshToken, User
 from ..transactions import serialize_sqlite_write
 
 router = APIRouter(tags=["device-pairing"])
-ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+CODE_SPACE = 10_000
 INTERVAL = 3
 
 
@@ -67,13 +64,13 @@ class Poll(BaseModel):
 
 
 class Confirm(BaseModel):
-    code: str = Field(min_length=8, max_length=16)
+    code: str = Field(min_length=4, max_length=16)
     name: str = Field(default="MollyTime TV", min_length=1, max_length=128)
 
 
 def find_code(db, code):
-    normalized = re.sub(r"[\s-]", "", code.upper())
-    if len(normalized) != 8 or any(c not in ALPHABET for c in normalized):
+    normalized = code.strip()
+    if re.fullmatch(r"[0-9]{4}", normalized) is None:
         raise HTTPException(404, "配对码不存在或已过期")
     row = db.query(DevicePairing).filter(DevicePairing.code_hash == digest(normalized)).first()
     if row is None or aware(row.expires_at) <= dt.datetime.now(dt.UTC) or row.status != "pending":
@@ -90,22 +87,26 @@ def start(body: Start, request: Request, response: Response, db: DbSession):
     now = dt.datetime.now(dt.UTC)
     db.query(DevicePairing).filter(DevicePairing.expires_at <= now).delete()
     db.query(PairingRate).filter(PairingRate.resets_at <= now).delete()
-    code = "".join(secrets.choice(ALPHABET) for _ in range(8))
-    while db.query(DevicePairing).filter(DevicePairing.code_hash == digest(code)).first():
-        code = "".join(secrets.choice(ALPHABET) for _ in range(8))
+    # The write lock and unique code_hash keep concurrent starts distinct.
+    # Reserve all unexpired codes, including approved/cancelled ones, so a code
+    # still on a TV screen cannot accidentally select a different device.
+    occupied = {value for (value,) in db.query(DevicePairing.code_hash).all()}
+    offset = secrets.randbelow(CODE_SPACE)
+    for step in range(CODE_SPACE):
+        code = f"{(offset + step) % CODE_SPACE:04d}"
+        if digest(code) not in occupied:
+            break
+    else:
+        raise HTTPException(503, "配对码暂时已用完，请稍后重试")
     device_code = secrets.token_urlsafe(32)
     expires = now + dt.timedelta(minutes=10)
     name = body.name.strip() or "MollyTime TV"
     db.add(DevicePairing(id=digest(device_code), code_hash=digest(code), name=name, expires_at=expires))
     db.commit()
-    display = code[:4] + "-" + code[4:]
-    uri = f"{origin}/manage/?pair={display}"
-    image = qrcode.make(uri, image_factory=qrcode.image.svg.SvgPathImage, box_size=8, border=4)
-    output = io.BytesIO()
-    image.save(output)
-    return {"deviceCode": device_code, "userCode": display, "verificationUri": uri,
+    uri = f"{origin}/manage/?pair={code}"
+    return {"deviceCode": device_code, "userCode": code, "verificationUri": uri,
             "verificationUriManual": f"{origin}/manage/", "expiresAt": expires.isoformat(),
-            "interval": INTERVAL, "qrSvg": output.getvalue().decode()}
+            "interval": INTERVAL}
 
 
 @router.get("/api/manage/pairing/{code}")

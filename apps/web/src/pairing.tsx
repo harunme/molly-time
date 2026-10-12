@@ -92,12 +92,14 @@ export function PairingPage({
                   电视配对码
                   <Input
                     autoComplete="off"
-                    autoCapitalize="characters"
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    placeholder="四位数字"
                     spellCheck={false}
                     value={code}
-                    maxLength={16}
+                    maxLength={4}
                     onChange={(event) =>
-                      setCode(event.target.value.toUpperCase())
+                      setCode(event.target.value.replace(/[^0-9]/g, ""))
                     }
                     required
                   />
@@ -105,7 +107,7 @@ export function PairingPage({
                 <Button
                   variant="default"
                   className="primary"
-                  disabled={busy || !code.trim()}
+                  disabled={busy || !/^[0-9]{4}$/.test(code)}
                 >
                   {busy ? "正在查找…" : "查看电视"}
                 </Button>

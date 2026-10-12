@@ -69,10 +69,9 @@ test('TV starts at home, pairs without a password, renews expired codes and open
   let started = 0;
   await page.route('**/api/auth/pairing/start', (route) => route.fulfill({ json: {
     deviceCode: 'test-device-secret-' + String(++started).padEnd(32, '0'),
-    userCode: started === 1 ? 'ABCD-2345' : 'HJKL-5678',
-    verificationUri: 'http://127.0.0.1:8096/manage/?pair=ABCD-2345', verificationUriManual: 'http://127.0.0.1:8096/manage/',
+    userCode: started === 1 ? '0123' : '4567',
+    verificationUri: 'http://127.0.0.1:8096/manage/?pair=0123', verificationUriManual: 'http://127.0.0.1:8096/manage/',
     expiresAt: new Date(Date.now() + 600000).toISOString(), interval: 3,
-    qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="white" /></svg>',
   } }));
   await page.route('**/api/auth/pairing/cancel', (route) => route.fulfill({ json: { ok: true } }));
   await page.route('**/api/auth/pairing/poll', (route) => route.fulfill({ json: started === 1 ? { status: 'expired' } :
@@ -84,13 +83,13 @@ test('TV starts at home, pairs without a password, renews expired codes and open
   await expect(page.getByRole('button', { name: '打开菜单' })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '绑定家庭媒体库' }).click();
-  await expect(page.locator('.pairing-code')).toHaveText('ABCD-2345');
+  await expect(page.locator('.pairing-code')).toHaveText('0123');
   await expect(page.getByLabel('密码')).toHaveCount(0);
   await expect(page.getByLabel('账号', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('img', { name: '电视绑定二维码' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '电视绑定二维码' })).toHaveCount(0);
   await expect(page.getByText('配对码已过期，请重新生成')).toBeVisible({ timeout: 10000 });
   await page.getByRole('button', { name: '重新生成配对码' }).click();
-  await expect(page.locator('.pairing-code')).toHaveText('HJKL-5678');
+  await expect(page.locator('.pairing-code')).toHaveText('4567');
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
   await page.reload();
@@ -112,9 +111,9 @@ test('re-pair confirmation retains binding on failure and opens a new code only 
   let attempts = 0;
   await page.route('**/api/auth/pairing/reset', (route) => route.fulfill({ status: ++attempts === 1 ? 503 : 200, json: { ok: true } }));
   await page.route('**/api/auth/pairing/start', (route) => route.fulfill({ json: {
-    deviceCode: 'next-pairing-secret'.padEnd(43, '0'), userCode: 'ABCD-2345', interval: 3,
-    expiresAt: new Date(Date.now() + 600000).toISOString(), verificationUri: '/manage/?pair=ABCD-2345',
-    verificationUriManual: '/manage/', qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" />',
+    deviceCode: 'next-pairing-secret'.padEnd(43, '0'), userCode: '0123', interval: 3,
+    expiresAt: new Date(Date.now() + 600000).toISOString(), verificationUri: '/manage/?pair=0123',
+    verificationUriManual: '/manage/',
   } }));
   await page.goto('/tv/');
   await page.getByRole('button', { name: '打开菜单' }).click();
@@ -125,8 +124,8 @@ test('re-pair confirmation retains binding on failure and opens a new code only 
   await expect(page.getByRole('alert')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).not.toBeNull();
   await page.getByRole('button', { name: '确认重新配对' }).click();
-  await expect(page.getByRole('heading', { name: '扫码绑定电视' })).toBeVisible();
-  await expect(page.locator('.pairing-code')).toHaveText('ABCD-2345');
+  await expect(page.getByRole('heading', { name: '绑定电视' })).toBeVisible();
+  await expect(page.locator('.pairing-code')).toHaveText('0123');
   expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).toBeNull();
 });
 
