@@ -21,7 +21,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
         notify(result.message);
       } else {
         load(await api<StorageConfig>('/operations/storage', 'PUT', body));
-        notify('存储配置已保存并生效，新上传使用当前存储方式。');
+        notify('存储配置已保存并生效。切换 Bucket 或地域后，请刷新页面再上传。');
       }
     } catch (e) { setError(e instanceof Error ? e.message : '操作失败'); }
     finally { setBusy(false); }
