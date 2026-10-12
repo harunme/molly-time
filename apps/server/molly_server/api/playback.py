@@ -1,0 +1,289 @@
+"""Playback endpoints: stream video, fetch subtitles/images, report progress."""
+
+from __future__ import annotations
+
+import datetime as dt
+import re
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from ..deps import CurrentUser, DbSession
+from ..management_models import WatchProgress, WatchSession
+from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
+from ..resource_policy import require_visible
+from ..storage import build_storage
+from ..storage.local import LocalStorage
+from ..utils.image import resize_to_file
+
+router = APIRouter(prefix="/api", tags=["playback"])
+
+
+# ---------------------------------------------------------------------------
+# /api/episodes/{id}/play — Range-streamed video bytes
+# ---------------------------------------------------------------------------
+
+
+def _pick_video_file(
+    db: Session, episode_id: str, family_id: str, media_id: str | None = None
+) -> MediaFile:
+    _episode(db, episode_id, family_id)
+    query = db.query(MediaFile).filter(MediaFile.item_id == episode_id)
+    query = (
+        query.filter(MediaFile.id == media_id, MediaFile.kind.in_(["video", "retired_video"]))
+        if media_id
+        else query.filter(MediaFile.kind == "video")
+    )
+    f = query.first()
+    if f is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no video")
+    return f
+
+
+def _episode(db: Session, episode_id: str, family_id: str) -> Item:
+    ep = db.get(Item, episode_id)
+    if ep is None or ep.family_id != family_id or ep.type != "Episode":
+        raise HTTPException(status_code=404)
+    return ep
+
+
+def _child(db: Session, child_id: str | None, family_id: str) -> None:
+    if child_id is not None:
+        child = db.get(ChildProfile, child_id)
+        if child is None or child.family_id != family_id:
+            raise HTTPException(status_code=404)
+
+
+def parse_range(header: str, total: int) -> tuple[int, int]:
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", header)
+    if not match or total <= 0 or not any(match.groups()):
+        raise ValueError("invalid range")
+    first, last = match.groups()
+    if not first:
+        suffix = int(last)
+        if suffix <= 0:
+            raise ValueError("invalid suffix")
+        return max(0, total - suffix), total - 1
+    start = int(first)
+    end = min(int(last), total - 1) if last else total - 1
+    if start >= total or start > end:
+        raise ValueError("unsatisfiable range")
+    return start, end
+
+
+@router.api_route(
+    "/episodes/{episode_id}/play",
+    methods=["GET", "HEAD"],
+)
+def play(
+    episode_id: str,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+    mediaId: str | None = None,
+    sessionId: str | None = None,
+):
+    """Bounded-memory local playback; OSS delivery is a separate future step."""
+    episode = _episode(db, episode_id, user.family_id)
+    watch = db.get(WatchSession, sessionId) if sessionId else None
+    valid_session = (
+        watch
+        and watch.user_id == user.id
+        and watch.family_id == user.family_id
+        and watch.item_id == episode_id
+        and not watch.ended
+        and watch.device_id == getattr(request.state, "device_id", None)
+    )
+    if not valid_session:
+        require_visible(db, episode, request)
+    file = _pick_video_file(db, episode_id, user.family_id, mediaId)
+    storage = build_storage()
+    if not isinstance(storage, LocalStorage):
+        raise HTTPException(status_code=503, detail="remote playback is not configured")
+    obj = storage.resolve(file.path)
+    total = obj.size_bytes
+    if not storage._abspath(file.path).is_file():
+        raise HTTPException(status_code=404)
+    start, end, code = 0, total - 1, 200
+    range_header = request.headers.get("range") if request.method == "GET" else None
+    if range_header:
+        try:
+            start, end = parse_range(range_header, total)
+        except ValueError:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+        code = 206
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(end - start + 1),
+        "Content-Type": obj.mime or "video/mp4",
+    }
+    if code == 206:
+        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+    if request.method == "HEAD":
+        return Response(status_code=200, headers=headers)
+    return StreamingResponse(
+        storage.iter_range(file.path, start, end), status_code=code, headers=headers
+    )
+
+
+# ---------------------------------------------------------------------------
+# /api/episodes/{id}/progress
+# ---------------------------------------------------------------------------
+
+
+class ProgressBody(BaseModel):
+    positionMs: int = Field(ge=0)
+    durationMs: int = Field(default=0, ge=0)
+    event: str = Field(default="progress", pattern="^(start|progress|stop)$")
+    completed: bool = False
+    childId: str | None = None
+
+
+class ProgressResponse(BaseModel):
+    ok: bool
+
+
+@router.get("/episodes/{episode_id}/progress")
+def read_progress(
+    episode_id: str, request: Request, user: CurrentUser, db: DbSession, childId: str | None = None
+):
+    require_visible(db, _episode(db, episode_id, user.family_id), request)
+    _child(db, childId, user.family_id)
+    progress = db.get(WatchProgress, f"{user.family_id}:{childId or user.id}:{episode_id}")
+    if progress:
+        return {"positionMs": progress.position_ms, "completed": progress.completed}
+    query = db.query(PlaybackEvent).filter(
+        PlaybackEvent.family_id == user.family_id,
+        PlaybackEvent.item_id == episode_id,
+        PlaybackEvent.child_id == childId,
+    )
+    # Child progress belongs to the child; no-child preview belongs to the parent account.
+    if childId is None:
+        query = query.filter(PlaybackEvent.user_id == user.id)
+    latest = query.order_by(PlaybackEvent.id.desc()).first()
+    return {
+        "positionMs": latest.position_ms if latest else 0,
+        "completed": latest.completed if latest else False,
+    }
+
+
+@router.post("/episodes/{episode_id}/progress", response_model=ProgressResponse)
+def report_progress(
+    episode_id: str,
+    body: ProgressBody,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
+    require_visible(db, _episode(db, episode_id, user.family_id), request)
+    _child(db, body.childId, user.family_id)
+    db.add(
+        PlaybackEvent(
+            family_id=user.family_id,
+            user_id=user.id,
+            child_id=body.childId,
+            item_id=episode_id,
+            position_ms=body.positionMs,
+            duration_ms=body.durationMs,
+            event=body.event,
+            completed=body.completed,
+            reported_at=dt.datetime.now(dt.UTC),
+        )
+    )
+    db.commit()
+    return ProgressResponse(ok=True)
+
+
+# ---------------------------------------------------------------------------
+# /api/episodes/{id}/subtitles/{index}
+# ---------------------------------------------------------------------------
+
+
+@router.get("/episodes/{episode_id}/subtitles/{index}")
+def subtitle(
+    episode_id: str,
+    index: int,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
+    require_visible(db, _episode(db, episode_id, user.family_id), request)
+    f = (
+        db.query(MediaFile)
+        .filter(
+            MediaFile.item_id == episode_id,
+            MediaFile.kind == "subtitle",
+            MediaFile.index == index,
+        )
+        .first()
+    )
+    if f is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    storage = build_storage()
+    blob = storage.open(f.path)
+    return Response(
+        content=blob,
+        media_type=f.mime or "application/x-subrip",
+        headers={"Content-Length": str(len(blob))},
+    )
+
+
+# ---------------------------------------------------------------------------
+# /api/items/{image|url}?w=&h=  — server-side image resize + cache
+# ---------------------------------------------------------------------------
+
+
+@router.api_route(
+    "/items/{item_id}/image",
+    methods=["GET", "HEAD"],
+)
+def image(
+    item_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+    w: int | None = Query(default=None, alias="w"),
+    h: int | None = Query(default=None, alias="h"),
+):
+    """Walks parent chain to find the first image MediaFile. Falls back
+    to season → series cover when the item itself has none."""
+    visited: set[str] = set()
+    cur = db.get(Item, item_id)
+    if cur is None or cur.family_id != user.family_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    require_visible(db, cur, request)
+
+    file = None
+    while cur is not None and cur.id not in visited:
+        visited.add(cur.id)
+        file = (
+            db.query(MediaFile)
+            .filter(MediaFile.item_id == cur.id, MediaFile.kind == "image")
+            .first()
+        )
+        if file is not None:
+            break
+        cur = db.get(Item, cur.parent_id) if cur.parent_id else None
+        if cur is not None and cur.family_id != user.family_id:
+            cur = None
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    storage = build_storage()
+    blob = storage.open(file.path)
+    target_w = w if (w and w > 0) else 800
+    if h is not None and h <= 0:
+        h = None
+
+    from ..config import get_settings
+
+    settings = get_settings()
+    cache_dir = settings.data_dir / "image-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{file.id}_{target_w or 'orig'}.jpg"
+    if not cache_path.exists():
+        resize_to_file(blob, cache_path, target_w)
+    data = cache_path.read_bytes()
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})

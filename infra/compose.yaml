@@ -1,11 +1,48 @@
+# Local-only composition for Molly TV.
+#
+# - molly-server: Molly API and the independently built TV webpage.
+# - admin-tools: ephemeral sidecar used to run init / scan scripts.
+#
+# State and uploaded media live under .local/. Imported downloads remain read-only.
+
 services:
-  jellyfin:
-    # P0 compatibility baseline; upgrade separately after TV regression checks.
-    image: jellyfin/jellyfin:10.10.7
+  molly-server:
+    image: molly-server:local
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.server
+    container_name: molly-server
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8096:8096"
+    environment:
+      MOLLY_DATA_DIR: /data
+      MOLLY_LISTEN_HOST: 0.0.0.0
+      MOLLY_LISTEN_PORT: "8096"
+      MOLLY_STORAGE_BACKEND: "local"
+      MOLLY_BBKT_ROOT: /media/bbkt
+      MOLLY_MEDIA_DIR: /media
     volumes:
-      - ../.local/jellyfin/config:/config
-      - ../.local/jellyfin/cache:/cache
+      - ../.local/molly-server:/data
       - ../downloads/bbkt:/media/bbkt:ro
-    restart: unless-stopped
+      - ../.local/molly-server/media:/media/managed
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  admin-tools:
+    image: molly-server:local
+    profiles: ["tools"]      # opt-in: `docker compose --profile tools run --rm admin-tools …`
+    working_dir: /app
+    environment:
+      MOLLY_DATA_DIR: /data
+      MOLLY_BBKT_ROOT: /media/bbkt
+      MOLLY_MEDIA_DIR: /media
+    volumes:
+      - ../.local/molly-server:/data
+      - ../downloads/bbkt:/media/bbkt:ro
+      - ../apps/server:/app:ro
+    entrypoint: ["python", "-m", "molly_server.scripts"]
+    command: ["--help"]

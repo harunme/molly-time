@@ -1,0 +1,25 @@
+package com.molly.tv
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class BridgePolicyTest {
+    @Test fun rejectsCredentialAndCrossOriginRequests() {
+        for (path in listOf("https://evil.test/api/home", "//evil.test/api/home",
+            "/api/auth/refresh", "/api/home?token=secret", "/api/../auth/login",
+            "/api/episodes/a%2Fb", "/api/episodes/a/play")) {
+            assertFalse(path, BridgePolicy.allows("GET", path))
+        }
+    }
+    @Test fun mutationIsLimitedToChildSelection() {
+        assertTrue(BridgePolicy.allows("POST", "/api/children/child-1/select"))
+        assertEquals("child-1", BridgePolicy.selectedChild("/api/children/child-1/select"))
+        assertFalse(BridgePolicy.allows("DELETE", "/api/children/child-1/select"))
+        assertFalse(BridgePolicy.allows("POST", "/api/episodes/episode-1/progress"))
+    }
+    @Test fun catalogReadsAreAllowed() {
+        assertTrue(BridgePolicy.allows("GET", "/api/home"))
+        assertTrue(BridgePolicy.allows("GET", "/api/episodes/episode-1"))
+        assertFalse(BridgePolicy.allows("GET", "/api/episodes/"))
+    }
+}

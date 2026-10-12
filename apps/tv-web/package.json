@@ -1,0 +1,23 @@
+{
+  "name": "molly-tv-web",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@noriginmedia/norigin-spatial-navigation": "2.3.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/react": "19.1.16",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.9.3",
+    "vite": "7.1.12"
+  }
+}

@@ -1,0 +1,108 @@
+"""FastAPI application factory + CLI entry."""
+
+from __future__ import annotations
+
+import logging
+
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from . import manage_auth
+from .api import auth as api_auth
+from .api import (
+    catalog,
+    children,
+    manage_family,
+    manage_home,
+    manage_resources,
+    playback,
+    users,
+    watch,
+)
+from .config import get_settings
+from .db import init_db
+from .tv_web import TvWebFiles
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="Molly Server",
+        version=settings.server_version,
+        description=("Molly media catalog. Own protocol under /api/*. No Jellyfin compatibility."),
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[],  # TV page is same-origin; Vite uses a development proxy.
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.on_event("startup")
+    def _startup() -> None:
+        init_db()
+        if settings.media_worker_enabled:
+            from .media_worker import start_worker
+
+            app.state.media_worker = start_worker()
+        logging.getLogger(__name__).info(
+            "molly-server %s ready: data=%s media=%s listen=%s:%s",
+            settings.server_version,
+            settings.data_dir,
+            settings.resolved_media_dir(),
+            settings.listen_host,
+            settings.listen_port,
+        )
+
+    @app.on_event("shutdown")
+    def _shutdown() -> None:
+        worker = getattr(app.state, "media_worker", None)
+        if worker:
+            worker[0].set()
+            worker[1].join(timeout=5)
+
+    @app.get("/healthz")
+    def healthz() -> dict:
+        return {"ok": True, "version": settings.server_version}
+
+    @app.get("/")
+    def root() -> dict:
+        return {
+            "name": settings.server_name,
+            "version": settings.server_version,
+            "apiBase": "/api",
+        }
+
+    app.include_router(api_auth.router)
+    app.include_router(users.router)
+    app.include_router(children.router)
+    app.include_router(catalog.router)
+    app.include_router(playback.router)
+    app.include_router(manage_auth.router)
+    app.include_router(manage_resources.router)
+    app.include_router(manage_home.router)
+    app.include_router(manage_family.router)
+    app.include_router(watch.router)
+    if (settings.tv_web_dir / "index.html").is_file():
+        app.mount("/tv", TvWebFiles(directory=settings.tv_web_dir, html=True), name="tv-web")
+    if (settings.parent_web_dir / "index.html").is_file():
+        app.mount(
+            "/manage", TvWebFiles(directory=settings.parent_web_dir, html=True), name="parent-web"
+        )
+    return app
+
+
+def run() -> None:  # console-script entry
+    s = get_settings()
+    uvicorn.run(
+        "molly_server.main:create_app",
+        factory=True,
+        host=s.listen_host,
+        port=s.listen_port,
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    run()

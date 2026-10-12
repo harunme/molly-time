@@ -1,0 +1,53 @@
+# Downloaded media and local account/session material.
+downloads/
+analysis/bbkt-crawl/.private/
+analysis/childplayer-6.0.2/samples/
+__pycache__/
+.local/
+artifacts/
+apps/tv/local.properties
+apps/tv/app/src/main/assets/molly/
+node_modules/
+apps/tv-web/dist/
+apps/tv-web/test-results/
+apps/tv-web/playwright-report/
+apps/parent-web/test-results/
+apps/parent-web/playwright-report/
+apps/server/.venv/
+
+# Local OS/editor files, environments, and build caches.
+.DS_Store
+.idea/
+*.iml
+.venv/
+venv/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.gradle/
+.kotlin/
+build/
+dist/
+local.properties
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# APK decompiler output; keep the small analysis reports and references.
+/analysis/*/apktool/
+/analysis/*/jadx/
+/analysis/*/archive-files.txt
+/analysis/*/*.classes.txt
+/analysis/*/*.urls.txt
+
+# Runtime logs and crawler progress snapshots.
+*.log
+/analysis/bbkt-crawl/*-events.jsonl
+/analysis/bbkt-crawl/status.json
+/analysis/bbkt-crawl/status.json.tmp
+/analysis/bbkt-crawl/download-status.json
+/analysis/bbkt-crawl/download-status.json.tmp

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Molly" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#101E33</item>
+        <item name="android:colorAccent">#92E6CD</item>
+    </style>
+</resources>
