@@ -1,6 +1,7 @@
 """Archive safety and application rollback without touching the live server."""
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tarfile
 from types import SimpleNamespace
@@ -92,3 +93,107 @@ def test_deployment_preserves_state_and_rolls_back_on_failure(tmp_path, failure)
                 assert calls[-1][0] == root and calls[-1][1] == 'previous'
             else:
                 assert not any(args[0] == 'up' for _, _, args in calls)
+
+
+def seed_release(root, version=5, fingerprint='b' * 64):
+    directory = root / 'data/client-releases'
+    directory.mkdir(parents=True, exist_ok=True)
+    value = {'packageName': 'com.molly.tv', 'versionCode': version,
+             'sha256': 'c' * 64, 'sourceFingerprint': fingerprint}
+    (directory / 'com.molly.tv.json').write_text(json.dumps(value))
+    return value
+
+
+def test_state_uses_published_fingerprint_and_all_historical_versions(tmp_path):
+    current = seed_release(tmp_path)
+    history = tmp_path / 'data/client-releases/history/com.molly.tv/9'
+    history.mkdir(parents=True)
+    (history / ('d' * 64 + '.json')).write_text(json.dumps(dict(current, versionCode=9, sha256='d' * 64)))
+    with patch.object(deploy, 'ROOT', tmp_path):
+        result = deploy.release_state()
+    assert result['current']['versionCode'] == 5
+    assert result['current']['sourceFingerprint'] == 'b' * 64
+    assert result['highestVersionCode'] == 9
+
+
+@pytest.mark.parametrize('changed', [False, True])
+def test_plan_does_not_allow_skipping_changed_native_inputs(tmp_path, changed):
+    current = seed_release(tmp_path)
+    artifacts = tmp_path / 'bundle/artifacts'
+    artifacts.mkdir(parents=True)
+    plan = {'schemaVersion': 1, 'requiresApk': False, 'sourceCommit': 'a' * 40,
+            'sourceFingerprint': ('e' if changed else 'b') * 64, 'versionCode': 5,
+            'versionName': '0.4.0+5',
+            'expectedRelease': {'versionCode': 5, 'sha256': current['sha256']}}
+    (artifacts / 'tv-client-plan.json').write_text(json.dumps(plan))
+    with patch.object(deploy, 'ROOT', tmp_path):
+        if changed:
+            with pytest.raises(ValueError):
+                deploy.validate_plan(artifacts.parent, 'a' * 40)
+        else:
+            assert deploy.validate_plan(artifacts.parent, 'a' * 40) == plan
+
+
+def test_rejects_ci_plan_that_raced_with_a_manual_publication(tmp_path):
+    seed_release(tmp_path)
+    artifacts = tmp_path / 'bundle/artifacts'
+    artifacts.mkdir(parents=True)
+    plan = {'schemaVersion': 1, 'requiresApk': True, 'sourceCommit': 'a' * 40,
+            'sourceFingerprint': 'b' * 64, 'versionCode': 6, 'versionName': '0.4.0+6',
+            'expectedRelease': None}
+    (artifacts / 'tv-client-plan.json').write_text(json.dumps(plan))
+    (artifacts / 'mollytime-tv-release.apk').write_bytes(b'apk')
+    with patch.object(deploy, 'ROOT', tmp_path), pytest.raises(ValueError, match='changed during CI'):
+        deploy.validate_plan(artifacts.parent, 'a' * 40)
+
+
+def test_deploy_receiver_remains_python36_compatible():
+    import ast
+    source = (Path(__file__).resolve().parents[2] / 'infra/github-deploy.py').read_text()
+    ast.parse(source, feature_version=(3, 6))
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_apk_publication_failure_restores_application_state(tmp_path, failure):
+    root = tmp_path / 'server'
+    root.mkdir()
+    (root / '.env').write_text('MOLLYTIME_RELEASE=previous\nMOLLYTIME_AUTH_SECRET=keep\n')
+    original_env = (root / '.env').read_text()
+    current = seed_release(root)
+    tag = 'a' * 40
+    plan = {'schemaVersion': 1, 'requiresApk': True, 'sourceCommit': tag,
+            'sourceFingerprint': 'd' * 64, 'versionCode': 6, 'versionName': '0.4.0+6',
+            'expectedRelease': {'versionCode': 5, 'sha256': current['sha256']},
+            'reason': 'native-inputs-changed', 'inputCount': 20}
+    bundle = io.BytesIO()
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes()), mode='r:gz') as old, \
+            tarfile.open(fileobj=bundle, mode='w:gz') as archive:
+        for member in old.getmembers():
+            archive.addfile(member, old.extractfile(member))
+        for name, data in [('artifacts/tv-client-plan.json', json.dumps(plan).encode()),
+                           ('artifacts/mollytime-tv-release.apk', b'signed-apk')]:
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+    calls = []
+    def compose(path, sha, *args):
+        calls.append((sha, args))
+        if args[0] == 'run':
+            assert json.loads((root / 'deployment-state.json').read_text())['tag'] == tag
+            if failure:
+                raise RuntimeError('APK publication failed')
+    with patch.multiple(deploy, ROOT=root, STATE=root / 'deployment-state.json', LOCK=root / 'deploy.lock'), \
+            patch.object(deploy, 'compose', side_effect=compose), patch.object(deploy, 'run'), \
+            patch.object(deploy.shutil, 'disk_usage', return_value=SimpleNamespace(free=10 * 1024 ** 3)), \
+            patch.object(deploy.sys, 'argv', ['github-deploy.py', tag]), \
+            patch.object(deploy.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(bundle.getvalue()))):
+        if failure:
+            with pytest.raises(RuntimeError, match='APK publication failed'):
+                deploy.main()
+            assert (root / '.env').read_text() == original_env
+            assert not (root / 'deployment-state.json').exists()
+            assert calls[-1][0] == 'previous' and calls[-1][1][0] == 'up'
+        else:
+            deploy.main()
+            assert any(args[0] == 'run' for _, args in calls)
+            assert json.loads((root / 'deployment-state.json').read_text())['tag'] == tag

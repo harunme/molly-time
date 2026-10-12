@@ -1,0 +1,6 @@
+# Copy to .local/signing/release.properties and fill in locally.
+# Relative storeFile paths are resolved from the properties file's directory.
+storeFile=mollytime-release.jks
+storePassword=
+keyAlias=mollytime
+keyPassword=

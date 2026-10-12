@@ -50,6 +50,14 @@ function App() {
   const overlayOrigin = useRef('');
   const viewport = useRef<HTMLDivElement>(null);
   const loadSerial = useRef(0);
+  const updateRequestTime = useRef(-Infinity);
+  const checkClientUpdate = () => {
+    // Remote Enter may also dispatch a native button click for the same press.
+    const now = performance.now();
+    if (now - updateRequestTime.current < 1000) return;
+    updateRequestTime.current = now;
+    void call('checkUpdate').catch(fail);
+  };
 
   const snapshot = (): ViewSnapshot => { finishScrolls(viewport.current); return { focus: contentFocus.current, scroll: viewport.current?.scrollTop ?? 0,
     rails: Object.fromEntries(Array.from(viewport.current?.querySelectorAll<HTMLElement>('[data-rail]') ?? [])
@@ -265,6 +273,7 @@ function App() {
           <strong>{profile.name}</strong><span className="profile-status">{profile.id === child ? <><Icon name="check" />正在观看</> : '选择这个片单'}</span>
         </FocusButton>)}</div> : <div className="settings-list">
           {window.MollyBridge && <FocusButton focusKey="connection" className="settings-item" onClick={() => { void call('connection').catch(fail); }}><Icon name="settings" /><span><strong>连接设置</strong><small>修改家庭媒体库地址</small></span><span>›</span></FocusButton>}
+          {window.MollyBridge && capabilities?.clientUpdates && <FocusButton focusKey="check-update" className="settings-item" onClick={checkClientUpdate}><Icon name="settings" /><span><strong>检查更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
           {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { setError(''); setOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
         </div>}
         {selectingChild && <p role="status" className="state">正在打开片单…</p>}

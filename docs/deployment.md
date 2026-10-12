@@ -21,7 +21,27 @@
 
 日常更新使用 GitHub Actions：推送到 `main` 会自动运行 [deploy.yml](../.github/workflows/deploy.yml)。也可在仓库 Actions 的 **Deploy MollyTime** 中选择 main 手动运行。工作流先构建两个网页，运行 API、TV、上传及部署回退测试，成功后上传发布包。部署任务串行执行，不会中途取消正在进行的服务更新。
 
-GitHub 仓库 Secrets 已配置 `MOLLYTIME_DEPLOY_KEY` 和 `MOLLYTIME_DEPLOY_KNOWN_HOSTS`。部署密钥使用独立 Ed25519 密钥，服务器通过 SSH forced command 限制为 `check` 和 `deploy <40位提交SHA>`；不能执行普通 shell 命令、转发端口或开启终端。主机公钥固定，CI 不使用动态 `ssh-keyscan` 或关闭主机验证。
+### 自动判断与发布 TV APK
+
+流水线通过受限 SSH 命令 `apk-state` 读取服务器当前正式包的原生输入指纹与历史最高构建号。对本次 checkout 的原生构建输入计算 SHA-256：只改网页、API、文档或测试时跳过 APK；活跃 Gradle 模块的源码/资源、Gradle 配置和 wrapper、依赖版本、构建辅助代码或 APK 打包脚本变化时构建新包。首次自动发布或当前包没有指纹时保守地出新包。定制 `projectDir` 等无法识别的模块映射会报错，需同步修改指纹规则。
+
+比较基线是当前成功发布的 APK，失败的构建和 API-only 部署不推进原生基线。CI 构建号为 `max(仓库默认构建号, 服务器历史最高构建号) + 1`；显示版本为 `versionName+构建号`。默认版本维护在 `apps/tv/client/version.properties`，CI 不需要为了每次出包写回 Git。SDK/JDK 构建版本维护在 `tools/tv-apk-build.json`。
+
+需要出包时安装 Android SDK/JDK，运行 Android 单元测试、lint 和 release 签名构建，并在构建前后确认原生输入未变化。Actions 保留 APK 与发布计划 30 天。服务端先通过网页/API 健康检查，再核验 APK 签名、版本及 CI 发布计划并更新安装包历史和当前版本；沿用当前正式包的存储方式，首次按运营设置选择服务器或私有 OSS。OSS 密钥保留在服务器，CI 只持有签名密钥。
+
+发布包包含固定路径的 APK 和计划文件，不包含签名私钥。服务端在发布锁内再次校验当前包是否与 CI 规划时相同；规划期间有人手工发布其他 APK 时拒绝覆盖，重新运行工作流即可重新规划。APK 发布失败会恢复应用部署状态并回退服务；未成功发布的包不会成为下次判断基线。手动触发工作流可选择 `force_apk` 强制生成更大的构建号。
+
+首次启用需要安装新版受限接收入口并配置签名 Secrets。保留现有 `MOLLYTIME_DEPLOY_KEY` / `MOLLYTIME_DEPLOY_KNOWN_HOSTS`，新增：
+
+- `MOLLYTIME_TV_KEYSTORE_BASE64`：原正式签名密钥库的 Base64 内容。
+- `MOLLYTIME_TV_STORE_PASSWORD`、`MOLLYTIME_TV_KEY_PASSWORD`：原密钥库/密钥密码。
+- `MOLLYTIME_TV_KEY_ALIAS`：原别名（默认 `mollytime`）。
+
+本地已有 `.local/signing/release.properties` 和原正式密钥时，可以运行 `python3 tools/setup_tv_ci.py` 完成一次性配置。该脚本通过 stdin 写入 GitHub Secrets，不输出密码；仅把两个部署入口脚本发送到服务器，保留 `.pre-tv-ci` 备份并使用严格主机校验，不重启业务服务。已有完整签名 Secrets 时不覆盖，配置不完整时拒绝混用凭据。首次安装入口需使用管理 SSH 密钥 `MollyTime_SSH.pem`，后续工作流仍使用受限部署密钥。
+
+CI 签名文件只写入 runner 临时目录，权限 600，任务结束时清理。生产镜像包含 `aapt`、`apksigner` 和 Java，也支持运营后台的 APK 上传校验；Nginx 对 APK 上传接口单独允许 512 MiB，其他接口保持原限制。
+
+GitHub 仓库 Secrets 已配置 `MOLLYTIME_DEPLOY_KEY` 和 `MOLLYTIME_DEPLOY_KNOWN_HOSTS`。部署密钥使用独立 Ed25519 密钥，服务器通过 SSH forced command 限制为 `check`、只读的 `apk-state` 和 `deploy <40位提交SHA>`；不能执行普通 shell 命令、转发端口或开启终端。主机公钥固定，CI 不使用动态 `ssh-keyscan` 或关闭主机验证。
 
 服务器的固定接收入口为 `/usr/local/sbin/mollytime-github-deploy` 和 `/usr/local/lib/mollytime-deploy.py`，源码见 `infra/github-deploy-gate.sh` 和 `infra/github-deploy.py`。这些入口脚本变更需通过现有管理 SSH 连接单独安装，不由上传发布包覆盖。
 

@@ -9,6 +9,7 @@ class MollyTimeApplication : Application() {
     lateinit var api: MollyTimeApi
     lateinit var media: MediaStore
     lateinit var watchQueue: WatchQueue
+    lateinit var updates: ClientUpdates
     // Serial execution prevents refresh-token rotation races and preserves event order.
     val io = Executors.newSingleThreadExecutor()
     override fun onCreate() {
@@ -17,6 +18,7 @@ class MollyTimeApplication : Application() {
         // Upgrade legacy parent-token TV sessions to revocable device credentials at next login.
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
         api = MollyTimeApi(session)
+        updates = ClientUpdates(this)
         media = MediaStore(this, session, api)
         watchQueue = WatchQueue(this, session, api)
         io.execute { watchQueue.flush() }

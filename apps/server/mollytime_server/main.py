@@ -13,11 +13,14 @@ from .api import auth as api_auth
 from .api import (
     catalog,
     children,
+    client_release_uploads,
+    client_updates,
     downloads,
+    manage_client_releases,
     manage_family,
-    operations,
     manage_home,
     manage_resources,
+    operations,
     pairing,
     playback,
     users,
@@ -87,6 +90,7 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(api_auth.router)
+    app.include_router(client_updates.router)
     app.include_router(pairing.router)
     app.include_router(users.router)
     app.include_router(children.router)
@@ -98,6 +102,8 @@ def create_app() -> FastAPI:
     app.include_router(manage_home.router)
     app.include_router(manage_family.router)
     app.include_router(operations.router)
+    app.include_router(manage_client_releases.router)
+    app.include_router(client_release_uploads.router)
     app.include_router(watch.router)
     if (settings.tv_web_dir / "index.html").is_file():
         app.mount("/tv", TvWebFiles(directory=settings.tv_web_dir, html=True), name="tv-web")

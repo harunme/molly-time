@@ -1,5 +1,5 @@
 # Build both frontends locally before packaging the release.
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 ARG APT_MIRROR=deb.debian.org
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PYTHONUNBUFFERED=1 \
@@ -7,10 +7,11 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
     MOLLYTIME_TV_WEB_DIR=/app/tv/web \
-    MOLLYTIME_PARENT_WEB_DIR=/app/web
+    MOLLYTIME_PARENT_WEB_DIR=/app/web \
+    MOLLYTIME_ANDROID_BUILD_TOOLS_DIR=/usr/bin
 RUN sed -i "s|http://deb.debian.org|https://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 update \
-    && apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg \
+    && apt-get -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg aapt apksigner default-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY apps/server/pyproject.toml ./

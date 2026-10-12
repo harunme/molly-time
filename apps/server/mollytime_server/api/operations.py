@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
+from ..client_releases import inventory, publication_lock
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..management_models import OperationsStorage, UploadSession, UploadTarget
@@ -165,19 +166,28 @@ def check_destination(db, values, current):
         )
         .first()
     )
-    referenced = bool(has_files or pending)
+    releases, _, invalid = inventory()
+    if invalid:
+        raise HTTPException(409, "客户端版本记录损坏，请先修复后修改存储配置")
+    referenced = bool(has_files or pending or any(record.storage == "oss" for record in releases))
     changed = any(
         values[field] != (getattr(current, field) or "") for field in ("oss_endpoint", "oss_bucket")
     )
     if referenced and changed:
         raise HTTPException(
-            409, "已有 OSS 文件或未结束上传，请先迁移资源，不能直接切换 Bucket 或地域"
+            409, "已有 OSS 文件、客户端安装包或未结束上传，请先迁移资源，不能直接切换 Bucket 或地域"
         )
     return referenced
 
 
 @router.put("/storage")
 def save_storage(body: StorageBody, user: Operator, db: DbSession):
+    # Keep a release upload's selected bucket stable until its reference is recorded.
+    with publication_lock():
+        return persist_storage(body, user, db)
+
+
+def persist_storage(body, user, db):
     values, current = candidate(body)
     referenced = check_destination(db, values, current)
     connection_changed = any(

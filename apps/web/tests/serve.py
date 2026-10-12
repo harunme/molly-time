@@ -1,6 +1,7 @@
 """Disposable real API fixture; never touches the household database."""
 
 import os
+import hashlib
 import subprocess
 import tempfile
 from pathlib import Path
@@ -16,6 +17,7 @@ from mollytime_server.auth import hash_password
 from mollytime_server.db import get_session_factory, init_db
 from mollytime_server.main import create_app
 from mollytime_server.models import ChildProfile, Family, Item, MediaFile, User
+from mollytime_server.client_releases import ClientRelease, archive_release, local_apk, manifest_path
 
 init_db()
 subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=0x237a70:s=480x270:d=2",
@@ -40,4 +42,20 @@ with get_session_factory()() as db:
     db.add(MediaFile(id="browser-next-media", family_id="family", item_id="browser-next", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
     db.commit()
 
-uvicorn.run(create_app(), host="127.0.0.1", port=8098, log_level="warning")
+for package, versions in [("com.molly.tv", [(2, "0.3.0"), (3, "0.4.0")]), ("com.molly.tv.debug", [(1, "0.2.0")])]:
+    for version, name in versions:
+        apk = f"APK fixture {package}/{version}".encode()
+        digest = hashlib.sha256(apk).hexdigest()
+        release = ClientRelease(
+            packageName=package, versionCode=version, versionName=name, minSdk=23,
+            size=len(apk), sha256=digest, notes="新增客户端自动更新\n保留家庭配对信息",
+            storage="local", key=f"releases/tv/{package}/{version}/{digest}.apk",
+            publishedAt="2026-10-12T08:00:00+00:00",
+        )
+        file = local_apk(release)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(apk)
+        archive_release(release)
+        manifest_path(package).write_text(release.model_dump_json())
+
+uvicorn.run(create_app(), host="127.0.0.1", port=int(os.environ.get("MOLLYTIME_E2E_PORT", "8098")), log_level="warning")

@@ -14,17 +14,18 @@ COPY apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts ./
 COPY apps/web/src ./src
 RUN pnpm build
 
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
     MOLLYTIME_TV_WEB_DIR=/app/tv/web \
-    MOLLYTIME_PARENT_WEB_DIR=/app/web
+    MOLLYTIME_PARENT_WEB_DIR=/app/web \
+    MOLLYTIME_ANDROID_BUILD_TOOLS_DIR=/usr/bin
 
 # Uploads require actual codec validation and thumbnail extraction.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg aapt apksigner default-jre-headless \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

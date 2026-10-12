@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 test('family admin has no operations access; superadmin saves and reloads storage settings', async ({ page }) => {
   await page.goto('/manage/');
@@ -8,6 +10,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '运营设置', exact: true })).toHaveCount(0);
   expect((await page.request.get('/api/manage/operations/storage')).status()).toBe(403);
+  expect((await page.request.get('/api/manage/operations/client-releases')).status()).toBe(403);
   await page.getByRole('button', { name: '退出账号' }).click();
   await page.getByLabel('账号', { exact: true }).fill('operator');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
@@ -31,5 +34,90 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await page.screenshot({ path: '../../artifacts/operations-storage.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: '保存存储配置' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('superadmin browses release history, filters channels and downloads an old APK', async ({ page }) => {
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('tab', { name: '客户端版本' }).click();
+  const table = page.locator('.client-releases-table');
+  await expect(table.locator('tbody tr')).toHaveCount(3);
+  await expect(page.getByText('共 3 个安装包')).toBeVisible();
+  const current = table.getByRole('row').filter({ has: page.getByText('0.4.0', { exact: true }) });
+  await expect(current).toContainText('当前发布');
+  const old = table.getByRole('row').filter({ has: page.getByText('0.3.0', { exact: true }) });
+  await expect(old).toContainText('历史版本');
+  await old.getByText('更新说明与校验信息').click();
+  await expect(old).toContainText('保留家庭配对信息');
+  await expect(old).toContainText('SHA-256');
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下载 正式版 0.3.0', exact: true }).click();
+  expect((await downloaded).suggestedFilename()).toBe('mollytime-tv-0.3.0.apk');
+  await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv.debug');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(table).toContainText('Debug 测试版');
+  await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv');
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await page.getByRole('button', { name: '刷新列表' }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await page.screenshot({ path: '../../artifacts/operations-client-releases.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('heading', { name: '客户端版本', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '../../artifacts/operations-client-releases-mobile.png', fullPage: true });
+});
+
+test('client releases render empty and failed inventory states with refresh recovery', async ({ page }) => {
+  let failed = false;
+  await page.route('**/api/manage/operations/client-releases?*', (route) => route.fulfill({
+    status: failed ? 503 : 200, contentType: 'application/json',
+    body: JSON.stringify(failed ? { detail: '安装包记录不可用' } : { items: [], total: 0, invalidRecords: 0 }),
+  }));
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('tab', { name: '客户端版本' }).click();
+  await expect(page.getByText(/暂无安装包/)).toBeVisible();
+  failed = true;
+  await page.getByRole('button', { name: '刷新列表' }).click();
+  await expect(page.getByRole('alert')).toContainText('安装包记录不可用');
+  failed = false;
+  await page.getByRole('button', { name: '刷新列表' }).click();
+  await expect(page.getByText(/暂无安装包/)).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('superadmin uploads a signed APK and sees its published version without entering metadata', async ({ page }) => {
+  const apk = resolve('../../artifacts/mollytime-tv-debug.apk');
+  test.skip(!existsSync(apk), 'Build a debug APK before running the real APK upload test');
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('tab', { name: '客户端版本' }).click();
+  const options = await page.request.get('/api/manage/operations/client-releases/upload-options');
+  test.skip(!options.ok() || !(await options.json()).canUpload, 'Server APK verification tools are required');
+  await page.getByText('上传 APK', { exact: true }).click();
+  await page.getByLabel('APK 安装包', { exact: true }).setInputFiles({ name: 'invalid.apk', mimeType: 'application/vnd.android.package-archive', buffer: Buffer.from('not a signed APK') });
+  await page.getByRole('button', { name: '上传并发布', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('APK 签名校验或格式检查失败');
+  await page.getByLabel('APK 安装包', { exact: true }).setInputFiles(apk);
+  await page.getByLabel('更新说明', { exact: true }).fill('通过运营后台上传安装包');
+  await page.getByRole('button', { name: '上传并发布', exact: true }).click();
+  await expect(page.getByText(/Debug 测试版 .* 已发布/)).toBeVisible({ timeout: 30000 });
+  const inventory = await (await page.request.get('/api/manage/operations/client-releases?packageName=com.molly.tv.debug')).json();
+  expect(inventory.items[0].isCurrent).toBe(true);
+  expect(inventory.items[0].notes).toBe('通过运营后台上传安装包');
+  expect(inventory.items[0].signerSha256).toHaveLength(1);
+  await expect(page.getByText(`共 ${inventory.total + 2} 个安装包`)).toBeVisible();
+  await page.screenshot({ path: '../../artifacts/operations-client-release-upload.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

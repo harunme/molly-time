@@ -1,7 +1,38 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("android")
 }
+
+val clientVersion = Properties().apply {
+    file("version.properties").inputStream().use { load(it) }
+}
+
+// Signing material stays outside versioned source. An override also supports CI.
+val releaseSigningFile = providers.environmentVariable("MOLLYTIME_SIGNING_PROPERTIES")
+    .map { rootProject.file(it) }
+    .getOrElse(rootProject.file("../../.local/signing/release.properties"))
+val releaseSigning = Properties().apply {
+    if (releaseSigningFile.isFile) releaseSigningFile.inputStream().use { load(it) }
+}
+val releaseKeyStore = releaseSigning.getProperty("storeFile")?.takeIf { it.isNotBlank() }
+    ?.let { path ->
+        File(path).let { if (it.isAbsolute) it else releaseSigningFile.parentFile.resolve(path) }
+    }
+val signingFields = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val hasReleaseSigning = signingFields.all { !releaseSigning.getProperty(it).isNullOrBlank() }
+val validateReleaseSigning = tasks.register("validateReleaseSigning") {
+    doLast {
+        check(releaseSigningFile.isFile) {
+            "Missing release signing properties. See client/README.md: release signing."
+        }
+        check(hasReleaseSigning) { "Release signing requires: ${signingFields.joinToString()}." }
+        check(releaseKeyStore?.isFile == true) { "Release signing keystore does not exist." }
+    }
+}
+
 android {
     namespace = "com.molly.tv"
     compileSdk = 36
@@ -10,20 +41,42 @@ android {
         applicationId = "com.molly.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.3.0"
+        versionCode = providers.gradleProperty("mollyVersionCode")
+            .getOrElse(clientVersion.getProperty("versionCode")).toInt()
+        require(versionCode in 1..2100000000) { "Invalid Android versionCode" }
+        versionName = providers.gradleProperty("mollyVersionName")
+            .getOrElse(clientVersion.getProperty("versionName"))
     }
     buildFeatures { buildConfig = true }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseKeyStore
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             manifestPlaceholders["cleartext"] = "true"
         }
-        release { manifestPlaceholders["cleartext"] = "false" }
+        release {
+            manifestPlaceholders["cleartext"] = "false"
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+// Never silently produce an unsigned release when signing material is absent.
+tasks.configureEach {
+    if (name == "preReleaseBuild" || name == "validateSigningRelease") {
+        dependsOn(validateReleaseSigning)
     }
 }
 kotlin { jvmToolchain(21) }

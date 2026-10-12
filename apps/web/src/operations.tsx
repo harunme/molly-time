@@ -2,6 +2,8 @@ import { Card } from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ClientReleases } from "./client-releases";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 
@@ -69,9 +71,15 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
       <div className="page-title">
         <div>
           <h1>运营设置</h1>
-          <p>统一管理所有家庭的新上传存储，仅平台超管可修改。</p>
+          <p>管理平台存储和电视客户端版本，仅平台超管可访问。</p>
         </div>
       </div>
+      <Tabs defaultValue="storage">
+        <TabsList aria-label="运营设置分类">
+          <TabsTrigger value="storage">文件存储</TabsTrigger>
+          <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
+        </TabsList>
+        <TabsContent value="storage">
       {error && (
         <p className="error" role="alert">
           {error}
@@ -247,6 +255,9 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
           </form>
         </Card>
       )}
+        </TabsContent>
+        <TabsContent value="client-releases"><ClientReleases /></TabsContent>
+      </Tabs>
     </>
   );
 }

@@ -1,5 +1,37 @@
 import { test, expect } from '@playwright/test';
 
+for (const supported of [true, false]) {
+  test(`client update setting respects native capability: ${supported}`, async ({ page }) => {
+    await page.addInitScript((supportsUpdates) => {
+      const w = window as unknown as {
+        updateChecks: number;
+        MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void };
+      };
+      w.updateChecks = 0;
+      w.MollyBridge = { postMessage(raw) {
+        const { id, method, args } = JSON.parse(raw);
+        let result: unknown = { ok: true };
+        if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: '', nativePlayback: true, clientUpdates: supportsUpdates, shellVersion: '0.4.0' };
+        if (method === 'request' && args.path === '/api/home') result = { rows: [{ title: '媒体库', items: [{ id: 'story', name: '故事', episodeCount: 1 }] }] };
+        if (method === 'request' && args.path === '/api/families/me/children') result = [];
+        if (method === 'checkUpdate') w.updateChecks++;
+        setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
+      } };
+    }, supported);
+    await page.goto('/tv/');
+    await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+    if (supported) {
+      await expect(page.locator('[data-focus="check-update"]')).toContainText('当前版本 0.4.0');
+      await page.keyboard.press('ArrowDown');
+      await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect.poll(() => page.evaluate(() => (window as unknown as { updateChecks: number }).updateChecks)).toBe(1);
+    } else await expect(page.locator('[data-focus="check-update"]')).toHaveCount(0);
+  });
+}
+
 test('recent playback precedes library and supports remote playback and return', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as {

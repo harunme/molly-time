@@ -1,5 +1,5 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
-export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; devicePairing?: boolean; devicePairingReset?: boolean };
+export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string };
 export type Child = { id: string; name: string };
 export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
 export type Season = { id: string; name: string; image?: { url: string }; indexNumber?: number; episodeCount?: number };

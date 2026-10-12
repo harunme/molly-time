@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_apk:
+        description: Force a new signed TV APK even when native inputs are unchanged
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,9 +21,11 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 10.32.1
@@ -41,26 +48,10 @@ jobs:
           pnpm --dir apps/web install --frozen-lockfile
           pnpm --dir apps/tv/web install --frozen-lockfile
           pnpm --dir apps/web exec playwright install --with-deps chromium
-      - name: Build and test
-        run: |
-          pnpm --dir apps/web build
-          pnpm --dir apps/tv/web build
-          apps/server/.venv/bin/python -m pytest apps/server/tests -q
-          apps/server/.venv/bin/python -m pytest tools/tests/test_github_deploy.py -q
-          pnpm --dir apps/tv/web test
-          pnpm --dir apps/web exec playwright test tests/file-hash.spec.ts tests/manage.spec.ts --grep 'upload SHA-256|real upload'
-      - name: Package release
-        run: |
-          tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
-            apps/server/pyproject.toml apps/server/mollytime_server \
-            apps/web/dist apps/tv/web/dist \
-            infra/Dockerfile.prebuilt infra/compose.production.yaml \
-            infra/compose.tls.yaml infra/nginx-tls.conf
-      - name: Deploy and verify
+      - name: Configure deployment SSH
         env:
           DEPLOY_KEY: ${{ secrets.MOLLYTIME_DEPLOY_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.MOLLYTIME_DEPLOY_KNOWN_HOSTS }}
-          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_KEY"
@@ -70,6 +61,90 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/mollytime-deploy
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/mollytime-deploy ~/.ssh/known_hosts
+      - name: Decide whether a TV APK is required
+        id: native_plan
+        env:
+          FORCE_APK: ${{ inputs.force_apk || 'false' }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            root@118.89.122.66 apk-state > "$RUNNER_TEMP/tv-apk-state.json"
+          python tools/ci_tv_apk.py plan --state "$RUNNER_TEMP/tv-apk-state.json" \
+            --commit "$GITHUB_SHA" --force "$FORCE_APK" \
+            --output artifacts/tv-client-plan.json
+      - uses: actions/setup-java@v6
+        if: steps.native_plan.outputs.required == 'true'
+        with:
+          distribution: temurin
+          java-version: ${{ steps.native_plan.outputs.java_version }}
+      - uses: android-actions/setup-android@v4
+        if: steps.native_plan.outputs.required == 'true'
+        with:
+          log-accepted-android-sdk-licenses: false
+      - name: Prepare Android SDK and private signing material
+        if: steps.native_plan.outputs.required == 'true'
+        env:
+          BUILD_TOOLS: ${{ steps.native_plan.outputs.build_tools }}
+          COMPILE_SDK: ${{ steps.native_plan.outputs.compile_sdk }}
+          MOLLYTIME_TV_KEYSTORE_BASE64: ${{ secrets.MOLLYTIME_TV_KEYSTORE_BASE64 }}
+          MOLLYTIME_TV_STORE_PASSWORD: ${{ secrets.MOLLYTIME_TV_STORE_PASSWORD }}
+          MOLLYTIME_TV_KEY_PASSWORD: ${{ secrets.MOLLYTIME_TV_KEY_PASSWORD }}
+          MOLLYTIME_TV_KEY_ALIAS: ${{ secrets.MOLLYTIME_TV_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-$COMPILE_SDK" "build-tools;$BUILD_TOOLS"
+          python tools/ci_tv_apk.py prepare-signing --directory "$RUNNER_TEMP/molly-tv-signing"
+      - name: Build and test
+        run: |
+          pnpm --dir apps/web build
+          pnpm --dir apps/tv/web build
+          apps/server/.venv/bin/python -m pytest apps/server/tests -q
+          apps/server/.venv/bin/python -m pytest tools/tests -q
+          pnpm --dir apps/tv/web test
+          pnpm --dir apps/web exec playwright test tests/file-hash.spec.ts tests/manage.spec.ts --grep 'upload SHA-256|real upload'
+      - name: Build and verify signed TV APK
+        if: steps.native_plan.outputs.required == 'true'
+        env:
+          TV_VERSION_CODE: ${{ steps.native_plan.outputs.version_code }}
+          TV_VERSION_NAME: ${{ steps.native_plan.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          export MOLLYTIME_ANDROID_HOME="$ANDROID_HOME"
+          export MOLLYTIME_JAVA_HOME="$JAVA_HOME"
+          export MOLLYTIME_SIGNING_PROPERTIES="$RUNNER_TEMP/molly-tv-signing/release.properties"
+          python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
+          bash tools/build-tv-client.sh release \
+            "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME" \
+            :client:testDebugUnitTest :client:lintDebug
+          python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
+      - name: Save APK and publication plan
+        if: steps.native_plan.outputs.required == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mollytime-tv-${{ steps.native_plan.outputs.version_code }}
+          path: |
+            artifacts/mollytime-tv-release.apk
+            artifacts/tv-client-plan.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Package release
+        run: |
+          set -euo pipefail
+          apk_files=(artifacts/tv-client-plan.json)
+          if [[ -f artifacts/mollytime-tv-release.apk ]]; then
+            apk_files+=(artifacts/mollytime-tv-release.apk)
+          fi
+          tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
+            apps/server/pyproject.toml apps/server/mollytime_server \
+            apps/web/dist apps/tv/web/dist \
+            infra/Dockerfile.prebuilt infra/compose.production.yaml \
+            infra/compose.tls.yaml infra/nginx-tls.conf "${apk_files[@]}"
+      - name: Deploy and verify
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
           ssh -i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
@@ -77,3 +152,6 @@ jobs:
           curl --fail --silent --show-error --retry 5 --retry-all-errors \
             --retry-delay 3 --connect-timeout 10 --max-time 30 \
             https://118.89.122.66:8096/healthz
+      - name: Remove private signing material
+        if: always()
+        run: python tools/ci_tv_apk.py cleanup-signing --directory "$RUNNER_TEMP/molly-tv-signing"

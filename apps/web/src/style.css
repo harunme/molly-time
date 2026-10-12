@@ -672,6 +672,28 @@ td small {
 .section-heading h2 {
   @apply mb-0;
 }
+.client-releases-card { max-width: none; min-width: 0; }
+.client-release-upload { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: .75rem; }
+.client-release-upload > summary { cursor: pointer; font-weight: 500; }
+.client-release-upload > p { margin: .75rem 0; }
+.client-release-upload fieldset { border: 0; padding: 0; }
+.client-release-upload fieldset > label { display: grid; gap: .5rem; margin: 1rem 0; }
+.client-release-upload-progress { display: grid; gap: .75rem; margin-top: 1rem; }
+.client-release-upload-progress button { justify-self: start; }
+.client-releases-heading, .client-releases-toolbar, .client-releases-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.client-releases-heading { margin-bottom: 1.25rem; }
+.client-releases-heading p { margin-top: .5rem; }
+.client-releases-toolbar { margin-bottom: 1rem; }
+.client-releases-toolbar label { display: grid; gap: .5rem; min-width: 12rem; }
+.client-releases-pagination { margin-top: 1rem; justify-content: flex-end; }
+.client-releases-table { min-width: 900px; }
+.client-releases-table td { vertical-align: top; }
+.client-releases-table small { display: block; margin-top: .4rem; }
+.client-releases-table details { margin-top: .75rem; max-width: 22rem; }
+.client-releases-table summary { cursor: pointer; font-size: .85rem; }
+.client-releases-table details p { white-space: pre-wrap; margin: .75rem 0; }
+.client-releases-table dd { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
+.client-releases-table dt { font-size: .8rem; color: var(--muted-foreground); }
 .operations-card {
   @apply max-w-[960px];
 }

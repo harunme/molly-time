@@ -4,6 +4,9 @@ analysis/bbkt-crawl/.private/
 analysis/childplayer-6.0.2/samples/
 __pycache__/
 .local/
+*.jks
+*.keystore
+release.properties
 artifacts/
 apps/tv/local.properties
 apps/tv/app/src/main/assets/molly/

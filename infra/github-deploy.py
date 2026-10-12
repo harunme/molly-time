@@ -23,6 +23,91 @@ FILES = {
     'apps/server/pyproject.toml', 'infra/Dockerfile.prebuilt',
     'infra/compose.production.yaml', 'infra/compose.tls.yaml', 'infra/nginx-tls.conf',
 }
+OPTIONAL_FILES = {'artifacts/tv-client-plan.json', 'artifacts/mollytime-tv-release.apk'}
+
+
+def read_json(path):
+    with path.open('r', encoding='utf-8') as handle:
+        value = handle.read(65537)
+    if len(value.encode('utf-8')) > 65536:
+        raise ValueError('Release metadata is too large')
+    result = json.loads(value)
+    if not isinstance(result, dict):
+        raise ValueError('Release metadata must be an object')
+    return result
+
+
+def release_state():
+    directory = ROOT / 'data/client-releases'
+    if not directory.exists():
+        return {'current': None, 'highestVersionCode': 0}
+    with (directory / '.publish.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_SH)
+        highest = 0
+        current = None
+        latest = directory / 'com.molly.tv.json'
+        paths = list((directory / 'history/com.molly.tv').glob('*/*.json'))
+        if latest.exists():
+            paths.append(latest)
+        for path in paths:
+            record = read_json(path)
+            code = record.get('versionCode')
+            sha = record.get('sha256', '')
+            fingerprint = record.get('sourceFingerprint')
+            if (record.get('packageName') != 'com.molly.tv' or type(code) is not int
+                    or not 0 < code <= 2100000000 or not re.fullmatch('[0-9a-f]{64}', sha)
+                    or (fingerprint is not None and not re.fullmatch('[0-9a-f]{64}', fingerprint))):
+                raise ValueError('Invalid published TV release metadata')
+            highest = max(highest, code)
+            if path == latest:
+                current = {'versionCode': code, 'sha256': sha, 'sourceFingerprint': fingerprint}
+        return {'current': current, 'highestVersionCode': highest}
+
+
+def validate_plan(destination, tag):
+    plan_file = destination / 'artifacts/tv-client-plan.json'
+    apk = destination / 'artifacts/mollytime-tv-release.apk'
+    if not plan_file.exists():
+        if apk.exists():
+            raise ValueError('APK must include a CI publication plan')
+        return None  # Support the old web-only workflow during receiver migration.
+    plan = read_json(plan_file)
+    required = plan.get('requiresApk')
+    code = plan.get('versionCode')
+    if (plan.get('schemaVersion') != 1 or type(required) is not bool
+            or plan.get('sourceCommit') != tag or type(code) is not int
+            or not 0 < code <= 2100000000
+            or not re.fullmatch('[0-9a-f]{64}', plan.get('sourceFingerprint', ''))
+            or not isinstance(plan.get('versionName'), str)
+            or not 0 < len(plan['versionName']) <= 100
+            or apk.exists() != required):
+        raise ValueError('Invalid CI APK plan or artifact')
+    if required and not 0 < apk.stat().st_size <= 512 * 1024 ** 2:
+        raise ValueError('APK exceeds the publication limit')
+    state = release_state()
+    current = state['current']
+    expected = None if current is None else {'versionCode': current['versionCode'], 'sha256': current['sha256']}
+    if plan.get('expectedRelease') != expected:
+        raise ValueError('Published APK changed during CI; rerun the workflow')
+    if required:
+        if code <= state['highestVersionCode']:
+            raise ValueError('CI APK version must exceed all published versions')
+    elif current is None or current['sourceFingerprint'] != plan['sourceFingerprint']:
+        raise ValueError('Cannot skip APK without a matching published fingerprint')
+    return plan
+
+
+def publish_apk(destination, tag, plan):
+    if not plan or not plan['requiresApk']:
+        validate_plan(destination, tag)
+        return
+    compose(destination, tag, 'run', '--rm', '--no-deps',
+            '-v', str(destination / 'artifacts') + ':/ci-release:ro',
+            'mollytime-server', 'python', '-m',
+            'mollytime_server.scripts.publish_tv_release',
+            '/ci-release/mollytime-tv-release.apk', '--build-tools', '/usr/bin',
+            '--storage', 'auto', '--ci-plan-file', '/ci-release/tv-client-plan.json',
+            '--notes', 'Automatic TV release ' + tag[:12])
 
 
 def run(args, env=None):
@@ -51,7 +136,7 @@ def atomic_write(path, data, mode=0o600):
 def unpack(archive, destination):
     with tarfile.open(str(archive), 'r:gz') as bundle:
         members = bundle.getmembers()
-        if sum(member.size for member in members) > 256 * 1024 ** 2:
+        if sum(member.size for member in members) > 768 * 1024 ** 2:
             raise ValueError('Unpacked release is too large')
         for member in members:
             name = member.name.rstrip('/')
@@ -59,7 +144,7 @@ def unpack(archive, destination):
                 raise ValueError('Unsafe archive path')
             if not (member.isfile() or member.isdir()):
                 raise ValueError('Archive links and special files are forbidden')
-            if not (name in FILES or any(name.startswith(prefix) for prefix in DIRECTORIES)
+            if not (name in FILES | OPTIONAL_FILES or any(name.startswith(prefix) for prefix in DIRECTORIES)
                     or (member.isdir() and name + '/' in DIRECTORIES)):
                 raise ValueError('Unexpected archive entry: ' + name)
         bundle.extractall(str(destination), members=members)
@@ -70,6 +155,9 @@ def unpack(archive, destination):
 
 
 def main():
+    if sys.argv[1:] == ['--apk-state']:
+        print(json.dumps(release_state()))
+        return
     tag = sys.argv[1]
     if not re.fullmatch('[0-9a-f]{40}', tag):
         raise ValueError('Invalid release SHA')
@@ -93,13 +181,16 @@ def main():
                 if not chunk:
                     break
                 size += len(chunk)
-                if size > 64 * 1024 ** 2:
+                if size > 640 * 1024 ** 2:
                     raise ValueError('Release archive is too large')
                 output.write(chunk)
         unpack(archive, destination)
+        if shutil.disk_usage(str(ROOT)).free < 2 * 1024 ** 3 + archive.stat().st_size * 3:
+            raise RuntimeError('Insufficient space to stage the APK release')
+        plan = validate_plan(destination, tag)
         for name in ('.env', 'data', 'tls'):
             (destination / name).symlink_to(ROOT / name)
-        (destination / '.dockerignore').write_text('.env\ndata\ntls\nrelease.tar.gz\n')
+        (destination / '.dockerignore').write_text('.env\ndata\ntls\nartifacts\nrelease.tar.gz\n')
         compose(destination, tag, 'config', '--quiet')
         compose(destination, tag, 'build', 'mollytime-server')
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
@@ -121,17 +212,29 @@ def main():
                      '--show-error', '--output', '/dev/null', '--max-time', '15',
                      '--resolve', '118.89.122.66:8096:127.0.0.1',
                      'https://118.89.122.66:8096' + path])
+            # Prepare deployment bookkeeping before the final APK pointer update.
+            env = ROOT / '.env'
+            original_env = env.read_text(encoding='utf-8')
+            original_state = STATE.read_text(encoding='utf-8') if STATE.exists() else None
+            lines = original_env.splitlines()
+            lines = ['MOLLYTIME_RELEASE=' + tag if line.startswith('MOLLYTIME_RELEASE=') else line for line in lines]
+            try:
+                atomic_write(env, '\n'.join(lines) + '\n')
+                atomic_write(STATE, json.dumps({'path': str(destination), 'tag': tag}, indent=2) + '\n')
+                publish_apk(destination, tag, plan)
+            except Exception:
+                atomic_write(env, original_env)
+                if original_state is None:
+                    if STATE.exists():
+                        STATE.unlink()
+                else:
+                    atomic_write(STATE, original_state)
+                raise
         except Exception:
             print('Deployment failed; restoring previous application version', flush=True)
             compose(Path(previous['path']), previous['tag'], 'up', '-d', '--wait',
                     '--wait-timeout', '180')
             raise
-        env = ROOT / '.env'
-        lines = env.read_text(encoding='utf-8').splitlines()
-        lines = ['MOLLYTIME_RELEASE=' + tag if line.startswith('MOLLYTIME_RELEASE=')
-                 else line for line in lines]
-        atomic_write(env, '\n'.join(lines) + '\n')
-        atomic_write(STATE, json.dumps({'path': str(destination), 'tag': tag}, indent=2) + '\n')
         print('Deployed ' + tag, flush=True)
 
 

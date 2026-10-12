@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     media_worker_enabled: bool = True
     max_upload_bytes: int = 10 * 1024**3
     public_base_url: str = ""  # Phone-accessible server origin for pairing QR links.
+    android_build_tools_dir: Path = (
+        Path(__file__).resolve().parents[3] / ".local/android-sdk/build-tools/36.0.0"
+    )
+    android_java_home: Path | None = None  # Optional JRE/JDK location for APK verification.
 
     # ---- Auth (HMAC access token + opaque refresh) ---------------------------
     # HMAC secret used to sign short-lived access tokens (JWT-like).

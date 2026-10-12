@@ -24,6 +24,10 @@ class ShellActivity : AppCompatActivity() {
     private var loading: ProgressBar? = null
     private var pageReady = false
     private var playing = false
+    private var resumed = false
+    private var updateOpening = false
+    private var updateCheckedServer = ""
+    private var pendingUpdate: ClientUpdates.Release? = null
     @Volatile private var generation = 0
     private var inFlight = 0
     private val player = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -31,6 +35,7 @@ class ShellActivity : AppCompatActivity() {
         val data = JSONObject().put("episodeId", result.data?.getStringExtra("episodeId") ?: "")
             .put("positionMs", result.data?.getLongExtra("positionMs", 0) ?: 0)
         web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('molly:playbackClosed',{detail:$data}))", null)
+        offerPendingUpdate()
     }
 
     override fun onCreate(state: Bundle?) {
@@ -153,6 +158,7 @@ class ShellActivity : AppCompatActivity() {
                 if (method == "ready") {
                     pageReady = true
                     loading?.visibility = View.GONE
+                    checkStartupUpdate()
                 }
                 inFlight++
                 app.io.execute {
@@ -212,6 +218,16 @@ class ShellActivity : AppCompatActivity() {
         "getCapabilities" -> JSONObject().put("bridgeVersion", 1).put("shellVersion", BuildConfig.VERSION_NAME)
             .put("serverUrl", app.session.server).put("authenticated", app.session.refresh.isNotEmpty())
             .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
+            .put("clientUpdates", true)
+        "checkUpdate" -> {
+            runOnUiThread {
+                if (!playing && resumed && !updateOpening && !isDestroyed && generation == current) {
+                    updateOpening = true
+                    startActivity(Intent(this, UpdateActivity::class.java))
+                }
+            }
+            JSONObject().put("ok", true)
+        }
         "pairingStart" -> app.api.pairingStart()
         "pairingPoll" -> app.api.pairingPoll()
         "pairingCancel" -> app.api.pairingCancel()
@@ -242,7 +258,35 @@ class ShellActivity : AppCompatActivity() {
         else -> throw IllegalArgumentException("不支持的网页接口")
     }
 
-    override fun onPause() { web?.onPause(); super.onPause() }
-    override fun onResume() { super.onResume(); web?.onResume() }
+    private fun checkStartupUpdate() {
+        val server = app.session.server
+        if (updateCheckedServer == server) return
+        updateCheckedServer = server
+        pendingUpdate = null
+        app.updates.executor.execute {
+            val release = runCatching { app.updates.check(server) }.getOrNull()
+            runOnUiThread {
+                if (!isDestroyed && app.session.server == server) {
+                    pendingUpdate = release
+                    offerPendingUpdate()
+                }
+            }
+        }
+    }
+    private fun offerPendingUpdate() {
+        val release = pendingUpdate ?: return
+        if (!resumed || playing || updateOpening || !pageReady || isDestroyed) return
+        pendingUpdate = null
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("发现新版本 ${release.versionName}")
+            .setMessage(release.notes.ifEmpty { "可以更新电视客户端，获取最新功能。" })
+            .setNegativeButton("稍后", null)
+            .setPositiveButton("查看更新") { _, _ ->
+                updateOpening = true
+                startActivity(Intent(this, UpdateActivity::class.java).putExtra("release", release.json().toString()))
+            }.show()
+    }
+    override fun onPause() { resumed = false; web?.onPause(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; updateOpening = false; web?.onResume(); offerPendingUpdate() }
     override fun onDestroy() { destroyWeb(); super.onDestroy() }
 }

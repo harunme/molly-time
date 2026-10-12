@@ -31,7 +31,7 @@ class MediaStore(private val context: Context, private val session: SessionStore
     private val busy = AtomicBoolean(false)
     @Volatile private var generation = 0
     @Volatile private var writer: CacheWriter? = null
-    private val pinned = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pinned = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val evictor = HouseholdEvictor(directory, pinned)
     private val cache: SimpleCache
     init {

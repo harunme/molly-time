@@ -16,9 +16,35 @@ bash tools/build-tv-client.sh
 
 命令在仓库根目录运行。第一次启动输入媒体库根地址，然后用手机扫码绑定；电视端不输入账号密码。模拟器使用 `http://10.0.2.2:8096`；真实电视使用同局域网主机地址，后台需另行绑定该局域网地址。默认账号仅供本地原型，见根 README。生产包要求 HTTPS；debug 包允许 HTTP 方便家庭实测。
 
-调试包名为 `com.molly.tv.debug`，发布包名为 `com.molly.tv`。发布包未配置签名，需要实际发布时配置独立密钥；不使用 debug 密钥签正式包。
+调试包名为 `com.molly.tv.debug`，发布包名为 `com.molly.tv`。正式包使用独立的本地签名密钥，配置步骤见下文。
+
+## 正式包签名（release signing）
+
+已有 `.local/signing/release.properties` 和密钥时直接执行下方打包命令，保留现有文件。新环境在仓库根目录生成密钥，仅需一次；密码由 keytool 交互询问，不放在命令参数中：
+
+```bash
+source tools/android-env.sh
+mkdir -p .local/signing
+keytool -genkeypair -storetype PKCS12 \
+  -keystore .local/signing/mollytime-release.jks \
+  -alias mollytime -keyalg RSA -keysize 3072 -validity 10000
+cp tools/release-signing.properties.example .local/signing/release.properties
+chmod 600 .local/signing/mollytime-release.jks .local/signing/release.properties
+```
+
+编辑 `.local/signing/release.properties`，填入 `storePassword` 和 `keyPassword`（上述 PKCS12 密钥使用同一密码），保持 `keyAlias=mollytime`。这是 Java properties 文件，密码中的反斜杠需要写成 `\\`。相对 `storeFile` 路径以 properties 文件所在目录为基准。CI 可通过 `MOLLYTIME_SIGNING_PROPERTIES` 指定外部配置文件；相对的配置文件路径以 `apps/tv` 为基准。
+
+```bash
+bash tools/build-tv-client.sh release
+```
+
+脚本验证 APK 签名后输出 `artifacts/mollytime-tv-release.apk`。默认 `bash tools/build-tv-client.sh` 仍构建 debug；缺少签名配置不会影响 debug，但 release 会明确失败，不输出未签名正式包。直接执行 Gradle `:client:assembleRelease` 或 `:client:bundleRelease` 同样要求签名配置。
+
+密钥和真实配置禁止提交，需另行加密备份并保存密码。手动出包保持包名和签名密钥，递增 `client/version.properties` 中的 `versionCode` 并更新 `versionName`。CI 会按原生输入指纹自动判断是否出包并分配更大的构建号，见 [流水线说明](../../../docs/deployment.md#自动判断与发布-tv-apk)。debug 与 release 是不同应用，首次安装正式包需要重新配对。正式包仅允许 HTTPS 后台。
 
 ## 职责
+
+客户端 APK 更新发布、本地服务器和私有 OSS 的操作见 [TV 自动更新说明](../../../docs/tv-client-updates.md)。
 
 - `ShellActivity`：固定媒体库 `/tv/` 网页、可信来源的 WebMessage Bridge、连接/错误页面、返回键和播放返回事件。
 - `PlaybackActivity`：Media3 视频、字幕轨列表、播放器控件、服务端续播、实际播放区间心跳和退出上报、后台暂停及资源释放。
@@ -26,7 +52,7 @@ bash tools/build-tv-client.sh
 - `SessionStore` / `MollyTimeApi`：原生私有凭证存储、401 刷新重试、Authorization 请求头；备份禁用。网页不接收凭证。
 - `BridgePolicy`：有限 API 路径和方法白名单；只允许目录读取及儿童选择，播放与进度由原生控制。
 
-Bridge 版本为 1，消息格式 `{id, method, args}`，响应 `{id, result}` 或 `{id, error: {message, status}}`。接口包括 getCapabilities、ready、pairingStart、pairingPoll、pairingCancel、pairingReset、connection、request、playEpisode。仅可信来源的主框架可调用；不支持该安全消息能力的旧 WebView 显示明确错误，不退回不受限的 JavascriptInterface。
+Bridge 版本为 1，消息格式 `{id, method, args}`，响应 `{id, result}` 或 `{id, error: {message, status}}`。接口包括 getCapabilities、ready、pairingStart、pairingPoll、pairingCancel、pairingReset、connection、request、playEpisode、checkUpdate。仅可信来源的主框架可调用；不支持该安全消息能力的旧 WebView 显示明确错误，不退回不受限的 JavascriptInterface。
 
 网页封面经原生拦截请求附加 Authorization。视频与字幕也通过请求头认证，URL 不包含 token。退出原生播放器时发送 `molly:playbackClosed`，保留网页实例、路由与焦点。
 
