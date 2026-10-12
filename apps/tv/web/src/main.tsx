@@ -249,8 +249,7 @@ function App() {
           }}>重试</FocusButton></div>}
         </FocusRegion>
       </FocusRegion>
-      <footer><span><span className="keycap">↑ ↓ ← →</span> 选择</span><span><span className="keycap">确定</span> {folder ? '播放' : '打开'}</span><span><span className="keycap">返回</span> 上一页</span>
-        {playing && <span role="status" className="player-status">正在打开播放器…</span>}</footer>
+      {playing && <footer><span role="status" className="player-status">正在打开播放器…</span></footer>}
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
       <FocusRegion focusKey="overlay" className={`overlay-panel ${overlay === 'children' ? 'profiles-panel' : overlay === 'pairing' ? 'account-panel' : 'settings-panel'}`} boundary>
