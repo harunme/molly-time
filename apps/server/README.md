@@ -1,6 +1,6 @@
-# Molly Server
+# MollyTime Server
 
-Molly TV 的唯一业务与媒体后台，采用 FastAPI + SQLAlchemy + SQLite，自有 REST API 位于 `/api/*`，不依赖 Jellyfin 服务端或协议。
+MollyTime 的唯一业务与媒体后台，采用 FastAPI + SQLAlchemy + SQLite，自有 REST API 位于 `/api/*`，不依赖 Jellyfin 服务端或协议。
 
 当前包含认证、家庭与儿童管理、可撤销 TV 设备、目录与发布状态、本地视频 Range 响应、字幕、封面、分块上传与媒体处理、首页草稿/发布和实际观看时长统计。管理网页入口 `/manage/`，TV 网页入口 `/tv/`。OSS 在线播放尚未接通。
 
@@ -19,12 +19,12 @@ bash tools/run-server.sh
 默认监听 `127.0.0.1:8096`。Docker 启动：
 
 ```bash
-docker compose -f infra/compose.yaml up -d molly-server
+docker compose -f infra/compose.yaml up -d mollytime-server
 ```
 
 ## 目录
 
-- `molly_server/api/`：认证、用户、儿童、目录、播放接口。
+- `mollytime_server/api/`：认证、用户、儿童、目录、播放接口。
 - `models.py` / `db.py`：SQLAlchemy 模型与数据库。
 - `auth.py` / `deps.py`：认证与请求依赖。
 - `storage/`：本地与 OSS 存储适配。

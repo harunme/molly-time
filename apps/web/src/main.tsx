@@ -1,3 +1,4 @@
+import { PairingPage } from './pairing';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { api, bytes, dateTime, minutes, scope, setSession, type Child, type Config, type Content, type Home, type Resource, type Row, type Session, type Upload, type WatchReport } from './api';
@@ -20,24 +21,29 @@ function Modal({ title, children, close }: { title: string; children: React.Reac
   const ref = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState('');
   useEffect(() => { ref.current?.showModal(); }, []);
-  useEffect(() => { const failed = (e: Event) => setError((e as CustomEvent<string>).detail); window.addEventListener('molly:error', failed); return () => window.removeEventListener('molly:error', failed); }, []);
+  useEffect(() => { const failed = (e: Event) => setError((e as CustomEvent<string>).detail); window.addEventListener('mollytime:error', failed); return () => window.removeEventListener('mollytime:error', failed); }, []);
   return <dialog ref={ref} onCancel={close}><div className="modal-heading"><h2>{title}</h2><button aria-label="关闭" className="quiet" onClick={close}>×</button></div>{error && <p className="error" role="alert">{error}</p>}{children}</dialog>;
 }
 function State({ loading, error }: { loading?: boolean; error?: string }) { return loading || error ? <p className={error ? 'error' : 'empty'} role={error ? 'alert' : 'status'}>{error || '正在加载…'}</p> : null; }
 function Badge({ value }: { value: string }) { const names: Record<string, string> = { draft: '草稿', published: '已发布', archived: '已归档', uploading: '上传中', processing: '检查中', ready: '文件就绪', failed: '检查失败', cancelled: '已取消' }; return <span className={`badge ${value}`}>{names[value] || value}</span>; }
 
 function App() {
+  const [pairCode, setPairCode] = useState<string | null>(() => new URLSearchParams(location.search).get('pair'));
   const [session, updateSession] = useState<Session>(), [checking, setChecking] = useState(true);
   const [page, setPage] = useState('library'), [error, setError] = useState(''), [notice, setNotice] = useState('');
   useEffect(() => { api<Session>('/auth/session').then((value) => { setSession(value); updateSession(value); }).catch(() => {}).finally(() => setChecking(false));
     const expired = () => { stopUploads(); updateSession(undefined); setSession(undefined); };
-    window.addEventListener('molly:unauthorized', expired); return () => window.removeEventListener('molly:unauthorized', expired); }, []);
-  const run: Run = async (action) => { setError(''); setNotice(''); try { await action(); } catch (e) { const message = e instanceof Error ? e.message : '操作失败'; setError(message); window.dispatchEvent(new CustomEvent('molly:error', { detail: message })); } };
+    window.addEventListener('mollytime:unauthorized', expired); return () => window.removeEventListener('mollytime:unauthorized', expired); }, []);
+  const run: Run = async (action) => { setError(''); setNotice(''); try { await action(); } catch (e) { const message = e instanceof Error ? e.message : '操作失败'; setError(message); window.dispatchEvent(new CustomEvent('mollytime:error', { detail: message })); } };
   if (checking) return <div className="boot">正在打开家庭媒体库…</div>;
   if (!session) return <Login done={(value) => { setSession(value); updateSession(value); setError(''); }} />;
+  if (pairCode !== null) return <PairingPage initialCode={pairCode} session={session} close={() => {
+    const url = new URL(location.href); url.searchParams.delete('pair'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+    setPairCode(null); setPage('family');
+  }} />;
   const names = [['library', '资源库'], ['upload', '上传任务'], ['home', '首页编排'], ['watch', '观看记录'], ['family', '家庭设置']];
   const readonly = session.user.role !== 'admin';
-  return <div className="workspace"><aside><a className="wordmark" href="/manage/">molly<span>家庭放映室</span></a><div className="family-name">{session.family.name}</div>
+  return <div className="workspace"><aside><a className="wordmark" href="/manage/">MollyTime<span>家庭放映室</span></a><div className="family-name">{session.family.name}</div>
     <nav aria-label="管理导航">{names.map(([id, name]) => <button key={id} className={page === id ? 'active' : ''} onClick={() => { setPage(id); setError(''); setNotice(''); }}><Icon name={id} />{name}</button>)}</nav>
     <div className="sidebar-bottom"><span>{session.user.name} · {readonly ? '家长成员' : '管理员'}</span><button className="quiet" onClick={() => { void run(async () => { await api('/auth/logout', 'POST'); stopUploads(); setSession(undefined); updateSession(undefined); }); }}>退出账号</button></div></aside>
     <main><header className="topbar"><span>给孩子的小小放映室</span><a href="/tv/" target="_blank" rel="noreferrer">打开 TV 网页 ↗</a></header>
@@ -48,13 +54,13 @@ function App() {
       {page === 'upload' && <Uploads run={run} readonly={readonly} />}
       {page === 'home' && <HomeEditor run={run} readonly={readonly} notify={setNotice} />}
       {page === 'watch' && <Reports />}
-      {page === 'family' && <Family run={run} readonly={readonly} notify={setNotice} />}
+      {page === 'family' && <Family run={run} readonly={readonly} notify={setNotice} onPair={() => setPairCode('')} />}
     </main></div>;
 }
 
 function Login({ done }: { done: (session: Session) => void }) {
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [family, setFamily] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  return <div className="login"><section className="login-story"><div className="wordmark">molly<span>家庭放映室</span></div><div><p className="eyebrow">属于我们家的内容</p><h1>挑好故事，<br />留给好奇的眼睛。</h1><p>整理资源，安排首页，了解孩子的播放时间。</p><div className="film-spines" aria-hidden="true"><span>故事</span><span>发现</span><span>英语</span><span>自然</span></div></div></section>
+  return <div className="login"><section className="login-story"><div className="wordmark">MollyTime<span>家庭放映室</span></div><div><p className="eyebrow">属于我们家的内容</p><h1>挑好故事，<br />留给好奇的眼睛。</h1><p>整理资源，安排首页，了解孩子的播放时间。</p><div className="film-spines" aria-hidden="true"><span>故事</span><span>发现</span><span>英语</span><span>自然</span></div></div></section>
     <form onSubmit={(e) => { e.preventDefault(); setBusy(true); setError(''); void api<Session>('/auth/login', 'POST', { username, password, ...(family ? { familyId: family } : {}) }).then(done).catch((e) => setError(e.message)).finally(() => setBusy(false)); }}>
       <p className="eyebrow">家长入口</p><h2>进入管理后台</h2><label>账号<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required /></label>
       <label>密码<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
@@ -146,7 +152,7 @@ function UploadDialog({ item, parent, run, close }: { item?: Resource; parent?: 
 function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
   const [serial, refresh] = useState(0), [localSerial, localRefresh] = useState(0);
   const list = useData<Upload[]>('/uploads', [], serial);
-  useEffect(() => { const timer = setInterval(() => refresh((v) => v + 1), 3000); const changed = () => localRefresh((v) => v + 1); window.addEventListener('molly:uploads', changed); return () => { clearInterval(timer); window.removeEventListener('molly:uploads', changed); }; }, []);
+  useEffect(() => { const timer = setInterval(() => refresh((v) => v + 1), 3000); const changed = () => localRefresh((v) => v + 1); window.addEventListener('mollytime:uploads', changed); return () => { clearInterval(timer); window.removeEventListener('mollytime:uploads', changed); }; }, []);
   void localSerial;
   return <><div className="page-title"><div><p className="eyebrow">从文件到片单</p><h1>上传任务</h1><p>上传完成、文件就绪、内容发布，是三个不同的步骤。</p></div></div>{list.error && <State error={list.error} />}
     <div className="pipeline"><span>选择文件</span><span>上传</span><span>检查与封面</span><span>预览后发布</span></div>
@@ -163,7 +169,7 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
 function TvHomePreview({ home }: { home: Home }) {
   const featured = home.rows[0]?.items[0];
   const cover = (item: Home['rows'][number]['items'][number]) => <div className="tv-cover" key={item.image?.url || item.id}><span>{item.name.slice(0, 2)}</span>{item.image?.url && <img src={item.image.url} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}</div>;
-  return <div className="tv-preview"><div className="tv-sidebar"><div className="tv-wordmark">molly</div><span className="tv-nav-active">首页</span><span>谁在看</span><span>设置</span></div>
+  return <div className="tv-preview"><div className="tv-sidebar"><div className="tv-wordmark">MollyTime</div><span className="tv-nav-active">首页</span><span>谁在看</span><span>设置</span></div>
     <div className="tv-preview-content"><small>我们的媒体库</small><div className="tv-feature"><div><small>现在想看什么？</small><h3>{featured?.name || '家庭放映室'}</h3>{featured && <p>确定 · {featured.type === 'episode' ? '继续播放' : '查看系列'}</p>}</div>{featured && cover(featured)}</div>
       <div className="tv-preview-rows">{home.rows.map((row, index) => <div className="tv-shelf" key={index}><strong>{row.title}</strong><div>{row.items.map((item) => <button key={item.id} title={item.name}>{cover(item)}<span>{item.name}</span></button>)}</div></div>)}
       {home.rows.length === 0 && <p>还没有可展示的内容。选择已发布系列，或为儿童添加播放记录。</p>}</div>
@@ -222,7 +228,7 @@ function Reports() {
   </>;
 }
 
-function Family({ run, readonly, notify }: { run: Run; readonly: boolean; notify: (value: string) => void }) {
+function Family({ run, readonly, notify, onPair }: { run: Run; readonly: boolean; notify: (value: string) => void; onPair: () => void }) {
   const [serial, refresh] = useState(0), [childName, setChildName] = useState(''), [timezone, setTimezone] = useState('');
   const [currentPassword, setCurrentPassword] = useState(''), [newPassword, setNewPassword] = useState('');
   const children = useData<Child[]>('/children', [], serial), devices = useData<{ id: string; name: string; revoked: boolean; lastSeen: string }[]>('/devices', [], serial);
@@ -230,7 +236,7 @@ function Family({ run, readonly, notify }: { run: Run; readonly: boolean; notify
   useEffect(() => { if (settings.data) setTimezone(settings.data.timezone); }, [settings.data]);
   return <><div className="page-title"><div><p className="eyebrow">一起管理这个家</p><h1>家庭设置</h1><p>儿童档案、电视设备与存储空间。</p></div></div><div className="settings-grid">
     <section className="settings-card"><h2>儿童档案</h2><State error={children.error} />{children.data.map((c) => <div className="settings-row" key={c.id}><span className="child-avatar">{c.name[0]}</span><strong>{c.name}</strong>{!readonly && <button className="quiet" onClick={() => { const name = prompt('修改儿童名称', c.name); if (name) void run(async () => { await api(`/children/${c.id}`, 'PATCH', { name }); refresh((v) => v + 1); }); }}>修改名称</button>}</div>)}{!readonly && <form className="inline-form" onSubmit={(e) => { e.preventDefault(); void run(async () => { await api('/children', 'POST', { name: childName }); setChildName(''); refresh((v) => v + 1); }); }}><input aria-label="儿童名称" placeholder="儿童名称" value={childName} maxLength={64} onChange={(e) => setChildName(e.target.value)} required /><button>添加儿童</button></form>}</section>
-    <section className="settings-card"><h2>TV 设备</h2><p className="muted">电视客户端登录后自动绑定。撤销后需要重新登录。</p><State error={devices.error} />{devices.data.length ? devices.data.map((d) => <div className="device-row" key={d.id}><div><strong>{d.name}</strong><small>{d.revoked ? '已撤销' : `最近连接：${dateTime(d.lastSeen)}`}</small></div>{!readonly && !d.revoked && <div><button className="quiet" onClick={() => { const name = prompt('设备名称', d.name); if (name) void run(async () => { await api(`/devices/${d.id}`, 'PATCH', { name }); refresh((v) => v + 1); }); }}>改名</button><button className="danger quiet" onClick={() => { if (confirm(`撤销“${d.name}”的访问权限？`)) void run(async () => { await api(`/devices/${d.id}/revoke`, 'POST'); refresh((v) => v + 1); }); }}>撤销</button></div>}</div>) : <p className="empty">还没有绑定电视</p>}</section>
+    <section className="settings-card"><div className="section-heading"><h2>TV 设备</h2>{!readonly && <button onClick={onPair}>绑定电视</button>}</div><p className="muted">扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。</p><State error={devices.error} />{devices.data.length ? devices.data.map((d) => <div className="device-row" key={d.id}><div><strong>{d.name}</strong><small>{d.revoked ? '已取消配对' : `最近连接：${dateTime(d.lastSeen)}`}</small></div>{!readonly && !d.revoked && <div><button className="quiet" onClick={() => { const name = prompt('设备名称', d.name); if (name) void run(async () => { await api(`/devices/${d.id}`, 'PATCH', { name }); refresh((v) => v + 1); }); }}>改名</button><button className="danger quiet" onClick={() => { if (confirm(`取消“${d.name}”的配对？电视将无法继续访问家庭媒体库。`)) void run(async () => { await api(`/devices/${d.id}/revoke`, 'POST'); refresh((v) => v + 1); }); }}>取消配对</button></div>}</div>) : <p className="empty">还没有绑定电视</p>}</section>
     <section className="settings-card"><h2>时区与存储</h2><State error={settings.error} />{settings.data && <><p>磁盘剩余 <strong>{bytes(settings.data.storage.free)}</strong> / {bytes(settings.data.storage.total)}</p><form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api('/settings', 'PUT', { timezone }); refresh((v) => v + 1); notify('时区已更新，观看记录会按新时区重新汇总。'); }); }}><label>报表时区<input value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={readonly} /></label>{!readonly && <button>保存时区</button>}</form><p className="muted">显示所在磁盘的容量，包含其他文件占用。</p></>}</section>
     {!readonly && <section className="settings-card"><h2>修改密码</h2><form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api('/password', 'POST', { currentPassword, newPassword }); setCurrentPassword(''); setNewPassword(''); notify('密码已修改。'); }); }}><label>当前密码<input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required /></label><label>新密码<input type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required /></label><button>修改密码</button></form></section>}
   </div></>;

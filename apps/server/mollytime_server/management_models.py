@@ -105,7 +105,7 @@ class Device(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    name: Mapped[str] = mapped_column(String(128), default="Molly TV")
+    name: Mapped[str] = mapped_column(String(128), default="MollyTime")
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
@@ -115,6 +115,25 @@ class DeviceRefresh(Base):
     __tablename__ = "device_refreshes"
     token_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+
+
+class DevicePairing(Base):
+    __tablename__ = "device_pairings"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    last_polled_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    device_id: Mapped[str | None] = mapped_column(ForeignKey("devices.id"), nullable=True)
+
+
+class PairingRate(Base):
+    __tablename__ = "pairing_rates"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    resets_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
 
 
 class WatchSession(Base):

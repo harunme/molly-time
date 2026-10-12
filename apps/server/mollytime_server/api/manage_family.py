@@ -81,7 +81,7 @@ class DeviceBody(BaseModel):
 @router.patch("/devices/{device_id}")
 def rename_device(device_id: str, body: DeviceBody, user: Parent, db: DbSession):
     row = owned(db, Device, device_id, user.family_id)
-    row.name = body.name.strip() or "Molly TV"
+    row.name = body.name.strip() or "MollyTime"
     db.commit()
     return {"ok": True}
 

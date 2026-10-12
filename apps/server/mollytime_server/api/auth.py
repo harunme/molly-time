@@ -130,14 +130,27 @@ def _aware(dt_obj: dt.datetime | None) -> dt.datetime | None:
 def refresh(body: RefreshBody, request: Request, db: DbSession):
     hashed = hash_refresh_token(body.refreshToken)
     row = db.get(RefreshToken, hashed)
-    if row is None or _aware(row.expires_at) < dt.datetime.now(dt.UTC):
+    if row is None:
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED)
     user = db.get(User, row.user_id)
     if user is None or user.is_disabled:
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED)
     link = db.get(DeviceRefresh, hashed)
     device = db.get(Device, link.device_id) if link else None
-    if link and (device is None or device.revoked):
+    if link and (device is None or device.revoked or device.user_id != user.id
+                 or device.family_id != user.family_id):
+        raise HTTPException(status_code=401)
+
+    if device:
+        # A TV binding is durable until revoked by the parent. Its cached device
+        # credential stays stable so a lost refresh response cannot unpair it.
+        access, exp = issue_access_token(user_id=user.id, family_id=user.family_id,
+                                         role="device", device_id=device.id)
+        return AuthResult(accessToken=access, refreshToken=body.refreshToken,
+                          expiresAt=exp.isoformat(), deviceId=device.id,
+                          user=UserDto(id=user.id, name=user.name, role="device", familyId=user.family_id),
+                          family=FamilyDto(id=user.family_id, name=""))
+    if _aware(row.expires_at) < dt.datetime.now(dt.UTC):
         raise HTTPException(status_code=401)
 
     # Rotate: delete the old refresh token, issue a new pair.
@@ -159,9 +172,6 @@ def refresh(body: RefreshBody, request: Request, db: DbSession):
             client_name=row.client_name or "",
         )
     )
-    if link:
-        db.delete(link)
-        db.add(DeviceRefresh(token_id=new_hashed, device_id=device.id))
     db.commit()
 
     return AuthResult(
@@ -186,7 +196,7 @@ def logout(body: RefreshBody, db: DbSession):
     if row is not None:
         link = db.get(DeviceRefresh, hashed)
         if link:
-            db.delete(link)
+            raise HTTPException(403, "请在家长管理后台取消电视配对")
         db.delete(row)
         db.commit()
     return {"ok": True}

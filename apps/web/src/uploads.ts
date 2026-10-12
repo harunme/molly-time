@@ -6,7 +6,7 @@ const waiting = new Set<string>();
 const running = new Set<string>();
 export const live = new Map<string, { offset: number; error: string; paused: boolean }>();
 let active = 0;
-function changed() { window.dispatchEvent(new Event('molly:uploads')); }
+function changed() { window.dispatchEvent(new Event('mollytime:uploads')); }
 async function sha(blob: Blob) {
   if (!crypto.subtle) throw new Error('文件上传需要 HTTPS；本机开发可使用 localhost');
   const value = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());

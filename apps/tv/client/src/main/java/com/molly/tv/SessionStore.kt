@@ -22,17 +22,29 @@ class SessionStore(context: Context) {
         require(BuildConfig.DEBUG || url.isHttps) { "正式版连接需要 HTTPS" }
         val normalized = url.toString().trimEnd('/')
         if (normalized != server) {
-            prefs.edit().clear().putString("server", normalized).commit()
+            val edit = prefs.edit()
+            if (server.isNotEmpty() && refresh.isNotEmpty()) {
+                val binding = JSONObject().put("access", access).put("refresh", refresh)
+                    .put("device", deviceId).put("child", childId)
+                edit.putString("binding:$server", binding.toString())
+            }
+            val saved = runCatching { JSONObject(prefs.getString("binding:$normalized", "{}")!!) }
+                .getOrDefault(JSONObject())
+            edit.putString("server", normalized).putString("access", saved.optString("access"))
+                .putString("refresh", saved.optString("refresh")).putString("device", saved.optString("device"))
+                .putString("child", saved.optString("child")).commit()
         }
     }
 
-    fun save(json: JSONObject) {
+    fun save(json: JSONObject, clearChild: Boolean = false) {
         val edit = prefs.edit().putString("access", json.getString("accessToken"))
             .putString("refresh", json.getString("refreshToken"))
+        if (clearChild) edit.remove("child")
         val device = json.opt("deviceId")
         if (device is String && device.isNotEmpty()) edit.putString("device", device)
         edit.commit()
     }
 
-    fun clear() { prefs.edit().remove("access").remove("refresh").remove("child").commit() }
+    fun clear() { prefs.edit().remove("access").remove("refresh").remove("child")
+        .remove("device").remove("binding:$server").commit() }
 }

@@ -6,6 +6,7 @@ android {
     namespace = "com.molly.tv"
     compileSdk = 36
     defaultConfig {
+        // Keep the installed app identity so MollyTime upgrades retain local state.
         applicationId = "com.molly.tv"
         minSdk = 23
         targetSdk = 36

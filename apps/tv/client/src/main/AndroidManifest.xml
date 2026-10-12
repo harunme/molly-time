@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <application android:name=".MollyApplication" android:allowBackup="false"
+    <application android:name=".MollyTimeApplication" android:allowBackup="false"
         android:banner="@drawable/app_banner" android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name" android:theme="@style/Theme.Molly"
         android:usesCleartextTraffic="${cleartext}">

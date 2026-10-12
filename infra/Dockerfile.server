@@ -20,8 +20,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
-    MOLLY_TV_WEB_DIR=/app/tv/web \
-    MOLLY_PARENT_WEB_DIR=/app/web
+    MOLLYTIME_TV_WEB_DIR=/app/tv/web \
+    MOLLYTIME_PARENT_WEB_DIR=/app/web
 
 # Uploads require actual codec validation and thumbnail extraction.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
@@ -31,9 +31,9 @@ WORKDIR /app
 
 COPY apps/server/pyproject.toml /app/pyproject.toml
 RUN python -c "import pathlib, subprocess, sys, tomllib; deps = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']; subprocess.run([sys.executable, '-m', 'pip', 'install', *deps], check=True)"
-COPY apps/server/molly_server /app/molly_server
+COPY apps/server/mollytime_server /app/mollytime_server
 COPY --from=frontend-build /tv-web/dist /app/tv/web
 COPY --from=frontend-build /web/dist /app/web
 
 EXPOSE 8096
-CMD ["python", "-m", "molly_server.main"]
+CMD ["python", "-m", "mollytime_server.main"]

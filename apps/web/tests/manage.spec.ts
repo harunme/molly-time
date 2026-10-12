@@ -14,7 +14,7 @@ async function login(page: import('@playwright/test').Page) {
 
 test('real upload, parent preview, publish and homepage draft publication', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
-  const folder = mkdtempSync(join(tmpdir(), 'molly-upload-'));
+  const folder = mkdtempSync(join(tmpdir(), 'mollytime-upload-'));
   const file = join(folder, '自然小故事.mp4');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=0xc8a464:s=320x180:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', file]);
   try {
@@ -70,7 +70,71 @@ test('real device telemetry, reports, child management and mobile layout', async
   await page.screenshot({ path: '../../artifacts/parent-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   page.once('dialog', (dialog) => { void dialog.accept(); });
-  await page.getByRole('button', { name: '撤销', exact: true }).click();
-  await expect(page.getByText('已撤销', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '取消配对', exact: true }).click();
+  await expect(page.getByText('已取消配对', { exact: true })).toBeVisible();
   expect((await page.request.get('/api/home', { headers })).status()).toBe(401);
+});
+
+
+test('TV QR pairing survives parent login and requires explicit mobile confirmation', async ({ page, browser }) => {
+  const tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const tv = await tvContext.newPage();
+  try {
+    await tv.goto('http://127.0.0.1:8098/tv/');
+    await tv.getByRole('button', { name: '绑定家庭媒体库' }).click();
+    await expect(tv.locator('.pairing-code')).toBeVisible();
+    const code = await tv.locator('.pairing-code').innerText();
+    await expect(tv.getByLabel('密码')).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/manage/?pair=' + encodeURIComponent(code));
+    await page.getByLabel('账号', { exact: true }).fill('parent');
+    await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '绑定电视', exact: true })).toBeVisible();
+    await expect(page.locator('.pairing-summary')).toContainText(code);
+    await expect(tv.getByRole('dialog')).toBeVisible();
+    await page.getByLabel('电视名称').fill('客厅电视扫码');
+    await page.screenshot({ path: '../../artifacts/parent-pairing-mobile.png', fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const issued = tv.waitForResponse(async (response) => response.url().endsWith('/api/auth/pairing/poll') &&
+      response.status() === 200 && (await response.json()).status === 'authorized');
+    await page.getByRole('button', { name: '确认绑定这台电视' }).click();
+    await expect(page.getByRole('heading', { name: '已确认绑定' })).toBeVisible();
+    let auth = (await (await issued).json()).auth;
+    await expect(tv.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
+    await expect(tv.locator('.poster').first()).toBeVisible();
+    await tv.reload();
+    await expect(tv.locator('.poster').first()).toBeVisible();
+    await expect(tv.getByRole('button', { name: '绑定家庭媒体库' })).toHaveCount(0);
+    await tv.getByRole('button', { name: '设置', exact: true }).click();
+    await tv.getByRole('button', { name: '重新配对', exact: true }).click();
+    await tv.getByRole('button', { name: '取消', exact: true }).click();
+    await tv.getByRole('button', { name: '返回媒体库' }).click();
+    await expect(tv.locator('.poster').first()).toBeVisible();
+    await tv.getByRole('button', { name: '设置', exact: true }).click();
+    await tv.getByRole('button', { name: '重新配对', exact: true }).click();
+    await tv.getByRole('button', { name: '确认重新配对' }).click();
+    await expect(tv.locator('.pairing-code')).toBeVisible();
+    expect((await tv.request.get('http://127.0.0.1:8098/api/home', { headers: { Authorization: `Bearer ${auth.accessToken}` } })).status()).toBe(401);
+    const nextCode = await tv.locator('.pairing-code').innerText();
+    expect(nextCode).not.toBe(code);
+    await page.goto('/manage/?pair=' + encodeURIComponent(nextCode));
+    await page.getByLabel('电视名称').fill('客厅电视重新配对');
+    const reissued = tv.waitForResponse(async (response) => response.url().endsWith('/api/auth/pairing/poll') &&
+      response.status() === 200 && (await response.json()).status === 'authorized');
+    await page.getByRole('button', { name: '确认绑定这台电视' }).click();
+    auth = (await (await reissued).json()).auth;
+    await expect(tv.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
+    await expect(tv.locator('.poster').first()).toBeVisible();
+    await tv.screenshot({ path: '../../artifacts/tv-pairing-home.png' });
+    await page.getByRole('button', { name: '返回管理后台' }).click();
+    await expect(page.locator('.device-row').filter({ hasText: '客厅电视重新配对' })).toBeVisible();
+    page.once('dialog', (dialog) => { void dialog.accept(); });
+    await page.locator('.device-row').filter({ hasText: '客厅电视重新配对' }).getByRole('button', { name: '取消配对', exact: true }).click();
+    await expect(page.locator('.device-row').filter({ hasText: '客厅电视重新配对' })).toContainText('已取消配对');
+    expect((await tv.request.get('http://127.0.0.1:8098/api/home', { headers: { Authorization: `Bearer ${auth.accessToken}` } })).status()).toBe(401);
+    await tv.reload();
+    await expect(tv.getByRole('button', { name: '绑定家庭媒体库' })).toBeVisible();
+    expect(await tv.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).toBeNull();
+  } finally { await tvContext.close(); }
 });

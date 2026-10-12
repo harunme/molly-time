@@ -96,12 +96,3 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
     className={`${className} ${focused ? 'focused' : ''}`} disabled={disabled}
     onFocus={() => focusSelf()} onClick={onClick}>{children}</button>;
 }
-
-export function FocusInput({ focusKey, value, onChange, password = false }: {
-  focusKey: string; value: string; onChange: (value: string) => void; password?: boolean;
-}) {
-  const { ref, focusSelf } = useFocusable({ focusKey });
-  return <input ref={ref} data-focus={focusKey} type={password ? 'password' : 'text'}
-    autoComplete={password ? 'current-password' : 'username'} value={value}
-    onFocus={() => focusSelf()} onChange={(event) => onChange(event.target.value)} />;
-}

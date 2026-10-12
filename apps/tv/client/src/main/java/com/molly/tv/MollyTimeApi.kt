@@ -9,33 +9,67 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class ApiFailure(val status: Int) : Exception(when (status) {
-    401 -> "登录已过期，请重新登录"
+    401 -> "电视授权已失效，请重新扫码绑定"
     403 -> "没有访问权限"
     404 -> "内容不存在或不可访问"
     else -> "媒体库请求失败（$status）"
 })
 
-class MollyApi(private val session: SessionStore) {
+class MollyTimeApi(private val session: SessionStore) {
+    private var pairingCode = ""
+    private var pairingServer = ""
     @Volatile var homeSchemaVersion = 1
     val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS).followRedirects(false).build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
-    @Synchronized fun login(username: String, password: String): JSONObject {
-        val result = json("POST", "/api/auth/login", JSONObject()
-            .put("username", username).put("password", password)
-            .put("deviceId", session.deviceId.ifEmpty { null }), false)
-        session.clear()
-        session.save(result)
-        return result.getJSONObject("user")
+    @Synchronized fun pairingStart(): JSONObject {
+        pairingCancel()
+        val server = session.server
+        val result = json("POST", "/api/auth/pairing/start", JSONObject().put("name", "MollyTime TV"), false)
+        require(server == session.server) { "媒体库地址已变化，请重新配对" }
+        pairingCode = result.getString("deviceCode")
+        pairingServer = server
+        result.remove("deviceCode") // The polling secret must never enter the WebView.
+        return result
     }
 
-    @Synchronized fun logout() {
-        val token = session.refresh
-        session.clear()
-        if (token.isNotEmpty()) runCatching {
-            json("POST", "/api/auth/logout", JSONObject().put("refreshToken", token), false)
+    @Synchronized fun pairingPoll(): JSONObject {
+        require(pairingCode.isNotEmpty() && pairingServer == session.server) { "请重新生成配对码" }
+        val server = pairingServer
+        val result = json("POST", "/api/auth/pairing/poll", JSONObject().put("deviceCode", pairingCode), false)
+        require(server == session.server) { "媒体库地址已变化，请重新配对" }
+        if (result.optString("status") == "authorized") {
+            session.save(result.getJSONObject("auth"), clearChild = true)
+            pairingCode = ""
+            pairingServer = ""
         }
+        result.remove("auth") // Return only pairing status; native storage owns credentials.
+        return result
+    }
+
+    @Synchronized fun pairingCancel(): JSONObject {
+        val code = pairingCode
+        val server = pairingServer
+        pairingCode = ""
+        pairingServer = ""
+        if (code.isNotEmpty() && server == session.server) runCatching {
+            json("POST", "/api/auth/pairing/cancel", JSONObject().put("deviceCode", code), false)
+        }
+        return JSONObject().put("ok", true)
+    }
+
+    @Synchronized fun pairingReset(): JSONObject {
+        try {
+            json("POST", "/api/auth/pairing/reset")
+        } catch (failure: ApiFailure) {
+            if (failure.status != 401) throw failure
+            // Already revoked: the old binding cannot authorize anything.
+        }
+        session.clear()
+        pairingCode = ""
+        pairingServer = ""
+        return JSONObject().put("ok", true)
     }
 
     // Every response is closed, including errors and a retried 401.

@@ -64,6 +64,6 @@ export function Feature({ item, eyebrow, description, meta, label, action, loadi
       <p className="feature-description">{loading ? '稍等一下，故事就来了。' : description}</p>
       {item && !loading && <div className="feature-action"><span className="keycap">确定</span><span>{action}</span><Icon name="play" /></div>}
     </div>
-    <div className="feature-art">{item && <Cover item={item} large />}<span className="art-caption">molly · 家庭放映室</span></div>
+    <div className="feature-art">{item && <Cover item={item} large />}<span className="art-caption">MollyTime · 家庭放映室</span></div>
   </section>;
 }

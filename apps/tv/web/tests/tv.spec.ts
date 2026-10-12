@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('remote navigation, playback return, route restoration and logout', async ({ page }) => {
+test('remote navigation, playback return, route restoration and durable binding settings', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as {
       MollyBridge: { postMessage: (message: string) => void; onmessage?: (e: { data: string }) => void };
@@ -47,26 +47,78 @@ test('remote navigation, playback return, route restoration and logout', async (
   await page.getByRole('button', { name: '选择儿童' }).click();
   await page.getByRole('button', { name: '小朋友' }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
-  await page.getByRole('button', { name: '退出账号' }).click();
-  await expect(page.getByRole('heading', { name: '进入家庭媒体库' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '退出账号' })).toHaveCount(0);
+  await page.getByRole('button', { name: '重新配对', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '重新配对？' })).toBeVisible();
+  await expect(page.locator('[data-focus="cancel-re-pair"]')).toBeFocused();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await page.getByRole('button', { name: '返回媒体库' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.poster').first()).toBeVisible();
 });
 
-test('browser login reports rejected credentials and recovers', async ({ page }) => {
-  await page.route('**/api/auth/login', (route) => {
-    const body = route.request().postDataJSON();
-    return route.fulfill({ status: body.password === 'correct' ? 200 : 401, json: body.password === 'correct' ?
-      { accessToken: 'test', refreshToken: 'refresh', user: { name: '家长' } } : { detail: 'Unauthorized' } });
-  });
+test('TV starts at home, pairs without a password, renews expired codes and opens content', async ({ page }) => {
+  let started = 0;
+  await page.route('**/api/auth/pairing/start', (route) => route.fulfill({ json: {
+    deviceCode: 'test-device-secret-' + String(++started).padEnd(32, '0'),
+    userCode: started === 1 ? 'ABCD-2345' : 'HJKL-5678',
+    verificationUri: 'http://127.0.0.1:8096/manage/?pair=ABCD-2345', verificationUriManual: 'http://127.0.0.1:8096/manage/',
+    expiresAt: new Date(Date.now() + 600000).toISOString(), interval: 3,
+    qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="white" /></svg>',
+  } }));
+  await page.route('**/api/auth/pairing/cancel', (route) => route.fulfill({ json: { ok: true } }));
+  await page.route('**/api/auth/pairing/poll', (route) => route.fulfill({ json: started === 1 ? { status: 'expired' } :
+    { status: 'authorized', auth: { accessToken: 'test', refreshToken: 'refresh', deviceId: 'device-1' } } }));
   await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
   await page.goto('/tv/');
-  await page.getByLabel('账号').fill('parent');
-  await page.getByLabel('密码').fill('wrong');
-  await page.getByRole('button', { name: '进入媒体库' }).click();
-  await expect(page.getByRole('alert')).toContainText('请检查账号密码');
-  await page.getByLabel('密码').fill('correct');
-  await page.getByRole('button', { name: '进入媒体库' }).click();
+  await expect(page.getByRole('navigation', { name: '电视导航' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '绑定家庭媒体库' }).click();
+  await expect(page.locator('.pairing-code')).toHaveText('ABCD-2345');
+  await expect(page.getByLabel('密码')).toHaveCount(0);
+  await expect(page.getByLabel('账号', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('img', { name: '电视绑定二维码' })).toBeVisible();
+  await expect(page.getByText('配对码已过期，请重新生成')).toBeVisible({ timeout: 10000 });
+  await page.getByRole('button', { name: '重新生成配对码' }).click();
+  await expect(page.locator('.pairing-code')).toHaveText('HJKL-5678');
+  await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('媒体库还没有内容')).toBeVisible();
+  await expect(page.getByRole('button', { name: '绑定家庭媒体库' })).toHaveCount(0);
+  await page.unroute('**/api/home');
+  await page.route('**/api/home', (route) => route.fulfill({ status: 503, json: { detail: 'Temporary outage' } }));
+  await page.reload();
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).not.toBeNull();
+});
+
+test('re-pair confirmation retains binding on failure and opens a new code only after reset', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
+    accessToken: 'cached-access', refreshToken: 'cached-device', deviceId: 'device-1', childId: 'c1',
+  })));
+  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
+  await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
+  let attempts = 0;
+  await page.route('**/api/auth/pairing/reset', (route) => route.fulfill({ status: ++attempts === 1 ? 503 : 200, json: { ok: true } }));
+  await page.route('**/api/auth/pairing/start', (route) => route.fulfill({ json: {
+    deviceCode: 'next-pairing-secret'.padEnd(43, '0'), userCode: 'ABCD-2345', interval: 3,
+    expiresAt: new Date(Date.now() + 600000).toISOString(), verificationUri: '/manage/?pair=ABCD-2345',
+    verificationUriManual: '/manage/', qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" />',
+  } }));
+  await page.goto('/tv/');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '重新配对', exact: true }).click();
+  expect(attempts).toBe(0);
+  await page.getByRole('button', { name: '确认重新配对' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).not.toBeNull();
+  await page.getByRole('button', { name: '确认重新配对' }).click();
+  await expect(page.getByRole('heading', { name: '扫码绑定电视' })).toBeVisible();
+  await expect(page.locator('.pairing-code')).toHaveText('ABCD-2345');
+  expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).toBeNull();
 });
 
 test('independent TV rails, remembered row focus and modal boundaries', async ({ page }) => {

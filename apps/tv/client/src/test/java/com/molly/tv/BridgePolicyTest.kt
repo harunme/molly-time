@@ -6,7 +6,7 @@ import org.junit.Test
 class BridgePolicyTest {
     @Test fun rejectsCredentialAndCrossOriginRequests() {
         for (path in listOf("https://evil.test/api/home", "//evil.test/api/home",
-            "/api/auth/refresh", "/api/home?token=secret", "/api/../auth/login",
+            "/api/auth/refresh", "/api/auth/pairing/poll", "/api/auth/pairing/start", "/api/home?token=secret", "/api/../auth/login",
             "/api/episodes/a%2Fb", "/api/episodes/a/play")) {
             assertFalse(path, BridgePolicy.allows("GET", path))
         }
@@ -16,6 +16,8 @@ class BridgePolicyTest {
         assertEquals("child-1", BridgePolicy.selectedChild("/api/children/child-1/select"))
         assertFalse(BridgePolicy.allows("DELETE", "/api/children/child-1/select"))
         assertFalse(BridgePolicy.allows("POST", "/api/episodes/episode-1/progress"))
+        assertFalse(BridgePolicy.allows("POST", "/api/auth/pairing/poll"))
+        assertFalse(BridgePolicy.allows("POST", "/api/auth/pairing/reset"))
     }
     @Test fun catalogReadsAreAllowed() {
         assertTrue(BridgePolicy.allows("GET", "/api/home"))

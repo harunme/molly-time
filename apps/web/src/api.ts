@@ -17,7 +17,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, extra
     body: body === undefined ? undefined : raw ? body : JSON.stringify(body) });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) window.dispatchEvent(new Event('molly:unauthorized'));
+    if (response.status === 401) window.dispatchEvent(new Event('mollytime:unauthorized'));
     const message = typeof data.detail === 'string' ? data.detail : response.status === 422 ? '请检查输入内容和文件格式' : '操作失败，请重试';
     throw new ApiError(message, response.status);
   }

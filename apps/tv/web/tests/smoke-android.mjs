@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { writeFileSync } from 'node:fs';
 
+const smoke = (name) => process.env[`MOLLYTIME_${name}`] ?? process.env[`MOLLY_${name}`];
 const adb = resolve('../../../.local/android-sdk/platform-tools/adb');
 const [device] = await _android.devices();
 if (!device) throw new Error('Connect an Android TV emulator first');
@@ -13,7 +14,7 @@ const page = await webview.page();
 function nativePlayerOnTop() { return execFileSync(adb, ['-e', 'shell', 'dumpsys', 'activity', 'activities'], { encoding: 'utf8' })
   .split('\n').some((line) => /topResumedActivity|mResumedActivity/.test(line) && line.includes('PlaybackActivity')); }
 function nativePlaying() {
-  const log = execFileSync(adb, ['-e', 'logcat', '-d', '-s', 'MollyPlayback:D', '*:S'], { encoding: 'utf8' });
+  const log = execFileSync(adb, ['-e', 'logcat', '-d', '-s', 'MollyTimePlayback:D', '*:S'], { encoding: 'utf8' });
   return [...log.matchAll(/isPlaying=(true|false)/g)].at(-1)?.[1];
 }
 async function setNativePaused(paused) {
@@ -32,19 +33,19 @@ for (let attempt = 0; attempt < 3 && nativePlayerOnTop(); attempt++) {
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 try {
-  if (await page.getByLabel('账号').isVisible()) {
-    await page.getByLabel('账号').fill(process.env.MOLLY_SMOKE_USERNAME ?? 'admin');
-    await page.getByLabel('密码').fill(process.env.MOLLY_SMOKE_PASSWORD ?? 'molly');
-    await page.getByRole('button', { name: '进入媒体库' }).click();
+  if (await page.getByRole('button', { name: '绑定家庭媒体库' }).isVisible()) {
+    await page.getByRole('button', { name: '绑定家庭媒体库' }).click();
+    console.log('请用手机扫描电视二维码并确认绑定；等待最多十分钟。');
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 600000 });
   }
   await page.evaluate(() => { for (let i = 0; i < 8 && window.mollyBack?.(); i++) {} });
   await expect(page.locator('.poster').first()).toBeVisible({ timeout: 20000 });
-  if (process.env.MOLLY_SMOKE_CHILD) {
+  if (smoke('SMOKE_CHILD')) {
     await page.locator('[data-focus="children"]').click();
-    await page.locator('[data-focus^="child-"]').filter({ hasText: process.env.MOLLY_SMOKE_CHILD }).click();
+    await page.locator('[data-focus^="child-"]').filter({ hasText: smoke('SMOKE_CHILD') }).click();
     await expect(page.locator('.poster').first()).toBeVisible({ timeout: 20000 });
   }
-  console.log('Native Bridge login and real catalog: OK');
+  console.log('Native device pairing and real catalog: OK');
   await page.screenshot({ path: '../../../artifacts/tv-webview-home.png' });
   await page.getByRole('button', { name: /L1开口动画/ }).click();
   await expect(page.locator('.season').first()).toBeVisible();
@@ -57,13 +58,13 @@ try {
     .split('\n').some((line) => /topResumedActivity|mResumedActivity/.test(line) && line.includes('PlaybackActivity')),
     { timeout: 20000 }).toBe(true);
   console.log('Webpage to native player: OK');
-  if (process.env.MOLLY_SMOKE_PAUSE === '1') {
+  if (smoke('SMOKE_PAUSE') === '1') {
     await expect.poll(nativePlaying, { timeout: 20000 }).toBe('true');
   }
   // Allow the real decoder to produce frames, then retain a visual playback artifact.
   await page.waitForTimeout(6000);
   writeFileSync('../../../artifacts/tv-native-playback.png', await device.screenshot());
-  if (process.env.MOLLY_SMOKE_PAUSE === '1') {
+  if (smoke('SMOKE_PAUSE') === '1') {
     // SPACE is the player's keyboard toggle; system media keys may be intercepted by the TV OS.
     await setNativePaused(true);
     await page.waitForTimeout(4000);

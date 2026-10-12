@@ -24,7 +24,7 @@ import org.json.JSONObject
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackActivity : AppCompatActivity() {
-    private val app get() = application as MollyApplication
+    private val app get() = application as MollyTimeApplication
     private lateinit var playerView: PlayerView
     private lateinit var status: TextView
     private var player: ExoPlayer? = null
@@ -126,7 +126,7 @@ class PlaybackActivity : AppCompatActivity() {
                 if (state == Player.STATE_ENDED) { completed = true; finish() }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (BuildConfig.DEBUG) android.util.Log.d("MollyPlayback", "isPlaying=$isPlaying")
+                if (BuildConfig.DEBUG) android.util.Log.d("MollyTimePlayback", "isPlaying=$isPlaying")
                 sample(isPlaying)
                 if (isPlaying) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

@@ -1,4 +1,4 @@
-# Molly TV 架构
+# MollyTime 架构
 
 日期：2026-10-12。状态：WebView 壳子、TV 网页、原生播放器和家长管理后台基础版已实现，TV 模拟器播放与暂停统计闭环已验证；华为 V65 尚未实测。
 
@@ -6,7 +6,7 @@
 
 采用 **Kotlin WebView 壳子 + TV 网页 + 原生 Media3 播放器 + 一个 FastAPI 后台**。业务页面通过网页部署更新，播放器与设备适配通过 APK 更新。先服务家中的华为智慧屏，再按需求扩展家庭与儿童管理。
 
-不依赖 Jellyfin Server、SDK 或协议，不 fork 整套媒体中心作为产品基础。现有 `apps/tv/client/` 已直接使用 Media3 和 Molly `/api/*`。历史 Jellyfin 客户端只作参考；Gradle 已只包含 `:client`；历史代码与许可后续单独整理。
+不依赖 Jellyfin Server、SDK 或协议，不 fork 整套媒体中心作为产品基础。现有 `apps/tv/client/` 已直接使用 Media3 和 MollyTime `/api/*`。历史 Jellyfin 客户端只作参考；Gradle 已只包含 `:client`；历史代码与许可后续单独整理。
 
 首版不建设微服务、第二套业务后台、通用浏览器、插件系统、转码平台、下载缓存或严格离线限时。
 
@@ -42,8 +42,8 @@ TV 网页通过受限 Bridge 调用原生 API 客户端访问后台；原生播�
 Bridge 第一版只暴露以下有限能力：
 
 - `getCapabilities`：Bridge 版本、壳子版本与可用能力。
-- `login` / `logout`：原生认证并保存凭证，网页只接收必要的用户展示信息。
-- `request`：仅允许白名单中的 Molly API 路径与方法，不接受任意主机、URL、请求头或文件路径。
+- `pairingStart` / `pairingPoll` / `pairingCancel`：手机网页确认扫码绑定，原生保存配对秘密与设备凭证；网页仅接收公开短码、二维码和配对状态。电视通过 `pairingReset` 经确认后解除自身绑定并重新配对；家长也可在网页后台远程取消。
+- `request`：仅允许白名单中的 MollyTime API 路径与方法，不接受任意主机、URL、请求头或文件路径。
 - `playEpisode`：传入剧集 ID 与儿童上下文；原生向后台校验授权、读取续播与媒体信息后启动 PlaybackActivity。
 - `playbackClosed`：播放返回事件，网页刷新进度并恢复原卡片焦点。
 
@@ -96,3 +96,5 @@ APK 内置基础业务网页包；新包验证签名、文件完整性及最低 
 API 见 [server.md](server.md)。[历史验证记录](local-validation.md)不能视为新架构验收。复用代码时记录来源、版本与许可；TV 目录许可证边界在整理上游依赖时核对。
 
 权限、更新验证、焦点算法、Range、计算和事件去重采用确定性代码。Codex 负责架构、实现和调试。Jev usage: Not used；本方案没有需要窄语义判断的产品功能，不引入 AI 依赖。
+
+TV 绑定持久保存到后台取消：原生客户端使用私有存储，开发网页使用当前站点的本地存储。设备绑定不受账号会话三十天期限限制；短期访问令牌自动刷新，断网不清除绑定，TV 经确认可重新配对，家长管理网页可远程取消配对。

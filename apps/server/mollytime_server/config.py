@@ -1,6 +1,6 @@
 """Runtime configuration via environment variables.
 
-Paths and credential material all default under `MOLLY_DATA_DIR`
+Paths and credential material all default under `MOLLYTIME_DATA_DIR`
 (default `.local/molly-server/`) so the service is self-contained.
 """
 
@@ -8,13 +8,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, AliasGenerator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="MOLLY_",
+        env_prefix="MOLLYTIME_",
+        populate_by_name=True,
+        alias_generator=AliasGenerator(validation_alias=lambda field: AliasChoices(
+            "MOLLYTIME_" + field.upper(), "MOLLY_" + field.upper(),
+        )),
         env_file=".env",
         extra="ignore",
     )
@@ -27,16 +31,17 @@ class Settings(BaseSettings):
     # ---- Network --------------------------------------------------------------
     listen_host: str = "127.0.0.1"
     listen_port: int = 8096
-    server_name: str = "Molly Server"
+    server_name: str = "MollyTime Server"
     server_version: str = "0.2.0"
     tv_web_dir: Path = Path(__file__).resolve().parents[2] / "tv" / "web" / "dist"
     parent_web_dir: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
     media_worker_enabled: bool = True
     max_upload_bytes: int = 10 * 1024**3
+    public_base_url: str = ""  # Phone-accessible server origin for pairing QR links.
 
     # ---- Auth (HMAC access token + opaque refresh) ---------------------------
     # HMAC secret used to sign short-lived access tokens (JWT-like).
-    # Override in production via MOLLY_AUTH_SECRET. The literal "dev-secret-do-not-use-in-prod"
+    # Override in production via MOLLYTIME_AUTH_SECRET. The literal "dev-secret-do-not-use-in-prod"
     # is the dev fallback so the service runs without env configuration.
     auth_secret: str = "dev-secret-do-not-use-in-prod"
     access_token_ttl_seconds: int = 60 * 60           # 1h

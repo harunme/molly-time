@@ -1,26 +1,27 @@
-# Local-only composition for Molly TV.
+# Local-only composition for MollyTime.
 #
-# - molly-server: Molly API and the independently built TV webpage.
+# - mollytime-server: MollyTime API and the independently built TV webpage.
 # - admin-tools: ephemeral sidecar used to initialise the database and create an admin.
 #
 # State and uploaded media live under .local/.
 
 services:
-  molly-server:
-    image: molly-server:local
+  mollytime-server:
+    image: mollytime-server:local
     build:
       context: ..
       dockerfile: infra/Dockerfile.server
-    container_name: molly-server
+    container_name: mollytime-server
     restart: unless-stopped
     ports:
       - "127.0.0.1:8096:8096"
     environment:
-      MOLLY_DATA_DIR: /data
-      MOLLY_LISTEN_HOST: 0.0.0.0
-      MOLLY_LISTEN_PORT: "8096"
-      MOLLY_STORAGE_BACKEND: "local"
-      MOLLY_MEDIA_DIR: /media
+      MOLLYTIME_DATA_DIR: /data
+      MOLLYTIME_LISTEN_HOST: 0.0.0.0
+      MOLLYTIME_LISTEN_PORT: "8096"
+      MOLLYTIME_STORAGE_BACKEND: "local"
+      MOLLYTIME_MEDIA_DIR: /media
+      MOLLYTIME_PUBLIC_BASE_URL: "${MOLLYTIME_PUBLIC_BASE_URL:-}"
     volumes:
       - ../.local/molly-server:/data
       - ../.local/molly-server/media:/media/managed
@@ -31,15 +32,15 @@ services:
       retries: 5
 
   admin-tools:
-    image: molly-server:local
+    image: mollytime-server:local
     profiles: ["tools"]      # opt-in: `docker compose --profile tools run --rm admin-tools …`
     working_dir: /app
     environment:
-      MOLLY_DATA_DIR: /data
-      MOLLY_MEDIA_DIR: /media
+      MOLLYTIME_DATA_DIR: /data
+      MOLLYTIME_MEDIA_DIR: /media
     volumes:
       - ../.local/molly-server:/data
       - ../.local/molly-server/media:/media/managed
       - ../apps/server:/app:ro
-    entrypoint: ["python", "-m", "molly_server.scripts"]
+    entrypoint: ["python", "-m", "mollytime_server.scripts"]
     command: ["--help"]

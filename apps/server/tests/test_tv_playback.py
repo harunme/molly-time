@@ -2,12 +2,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from molly_server import config, db
-from molly_server.auth import issue_access_token
-from molly_server.main import create_app
-from molly_server.models import ChildProfile, Family, Item, MediaFile, User
-from molly_server.storage.factory import build_storage
-from molly_server.storage.local import LocalStorage
+from mollytime_server import config, db
+from mollytime_server.auth import issue_access_token
+from mollytime_server.main import create_app
+from mollytime_server.models import ChildProfile, Family, Item, MediaFile, User
+from mollytime_server.storage.factory import build_storage
+from mollytime_server.storage.local import LocalStorage
 
 
 @pytest.fixture

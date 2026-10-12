@@ -8,7 +8,7 @@ Two token types:
   in the DB with a 30-day expiry. Rotates on every use (returns a new pair).
 
 We use HMAC-SHA256 with a fixed header (`HS256`) and a server-wide key.
-A real deployment should pull `MOLLY_AUTH_SECRET` from a secret manager.
+A real deployment should pull `MOLLYTIME_AUTH_SECRET` from a secret manager.
 """
 
 from __future__ import annotations

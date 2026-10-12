@@ -1,4 +1,4 @@
-"""CLI dispatcher: python -m molly_server.scripts <subcommand>."""
+"""CLI dispatcher: python -m mollytime_server.scripts <subcommand>."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ _DISPATCH = {
 
 def main() -> int:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("usage: python -m molly_server.scripts <subcommand>")
+        print("usage: python -m mollytime_server.scripts <subcommand>")
         print("  subcommands:", ", ".join(sorted(_DISPATCH)))
         return 0
     cmd = sys.argv[1]

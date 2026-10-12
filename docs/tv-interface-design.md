@@ -2,7 +2,7 @@
 
 日期：2026-10-12。已实现于 `apps/tv/web/`，管理后台的首页比例预览同步更新。
 
-参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)：借鉴侧栏、选中内容预览、水平内容行与分组焦点的结构。保留现有 Molly API 和 Bridge 1，不引入 demo 的 styled-components 或演示媒体数据。
+参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)：借鉴侧栏、选中内容预览、水平内容行与分组焦点的结构。保留现有 MollyTime API 和 Bridge 1，不引入 demo 的 styled-components 或演示媒体数据。
 
 ## 视觉与布局
 

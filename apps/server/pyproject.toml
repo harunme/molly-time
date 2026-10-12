@@ -1,7 +1,7 @@
 [project]
-name = "molly-server"
+name = "mollytime-server"
 version = "0.2.0"
-description = "Molly Server — media catalog with own REST API for the Molly TV client"
+description = "MollyTime Server — media catalog with own REST API for the MollyTime client"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
@@ -15,6 +15,7 @@ dependencies = [
   "httpx>=0.27",
   "boto3>=1.35",            # S3 / OSS 兼容协议
   "aiofiles>=24.1",
+  "qrcode>=8.0",
 ]
 
 [project.optional-dependencies]
@@ -25,14 +26,14 @@ dev = [
 ]
 
 [project.scripts]
-molly-server = "molly_server.main:run"
+mollytime-server = "mollytime_server.main:run"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["molly_server*"]
+include = ["mollytime_server*"]
 
 [tool.ruff]
 line-length = 100

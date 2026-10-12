@@ -1,4 +1,4 @@
-export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean };
+export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; devicePairing?: boolean; devicePairingReset?: boolean };
 export type Child = { id: string; name: string };
 export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; overview?: string; image?: { url: string } };
 export type Season = { id: string; name: string; indexNumber?: number; episodeCount?: number };
@@ -36,42 +36,96 @@ export function call<T>(method: string, args: Record<string, unknown> = {}): Pro
 export const request = <T>(path: string, method = 'GET', body?: Record<string, unknown>) =>
   call<T>('request', { path, method, body, ...(path === '/api/home' ? { homeSchemaVersion: 2 } : {}) });
 
-// Browser preview uses an in-memory session. Native TV credentials never enter JS.
-let access = '', refresh = '';
+// Browser TV bindings persist for this origin. Native TV credentials never enter JS.
+let access = '', refresh = '', deviceId = '';
 let selectedChild = '';
+let pairingCode = '';
+let pairingAttempt = 0;
 let refreshInFlight: Promise<void> | undefined;
+let bindingVersion = 0;
+const bindingKey = 'mollytime.tv.binding.v1';
+function saveBinding() {
+  localStorage.setItem(bindingKey, JSON.stringify({ accessToken: access, refreshToken: refresh, deviceId, childId: selectedChild }));
+}
+function clearBinding() {
+  bindingVersion++;
+  access = ''; refresh = ''; deviceId = ''; selectedChild = '';
+  try { localStorage.removeItem(bindingKey); } catch { /* Storage can be unavailable in a restricted browser. */ }
+}
+if (!port) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(bindingKey) || 'null');
+    if (saved && typeof saved.refreshToken === 'string' && typeof saved.accessToken === 'string' && typeof saved.deviceId === 'string') {
+      access = saved.accessToken; refresh = saved.refreshToken; deviceId = saved.deviceId;
+      selectedChild = typeof saved.childId === 'string' ? saved.childId : '';
+    }
+  } catch { clearBinding(); }
+}
+
 async function fetchApi(path: string, method = 'GET', body?: unknown, retry = true): Promise<unknown> {
+  const version = bindingVersion;
   const response = await fetch(path, {
     method, headers: { 'Content-Type': 'application/json', 'X-Molly-Home-Schema': '2', ...(selectedChild ? { 'X-Molly-Child': selectedChild } : {}), ...(access ? { Authorization: `Bearer ${access}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (version !== bindingVersion) throw new ApiError('请求已取消');
   if (response.status === 401 && retry && refresh && !path.startsWith('/api/auth/')) {
     refreshInFlight ??= fetchApi('/api/auth/refresh', 'POST', { refreshToken: refresh }, false)
-      .then((data) => { const auth = data as { accessToken: string; refreshToken: string }; access = auth.accessToken; refresh = auth.refreshToken; })
+      .then((data) => { if (version !== bindingVersion) throw new ApiError('请求已取消'); const auth = data as { accessToken: string; refreshToken: string }; access = auth.accessToken; refresh = auth.refreshToken; saveBinding(); })
       .finally(() => { refreshInFlight = undefined; });
     await refreshInFlight;
     return fetchApi(path, method, body, false);
   }
-  if (!response.ok) throw new ApiError(response.status === 401 ? '请检查账号密码，或重新登录' : '媒体库请求失败，请重试', response.status);
-  return response.json();
+  if (response.status === 401) clearBinding();
+  if (!response.ok) throw new ApiError(response.status === 401 ? '电视授权已失效，请重新扫码绑定' : '媒体库请求失败，请重试', response.status);
+  const result = await response.json();
+  if (version !== bindingVersion) throw new ApiError('请求已取消');
+  return result;
 }
 async function browserCall(method: string, args: Record<string, unknown>): Promise<unknown> {
   switch (method) {
-    case 'getCapabilities': return { bridgeVersion: 1, authenticated: !!access, childId: '', nativePlayback: false };
+    case 'getCapabilities': return { bridgeVersion: 1, authenticated: !!refresh, childId: selectedChild, nativePlayback: false, devicePairing: true, devicePairingReset: true };
     case 'ready': return { ok: true };
-    case 'login': {
-      const result = await fetchApi('/api/auth/login', 'POST', args) as { accessToken: string; refreshToken: string; user: unknown };
-      access = result.accessToken; refresh = result.refreshToken; return result.user;
+    case 'pairingStart': {
+      const attempt = ++pairingAttempt;
+      const previous = pairingCode; pairingCode = '';
+      if (previous) await fetchApi('/api/auth/pairing/cancel', 'POST', { deviceCode: previous });
+      const result = await fetchApi('/api/auth/pairing/start', 'POST', { name: 'MollyTime TV' }) as Record<string, unknown>;
+      if (attempt !== pairingAttempt) {
+        void fetchApi('/api/auth/pairing/cancel', 'POST', { deviceCode: result.deviceCode }).catch(() => {});
+        throw new ApiError('配对已取消');
+      }
+      pairingCode = String(result.deviceCode); delete result.deviceCode;
+      return result;
     }
-    case 'logout': {
-      const token = refresh; access = ''; refresh = ''; selectedChild = '';
-      if (token) await fetchApi('/api/auth/logout', 'POST', { refreshToken: token });
+    case 'pairingPoll': {
+      if (!pairingCode) throw new ApiError('请重新生成配对码');
+      const code = pairingCode;
+      const result = await fetchApi('/api/auth/pairing/poll', 'POST', { deviceCode: code }) as { status: string; auth?: { accessToken: string; refreshToken: string; deviceId: string } };
+      if (code !== pairingCode) throw new ApiError('配对已取消');
+      if (result.status === 'authorized' && result.auth) {
+        bindingVersion++;
+        access = result.auth.accessToken; refresh = result.auth.refreshToken; deviceId = result.auth.deviceId; saveBinding(); pairingCode = '';
+      }
+      delete result.auth;
+      return result;
+    }
+    case 'pairingCancel': {
+      pairingAttempt++;
+      const code = pairingCode; pairingCode = '';
+      if (code) await fetchApi('/api/auth/pairing/cancel', 'POST', { deviceCode: code });
+      return { ok: true };
+    }
+    case 'pairingReset': {
+      try { await fetchApi('/api/auth/pairing/reset', 'POST', {}); }
+      catch (failure) { if (!(failure instanceof ApiError && failure.status === 401)) throw failure; }
+      clearBinding();
       return { ok: true };
     }
     case 'request': {
       const result = await fetchApi(String(args.path), String(args.method), args.body);
       const match = /^\/api\/children\/([A-Za-z0-9-]+)\/select$/.exec(String(args.path));
-      if (match) selectedChild = match[1];
+      if (match) { selectedChild = match[1]; saveBinding(); }
       return result;
     }
     case 'connection': throw new ApiError('请在电视客户端中修改媒体库连接');

@@ -1,5 +1,5 @@
 {
-  "name": "molly-web", "private": true, "version": "0.1.0", "type": "module",
+  "name": "mollytime-web", "private": true, "version": "0.1.0", "type": "module",
   "scripts": { "dev": "vite --host 127.0.0.1 --port 5174", "build": "tsc --noEmit && vite build", "test": "playwright test" },
   "dependencies": { "react": "19.1.1", "react-dom": "19.1.1" },
   "devDependencies": { "@playwright/test": "1.56.1", "@types/react": "19.1.16", "@types/react-dom": "19.1.9", "typescript": "5.9.3", "vite": "7.1.12" }

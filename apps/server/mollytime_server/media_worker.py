@@ -232,7 +232,7 @@ def loop(stop):
 
 def start_worker():
     stop = threading.Event()
-    thread = threading.Thread(target=loop, args=(stop,), name="molly-media", daemon=True)
+    thread = threading.Thread(target=loop, args=(stop,), name="mollytime-media", daemon=True)
     thread.start()
     return stop, thread
 

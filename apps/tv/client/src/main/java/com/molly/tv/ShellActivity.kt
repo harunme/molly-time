@@ -19,7 +19,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
 class ShellActivity : AppCompatActivity() {
-    private val app get() = application as MollyApplication
+    private val app get() = application as MollyTimeApplication
     private var web: WebView? = null
     private var loading: ProgressBar? = null
     private var pageReady = false
@@ -65,7 +65,7 @@ class ShellActivity : AppCompatActivity() {
             setPadding(72, 56, 72, 40)
             setBackgroundColor(Color.rgb(15, 27, 46))
         }
-        layout.addView(TextView(this).apply { text = "Molly TV"; textSize = 38f; setTextColor(Color.WHITE) })
+        layout.addView(TextView(this).apply { text = "MollyTime"; textSize = 38f; setTextColor(Color.WHITE) })
         layout.addView(TextView(this).apply { text = message; textSize = 22f; setTextColor(Color.WHITE) })
         val input = EditText(this).apply {
             setSingleLine(true)
@@ -211,9 +211,11 @@ class ShellActivity : AppCompatActivity() {
         "ready" -> JSONObject().put("ok", true)
         "getCapabilities" -> JSONObject().put("bridgeVersion", 1).put("shellVersion", BuildConfig.VERSION_NAME)
             .put("serverUrl", app.session.server).put("authenticated", app.session.refresh.isNotEmpty())
-            .put("childId", app.session.childId).put("nativePlayback", true)
-        "login" -> app.api.login(args.getString("username"), args.getString("password"))
-        "logout" -> { app.api.logout(); JSONObject().put("ok", true) }
+            .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
+        "pairingStart" -> app.api.pairingStart()
+        "pairingPoll" -> app.api.pairingPoll()
+        "pairingCancel" -> app.api.pairingCancel()
+        "pairingReset" -> app.api.pairingReset()
         "connection" -> JSONObject().put("ok", true)
         "request" -> {
             val verb = args.getString("method")

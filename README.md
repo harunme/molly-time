@@ -1,6 +1,6 @@
-# Molly TV
+# MollyTime
 
-家庭儿童视频项目。目标采用轻量 Kotlin WebView 壳子 + TV 网页 + 原生 Media3 播放器，统一使用 Molly FastAPI 后台，不依赖 Jellyfin。先验证华为 V65，再完善家庭业务。
+家庭儿童视频项目。目标采用轻量 Kotlin WebView 壳子 + TV 网页 + 原生 Media3 播放器，统一使用 MollyTime FastAPI 后台，不依赖 Jellyfin。先验证华为 V65，再完善家庭业务。
 
 ## 已确定方案
 
@@ -32,12 +32,12 @@ docs/             架构、设计与验证文档
 - **服务端**：`apps/server/` Python 自研 REST（FastAPI + SQLAlchemy + SQLite/Pillow）；账号与设备认证、分块上传、文件检查、首页配置、真实播放统计；本地文件通过 HTTP Range 返回，不默认转码。OSS 适配与签名地址跳转尚未接通和验收。
 - **家长后台**：`apps/web/` React 网页，入口 `/manage/`；资源库、上传任务、首页编排、观看记录、家庭设置，使用同一个 FastAPI 后台。
 - **客户端**：`apps/tv/client/` 新写的轻量 Android TV 客户端；2 个 Activity（Shell/Playback）+ OkHttp + media3 ExoPlayer；不依赖 jellyfin-sdk、不依赖 jellyfin-androidtv UI tree。
-- 历史 fork：`apps/tv/app/` 保留上游 fork 仅作参考，已从 Gradle 构建中移除；包含 Molly 预览入口的早期版本。
+- 历史 fork：`apps/tv/app/` 保留上游 fork 仅作参考，已从 Gradle 构建中移除；包含 MollyTime 预览入口的早期版本。
 - 新客户端在线播放后台上传并发布的媒体；历史离线样本不进入新版 APK。
 - 调试包名 `com.molly.tv.debug`，发布包名 `com.molly.tv`。
 - 本地 Android 工具链、构建、模拟器与安装脚本；本地服务端构建、初始化、运行脚本。
 
-离线样本播放器是历史诊断入口；当前轻量客户端联网播放使用 Molly 自有 `/api/*`。上传发布、首页编排、设备登记/撤销、儿童续播与原生播放时长统计已接通；历史进度不能还原为观看时长。基础版范围与限制见 [家长后台说明](apps/web/README.md)。
+离线样本播放器是历史诊断入口；当前轻量客户端联网播放使用 MollyTime 自有 `/api/*`。上传发布、首页编排、设备登记/撤销、儿童续播与原生播放时长统计已接通；历史进度不能还原为观看时长。基础版范围与限制见 [家长后台说明](apps/web/README.md)。
 
 ## 日常开发
 
@@ -49,7 +49,7 @@ bash tools/run-tv-web.sh
 
 打开 `http://127.0.0.1:5173/tv/`，修改代码后由 Vite 热更新。方向键、回车和返回交互可在浏览器中验证。
 
-登录和真实媒体目录需要可用的 Molly API，默认代理 `http://127.0.0.1:8096`，可通过 `MOLLY_API_PROXY` 指定已有后台。启动网页的脚本只运行 Vite；需要本地 API 时另行运行 `bash tools/run-server.sh`。浏览器可验证登录和目录，原生视频播放及观看统计在发版前用 Android 客户端验证。
+登录和真实媒体目录需要可用的 MollyTime API，默认代理 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 指定已有后台。启动网页的脚本只运行 Vite；需要本地 API 时另行运行 `bash tools/run-server.sh`。浏览器可验证登录和目录，原生视频播放及观看统计在发版前用 Android 客户端验证。
 
 家长网页按需运行 `pnpm --dir apps/web dev`，地址 `http://127.0.0.1:5174/manage/`。
 
@@ -64,15 +64,15 @@ bash tools/run-server.sh             # 单独的终端；或使用已部署后�
 bash tools/build-tv-client.sh
 # 使用模拟器验收时再启动；连接真实电视时跳过
 bash tools/start-tv-emulator.sh
-.local/android-sdk/platform-tools/adb -e install -r artifacts/molly-tv-webview-debug.apk
+.local/android-sdk/platform-tools/adb -e install -r artifacts/mollytime-tv-debug.apk
 .local/android-sdk/platform-tools/adb -e shell am start -n com.molly.tv.debug/com.molly.tv.ShellActivity
 ```
 
-新版 APK 输出：`artifacts/molly-tv-webview-debug.apk`。详细客户端验收见 [运行说明](apps/tv/client/README.md)。模拟器通过不代表华为 V65 已通过。
+新版 APK 输出：`artifacts/mollytime-tv-debug.apk`。详细客户端验收见 [运行说明](apps/tv/client/README.md)。模拟器通过不代表华为 V65 已通过。
 
 历史离线样本工具 `tools/prepare_samples.py` 仍保留，但新版构建不执行它。视频通过家长后台上传并发布后联网播放。
 
-## 本地 Molly Server
+## 本地 MollyTime Server
 
 ```bash
 bash tools/build-server.sh       # 创建 .venv
@@ -85,12 +85,12 @@ bash tools/run-server.sh         # 127.0.0.1:8096
 部署时可用 Docker；日常网页开发不启动它：
 
 ```bash
-docker compose -f infra/compose.yaml up -d molly-server
+docker compose -f infra/compose.yaml up -d mollytime-server
 docker compose -f infra/compose.yaml --profile tools run --rm admin-tools init_db
 docker compose -f infra/compose.yaml --profile tools run --rm admin-tools create_admin
 ```
 
-默认账号 `admin` / `molly`（`MOLLY_INITIAL_ADMIN_*` 覆盖）。服务设计、端点清单、配置项见 [`docs/server.md`](docs/server.md)。
+默认账号 `admin` / `molly`（`MOLLYTIME_INITIAL_ADMIN_*` 覆盖）。服务设计、端点清单、配置项见 [`docs/server.md`](docs/server.md)。
 
 家长后台打开 `http://127.0.0.1:8096/manage/`。已有服务升级后须重启进程加载新 API。观看统计需要安装新版 APK，并在播放前选择儿童。
 
@@ -104,6 +104,14 @@ docker compose -f infra/compose.yaml --profile tools run --rm admin-tools create
 
 将新版 debug APK 放入 U 盘根目录，按华为的媒体中心安装流程尝试安装。先验证启动、网页加载、遥控器、联网视频、字幕、返回与续播。Mac 模拟器通过不表示 HarmonyOS 已通过。APK 当前为 debug 签名，供家庭测试，尚未制作正式签名和品牌图标。
 
+## 名称与兼容
+
+产品展示名称统一为 **MollyTime**，代码与构建名称使用 `mollytime`，服务端模块为 `mollytime_server`。旧环境变量 `MOLLY_*` 继续兼容，新配置优先使用 `MOLLYTIME_*`；同时设置时以新变量为准。
+
+为保留现有媒体库与客户端升级，数据目录仍为 `.local/molly-server/`，Android 安装包 ID 仍为 `com.molly.tv`。默认开发密码、既有 Cookie、令牌和 Bridge/API 协议标识保持兼容。历史验证记录与上游参考代码保留当时名称。
+
+旧开发环境更新后运行 `bash tools/build-server.sh`，重新安装更名后的 Python 模块。仓库目录或远程仓库名称可另外调整，不影响上述启动脚本。
+
 ## 文档与许可
 
 - [新版 TV 客户端运行说明](apps/tv/client/README.md)
@@ -111,7 +119,7 @@ docker compose -f infra/compose.yaml --profile tools run --rm admin-tools create
 - [家长管理后台使用说明](apps/web/README.md)
 - [家长后台设计与验证](docs/parent-admin-validation.md)
 - [架构与分阶段验收](docs/architecture.md)
-- [Molly Server 设计](docs/server.md)
+- [MollyTime Server 设计](docs/server.md)
 - [上游基线与修改边界](docs/upstream.md)
 - [新版 WebView 客户端验证](docs/tv-webview-validation.md)
 - [历史验证记录](docs/local-validation.md)

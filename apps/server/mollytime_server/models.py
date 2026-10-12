@@ -1,4 +1,4 @@
-"""ORM models for Molly Server.
+"""ORM models for MollyTime Server.
 
 Family is the unit of isolation (P0). A Family owns Users (parents) and
 later will own ChildProfiles (kids) + MediaItems.

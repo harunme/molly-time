@@ -6,7 +6,7 @@ import org.json.JSONObject
 import java.io.File
 
 /** Persist before sending. A crash after acknowledgement safely resends the same sequence. */
-class WatchQueue(context: Context, private val session: SessionStore, private val api: MollyApi) {
+class WatchQueue(context: Context, private val session: SessionStore, private val api: MollyTimeApi) {
     private val file = File(context.filesDir, "watch-queue.json")
     private var rows = runCatching { JSONArray(file.readText()) }.getOrDefault(JSONArray())
     private fun save() {
@@ -16,7 +16,7 @@ class WatchQueue(context: Context, private val session: SessionStore, private va
     }
     fun enqueue(id: String, event: JSONObject) {
         // Bounded storage. Preserve pending history rather than silently evicting it.
-        if (rows.length() >= 5000) { android.util.Log.w("MollyWatch", "Pending watch queue is full"); return }
+        if (rows.length() >= 5000) { android.util.Log.w("MollyTimeWatch", "Pending watch queue is full"); return }
         rows.put(JSONObject().put("server", session.server).put("device", session.deviceId)
             .put("id", id).put("body", event))
         save()

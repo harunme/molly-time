@@ -7,15 +7,15 @@ from pathlib import Path
 
 import uvicorn
 
-workspace = tempfile.TemporaryDirectory(prefix="molly-parent-e2e-")
+workspace = tempfile.TemporaryDirectory(prefix="mollytime-parent-e2e-")
 root = Path(workspace.name)
-os.environ["MOLLY_DATA_DIR"] = str(root)
-os.environ["MOLLY_MEDIA_DIR"] = str(root)
+os.environ["MOLLYTIME_DATA_DIR"] = str(root)
+os.environ["MOLLYTIME_MEDIA_DIR"] = str(root)
 
-from molly_server.auth import hash_password
-from molly_server.db import get_session_factory, init_db
-from molly_server.main import create_app
-from molly_server.models import ChildProfile, Family, Item, MediaFile, User
+from mollytime_server.auth import hash_password
+from mollytime_server.db import get_session_factory, init_db
+from mollytime_server.main import create_app
+from mollytime_server.models import ChildProfile, Family, Item, MediaFile, User
 
 init_db()
 subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=0x237a70:s=480x270:d=2",

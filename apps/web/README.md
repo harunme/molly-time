@@ -1,4 +1,4 @@
-# Molly 家长管理后台
+# MollyTime 家长管理后台
 
 基础版已实现，入口 `/manage/`。与 TV 共用 `apps/server/`、家庭权限和媒体目录。
 
@@ -15,7 +15,7 @@ bash tools/run-server.sh                   # 加载新版 API 和两个静态网
 
 打开 `http://127.0.0.1:8096/manage/`。如果旧服务已经运行，先停止旧实例再启动，网页构建不会给正在运行的 Python 进程增加新路由。开发默认账号为 `admin / molly`，也可用自己的家庭账号。
 
-前端开发：`cd apps/web && pnpm dev`，打开 `http://127.0.0.1:5174/manage/`。Vite 默认代理本机 8096；可用 `MOLLY_API_PROXY` 指向另一端口。代理保留原 Host，使来源校验生效。正式部署采用同源 HTTPS；远程 HTTP 页面无法使用浏览器的安全文件校验接口。
+前端开发：`cd apps/web && pnpm dev`，打开 `http://127.0.0.1:5174/manage/`。Vite 默认代理本机 8096；可用 `MOLLYTIME_API_PROXY` 指向另一端口。代理保留原 Host，使来源校验生效。正式部署采用同源 HTTPS；远程 HTTP 页面无法使用浏览器的安全文件校验接口。
 
 ## 已接通的能力
 
@@ -34,7 +34,7 @@ bash tools/run-server.sh                   # 加载新版 API 和两个静态网
 
 ## 播放统计需要新版 APK
 
-重新构建并安装 `artifacts/molly-tv-webview-debug.apk`。TV 登录后自动登记一个设备，签发可撤销的设备凭证；升级前保存的管理员 TV 会话会要求重新登录。家长管理凭证使用独立 HttpOnly Cookie 和 CSRF 校验，不进入 TV Bridge。
+重新构建并安装 `artifacts/mollytime-tv-debug.apk`。TV 扫码绑定后自动登记一个设备，签发可撤销的设备凭证；升级前保存的管理员 TV 会话会要求重新登录。家长管理凭证使用独立 HttpOnly Cookie 和 CSRF 校验，不进入 TV Bridge。
 
 原生播放器用单调时钟结算 `isPlaying` 区间，在状态变化/退出时提交，并每 15 秒上报。服务端以会话和序号去重，拒绝重叠区间，乱序补传不会倒退新会话的续播。暂停、缓冲和拖动不计时；倍速不改变真实经过时间。统计反映设备播放，并不证明孩子一直在看屏幕。
 
@@ -46,7 +46,7 @@ Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体�
 
 首次升级使用附加表保存资源状态、上传任务、首页版本、设备与统计，不删除或改写旧事件；已有 SQLite 自动备份到同目录 `server.pre-management-v1.sqlite`，并记录 `management-v1` 修订。生产引擎启用外键、WAL 和写锁等待；读后校验再写的关键操作在 SQLite 中串行化。
 
-默认在服务内运行一个媒体任务线程。需要独立进程时，API 设置 `MOLLY_MEDIA_WORKER_ENABLED=false`，同环境启动 `python -m molly_server.media_worker`；不需要 Redis 或消息队列。管理静态目录可通过 `MOLLY_PARENT_WEB_DIR` 覆盖，单个视频上限可通过 `MOLLY_MAX_UPLOAD_BYTES` 覆盖（默认 10 GiB）。
+默认在服务内运行一个媒体任务线程。需要独立进程时，API 设置 `MOLLYTIME_MEDIA_WORKER_ENABLED=false`，同环境启动 `python -m mollytime_server.media_worker`；不需要 Redis 或消息队列。管理静态目录可通过 `MOLLYTIME_PARENT_WEB_DIR` 覆盖，单个视频上限可通过 `MOLLYTIME_MAX_UPLOAD_BYTES` 覆盖（默认 10 GiB）。
 
 当前范围：本地存储、管理员和成员两种角色。永久删除、自动清理旧版本/过期上传、自动转码、儿童内容限制、观看限额、OSS/CDN 和离线网页包尚未实现。预览展示栏目比例和可见内容，完整遥控器交互仍在 TV 页面验收。
 
@@ -64,3 +64,11 @@ pnpm --dir apps/tv/web test
 网页测试运行真实临时 API/SQLite，生成并上传真实 MP4；所有夹具与截图数据属于隔离测试库。截图位于忽略目录 `artifacts/parent-*.png`。
 
 TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md)。设计基线见 [后台设计](../../docs/parent-admin-design.md)。
+
+## 绑定电视
+
+电视首页选择“绑定家庭媒体库”，手机扫码打开 `/manage/?pair=配对码`。未登录时先登录家长后台，链接中的配对码会保留；管理员核对电视、目标家庭和配对码后，点击“确认绑定这台电视”。电视自动获得设备凭证并进入片单。也可从“家庭设置 → TV 设备 → 绑定电视”手动输入短码。家庭成员无权确认绑定。
+
+配对码十分钟有效，已确认的短码不可再次绑定；关闭电视配对弹层会取消未完成的请求。设备可在家庭设置中改名、撤销；撤销同时阻止既有访问和凭证刷新。
+
+已配对电视会一直缓存绑定，刷新、重启和断网不要求重新配对。家长在“家庭设置 → TV 设备 → 取消配对”后，接口立即拒绝访问，TV 在下次访问或三十秒授权检查时清除缓存。

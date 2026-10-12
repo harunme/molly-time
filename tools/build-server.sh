@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap a Python venv for the Molly server and install dependencies.
+# Bootstrap a Python venv for the MollyTime server and install dependencies.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,4 +16,4 @@ source "$VENV_DIR/bin/activate"
 python -m pip install --upgrade pip >/dev/null
 python -m pip install -e "$SERVER_DIR[dev]"
 
-echo "molly-server ready: $VENV_DIR"
+echo "mollytime-server ready: $VENV_DIR"

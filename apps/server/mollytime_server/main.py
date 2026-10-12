@@ -16,6 +16,7 @@ from .api import (
     manage_family,
     manage_home,
     manage_resources,
+    pairing,
     playback,
     users,
     watch,
@@ -28,9 +29,9 @@ from .tv_web import TvWebFiles
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="Molly Server",
+        title="MollyTime Server",
         version=settings.server_version,
-        description=("Molly media catalog. Own protocol under /api/*. No Jellyfin compatibility."),
+        description=("MollyTime media catalog. Own protocol under /api/*. No Jellyfin compatibility."),
     )
     app.add_middleware(
         CORSMiddleware,
@@ -47,7 +48,7 @@ def create_app() -> FastAPI:
 
             app.state.media_worker = start_worker()
         logging.getLogger(__name__).info(
-            "molly-server %s ready: data=%s media=%s listen=%s:%s",
+            "mollytime-server %s ready: data=%s media=%s listen=%s:%s",
             settings.server_version,
             settings.data_dir,
             settings.resolved_media_dir(),
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(api_auth.router)
+    app.include_router(pairing.router)
     app.include_router(users.router)
     app.include_router(children.router)
     app.include_router(catalog.router)
@@ -96,7 +98,7 @@ def create_app() -> FastAPI:
 def run() -> None:  # console-script entry
     s = get_settings()
     uvicorn.run(
-        "molly_server.main:create_app",
+        "mollytime_server.main:create_app",
         factory=True,
         host=s.listen_host,
         port=s.listen_port,

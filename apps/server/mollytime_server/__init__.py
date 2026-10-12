@@ -1,4 +1,4 @@
-"""Molly Server — media catalog for the Molly TV client.
+"""MollyTime Server — media catalog for the MollyTime client.
 
 Owns its own auth (HMAC + opaque refresh) and its own REST shape under
 `/api/*`. No Jellyfin compatibility shims — that protocol set was a

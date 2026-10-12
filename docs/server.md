@@ -1,6 +1,6 @@
-# Molly Server (`apps/server/`)
+# MollyTime Server (`apps/server/`)
 
-Molly TV 的唯一业务与媒体后台；家庭、儿童、上传、首页与统计在同一应用内按模块实现，不另建业务服务。目标架构见 [architecture.md](architecture.md)。**自研 REST API 在 `/api/*`**，不复用 Jellyfin 协议。
+MollyTime 的唯一业务与媒体后台；家庭、儿童、上传、首页与统计在同一应用内按模块实现，不另建业务服务。目标架构见 [architecture.md](architecture.md)。**自研 REST API 在 `/api/*`**，不复用 Jellyfin 协议。
 之前的 Jellyfin 兼容层（`ProductName="Jellyfin Server"`、UserDto、SessionInfoDto、Shows/NextUp 等）已全部拆除。
 
 ## 设计原则
@@ -146,14 +146,14 @@ playback_events    (id, family_id, user_id, child_id, item_id, position_ms, dura
 
 | 路径 | 行为 |
 |---|---|
-| `storage_backend=local` | LocalStorage 在 `MOLLY_MEDIA_DIR` 下读取上传文件；默认根目录为 `MOLLY_DATA_DIR/media`，范围外路径拒绝 |
+| `storage_backend=local` | LocalStorage 在 `MOLLYTIME_MEDIA_DIR` 下读取上传文件；默认根目录为 `MOLLYTIME_DATA_DIR/media`，范围外路径拒绝 |
 | `storage_backend=oss`   | OssStorage 已有签名 URL 方法；播放路由 302 跳转尚未实现，CDN 配置尚未验证 |
 
 P0 默认 local。OSS 接口已经预留但未实际验证（无凭证）。
 
 ## TV 网页部署
 
-先执行 `bash tools/build-tv-web.sh` 和 `bash tools/build-web.sh`，再启动后台。构建目录默认分别为 `apps/tv/web/dist` 和 `apps/web/dist`，可用 `MOLLY_TV_WEB_DIR`、`MOLLY_PARENT_WEB_DIR` 指定；启动时挂载 `/tv/`、`/manage/`。HTML 使用 no-store，哈希资源长期缓存。Docker 镜像包含两个网页构建阶段与 FFmpeg。
+先执行 `bash tools/build-tv-web.sh` 和 `bash tools/build-web.sh`，再启动后台。构建目录默认分别为 `apps/tv/web/dist` 和 `apps/web/dist`，可用 `MOLLYTIME_TV_WEB_DIR`、`MOLLYTIME_PARENT_WEB_DIR` 指定；启动时挂载 `/tv/`、`/manage/`。HTML 使用 no-store，哈希资源长期缓存。Docker 镜像包含两个网页构建阶段与 FFmpeg。
 
 ## 本地运行
 
@@ -169,18 +169,18 @@ bash tools/run-server.sh             # 监听 127.0.0.1:8096
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MOLLY_DATA_DIR` | `.local/molly-server` | SQLite + image cache |
-| `MOLLY_MEDIA_DIR` | `MOLLY_DATA_DIR/media` | 上传媒体存储根目录 |
-| `MOLLY_LISTEN_HOST` | `127.0.0.1` | |
-| `MOLLY_LISTEN_PORT` | `8096` | |
-| `MOLLY_AUTH_SECRET` | `dev-secret-do-not-use-in-prod` | HMAC 密钥；生产必改 |
-| `MOLLY_ACCESS_TOKEN_TTL_SECONDS` | `3600` | |
-| `MOLLY_REFRESH_TOKEN_TTL_SECONDS` | `2592000` | |
-| `MOLLY_INITIAL_ADMIN_USERNAME` | `admin` | |
-| `MOLLY_INITIAL_ADMIN_PASSWORD` | `molly` | |
-| `MOLLY_INITIAL_ADMIN_FAMILY_NAME` | `Default Family` | |
-| `MOLLY_STORAGE_BACKEND` | `local` | `local` \| `oss` |
-| `MOLLY_OSS_*` | – | OSS endpoint / access_key / _oss_cdn_domain |
+| `MOLLYTIME_DATA_DIR` | `.local/molly-server` | SQLite + image cache |
+| `MOLLYTIME_MEDIA_DIR` | `MOLLYTIME_DATA_DIR/media` | 上传媒体存储根目录 |
+| `MOLLYTIME_LISTEN_HOST` | `127.0.0.1` | |
+| `MOLLYTIME_LISTEN_PORT` | `8096` | |
+| `MOLLYTIME_AUTH_SECRET` | `dev-secret-do-not-use-in-prod` | HMAC 密钥；生产必改 |
+| `MOLLYTIME_ACCESS_TOKEN_TTL_SECONDS` | `3600` | |
+| `MOLLYTIME_REFRESH_TOKEN_TTL_SECONDS` | `2592000` | |
+| `MOLLYTIME_INITIAL_ADMIN_USERNAME` | `admin` | |
+| `MOLLYTIME_INITIAL_ADMIN_PASSWORD` | `molly` | |
+| `MOLLYTIME_INITIAL_ADMIN_FAMILY_NAME` | `Default Family` | |
+| `MOLLYTIME_STORAGE_BACKEND` | `local` | `local` \| `oss` |
+| `MOLLYTIME_OSS_*` | – | OSS endpoint / access_key / _oss_cdn_domain |
 
 ### 重置（含旧 Jellyfin 数据）
 
@@ -188,11 +188,30 @@ bash tools/run-server.sh             # 监听 127.0.0.1:8096
 
 ## 升级与演替
 
-- 轻量客户端 `apps/tv/client/` 与 TV 网页直接使用 Molly `/api/*`，不绑定 Jellyfin 版本
+- 轻量客户端 `apps/tv/client/` 与 TV 网页直接使用 MollyTime `/api/*`，不绑定 Jellyfin 版本
 - 网页、API 与原生 Bridge 分别管理兼容性；新增原生能力需要 APK 更新
 - 视频统一通过家长后台上传、检查和发布，不提供本地目录扫描导入
-- 旧版本本机运行曾将上传文件存放在 `downloads/bbkt/managed`。已有上传文件需将该 `managed` 目录复制到 `MOLLY_DATA_DIR/media/managed`，或通过 `MOLLY_MEDIA_DIR` 指定原存储根目录；Docker 的上传挂载路径保持兼容。修改配置不会自动移动或删除文件。
+- 旧版本本机运行曾将上传文件存放在 `downloads/bbkt/managed`。已有上传文件需将该 `managed` 目录复制到 `MOLLYTIME_DATA_DIR/media/managed`，或通过 `MOLLYTIME_MEDIA_DIR` 指定原存储根目录；Docker 的上传挂载路径保持兼容。修改配置不会自动移动或删除文件。
 
 ## 许可
 
 `apps/server/` 源码采用 MIT License。不含 Jellyfin 服务端代码。
+
+## MollyTime 配置兼容
+
+新环境变量前缀为 `MOLLYTIME_`，仍接受旧 `MOLLY_` 前缀，新变量优先。数据目录继续使用 `.local/molly-server/`；保留既有认证和 HTTP 协议标识以支持旧客户端。服务端模块改为 `mollytime_server`，升级本机开发环境时须运行 `bash tools/build-server.sh` 重新安装。
+
+## TV 扫码配对
+
+- `POST /api/auth/pairing/start`：生成十分钟配对请求，返回二维码、短码和设备查询秘密。
+- `POST /api/auth/pairing/poll`：仅持有设备查询秘密的 TV 可领取设备凭证；每三秒最多查询一次，丢失响应可安全重试。
+- `POST /api/auth/pairing/cancel`：取消尚未完成的请求。
+- `POST /api/auth/pairing/reset`：凭签名设备令牌解除自身绑定并使旧凭证立即失效；不接受请求体中的目标设备 ID。
+- `GET /api/manage/pairing/{code}`：登录的管理员核对待绑定电视。
+- `POST /api/manage/pairing/confirm`：家长管理员在同源页面通过 CSRF 校验后确认家庭归属和设备名。
+
+短码不能领取凭证，也不放进电视播放 URL。确认只允许一次，领取只建立一台设备；查询重试不会新建设备。配对请求十分钟过期后不能再次领取，设备绑定本身没有时间期限。生成与短码查询/确认有数据库限流，并发确认和领取由 SQLite 写锁串行化。新增表 `device_pairings`、`pairing_rates` 为附加表，不修改现有家庭、媒体或观看记录。
+
+`MOLLYTIME_PUBLIC_BASE_URL`（默认空）可指定手机能访问的后台根地址，例如 `https://media.example.com`。未配置时使用后台请求地址生成二维码；使用反向代理、局域网实机或不同前端域名时应明确配置。默认本机监听仍为 `127.0.0.1:8096`。
+
+配对成功后会持久缓存绑定：原生客户端使用私有存储并按后台地址保存，开发网页使用当前站点的本地存储。设备凭证不会因三十天未使用而过期，短期访问令牌自动刷新，网络故障不清除绑定。绑定默认持续保留；TV 设置中的“重新配对”经确认后只解除自身绑定，再生成新二维码。家长网页的“家庭设置 → TV 设备 → 取消配对”仍可远程解除。后台取消后接口立即拒绝访问，TV 在下一次请求、恢复页面或三十秒授权检查时清除本地绑定。家长账号会话仍遵循原有期限。

@@ -8,12 +8,12 @@ import pytest
 from sqlalchemy.orm import Session
 from test_tv_playback import client  # noqa: F401 -- shared isolated fixture
 
-from molly_server import config, db
-from molly_server.auth import hash_password, issue_access_token
-from molly_server.management_models import ResourceState, WatchInterval, WatchSession
-from molly_server.media_worker import run_once
-from molly_server.models import Item, User
-from molly_server.storage.factory import build_storage
+from mollytime_server import config, db
+from mollytime_server.auth import hash_password, issue_access_token
+from mollytime_server.management_models import ResourceState, WatchInterval, WatchSession
+from mollytime_server.media_worker import run_once
+from mollytime_server.models import Item, User
+from mollytime_server.storage.factory import build_storage
 
 
 @pytest.fixture

@@ -37,7 +37,7 @@ class OssStorage:
             return self._client
         if not (self.endpoint and self.bucket and self.access_key_id and self.access_key_secret):
             raise RuntimeError(
-                "OSS backend selected but MOLLY_OSS_* credentials are incomplete"
+                "OSS backend selected but MOLLYTIME_OSS_* credentials are incomplete"
             )
         # Lazy import — keep boto3 optional at test time.
         import boto3  # type: ignore

@@ -3,9 +3,9 @@ package com.molly.tv
 import android.app.Application
 import java.util.concurrent.Executors
 
-class MollyApplication : Application() {
+class MollyTimeApplication : Application() {
     lateinit var session: SessionStore
-    lateinit var api: MollyApi
+    lateinit var api: MollyTimeApi
     lateinit var watchQueue: WatchQueue
     // Serial execution prevents refresh-token rotation races and preserves event order.
     val io = Executors.newSingleThreadExecutor()
@@ -14,7 +14,7 @@ class MollyApplication : Application() {
         session = SessionStore(this)
         // Upgrade legacy parent-token TV sessions to revocable device credentials at next login.
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
-        api = MollyApi(session)
+        api = MollyTimeApi(session)
         watchQueue = WatchQueue(this, session, api)
         io.execute { watchQueue.flush() }
         val handler = android.os.Handler(android.os.Looper.getMainLooper())

@@ -1,6 +1,6 @@
 """Catalog browse: /api/home, /api/series/{id}, /api/seasons/{id}, /api/episodes/{id}.
 
-Shape is intentionally minimal — exactly what the Molly TV client renders.
+Shape is intentionally minimal — exactly what the MollyTime client renders.
 No "fields=" query params, no per-collection-type polymorphism. Series
 has seasons; seasons have episodes; episodes have media sources.
 """

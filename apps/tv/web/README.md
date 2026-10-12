@@ -1,6 +1,8 @@
-# Molly TV 网页
+# MollyTime 网页
 
-React + TypeScript + Vite，Norigin Spatial Navigation 管理方向键焦点。登录、首页、季列表与剧集列表使用 Molly API，网页通过受限原生 Bridge 播放视频。
+启动直接展示 TV 首页；已连接账号自动加载片单，首次连接在首页扫码弹层中完成，不设独立登录页，电视端不输入账号密码。
+
+React + TypeScript + Vite，Norigin Spatial Navigation 管理方向键焦点。登录、首页、季列表与剧集列表使用 MollyTime API，网页通过受限原生 Bridge 播放视频。
 
 日常从仓库根目录执行 `bash tools/run-tv-web.sh`，只运行 Vite，在浏览器中开发；不启动 Docker 或 Android。也可在本目录执行：
 
@@ -11,9 +13,9 @@ pnpm build
 pnpm test
 ```
 
-开发地址 `http://127.0.0.1:5173/tv/`，Vite 将 `/api` 代理到本机 `8096`，可用 `MOLLY_API_PROXY` 指定已有后台；真实登录和目录需要该后台可用。浏览器支持真实账号登录与目录预览，凭证仅在内存中；视频播放需 TV 客户端。测试会启动独立 Vite 服务并验证遥控器焦点、返回、播放返回与登录错误恢复。
+开发地址 `http://127.0.0.1:5173/tv/`，Vite 将 `/api` 代理到本机 `8096`，可用 `MOLLYTIME_API_PROXY` 指定已有后台；真实登录和目录需要该后台可用。浏览器支持真实扫码绑定与目录预览，绑定保存在浏览器本地，刷新后自动恢复；视频播放需 TV 客户端。测试会启动独立 Vite 服务并验证遥控器焦点、返回、播放返回与登录错误恢复。
 
-生产输出 `dist/`，后台启动时在 `/tv/` 挂载；可用 `MOLLY_TV_WEB_DIR` 指定部署目录。入口 HTML 禁止陈旧缓存，带哈希的资源长期缓存。部署时保留旧版资源并原子切换入口，确保旧页面仍能请求它引用的文件。`pnpm build` 只是本地构建，不等于线上原子部署。
+生产输出 `dist/`，后台启动时在 `/tv/` 挂载；可用 `MOLLYTIME_TV_WEB_DIR` 指定部署目录。入口 HTML 禁止陈旧缓存，带哈希的资源长期缓存。部署时保留旧版资源并原子切换入口，确保旧页面仍能请求它引用的文件。`pnpm build` 只是本地构建，不等于线上原子部署。
 
 ## 发版前 Android 实测
 
@@ -23,7 +25,7 @@ pnpm test
 pnpm exec node tests/smoke-android.mjs
 ```
 
-使用 Playwright Android 接口，默认本地测试账号 `admin` / `molly`，可用 `MOLLY_SMOKE_USERNAME` 和 `MOLLY_SMOKE_PASSWORD` 覆盖。默认使用现有资源中的 `L1开口动画 / 古力小超人 / Hello` 样本。截图写入根目录 `artifacts/`。
+使用 Playwright Android 接口。首次连接由家长在手机网页扫码确认，脚本最多等待十分钟；不自动填写 TV 账号密码。默认使用现有资源中的 `L1开口动画 / 古力小超人 / Hello` 样本。截图写入根目录 `artifacts/`。
 
 遥控器上下左右移动，确定打开，返回回到上一层。播放结束/退出恢复剧集卡片焦点。网页与 Bridge 主版本不兼容时提示更新 APK。
 
@@ -32,3 +34,13 @@ pnpm exec node tests/smoke-android.mjs
 新版参考 [Norigin React demo](https://github.com/NoriginMedia/Norigin-Spatial-Navigation/tree/main/apps/react-demo)，采用固定侧栏、随焦点变化的内容预览和独立横向内容行。焦点按屏幕/侧栏/内容行/弹层分组，跨行、页面返回与原生播放返回均保存卡片及滚动位置。设置和儿童弹层限制方向键焦点，返回恢复原菜单。
 
 只使用现有 React/Norigin 依赖；封面按可见范围加载，缺失封面显示资源名称；布局按 TV 分辨率缩放。管理后台比例预览同步采用新结构。设计与验证见 [TV 界面设计](../../../docs/tv-interface-design.md)。网页构建后重新打开 TV 壳子加载新入口，无需修改 Bridge。
+
+## 手机配对
+
+点击首页“绑定家庭媒体库”，用手机扫码，在家长管理网页登录并确认。二维码只包含短配对码，不包含电视凭证；短码十分钟有效，也可在管理后台“家庭设置 → 绑定电视”手动输入。授权后自动加载片单，家长可以在设备列表撤销。
+
+手机必须能访问后台地址。局域网验收时配置 `MOLLYTIME_PUBLIC_BASE_URL` 为手机可访问的服务器根地址，并单独配置 Python 后台的监听地址；本机 Vite 代理会使用后台地址生成链接。默认 `127.0.0.1` 仅适合同一台电脑的浏览器联调。
+
+新原生壳子支持配对方法并保存设备凭证；旧 APK 会提示先更新。日常仍只启动网页，发版前再用新版 Android 客户端实测扫码绑定。
+
+配对成功后浏览器会持久保存绑定，刷新自动恢复，网络错误不会清除。TV 设置中可“重新配对”，确认后旧绑定失效并生成新码；家长也可从“家庭设置 → TV 设备 → 取消配对”远程解除。设备授权机制见 [服务端说明](../../../docs/server.md)。
