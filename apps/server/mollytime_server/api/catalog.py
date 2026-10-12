@@ -158,8 +158,14 @@ def home(request: Request, user: CurrentUser, db: DbSession):
 
     child = request.headers.get("x-molly-child") or None
     content, revision = effective_content(db, user.family_id, child)
+    modern = request.headers.get("x-molly-home-schema") == "2"
+    if modern:
+        content = {**content, "rows": [
+            {"title": "最近播放", "source": "recently-played", "enabled": True, "limit": 24},
+            *content["rows"],
+        ]}
     result = render_home(
-        content, db, user.family_id, child, modern=request.headers.get("x-molly-home-schema") == "2"
+        content, db, user.family_id, child, modern=modern
     )
     return dict(result, revision=revision)
 

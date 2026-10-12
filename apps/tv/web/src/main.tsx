@@ -15,6 +15,7 @@ type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, numbe
 type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | null;
 const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
+const episodeAction = (item: Series) => item.completed ? '再次播放' : item.positionMs ? '继续观看' : '播放';
 
 function App() {
   const [capabilities, setCapabilities] = useState<Capabilities>();
@@ -235,16 +236,16 @@ function App() {
         <div><strong>{selectedChild?.name ?? '家庭媒体库'}</strong>{selectedChild && <span>正在观看</span>}</div></div>}
     </FocusRegion>
     <main className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
+      <FocusRegion focusKey="content" className="content-panels shelves-scroll" scrollRef={viewport}>
       <div className="topbar"><FocusButton focusKey="menu" className="menu-trigger" ariaLabel="打开菜单" disabled={!!overlay || menuOpen} onClick={showMenu} onArrow={(direction) => { if (direction === 'left') { showMenu(); return false; } return true; }}><Icon name="menu" /></FocusButton>
         <span className="topbar-brand">MollyTime</span>
-        {folder && <><FocusButton focusKey="folder-back" className="route-back" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton><span className="breadcrumbs">{folder.name}</span></>}
+        {folder && <FocusButton focusKey="folder-back" className="route-back" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /><span>返回</span></FocusButton>}
         <span className="topbar-label">{selectedChild?.name}</span>
       </div>
-      <FocusRegion focusKey="content" className="content-panels">
         {authenticated && !folder && <Feature item={featured} loading={busy}
           eyebrow={home.rows.find((row) => row.items.some((item) => item.id === featured?.id))?.title ?? ''}
-          description={description} meta={metadata} label={(featured as Series)?.type === 'episode' ? '继续观看' : '文件夹'} />}
-        <FocusRegion focusKey="shelves" className="shelves-scroll" scrollRef={viewport}>
+          description={description} meta={metadata} label={(featured as Series)?.type === 'episode' ? episodeAction(featured as Series) : '文件夹'} />}
+        <FocusRegion focusKey="shelves" className="shelf-list">
           {!authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(0)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title={folder.name} total={videos.length} position={activePositions['folder-videos']}>
             {videos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
               onArrow={cardArrow(index)} onFocus={() => remember(`episode-${item.id}`, item, 'folder-videos', index + 1)} onClick={() => { void play(item.id); }}>
@@ -256,7 +257,7 @@ function App() {
               {row.items.map((item, index) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
                 onArrow={cardArrow(index)} onFocus={() => remember(key, item, rowKey, index + 1)}
                 onClick={() => { if (item.type === 'episode') void play(item.id); else { homeSnapshot.current = snapshot(); setFolder(item); } }}>
-                <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.type === 'episode' ? '继续观看' : item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}<Icon name="play" /></span></div>
+                <Cover item={item} /><div className="card-copy"><strong>{item.name}</strong><span>{item.type === 'episode' ? episodeAction(item) : item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}<Icon name="play" /></span></div>
               </FocusButton>; })}
             </Shelf>;
           }))}

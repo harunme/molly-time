@@ -1,5 +1,45 @@
 import { test, expect } from '@playwright/test';
 
+test('recent playback precedes library and supports remote playback and return', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      MollyBridge: { postMessage: (message: string) => void; onmessage?: (e: { data: string }) => void };
+      playbackId: string;
+    };
+    w.MollyBridge = { postMessage(raw) {
+      const { id, method, args } = JSON.parse(raw);
+      let result: unknown = { ok: true };
+      if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: 'c1', nativePlayback: true };
+      if (method === 'request' && args.path === '/api/families/me/children') result = [{ id: 'c1', name: '小朋友' }];
+      if (method === 'request' && args.path === '/api/home') result = { rows: [
+        { title: '最近播放', items: [
+          { id: 'recent', name: '最近的视频', type: 'episode', runtimeMs: 120000, positionMs: 30000, completed: false },
+          { id: 'finished', name: '播完的视频', type: 'episode', runtimeMs: 120000, positionMs: 120000, completed: true },
+        ] },
+        { title: '我的媒体库', items: [{ id: 'folder', name: '测试', episodeCount: 2 }] },
+      ] };
+      if (method === 'playEpisode') w.playbackId = args.episodeId;
+      setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
+    } };
+  });
+  await page.goto('/tv/');
+  await expect(page.locator('.shelf-heading h2')).toHaveText(['最近播放', '我的媒体库']);
+  const recent = page.locator('[data-focus="series-recent"]');
+  await expect(recent).toBeFocused();
+  await expect(recent.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-focus="home-1-folder"]')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(recent).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="series-finished"]')).toBeFocused();
+  await expect(page.locator('[data-focus="series-finished"] .card-copy')).toContainText('再次播放');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { playbackId: string }).playbackId)).toBe('finished');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:playbackClosed')));
+  await expect(page.locator('[data-focus="series-finished"]')).toBeFocused();
+});
+
 test('remote navigation, playback return, folder restoration and durable binding settings', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as {
@@ -148,6 +188,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
   const heroY = await page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top);
+  const navigationY = await page.locator('.topbar').evaluate((node) => node.getBoundingClientRect().top);
   const firstRail = page.locator('[data-rail="home-row-0"]');
   await page.evaluate(() => {
     const rail = document.querySelector<HTMLElement>('[data-rail="home-row-0"]')!;
@@ -185,7 +226,9 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => page.locator('[data-rail="home-row-2"] .focused').count()).toBe(1);
   await expect.poll(() => page.locator('.shelves-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-  expect(await page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top)).toBe(heroY);
+  await expect.poll(() => page.locator('.feature').evaluate((node) => node.getBoundingClientRect().top)).toBeLessThan(heroY);
+  await expect.poll(() => page.locator('.topbar').evaluate((node) => node.getBoundingClientRect().top)).toBeLessThan(navigationY);
+  await page.screenshot({ path: 'test-results/tv-page-scroll.png' });
   expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
   const returnFocus = await page.locator('[data-rail="home-row-2"] .focused').getAttribute('data-focus');
   await page.getByRole('button', { name: '打开菜单' }).click();

@@ -55,3 +55,25 @@ def test_continue_row_exposes_real_position_for_selected_child(catalog):
     assert result["rows"][0]["items"][0]["runtimeMs"] == 120000
     assert render_home(content, catalog, "f")["rows"] == []
     assert render_home(content, catalog, "f", "child", modern=False)["rows"] == []
+
+
+def test_recently_played_includes_completed_and_isolates_profiles(catalog):
+    now = dt.datetime.now(dt.UTC)
+    for key, item, child, completed, started in [
+        ("older", "episode", "child", False, now - dt.timedelta(days=1)),
+        ("latest", "episode", "child", True, now),
+        ("draft-progress", "draft", "child", False, now),
+        ("foreign-progress", "foreign", "child", False, now),
+        ("family-progress", "episode", None, False, now),
+    ]:
+        catalog.add(WatchProgress(id=key, session_id=key, seq=1, family_id="f",
+                                  child_id=child, item_id=item, position_ms=30000,
+                                  completed=completed, session_started_at=started))
+    catalog.commit()
+    content = {"rows": [{"enabled": True, "source": "recently-played", "title": "最近播放", "limit": 24}]}
+    items = render_home(content, catalog, "f", "child")["rows"][0]["items"]
+    assert [item["id"] for item in items] == ["episode"]
+    assert items[0]["completed"] is True
+    assert render_home(content, catalog, "f")["rows"][0]["items"][0]["completed"] is False
+    assert render_home(content, catalog, "other")["rows"] == []
+    assert render_home(content, catalog, "f", "child", modern=False)["rows"] == []

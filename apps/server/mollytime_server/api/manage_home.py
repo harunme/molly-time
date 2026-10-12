@@ -208,24 +208,31 @@ def render_home(content, db, family, child=None, modern=True):
     for row in content["rows"]:
         if not row["enabled"]:
             continue
-        if row["source"] == "continue":
-            if not modern or not child:
+        if row["source"] in ("continue", "recently-played"):
+            recently_played = row["source"] == "recently-played"
+            if not modern or (not recently_played and not child):
                 continue
-            progresses = (
+            query = (
                 db.query(WatchProgress)
                 .filter(
                     WatchProgress.family_id == family,
                     WatchProgress.child_id == child,
-                    WatchProgress.completed.is_(False),
-                    WatchProgress.position_ms > 0,
                 )
-                .order_by(WatchProgress.session_started_at.desc())
+            )
+            if not recently_played:
+                query = query.filter(
+                    WatchProgress.completed.is_(False), WatchProgress.position_ms > 0
+                )
+            progresses = (
+                query.order_by(WatchProgress.session_started_at.desc(), WatchProgress.id.desc())
                 .limit(100)
                 .all()
             )
-            positions = {p.item_id: p.position_ms for p in progresses}
-            episodes = [db.get(Item, p.item_id) for p in progresses]
-            episodes = [e for e in episodes if e and visible(db, e)][: row["limit"]]
+            latest = {}
+            for progress in progresses:
+                latest.setdefault(progress.item_id, progress)
+            episodes = [db.get(Item, key) for key in latest]
+            episodes = [e for e in episodes if e and e.family_id == family and visible(db, e)][: row["limit"]]
             items = [
                 dict(
                     EpisodeSummary(
@@ -235,7 +242,8 @@ def render_home(content, db, family, child=None, modern=True):
                         image=ImageRef(url=image_url(db, e)),
                     ).model_dump(),
                     type="episode",
-                    positionMs=positions[e.id],
+                    positionMs=latest[e.id].position_ms,
+                    completed=latest[e.id].completed,
                 )
                 for e in episodes
             ]

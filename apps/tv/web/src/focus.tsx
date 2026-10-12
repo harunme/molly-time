@@ -59,10 +59,12 @@ export function revealCard(node: HTMLElement) {
   if (rail) glide(rail, node.offsetLeft, 0);
   const shelf = node.closest<HTMLElement>('.shelf');
   const viewport = node.closest<HTMLElement>('.shelves-scroll');
+  if (viewport && node.closest('.topbar')) glide(viewport, 0, 0);
   if (shelf && viewport) {
     const top = shelf.offsetTop, bottom = top + shelf.offsetHeight;
     const current = scrolling.get(viewport)?.top ?? viewport.scrollTop;
-    if (top < current + 12) glide(viewport, 0, top - 12);
+    const inset = Math.max(12, parseFloat(getComputedStyle(viewport).scrollPaddingTop) || 0);
+    if (top < current + inset) glide(viewport, 0, shelf === viewport.querySelector('.shelf') ? 0 : top - inset);
     else if (bottom > current + viewport.clientHeight - 12) glide(viewport, 0, bottom - viewport.clientHeight + 12);
   }
   const panel = node.closest<HTMLElement>('.overlay-panel');

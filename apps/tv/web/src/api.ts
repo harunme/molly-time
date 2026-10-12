@@ -1,6 +1,6 @@
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; devicePairing?: boolean; devicePairingReset?: boolean };
 export type Child = { id: string; name: string };
-export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; overview?: string; image?: { url: string } };
+export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
 export type Season = { id: string; name: string; image?: { url: string }; indexNumber?: number; episodeCount?: number };
 export type Episode = { id: string; name: string; runtimeMs?: number; image?: { url: string } };
 export type Home = { rows: { title: string; items: Series[] }[] };
