@@ -76,7 +76,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
     await tv.keyboard.press('Escape');
     await expect(menu).not.toBeVisible();
     await expect(tv.locator('video')).toBeVisible();
-    await expect(tv.getByRole('button', { name: '播放设置 · 菜单键' })).toBeFocused();
+    await expect(tv.locator('video')).toBeFocused();
     await tv.keyboard.press('Escape');
     await expect(tv.locator('video')).toHaveCount(0);
     expect((await (await page.request.get('/api/manage/settings')).json()).defaultSubtitle).toBe('zh-en');

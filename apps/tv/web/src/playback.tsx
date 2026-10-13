@@ -4,47 +4,56 @@ import { browserMediaUrl, browserRequest } from './api';
 type Playback = { mediaId: string; url: string; mime: string; subtitles: { index: number; url: string; language: string; label: string; isDefault: boolean }[] };
 export function BrowserPlaybackHost() {
   const [target, setTarget] = useState<{ episodeId: string; fromStart?: boolean }>();
+  const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const open = (event: Event) => setTarget((event as CustomEvent).detail);
+    const open = (event: Event) => {
+      setTarget((event as CustomEvent).detail);
+      // Request during the play gesture; the host survives episode changes.
+      if (!document.fullscreenElement) void host.current?.requestFullscreen?.().catch(() => {});
+    };
     window.addEventListener('molly:browserPlay', open);
     return () => window.removeEventListener('molly:browserPlay', open);
   }, []);
-  const close = () => { setTarget(undefined); window.dispatchEvent(new CustomEvent('molly:playbackClosed', { detail: { episodeId: target?.episodeId } })); };
-  return target ? <BrowserPlayback key={target.episodeId} episode={target.episodeId} fromStart={!!target.fromStart} playNext={(episodeId) => setTarget({ episodeId, fromStart: true })} close={close} /> : null;
+  const close = () => {
+    if (document.fullscreenElement === host.current) void document.exitFullscreen().catch(() => {});
+    setTarget(undefined);
+    window.dispatchEvent(new CustomEvent('molly:playbackClosed', { detail: { episodeId: target?.episodeId } }));
+  };
+  return <div ref={host} className="browser-playback-host">
+    {target && <BrowserPlayback key={target.episodeId} episode={target.episodeId} fromStart={!!target.fromStart} playNext={(episodeId) => setTarget({ episodeId, fromStart: true })} close={close} />}
+  </div>;
 }
 type EpisodeProps = { episode: string; fromStart: boolean; playNext: (episodeId: string) => void; close: () => void };
 function ParentClip({ path, label, done, close }: { path: string; label: string; done: () => void; close: () => void }) {
   const [info, setInfo] = useState<Playback>(), [error, setError] = useState(''), [retry, setRetry] = useState(0);
-  const ended = useRef(false), retryButton = useRef<HTMLButtonElement>(null);
+  const ended = useRef(false), retryButton = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let alive = true;
     setInfo(undefined); setError(''); ended.current = false;
     void browserRequest<Playback>(path).then((result) => { if (alive) setInfo(result); })
-      .catch(() => { if (alive) setError('家长视频加载失败，请重试或返回'); });
+      .catch(() => { if (alive) setError('家长视频加载失败，请重试'); });
     return () => { alive = false; };
   }, [path, retry]);
   useEffect(() => {
-    document.querySelector<HTMLButtonElement>('.parent-clip-player .player-close')?.focus();
     const key = (event: KeyboardEvent) => {
       if (['Escape', 'Backspace', 'BrowserBack'].includes(event.key) || [461, 10009].includes(event.keyCode)) {
         event.preventDefault(); event.stopImmediatePropagation(); close();
       } else if (event.key.startsWith('Arrow')) {
         event.preventDefault(); event.stopImmediatePropagation();
-        (retryButton.current || document.querySelector<HTMLButtonElement>('.player-close'))?.focus();
+        (retryButton.current || panel.current)?.focus();
       }
     };
     const timer = setInterval(() => { void browserRequest('/api/me').catch((failure) => { if ([401, 403].includes(failure.status)) close(); }); }, 15000);
     window.addEventListener('keydown', key, true);
     return () => { clearInterval(timer); window.removeEventListener('keydown', key, true); };
   }, []);
-  useEffect(() => { if (error) retryButton.current?.focus(); }, [error]);
-  return <div role="dialog" aria-label="家长视频提醒" className="parent-clip-player" data-parent-clip={label}>
+  useEffect(() => { (error ? retryButton.current : panel.current)?.focus(); }, [error]);
+  return <div ref={panel} tabIndex={-1} role="dialog" aria-label="家长视频提醒" className="parent-clip-player" data-parent-clip={label}>
     {info && <video key={retry} src={browserMediaUrl(info.url)} autoPlay controls aria-label={label}
       onEnded={() => { if (!ended.current) { ended.current = true; done(); } }}
-      onError={() => setError('家长视频播放失败，请重试或返回')} />}
+      onError={() => setError('家长视频播放失败，请重试')} />}
     {!info && !error && <p role="status">正在加载{label}…</p>}
     {error && <div className="parent-clip-error"><p role="alert">{error}</p><button ref={retryButton} onClick={() => setRetry((v) => v + 1)}>重试家长视频</button></div>}
-    <button className="player-close" onClick={close}>返回视频列表</button>
   </div>;
 }
 
@@ -88,10 +97,10 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
   const [menu, setMenu] = useState(false), menuOpen = useRef(false);
   const [subtitle, setSubtitle] = useState<number | null | undefined>(), selectedSubtitle = useRef<number | null | undefined>(undefined);
   const [speed, setSpeed] = useState(1), selectedSpeed = useRef(1);
-  const menuPanel = useRef<HTMLDivElement>(null), menuButton = useRef<HTMLButtonElement>(null);
+  const menuPanel = useRef<HTMLDivElement>(null);
   const showMenu = (open: boolean) => {
     menuOpen.current = open; setMenu(open);
-    if (!open) menuButton.current?.focus();
+    if (!open) video.current?.focus();
   };
   useEffect(() => {
     if (menu) (menuPanel.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') || menuPanel.current?.querySelector<HTMLButtonElement>('button'))?.focus();
@@ -110,6 +119,9 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     applySubtitle();
   }, [info]);
   useEffect(() => { if (nextError) retryButton.current?.focus(); }, [nextError]);
+  useEffect(() => {
+    if (!clip && !menu && !nextError) video.current?.focus();
+  }, [info, serial, clip, menu, nextError]);
   const seq = useRef(0), start = useRef(performance.now()), last = useRef(0), playing = useRef(false), retries = useRef(0);
   const chain = useRef(Promise.resolve());
   const sample = (stoppedEvent = false) => {
@@ -183,6 +195,10 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
   useEffect(() => {
     const oldBack = window.mollyBack;
     window.mollyBack = () => { if (menuOpen.current) showMenu(false); else finish(); return true; };
+    const remoteMenu = (event: Event) => {
+      event.stopImmediatePropagation();
+      if (!activeClip.current && !closed.current) showMenu(!menuOpen.current);
+    };
     const key = (event: KeyboardEvent) => {
       if (activeClip.current) return;
       if (event.key === 'ContextMenu' || event.key === 'Menu' || event.keyCode === 93) {
@@ -210,12 +226,8 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       }
       if (event.key.startsWith('Arrow')) {
         event.stopImmediatePropagation();
-        if (event.key === 'ArrowUp') { event.preventDefault(); document.querySelector<HTMLButtonElement>('.player-close')?.focus(); }
-        else if (document.activeElement?.tagName === 'BUTTON') {
-          event.preventDefault();
-          if (event.key === 'ArrowDown') (retryButton.current || video.current)?.focus();
-          else (document.activeElement === menuButton.current ? document.querySelector<HTMLButtonElement>('.player-close') : menuButton.current)?.focus();
-        }
+        if (retryButton.current) { event.preventDefault(); retryButton.current.focus(); }
+        else video.current?.focus();
       }
       if (event.key === 'Enter' && document.activeElement?.tagName === 'BUTTON') {
         event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) (document.activeElement as HTMLButtonElement).click();
@@ -234,10 +246,11 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       void browserRequest('/api/me').catch((e) => { if (e.status === 401 || e.status === 403) finish(); });
     }, 15000);
     window.addEventListener('keydown', key, true);
-    return () => { closed.current = true; sample(true); window.mollyBack = oldBack; clearInterval(timer); clearInterval(reminderTimer); window.removeEventListener('keydown', key, true); };
+    window.addEventListener('molly:menu', remoteMenu, true);
+    return () => { closed.current = true; sample(true); window.mollyBack = oldBack; clearInterval(timer); clearInterval(reminderTimer); window.removeEventListener('keydown', key, true); window.removeEventListener('molly:menu', remoteMenu, true); };
   }, []);
-  return <div role="dialog" aria-label="视频播放" style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#000', display: 'grid', placeItems: 'center' }}>
-    {info && <video key={serial} ref={video} src={browserMediaUrl(info.url)} controls autoPlay={!clip} crossOrigin="anonymous" style={{ width: '100%', height: '100%' }}
+  return <div role="dialog" aria-label="视频播放" className="browser-player">
+    {info && <video key={serial} ref={video} tabIndex={0} src={browserMediaUrl(info.url)} controls autoPlay={!clip} crossOrigin="anonymous"
       onLoadedMetadata={() => { if (video.current) { video.current.currentTime = position.current; video.current.playbackRate = selectedSpeed.current; } applySubtitle(); }}
       onPlaying={() => { if (activeClip.current) { video.current?.pause(); return; } sample(); playing.current = true; }} onPause={() => { sample(); playing.current = false; }}
       onWaiting={() => { sample(); playing.current = false; }} onSeeking={() => { completed.current = false; }} onTimeUpdate={() => { position.current = video.current?.currentTime ?? position.current; }}
@@ -253,8 +266,6 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       {info.subtitles.map((sub) => <track key={sub.index} kind="subtitles" src={browserMediaUrl(sub.url)} srcLang={sub.language} label={sub.label} default={sub.isDefault} onLoad={applySubtitle} />)}
     </video>}
     {clip && <ParentClip key={clip.requestId + String(clip.after)} path={clip.path} label={clip.label} done={() => { void clipDone(); }} close={finish} />}
-    <button ref={menuButton} className="player-menu-trigger" onClick={() => showMenu(!menuOpen.current)}>播放设置 · 菜单键</button>
-    <button className="player-close" onClick={finish} style={{ position: 'absolute', top: 20, right: 20 }}>返回视频列表</button>
     {menu && <div ref={menuPanel} className="player-menu" role="dialog" aria-label="播放设置">
       <h2>播放设置</h2><p>仅影响当前视频</p>
       <h3>字幕</h3>
