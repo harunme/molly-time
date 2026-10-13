@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#3CC8B6"
-        android:pathData="M49,37 L40,28 Q37,25 35,28 Q33,30 36,33 L44,41 Z M59,37 L68,27 Q71,24 74,27 Q76,29 73,32 L64,42 Z" />
-    <path android:fillColor="#3CC8B6"
-        android:pathData="M39,38 Q26,38 26,51 L26,68 Q26,81 39,81 L69,81 Q82,81 82,68 L82,51 Q82,38 69,38 Z" />
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M36,50 Q36,46 40,47 L44,51 L44,70 Q44,74 40,74 Q36,74 36,70 Z M65,52 L69,48 Q73,46 73,50 L73,70 Q73,74 69,74 Q65,74 65,70 Z M47,52 Q47,48 51,50 L62,57 Q66,60 62,63 L51,70 Q47,72 47,68 Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launcher_background" />
+    <!-- Keep the original artwork inside the adaptive icon's safe area. -->
+    <item>
+        <inset android:inset="13%">
+            <bitmap android:src="@drawable/mollytime_icon"
+                android:gravity="fill"
+                android:filter="true" />
+        </inset>
+    </item>
+</layer-list>
