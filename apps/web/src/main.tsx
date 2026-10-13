@@ -398,6 +398,9 @@ function App() {
               readonly={readonly}
               notify={setNotice}
               session={session}
+              familyRenamed={(name) => updateSession((current) => current && {
+                ...current, family: { ...current.family, name },
+              })}
             />} />
             <Route path="pair" element={<Navigate to={`/family?${new URLSearchParams({ pair: "1", code: pairCode })}`} replace />} />
             <Route path="*" element={<Navigate to="/overview" replace />} />
@@ -1470,11 +1473,13 @@ function Family({
   readonly,
   notify,
   session,
+  familyRenamed,
 }: {
   run: Run;
   readonly: boolean;
   notify: (value: string) => void;
   session: Session;
+  familyRenamed: (name: string) => void;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -1497,6 +1502,9 @@ function Family({
   };
   const [serial, refresh] = useState(0),
     [timezone, setTimezone] = useState("");
+  const [familyName, setFamilyName] = useState(session.family.name);
+  const [savingFamilyName, setSavingFamilyName] = useState(false);
+  useEffect(() => setFamilyName(session.family.name), [session.family.name]);
   const [defaultSubtitle, setDefaultSubtitle] = useState("zh");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
@@ -1505,6 +1513,7 @@ function Family({
     >("/devices?activeOnly=true", serial);
   const settings = useData<
     | {
+      familyName: string;
       timezone: string;
       defaultSubtitle: string;
       storage: {
@@ -1534,6 +1543,26 @@ function Family({
       </div>
       <div className="settings-grid">
         <div className="settings-column">
+          <Card className="settings-card">
+            <h2>家庭信息</h2>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                setSavingFamilyName(true);
+                try {
+                  const result = await api<{ familyName: string }>("/settings", "PUT", { familyName: familyName.trim() });
+                  familyRenamed(result.familyName);
+                  notify("家庭名称已更新。");
+                } finally {
+                  setSavingFamilyName(false);
+                }
+              });
+            }}>
+              <Label htmlFor="family-name">家庭名称</Label>
+              <Input id="family-name" value={familyName} maxLength={128} onChange={(e) => setFamilyName(e.target.value)} disabled={readonly || savingFamilyName} required />
+              {!readonly && <Button variant="bordered" className="mt-3" disabled={savingFamilyName || !familyName.trim() || familyName.trim() === session.family.name}>保存家庭名称</Button>}
+            </form>
+          </Card>
           <FamilyUsage />
           <Card className="settings-card">
             <h2>播放偏好</h2>

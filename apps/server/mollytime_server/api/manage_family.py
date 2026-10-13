@@ -15,7 +15,7 @@ from ..manage_auth import Parent, aware
 from ..transactions import serialize_sqlite_write
 from ..playback_settings import SubtitlePreference, default_subtitle, save_default_subtitle
 from ..management_models import Device, FamilySettings, WatchInterval, WatchSession
-from ..models import ChildProfile, Item
+from ..models import ChildProfile, Family, Item
 from ..storage.settings import get_storage_settings
 from ..usage import storage_totals
 from .manage_resources import owned
@@ -107,11 +107,13 @@ def revoke_device(device_id: str, user: Parent, db: DbSession):
 @router.get("/settings")
 def settings(user: Parent, db: DbSession):
     row = db.get(FamilySettings, user.family_id)
+    family = db.get(Family, user.family_id)
     path = get_settings().resolved_media_dir()
     path.mkdir(parents=True, exist_ok=True)
     disk = shutil.disk_usage(path)
     usage = storage_totals(db, [user.family_id])[user.family_id]
     return {
+        "familyName": family.name if family else "我的家庭",
         "timezone": row.timezone if row else "Asia/Shanghai",
         "defaultSubtitle": default_subtitle(db, user.family_id),
         "storage": {
@@ -126,18 +128,27 @@ def settings(user: Parent, db: DbSession):
 
 
 class SettingsBody(BaseModel):
+    familyName: str | None = Field(default=None, max_length=128)
     timezone: str | None = Field(default=None, max_length=64)
     defaultSubtitle: SubtitlePreference | None = None
 
 
 @router.put("/settings")
 def edit_settings(body: SettingsBody, user: Parent, db: DbSession):
+    family_name = body.familyName.strip() if body.familyName is not None else None
+    if family_name is not None and not family_name:
+        raise HTTPException(422, "家庭名称不能为空")
     if body.timezone is not None:
         try:
             ZoneInfo(body.timezone)
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise HTTPException(422, "时区无效，例如 Asia/Shanghai") from exc
     serialize_sqlite_write(db)
+    if family_name is not None:
+        family = db.get(Family, user.family_id)
+        if family is None:
+            raise HTTPException(404, "家庭不存在")
+        family.name = family_name
     if body.timezone is not None:
         row = db.get(FamilySettings, user.family_id)
         if row is None:

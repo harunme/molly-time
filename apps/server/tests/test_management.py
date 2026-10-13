@@ -492,7 +492,20 @@ def test_member_can_read_and_logout_but_cannot_edit(parent):
         session.commit()
     assert parent.get("/api/manage/resources").status_code == 200
     assert parent.post("/api/manage/children", json={"name": "No"}).status_code == 403
+    assert parent.put("/api/manage/settings", json={"familyName": "No"}).status_code == 403
     assert parent.post("/api/manage/auth/logout").status_code == 200
+
+
+def test_family_name_can_be_renamed_and_is_reflected_in_session(parent):
+    before = parent.get("/api/manage/auth/session").json()["family"]["name"]
+    result = parent.put("/api/manage/settings", json={"familyName": "  新家庭  "})
+    assert result.status_code == 200
+    assert result.json()["familyName"] == "新家庭"
+    assert parent.get("/api/manage/auth/session").json()["family"]["name"] == "新家庭"
+    assert parent.put("/api/manage/settings", json={"familyName": "   "}).status_code == 422
+    assert parent.put("/api/manage/settings", json={"familyName": "a" * 129}).status_code == 422
+    assert parent.get("/api/manage/settings").json()["familyName"] == "新家庭"
+    assert parent.put("/api/manage/settings", json={"familyName": before}).status_code == 200
 
 
 def test_schema_additive_and_repeatable(parent):
