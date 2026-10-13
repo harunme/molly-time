@@ -1,20 +1,22 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { api, type Session } from "./api";
 
 type Pending = { name: string; expiresAt: string; };
-export function PairingPage({
+export function PairingDialog({
   initialCode,
   session,
   close,
+  paired,
 }: {
   initialCode: string;
   session: Session;
   close: () => void;
+  paired: () => void;
 }) {
   const [code, setCode] = useState(initialCode),
     [selected, setSelected] = useState("");
@@ -53,6 +55,7 @@ export function PairingPage({
         name: name.trim(),
       });
       setConfirmed(true);
+      paired();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "绑定失败，请重试");
     } finally {
@@ -60,115 +63,79 @@ export function PairingPage({
     }
   };
   return (
-    <main className="pairing-page">
-      <Card className="pairing-card">
-        <div className="wordmark">MollyTime</div>
-        <h1>{confirmed ? "已确认绑定" : "绑定电视"}</h1>
-        {confirmed ? (
-          <>
-            <p role="status">
-              电视正在连接「{session.family.name}」，无需在遥控器上输入密码。
-            </p>
-            <Button variant="default" className="primary" onClick={close}>
-              返回管理后台
-            </Button>
-          </>
-        ) : !admin ? (
-          <>
-            <Alert variant="destructive" role="alert"><AlertDescription>绑定电视需要家庭管理员账号。</AlertDescription></Alert>
-            <Button variant="bordered" onClick={close}>
-              返回管理后台
-            </Button>
-          </>
-        ) : (
-          <>
-            <p>只确认你正在操作的电视。配对码应与电视屏幕一致。</p>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{confirmed ? "已确认绑定" : "绑定电视"}</DialogTitle>
+        <DialogDescription>只确认你正在操作的电视。配对码应与电视屏幕一致。</DialogDescription>
+      </DialogHeader>
+      {confirmed ? (
+        <>
+          <DialogBody>
+            <p role="status">电视正在连接「{session.family.name}」，无需在遥控器上输入密码。</p>
+          </DialogBody>
+          <DialogFooter><Button onClick={close}>完成</Button></DialogFooter>
+        </>
+      ) : !admin ? (
+        <>
+          <DialogBody>
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>绑定电视需要家庭管理员账号。</AlertDescription>
+            </Alert>
+          </DialogBody>
+          <DialogFooter><Button variant="bordered" onClick={close}>关闭</Button></DialogFooter>
+        </>
+      ) : (
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if (busy) return;
+          if (pending) void confirm();
+          else void lookup(code);
+        }}>
+          <DialogBody>
             {!pending ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void lookup(code);
-                }}
-              >
-                <Label>
-                  电视配对码
-                  <Input
-                    autoComplete="off"
-                    inputMode="numeric"
-                    pattern="[0-9]{4}"
-                    placeholder="四位数字"
-                    spellCheck={false}
-                    value={code}
-                    maxLength={4}
-                    onChange={(event) =>
-                      setCode(event.target.value.replace(/[^0-9]/g, ""))
-                    }
-                    required
-                  />
-                </Label>
-                <Button
-                  variant="default"
-                  className="primary"
-                  disabled={busy || !/^[0-9]{4}$/.test(code)}
-                >
-                  {busy ? "正在查找…" : "查看电视"}
-                </Button>
-              </form>
+              <Label>
+                电视配对码
+                <Input
+                  autoComplete="off"
+                  inputMode="numeric"
+                  pattern="[0-9]{4}"
+                  placeholder="四位数字"
+                  spellCheck={false}
+                  value={code}
+                  maxLength={4}
+                  onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, ""))}
+                  required
+                />
+              </Label>
             ) : (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void confirm();
-                }}
-              >
+              <>
                 <div className="pairing-summary">
-                  <span>配对码</span>
-                  <strong>{selected}</strong>
-                  <span>绑定到</span>
-                  <strong>{session.family.name}</strong>
+                  <span>配对码</span><strong>{selected}</strong>
+                  <span>绑定到</span><strong>{session.family.name}</strong>
                 </div>
                 <Label>
                   电视名称
-                  <Input
-                    value={name}
-                    maxLength={128}
-                    onChange={(event) => setName(event.target.value)}
-                    required
-                  />
+                  <Input value={name} maxLength={128}
+                    onChange={(event) => setName(event.target.value)} required />
                 </Label>
-                <Button variant="default" className="primary" disabled={busy}>
-                  {busy ? "正在绑定…" : "确认绑定这台电视"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  className="quiet"
-                  disabled={busy}
-                  onClick={() => {
-                    setPending(undefined);
-                    setError("");
-                  }}
-                >
+                <Button variant="ghost" type="button" className="quiet" disabled={busy}
+                  onClick={() => { setPending(undefined); setError(""); }}>
                   输入其他配对码
                 </Button>
-              </form>
+              </>
             )}
-            {error && (
-              <Alert variant="destructive" role="alert" className="error"><AlertDescription>
-                {error}
-              </AlertDescription></Alert>
-            )}
-            <Button
-              variant="ghost"
-              className="quiet"
-              disabled={busy}
-              onClick={close}
-            >
-              取消
+            {error && <Alert variant="destructive" role="alert" className="error">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="bordered" type="button" disabled={busy} onClick={close}>取消</Button>
+            <Button disabled={busy || (pending ? !name.trim() : !/^[0-9]{4}$/.test(code))}>
+              {pending ? (busy ? "正在绑定…" : "确认绑定这台电视") : (busy ? "正在查找…" : "查看电视")}
             </Button>
-          </>
-        )}
-      </Card>
-    </main>
+          </DialogFooter>
+        </form>
+      )}
+    </DialogContent>
   );
 }

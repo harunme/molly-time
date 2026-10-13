@@ -141,7 +141,7 @@ export function ParentReminders({ readonly, run, notify }: {
         </Button>}
         {preview === kind && settings[kind].previewUrl && <video key={settings[kind].previewUrl} src={settings[kind].previewUrl!} controls autoPlay aria-label="家长提醒预览" />}
       </div>)}
-      <p className="muted">上传 MP4 视频，可在上传任务中查看进度或重试。两段视频就绪后，可在概览中发起提醒或恢复播放。提醒不计入观看记录。</p>
+      <p className="muted">上传 MP4 视频，可在资源库的上传任务中查看进度或重试。两段视频就绪后，可在概览中发起提醒或恢复播放。提醒不计入观看记录。</p>
     </>}
   </Card>;
 }

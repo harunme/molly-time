@@ -52,23 +52,22 @@ test("real upload, parent preview and resource publication", async ({
     await page.getByLabel("新文件夹名称").fill("自然与发现");
     await page.getByLabel("选择上传文件").setInputFiles(file);
     await page.getByRole("button", { name: "开始上传 1 个文件" }).click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByRole("dialog", { name: "上传资源", exact: true })).not.toBeVisible();
+    const tasks = page.getByRole("dialog", { name: "上传任务", exact: true });
+    await expect(tasks).toBeVisible();
+    await tasks.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(tasks).not.toBeVisible();
     await expect.poll(async () => {
       const response = await page.request.get('/api/manage/uploads?page=1&pageSize=20');
       const data = await response.json();
       return data.items.find((item: { filename: string; status: string }) => item.filename === '自然小故事.mp4')?.status;
     }, { timeout: 20000 }).toBe('ready');
-    await page
-      .getByRole("navigation")
-      .getByRole("link", { name: "上传任务" })
-      .click();
+    await page.getByRole("button", { name: "上传任务", exact: true }).click();
     await expect(page.getByText("文件就绪", { exact: true })).toBeVisible({
       timeout: 20000,
     });
-    await page
-      .getByRole("navigation")
-      .getByRole("link", { name: "资源库" })
-      .click();
+    await tasks.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(tasks).not.toBeVisible();
     await page.getByRole("button", { name: "自然与发现", exact: true }).click();
     await page.getByRole("button", { name: "自然小故事", exact: true }).click();
     await expect(
@@ -201,7 +200,7 @@ test("real device telemetry, reports, child management and mobile layout", async
     .getByRole("alertdialog")
     .getByRole("button", { name: "确认", exact: true })
     .click();
-  await expect(page.getByText("已取消配对", { exact: true })).toBeVisible();
+  await expect(page.locator(".device-row").filter({ hasText: "观看记录测试电视" })).toHaveCount(0);
   expect((await page.request.get("/api/home", { headers })).status()).toBe(401);
 });
 
@@ -294,7 +293,7 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
     await expect(tv.getByRole("dialog")).toHaveCount(0, { timeout: 10000 });
     await expect(tv.locator(".poster").first()).toBeVisible();
     await tv.screenshot({ path: "../../artifacts/tv-pairing-home.png" });
-    await page.getByRole("button", { name: "返回管理后台" }).click();
+    await page.getByRole("button", { name: "完成", exact: true }).click();
     await expect(
       page.locator(".device-row").filter({ hasText: "客厅电视重新配对" }),
     ).toBeVisible();
@@ -309,7 +308,7 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
       .click();
     await expect(
       page.locator(".device-row").filter({ hasText: "客厅电视重新配对" }),
-    ).toContainText("已取消配对");
+    ).toHaveCount(0);
     expect(
       (
         await tv.request.get("http://127.0.0.1:8098/api/home", {

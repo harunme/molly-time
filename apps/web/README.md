@@ -69,19 +69,25 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 ## 绑定电视
 
-电视首页选择“绑定家庭媒体库”，手机扫码打开 `/manage/?pair=配对码`。未登录时先登录家长后台，链接中的配对码会保留；管理员核对电视、目标家庭和配对码后，点击“确认绑定这台电视”。电视自动获得设备凭证并进入片单。也可从“家庭设置 → TV 设备 → 绑定电视”手动输入短码。家庭成员无权确认绑定。
+电视首页选择“绑定家庭媒体库”，手机扫码打开 `/manage/?pair=配对码`。未登录时先登录家长后台，链接中的配对码会保留；登录后在家庭设置上打开绑定弹窗。管理员核对电视、目标家庭和配对码后，点击“确认绑定这台电视”。电视自动获得设备凭证并进入片单。也可从“家庭设置 → TV 设备 → 绑定电视”打开相同弹窗手动输入短码。家庭成员无权确认绑定。
 
 配对码十分钟有效，已确认的短码不可再次绑定；关闭电视配对弹层会取消未完成的请求。设备可在家庭设置中改名、撤销；撤销同时阻止既有访问和凭证刷新。
 
-已配对电视会一直缓存绑定，刷新、重启和断网不要求重新配对。家长在“家庭设置 → TV 设备 → 取消配对”后，接口立即拒绝访问，TV 在下次访问或三十秒授权检查时清除缓存。
+已配对电视会一直缓存绑定，刷新、重启和断网不要求重新配对。家长在“家庭设置 → TV 设备 → 取消配对”后，接口立即拒绝访问，TV 在下次访问或三十秒授权检查时清除缓存。家庭设备列表只查询仍在配对的电视，已取消配对的设备不再显示或计入分页。
 
 ## 管理后台界面
 
 管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。基础组件迁移自 `smart-afs-platform/frontend/smartafs/src/components/ui`，组件源码统一在 `src/components/ui`。Tailwind v4 的 CSS-first 全局配置在 `src/styles/theme.css`，集中维护颜色、字号、圆角、控件尺寸、阴影、层级及动效变量；`src/styles/ui-motion.css` 提供配套动画，`src/style.css` 只保留应用基础规则和页面布局。组件不再各自写固定颜色或重复定义变量。Geist 字体随应用自托管，图标使用 Lucide。
 
-页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、上传任务 `/manage/#/upload`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
+页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
 
-登录入口为 `/manage/#/login`，未登录访问管理页时，登录后回到原 URL。邀请码入口为 `/manage/#/invite`，旧 `#invite=…` 链接仍有效，旧邀请令牌转换为 fragment 内的 `#/invite?token=…`。电视配对入口为 `/manage/#/pair?code=…`，兼容原 `/manage/?pair=…`。路由部分不发送给服务器，因此刷新仍只请求 `/manage/`，无需服务器配置 SPA 路径回退或重启 API；更新前端构建后刷新浏览器即可。
+上传任务合并到资源库，通过页面顶部“上传任务”打开弹窗。上传开始后自动显示进度，关闭弹窗继续管理资源，后台传输不会停止；暂停、续传、重新选文件、重试及分页保留。弹窗状态使用资源库或文件夹 URL 的 `?uploads=1`，关闭和浏览器后退保留当前目录、搜索、页码与选择；直接访问、刷新及概览“全部任务”均支持打开弹窗。旧 `/manage/#/upload` 链接重定向到 `/manage/#/library?uploads=1`。弹窗内部滚动，任务错误显示在弹窗内。
+
+任务采用紧凑行列表，完成项只显示文件名、大小和状态，只有上传中的任务显示进度条；暂停或失败项提供所需操作。任务弹窗没有重复的步骤栏和底部返回按钮，使用右上角关闭、Esc 或浏览器后退收起。
+
+顶栏不显示家庭名称，品牌图标直接复用电视客户端 `mollytime_icon.png`，由 Vite 打包，无需维护第二份图标。管理端没有手动刷新按钮，月份或筛选变更、写操作完成后仍按原有流程更新数据。
+
+登录入口为 `/manage/#/login`，未登录访问管理页时，登录后回到原 URL。邀请码入口为 `/manage/#/invite`，旧 `#invite=…` 链接仍有效，旧邀请令牌转换为 fragment 内的 `#/invite?token=…`。电视配对弹窗入口为 `/manage/#/family?pair=1&code=…`，兼容旧 `/manage/#/pair?code=…` 和 `/manage/?pair=…`。关闭弹窗回到家庭设置，手动打开时支持浏览器前进和后退。路由部分不发送给服务器，因此刷新仍只请求 `/manage/`，无需服务器配置 SPA 路径回退或重启 API；更新前端构建后刷新浏览器即可。
 
 2026-10-13 起，后台参考 Smart AFS 的视觉语言：石墨色顶栏、白色导航和内容区、浅灰画布、黄色主按钮与导航标记。管理页和弹窗共用主题 token。顶栏提供 TV 入口和账号菜单，内容区不展示面包屑栏。
 

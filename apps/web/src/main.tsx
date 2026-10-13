@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
-import { PairingPage } from "./pairing";
+import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
 import { ParentReminders } from "./reminders";
@@ -43,6 +43,7 @@ import { getUploadLimits, useUploadLimits, validateUploadSize } from "./upload-l
 import {
   FolderOpen,
   UploadCloud,
+  ListTodo,
   LayoutDashboard,
   ChartNoAxesCombined,
   Users,
@@ -66,10 +67,13 @@ import {
 } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -83,6 +87,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import "./style.css";
+import brandIcon from "../../tv/client/src/main/res/drawable-nodpi/mollytime_icon.png";
 
 export type Run = (action: () => Promise<void>) => Promise<void>;
 function useData<T>(path: string, initial: T, serial = 0) {
@@ -114,7 +119,6 @@ function useData<T>(path: string, initial: T, serial = 0) {
 function Icon({ name }: { name: string; }) {
   const icons: Record<string, typeof FolderOpen> = {
     library: FolderOpen,
-    upload: UploadCloud,
     overview: LayoutDashboard,
     watch: ChartNoAxesCombined,
     family: Users,
@@ -198,8 +202,10 @@ function App() {
   useEffect(() => {
     setError("");
     setNotice("");
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location.pathname, location.search]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location.pathname]);
   useEffect(() => {
     api<Session>("/auth/session")
       .then((value) => {
@@ -283,22 +289,10 @@ function App() {
         await api("/auth/logout", "POST"); stopUploads(); setSession(undefined); updateSession(undefined);
       });
     }} />;
-  if (location.pathname === "/pair")
-    return (
-      <PairingPage
-        key={pairCode}
-        initialCode={pairCode}
-        session={session}
-        close={() => {
-          navigate("/family", { replace: true });
-        }}
-      />
-    );
   const names = [
     ["overview", "概览"],
     ["watch", "观看记录"],
     ["library", "资源库"],
-    ["upload", "上传任务"],
     ["family", "家庭设置"],
   ];
   if (session.user.role === "superadmin")
@@ -309,7 +303,7 @@ function App() {
       <header className="workspace-brandbar">
         <Link className="wordmark" to="/overview">
           <span className="brand-symbol">
-            <Film className="size-5" />
+            <img src={brandIcon} alt="" width={32} height={32} decoding="async" />
           </span>
           <span className="brand-copy">
             MollyTime<small>家庭媒体管理</small>
@@ -317,7 +311,6 @@ function App() {
         </Link>
         <span className="brandbar-area">家庭媒体管理</span>
         <div className="brandbar-identity">
-          <span>{session.family.name}</span>
           <a className="brandbar-tv-link" href="/tv/" target="_blank" rel="noreferrer" aria-label="打开 TV 网页">
             <ExternalLink className="size-3.5" />
             <span>打开 TV 网页</span>
@@ -398,10 +391,10 @@ function App() {
           )}
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
-            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(`/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
+            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<Library run={run} readonly={readonly} />} />
             <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
-            <Route path="upload" element={<Uploads run={run} readonly={readonly} />} />
+            <Route path="upload" element={<Navigate to="/library?uploads=1" replace />} />
             <Route path="watch" element={<Reports />} />
             <Route path="operations/*" element={session.user.role === "superadmin"
               ? <Operations notify={setNotice} />
@@ -410,8 +403,9 @@ function App() {
               run={run}
               readonly={readonly}
               notify={setNotice}
-              onPair={() => navigate("/pair")}
+              session={session}
             />} />
+            <Route path="pair" element={<Navigate to={`/family?${new URLSearchParams({ pair: "1", code: pairCode })}`} replace />} />
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Routes>
           <footer className="manage-footer">
@@ -541,6 +535,8 @@ function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
 
 function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource; }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const tasksOpen = new URLSearchParams(location.search).get("uploads") === "1";
   const [serial, refresh] = useState(0),
     [search, setSearch] = useState(""),
     [status, setStatus] = useState("");
@@ -549,6 +545,24 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
     [preview, setPreview] = useState<Resource>();
   const [selected, setSelected] = useState<string[]>([]);
   const [uploadKind, setUploadKind] = useState("video");
+  const previousTasksOpen = useRef(tasksOpen);
+  useEffect(() => {
+    if (previousTasksOpen.current && !tasksOpen) refresh((value) => value + 1);
+    previousTasksOpen.current = tasksOpen;
+  }, [tasksOpen]);
+  const setTasksOpen = (open: boolean) => {
+    const params = new URLSearchParams(location.search);
+    params.delete("uploads");
+    const background = location.pathname + (params.size ? `?${params}` : "");
+    if (open) {
+      params.set("uploads", "1");
+      navigate(`${location.pathname}?${params}`, { state: { uploadsReturnTo: background } });
+    } else if (location.state?.uploadsReturnTo === background) {
+      navigate(-1);
+    } else {
+      navigate(background, { replace: true });
+    }
+  };
   const query = useDebounced(search);
   const list = usePagedData<Resource>(
     `${parent ? `/folders/${parent.id}/videos` : "/resources"}?q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}`,
@@ -579,13 +593,16 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
     });
   };
   return (
-    <>
+    <Dialog open={tasksOpen} onOpenChange={setTasksOpen}>
       <div className="page-title">
         <div>
           <h1>{parent?.name || "资源库"}</h1>
           <p>先整理和预览，发布后在电视上观看。</p>
         </div>
         <div className="actions">
+          <DialogTrigger asChild>
+            <Button variant="bordered"><ListTodo className="size-4" />上传任务</Button>
+          </DialogTrigger>
           {!readonly && (
             <>
               <Button variant="bordered" onClick={() => setEdit("new")}>
@@ -891,6 +908,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           item={upload === "new" ? undefined : upload}
           parent={parent}
           run={run}
+          started={() => setTasksOpen(true)}
           close={() => {
             setUpload(undefined);
             changed();
@@ -900,7 +918,14 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       {preview && (
         <Preview item={preview} close={() => setPreview(undefined)} />
       )}
-    </>
+      <DialogContent className="upload-tasks-dialog">
+        <DialogHeader>
+          <DialogTitle>上传任务</DialogTitle>
+          <DialogDescription>查看进度、继续上传或重试处理。关闭弹窗不影响上传。</DialogDescription>
+        </DialogHeader>
+        <DialogBody><Uploads run={run} readonly={readonly} /></DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1059,6 +1084,7 @@ function UploadDialog({
   parent,
   run,
   close,
+  started,
   initialKind = "video",
 }: {
   initialKind?: string;
@@ -1066,6 +1092,7 @@ function UploadDialog({
   parent?: Resource;
   run: Run;
   close: () => void;
+  started: () => void;
 }) {
   const [seriesId, setSeriesId] = useState(
     parent?.type === "Series" ? parent.id : "",
@@ -1126,6 +1153,7 @@ function UploadDialog({
         setRows((current) => current.filter((r) => r.file !== row.file));
       }
       close();
+      started();
     })()
       .catch((e) => setError(e.message))
       .finally(() => setBusy(false));
@@ -1294,33 +1322,36 @@ function UploadDialog({
   );
 }
 
-function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
+function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
   const [serial, refresh] = useState(0),
     [localSerial, localRefresh] = useState(0);
+  const [actionError, setActionError] = useState("");
+  const run: Run = async (action) => {
+    setActionError("");
+    await execute(action);
+  };
   const list = usePagedData<Upload>("/uploads", serial);
   useEffect(() => {
-    const changed = () => localRefresh((v) => v + 1);
+    let ids = new Set(live.keys());
+    const changed = () => {
+      const next = new Set(live.keys());
+      if (next.size !== ids.size || [...next].some((id) => !ids.has(id))) refresh((value) => value + 1);
+      ids = next;
+      localRefresh((v) => v + 1);
+    };
+    const failed = (event: Event) => setActionError((event as CustomEvent<string>).detail);
     window.addEventListener("mollytime:uploads", changed);
+    window.addEventListener("mollytime:error", failed);
     return () => {
       window.removeEventListener("mollytime:uploads", changed);
+      window.removeEventListener("mollytime:error", failed);
     };
   }, []);
   void localSerial;
   return (
     <>
-      <div className="page-title">
-        <div>
-          <h1>上传任务</h1>
-          <p>上传完成、文件就绪、内容发布，是三个不同的步骤。</p>
-        </div>
-      </div>
+      {actionError && <State error={actionError} />}
       {list.error && <State error={list.error} />}
-      <div className="pipeline">
-        <span>选择文件</span>
-        <span>上传</span>
-        <span>检查与封面</span>
-        <span>预览后发布</span>
-      </div>
       <State loading={list.loading} />
       {!list.loading && !list.data.length && (
         <Empty className="empty">
@@ -1328,44 +1359,36 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
           <p>到资源库选择视频，或给已有视频添加字幕和封面。</p>
         </Empty>
       )}
-      {list.data.map((row) => {
+      {!!list.data.length && <Card className="upload-task-list">{list.data.map((row) => {
         const current = live.get(row.id),
           offset = Math.max(row.offset, current?.offset || 0);
         return (
-          <Card className="upload-task" key={row.id}>
+          <div className="upload-task" data-status={row.status} key={row.id}>
             <div className="task-top">
               <div>
-                <strong>{row.filename}</strong>
+                <strong title={row.filename}>{row.filename}</strong>
                 <small>
                   {bytes(offset)} / {bytes(row.size)}
                 </small>
               </div>
               <Badge value={row.status} />
             </div>
-            <Progress
+            {row.status === "uploading" && <Progress
               value={Math.min(100, (offset / row.size) * 100)}
               aria-label={`${row.filename} 上传进度`}
-            />
+            />}
             {(row.error || current?.error) && (
               <p className="error">{row.error || current?.error}</p>
             )}
-            <div className="task-bottom">
+            {(current?.paused || !readonly && ["uploading", "failed"].includes(row.status)) && <div className="task-bottom">
               <span className="muted">
-                {row.status === "ready"
-                  ? "文件检查完成，请在资源库预览并发布新视频。"
-                  : row.status === "processing"
-                    ? "正在检查编码、时长和封面。"
-                    : current?.paused
-                      ? "已暂停，可继续上传。"
-                      : row.status === "uploading"
-                        ? "离开此页面仍可上传；关闭浏览器会暂停。"
-                        : ""}
+                {current?.paused ? "已暂停，可继续上传。" : ""}
               </span>
               {!readonly && (
                 <div className="actions">
                   {row.status === "failed" && row.taskId && (
                     <Button
-                      variant="bordered"
+                      variant="bordered" size="sm"
                       onClick={() => {
                         void run(async () => {
                           await api(`/tasks/${row.taskId}/retry`, "POST");
@@ -1379,12 +1402,12 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
                   {row.status === "uploading" && (
                     <>
                       {hasFile(row.id) && !current?.paused ? (
-                        <Button variant="bordered" onClick={() => pause(row.id)}>
+                        <Button variant="bordered" size="sm" onClick={() => pause(row.id)}>
                           暂停
                         </Button>
                       ) : hasFile(row.id) ? (
                         <Button
-                          variant="bordered"
+                          variant="bordered" size="sm"
                           onClick={() => {
                             void run(() => resume(row));
                           }}
@@ -1396,7 +1419,7 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
                           onFileSelect={(file) => { void run(() => resume(row, file)); }} />
                       )}
                       <Button
-                        variant="ghost"
+                        variant="ghost" size="sm"
                         className="quiet"
                         onClick={() => {
                           pause(row.id);
@@ -1412,7 +1435,7 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
                   )}
                   {row.status === "failed" && (
                     <Button
-                      variant="ghost"
+                      variant="ghost" size="sm"
                       className="quiet"
                       onClick={() => {
                         void run(async () => {
@@ -1426,10 +1449,10 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
                   )}
                 </div>
               )}
-            </div>
-          </Card>
+            </div>}
+          </div>
         );
-      })}
+      })}</Card>}
       <Pagination {...list} loading={list.refreshing} label="上传任务分页" />
     </>
   );
@@ -1625,23 +1648,47 @@ function Family({
   run,
   readonly,
   notify,
-  onPair,
+  session,
 }: {
   run: Run;
   readonly: boolean;
   notify: (value: string) => void;
-  onPair: () => void;
+  session: Session;
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const pairingOpen = params.get("pair") === "1";
+  const pairCode = params.get("code") || "";
+  const setPairingOpen = (open: boolean) => {
+    const backgroundParams = new URLSearchParams(location.search);
+    backgroundParams.delete("pair");
+    backgroundParams.delete("code");
+    const background = `${location.pathname}${backgroundParams.size ? `?${backgroundParams}` : ""}`;
+    if (open) {
+      backgroundParams.set("pair", "1");
+      navigate(`${location.pathname}?${backgroundParams}`, { state: { pairingReturnTo: background } });
+    } else if (location.state?.pairingReturnTo === background) {
+      navigate(-1);
+    } else {
+      navigate(background, { replace: true });
+    }
+  };
   const [serial, refresh] = useState(0),
     [childName, setChildName] = useState(""),
     [timezone, setTimezone] = useState("");
+  const previousPairingOpen = useRef(pairingOpen);
+  useEffect(() => {
+    if (previousPairingOpen.current && !pairingOpen) refresh((v) => v + 1);
+    previousPairingOpen.current = pairingOpen;
+  }, [pairingOpen]);
   const [defaultSubtitle, setDefaultSubtitle] = useState("zh");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
   const children = usePagedData<Child>("/children", serial),
     devices = usePagedData<
       { id: string; name: string; revoked: boolean; lastSeen: string; }
-    >("/devices", serial);
+    >("/devices?activeOnly=true", serial);
   const settings = useData<
     | {
       timezone: string;
@@ -1788,11 +1835,13 @@ function Family({
           <Card className="settings-card">
             <div className="section-heading">
               <h2>TV 设备</h2>
-              {!readonly && (
-                <Button variant="bordered" onClick={onPair}>
-                  绑定电视
-                </Button>
-              )}
+              <Dialog open={pairingOpen} onOpenChange={setPairingOpen}>
+                {!readonly && <DialogTrigger asChild>
+                  <Button variant="bordered">绑定电视</Button>
+                </DialogTrigger>}
+                {pairingOpen && <PairingDialog key={pairCode} initialCode={pairCode} session={session}
+                  close={() => setPairingOpen(false)} paired={() => refresh((v) => v + 1)} />}
+              </Dialog>
             </div>
             <p className="muted">
               扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。
@@ -1804,12 +1853,10 @@ function Family({
                   <div>
                     <strong>{d.name}</strong>
                     <small>
-                      {d.revoked
-                        ? "已取消配对"
-                        : `最近连接：${dateTime(d.lastSeen)}`}
+                      最近连接：{dateTime(d.lastSeen)}
                     </small>
                   </div>
-                  {!readonly && !d.revoked && (
+                  {!readonly && (
                     <div>
                       <Button
                         variant="ghost"

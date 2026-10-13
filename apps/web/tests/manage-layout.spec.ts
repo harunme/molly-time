@@ -13,6 +13,7 @@ for (const width of [390, 1280, 1920]) {
     await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
     const checkLayout = async (name: string) => {
       await expect(page.getByText(/^正在加载/)).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /刷新/ })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const main = await page.locator('.manage-main').boundingBox();
       const content = await page.locator('.page-content').boundingBox();
@@ -23,10 +24,21 @@ for (const width of [390, 1280, 1920]) {
       await expect(page.locator('.page-title h1')).toBeInViewport();
       await page.screenshot({ path: `../../artifacts/design-audit/${name}-${width}.png`, fullPage: true, animations: 'disabled' });
     };
-    for (const [route, name] of [['overview', '概览'], ['watch', '观看记录'], ['library', '资源库'], ['upload', '上传任务'], ['family', '家庭设置'], ['operations', '运营设置']]) {
+    for (const [route, name] of [['overview', '概览'], ['watch', '观看记录'], ['library', '资源库'], ['family', '家庭设置'], ['operations', '运营设置']]) {
       await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name, exact: true }).click();
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
       await checkLayout(route);
+      if (route === 'library') {
+        await page.getByRole('button', { name: '上传任务', exact: true }).click();
+        const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
+        await expect(tasks).toBeVisible();
+        const box = await tasks.boundingBox();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({ path: `../../artifacts/design-audit/upload-dialog-${width}.png`, fullPage: true, animations: 'disabled' });
+        await tasks.getByRole('button', { name: '关闭', exact: true }).click();
+        await expect(tasks).not.toBeVisible();
+      }
       if (route === 'overview') {
         const cell = await page.locator('.overview-heatmap-day').last().boundingBox();
         expect(cell!.width).toBeCloseTo(cell!.height, 1);

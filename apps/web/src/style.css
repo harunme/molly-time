@@ -94,7 +94,6 @@
 .workspace-brandbar .brand-copy small { @apply hidden; }
 .brandbar-area { @apply flex h-full items-center border-b-4 border-primary pt-1 text-sm text-white/90; }
 .brandbar-identity { @apply ml-auto flex min-w-0 items-center gap-2.5 text-xs; }
-.brandbar-identity > span:first-child { @apply mr-3 hidden truncate text-white/60 sm:block; }
 .brandbar-identity strong { @apply max-w-28 truncate font-medium; }
 .workspace-brandbar .user-avatar { @apply size-7 bg-card text-foreground; }
 .workspace-brandbar .user-avatar:hover { @apply bg-card/90; }
@@ -172,14 +171,17 @@
 .overview-heatmap-month, .overview-heatmap-weekday { @apply text-tiny text-muted-foreground; }
 .overview-heatmap-month { @apply truncate; }
 .overview-heatmap-weekday { @apply self-center; }
-.overview-heatmap-day, .overview-heatmap-swatch { background: var(--color-heatmap-empty); border: 1px solid var(--color-heatmap-border); border-radius: var(--radius-heatmap); }
+.overview-heatmap-day, .overview-heatmap-swatch { --heatmap-fill: var(--color-heatmap-empty); background: var(--heatmap-fill); border: 0; border-radius: var(--radius-heatmap); }
 .overview-heatmap-day { @apply h-full w-full min-w-0 border-0 p-0; }
-.overview-heatmap-day[data-level="1"], .overview-heatmap-swatch[data-level="1"] { background: var(--color-heatmap-1); }
-.overview-heatmap-day[data-level="2"], .overview-heatmap-swatch[data-level="2"] { background: var(--color-heatmap-2); }
-.overview-heatmap-day[data-level="3"], .overview-heatmap-swatch[data-level="3"] { background: var(--color-heatmap-3); }
-.overview-heatmap-day[data-level="4"], .overview-heatmap-swatch[data-level="4"] { background: var(--color-heatmap-4); }
-.overview-heatmap-day:hover, .overview-heatmap-day:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: 2px; }
-.overview-heatmap-day[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--color-foreground); }
+.overview-heatmap-day[data-level="1"], .overview-heatmap-swatch[data-level="1"] { --heatmap-fill: var(--color-heatmap-1); }
+.overview-heatmap-day[data-level="2"], .overview-heatmap-swatch[data-level="2"] { --heatmap-fill: var(--color-heatmap-2); }
+.overview-heatmap-day[data-level="3"], .overview-heatmap-swatch[data-level="3"] { --heatmap-fill: var(--color-heatmap-3); }
+.overview-heatmap-day[data-level="4"], .overview-heatmap-swatch[data-level="4"] { --heatmap-fill: var(--color-heatmap-4); }
+.overview-heatmap-day:hover, .overview-heatmap-day:focus-visible, .overview-heatmap-day[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--heatmap-fill) 65%, var(--color-foreground));
+  outline: none;
+  box-shadow: none;
+}
 .overview-heatmap-footer { @apply mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground; }
 .overview-heatmap-footer p { @apply m-0 tabular-nums; }
 .overview-heatmap-footer strong { @apply ml-2 font-medium text-foreground; }
@@ -196,8 +198,9 @@
   @apply flex items-center gap-2.5 text-xl font-semibold tracking-[-0.8px];
 }
 .brand-symbol {
-  @apply grid size-8 shrink-0 place-items-center rounded-ui bg-primary text-primary-foreground;
+  @apply grid size-8 shrink-0 place-items-center overflow-hidden rounded-ui;
 }
+.brand-symbol img { @apply block size-full object-cover; }
 .brand-copy {
   @apply flex flex-col;
 }
@@ -446,38 +449,32 @@
 .upload-plan > input[type="number"] {
   @apply w-[74px];
 }
-.pipeline {
-  @apply mb-6 grid grid-cols-2 gap-x-3 gap-y-3 rounded-ui bg-card p-4 sm:grid-cols-4;
-  counter-reset: steps;
-}
-.pipeline span {
-  @apply flex items-center gap-2 text-xs text-muted-foreground;
-}
-.pipeline span::before {
-  @apply grid size-5 shrink-0 place-items-center rounded-ui bg-primary text-tiny font-semibold text-primary-foreground;
-  counter-increment: steps;
-  content: counter(steps);
-}
+.upload-task-list { @apply overflow-hidden rounded-popover shadow-none; }
 .upload-task {
-  @apply gap-0 mb-3 p-5;
+  @apply border-b px-4 py-3 last:border-b-0;
 }
+.upload-tasks-dialog { @apply max-h-[88dvh] max-w-240 grid-rows-[auto_minmax(0,1fr)] overflow-hidden; }
+.upload-tasks-dialog > [data-slot="dialog-header"] { @apply pb-5; }
+.upload-tasks-dialog > [data-slot="dialog-body"] { @apply min-h-0 overflow-y-auto bg-background; }
+.upload-tasks-dialog .pagination { @apply mb-0; }
 .task-top {
-  @apply mb-4 flex items-center justify-between gap-3;
+  @apply flex min-w-0 items-center justify-between gap-3;
 }
+.task-top > div { @apply flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4; }
 .task-top strong {
-  @apply block break-all text-sm font-medium;
+  @apply block min-w-0 flex-1 truncate text-sm font-medium;
 }
 .task-top small {
-  @apply mt-1 block font-mono text-tiny;
+  @apply block shrink-0 whitespace-nowrap font-mono text-xs tabular-nums;
 }
 .upload-task [data-slot="progress"] {
-  @apply h-1.5 bg-muted;
+  @apply mt-2 h-1 bg-muted;
 }
 .upload-task > .error {
-  @apply mt-3;
+  @apply mt-2 text-xs;
 }
 .task-bottom {
-  @apply mt-4 flex flex-wrap items-center justify-between gap-3;
+  @apply mt-2 flex flex-wrap items-center justify-between gap-2;
 }
 .task-bottom .muted {
   @apply text-footnote;
@@ -786,6 +783,7 @@ td small {
     animation: workspace-in 240ms ease-out;
   }
 }
+/* Invitation and email-binding screens share the original account layout. */
 .pairing-page {
   @apply grid min-h-dvh place-items-center bg-background px-5 py-10;
 }
@@ -832,7 +830,7 @@ td small {
 .invitation-copy-action { width: 6.5rem; flex-shrink: 0; }
 .invitation-link { border: 0; background: var(--accent); }
 .pairing-summary {
-  @apply my-5 grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-ui bg-accent/50 p-4 text-xs;
+  @apply mb-5 grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-ui bg-accent/50 p-4 text-ui;
 }
 .pairing-summary span {
   @apply text-muted-foreground;

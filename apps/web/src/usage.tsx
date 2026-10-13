@@ -39,7 +39,6 @@ export function FamilyUsage() {
   const [month, setMonth] = useState(currentMonth);
   const [result, setResult] = useState<{ month: string; value: Usage; }>();
   const [error, setError] = useState("");
-  const [serial, refresh] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -47,10 +46,10 @@ export function FamilyUsage() {
       .then((value) => { if (!controller.signal.aborted) setResult({ month, value }); })
       .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
-  }, [month, serial]);
+  }, [month]);
   const row = result?.month === month ? result.value : undefined;
   return <Card className="settings-card">
-    <div className="section-heading"><h2>家庭用量</h2><Button variant="bordered" onClick={() => refresh((value) => value + 1)}>刷新</Button></div>
+    <div className="section-heading"><h2>家庭用量</h2></div>
     <Label>用量月份<MonthPicker aria-label="用量月份" value={month} onValueChange={setMonth} /></Label>
     {error ? <Alert variant="destructive" className="error" role="alert"><AlertDescription>{error}</AlertDescription></Alert> : !row ? <Empty className="empty">正在加载家庭用量…</Empty> : <>
       <p>当前文件占用 <strong title={exactBytes(row.storage.usedBytes)}>{bytes(row.storage.usedBytes)}</strong> · 待处理上传 {bytes(row.storage.pendingBytes)}</p>
@@ -82,7 +81,6 @@ export function OperationsUsage() {
   };
   return <Card className="settings-card usage-card">
     <div className="section-heading"><h2>家庭用量</h2><div className="actions">
-      <Button variant="bordered" disabled={list.refreshing} onClick={() => refresh((value) => value + 1)}>刷新用量</Button>
       <Button variant="bordered" asChild><a href={`/api/manage/operations/usage/export?${params}`} download>导出月度 CSV</a></Button>
     </div></div>
     <UsageNotes />

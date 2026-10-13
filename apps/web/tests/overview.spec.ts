@@ -48,6 +48,13 @@ test('overview is the default home, uses aggregates and paged widgets, and links
   await expect(page.getByRole('heading', { name: '观看记录', exact: true })).toBeVisible();
   await navigation.getByRole('link', { name: '概览', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '全部任务', exact: true }).click();
+  const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
+  await expect(tasks).toBeVisible();
+  await expect(page).toHaveURL(/\/library\?uploads=1$/);
+  await tasks.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
+  await navigation.getByRole('link', { name: '概览', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: '管理资源', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
