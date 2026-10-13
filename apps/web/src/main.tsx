@@ -386,7 +386,7 @@ function App() {
         </div>
       </aside>
       <main className="manage-main">
-        <div className="page-content">
+        <div className={`page-content${page === "family" ? " page-content-full" : ""}`}>
           {error && (
             <div className="banner error" role="alert">
               {error}
@@ -1708,225 +1708,229 @@ function Family({
         </div>
       </div>
       <div className="settings-grid">
-        <Card className="settings-card">
-          <h2>儿童档案</h2>
-          <State loading={children.loading} error={children.error} />
-          {children.data.map((c) => (
-            <div className="settings-row" key={c.id}>
-              <span className="child-avatar">{c.name[0]}</span>
-              <strong>{c.name}</strong>
-              {!readonly && (
-                <Button
-                  variant="ghost"
-                  className="quiet"
-                  onClick={async () => {
-                    const name = await promptText("修改儿童名称", c.name);
-                    if (name)
-                      void run(async () => {
-                        await api(`/children/${c.id}`, "PATCH", { name });
-                        refresh((v) => v + 1);
-                      });
+        <div className="settings-column">
+          <Card className="settings-card">
+            <h2>儿童档案</h2>
+            <State loading={children.loading} error={children.error} />
+            {children.data.map((c) => (
+              <div className="settings-row" key={c.id}>
+                <span className="child-avatar">{c.name[0]}</span>
+                <strong>{c.name}</strong>
+                {!readonly && (
+                  <Button
+                    variant="ghost"
+                    className="quiet"
+                    onClick={async () => {
+                      const name = await promptText("修改儿童名称", c.name);
+                      if (name)
+                        void run(async () => {
+                          await api(`/children/${c.id}`, "PATCH", { name });
+                          refresh((v) => v + 1);
+                        });
+                    }}
+                  >
+                    修改名称
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Pagination {...children} loading={children.refreshing} label="儿童档案分页" />
+            {!readonly && (
+              <form
+                className="inline-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    await api("/children", "POST", { name: childName });
+                    setChildName("");
+                    children.setPage(Math.max(1, Math.ceil((children.total + 1) / children.pageSize)));
+                    refresh((v) => v + 1);
+                  });
+                }}
+              >
+                <Input
+                  aria-label="儿童名称"
+                  placeholder="儿童名称"
+                  value={childName}
+                  maxLength={64}
+                  onChange={(e) => setChildName(e.target.value)}
+                  required
+                />
+                <Button variant="outline">添加儿童</Button>
+              </form>
+            )}
+          </Card>
+          <Card className="settings-card">
+            <h2>播放偏好</h2>
+            <State loading={settings.loading} error={settings.error} />
+            {settings.data && <form onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                await api("/settings", "PUT", { defaultSubtitle });
+                refresh((v) => v + 1);
+                notify("默认字幕已更新，下一次播放生效。");
+              });
+            }}>
+              <label htmlFor="default-subtitle">默认字幕</label>
+              <NativeSelect id="default-subtitle" value={defaultSubtitle} onChange={(e) => setDefaultSubtitle(e.target.value)} disabled={readonly}>
+                <option value="zh">中文</option><option value="en">英文</option><option value="zh-en">中英文</option><option value="off">关闭字幕</option>
+              </NativeSelect>
+              <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
+              {!readonly && <Button variant="outline">保存默认字幕</Button>}
+            </form>}
+          </Card>
+          <Card className="settings-card">
+            <h2>时区与存储</h2>
+            <State error={settings.error} />
+            {settings.data && (
+              <>
+                <p>
+                  家庭文件{" "}
+                  <strong>{bytes(settings.data.storage.usedBytes)}</strong> ·
+                  上传中预留 {bytes(settings.data.storage.reservedBytes)}
+                  {settings.data.storage.limitBytes > 0 &&
+                    ` / ${bytes(settings.data.storage.limitBytes)}`}
+                </p>
+                {settings.data.storage.backend === "local" && (
+                  <p>服务器磁盘剩余 {bytes(settings.data.storage.free)}</p>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(async () => {
+                      await api("/settings", "PUT", { timezone });
+                      refresh((v) => v + 1);
+                      notify("时区已更新，观看记录会按新时区重新汇总。");
+                    });
                   }}
                 >
-                  修改名称
+                  <label>
+                    报表时区
+                    <Input
+                      value={timezone}
+                      onChange={(e) => setTimezone(e.target.value)}
+                      disabled={readonly}
+                    />
+                  </label>
+                  {!readonly && <Button variant="outline">保存时区</Button>}
+                </form>
+                <p className="muted">
+                  云端文件默认长期保留；保存到电视后重复观看优先读取本地副本。
+                </p>
+              </>
+            )}
+          </Card>
+        </div>
+        <div className="settings-column">
+          <Card className="settings-card">
+            <div className="section-heading">
+              <h2>TV 设备</h2>
+              {!readonly && (
+                <Button variant="outline" onClick={onPair}>
+                  绑定电视
                 </Button>
               )}
             </div>
-          ))}
-          <Pagination {...children} loading={children.refreshing} label="儿童档案分页" />
-          {!readonly && (
-            <form
-              className="inline-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(async () => {
-                  await api("/children", "POST", { name: childName });
-                  setChildName("");
-                  children.setPage(Math.max(1, Math.ceil((children.total + 1) / children.pageSize)));
-                  refresh((v) => v + 1);
-                });
-              }}
-            >
-              <Input
-                aria-label="儿童名称"
-                placeholder="儿童名称"
-                value={childName}
-                maxLength={64}
-                onChange={(e) => setChildName(e.target.value)}
-                required
-              />
-              <Button variant="outline">添加儿童</Button>
-            </form>
-          )}
-        </Card>
-        <Card className="settings-card">
-          <div className="section-heading">
-            <h2>TV 设备</h2>
-            {!readonly && (
-              <Button variant="outline" onClick={onPair}>
-                绑定电视
-              </Button>
-            )}
-          </div>
-          <p className="muted">
-            扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。
-          </p>
-          <State loading={devices.loading} error={devices.error} />
-          {devices.data.length ? (
-            devices.data.map((d) => (
-              <div className="device-row" key={d.id}>
-                <div>
-                  <strong>{d.name}</strong>
-                  <small>
-                    {d.revoked
-                      ? "已取消配对"
-                      : `最近连接：${dateTime(d.lastSeen)}`}
-                  </small>
-                </div>
-                {!readonly && !d.revoked && (
+            <p className="muted">
+              扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。
+            </p>
+            <State loading={devices.loading} error={devices.error} />
+            {devices.data.length ? (
+              devices.data.map((d) => (
+                <div className="device-row" key={d.id}>
                   <div>
-                    <Button
-                      variant="ghost"
-                      className="quiet"
-                      onClick={async () => {
-                        const name = await promptText("设备名称", d.name);
-                        if (name)
-                          void run(async () => {
-                            await api(`/devices/${d.id}`, "PATCH", { name });
-                            refresh((v) => v + 1);
-                          });
-                      }}
-                    >
-                      改名
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="danger quiet"
-                      onClick={async () => {
-                        if (
-                          await confirmAction(
-                            `取消“${d.name}”的配对？电视将无法继续访问家庭媒体库。`,
-                          )
-                        )
-                          void run(async () => {
-                            await api(`/devices/${d.id}/revoke`, "POST");
-                            refresh((v) => v + 1);
-                          });
-                      }}
-                    >
-                      取消配对
-                    </Button>
+                    <strong>{d.name}</strong>
+                    <small>
+                      {d.revoked
+                        ? "已取消配对"
+                        : `最近连接：${dateTime(d.lastSeen)}`}
+                    </small>
                   </div>
-                )}
-              </div>
-            ))
-          ) : (
-            !devices.loading && <p className="empty">还没有绑定电视</p>
-          )}
-          <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
-        </Card>
-        <Card className="settings-card">
-          <h2>播放偏好</h2>
-          <State loading={settings.loading} error={settings.error} />
-          {settings.data && <form onSubmit={(e) => {
-            e.preventDefault();
-            void run(async () => {
-              await api("/settings", "PUT", { defaultSubtitle });
-              refresh((v) => v + 1);
-              notify("默认字幕已更新，下一次播放生效。");
-            });
-          }}>
-            <label htmlFor="default-subtitle">默认字幕</label>
-            <NativeSelect id="default-subtitle" value={defaultSubtitle} onChange={(e) => setDefaultSubtitle(e.target.value)} disabled={readonly}>
-              <option value="zh">中文</option><option value="en">英文</option><option value="zh-en">中英文</option><option value="off">关闭字幕</option>
-            </NativeSelect>
-            <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
-            {!readonly && <Button variant="outline">保存默认字幕</Button>}
-          </form>}
-        </Card>
-        <Card className="settings-card">
-          <h2>时区与存储</h2>
-          <State error={settings.error} />
-          {settings.data && (
-            <>
-              <p>
-                家庭文件{" "}
-                <strong>{bytes(settings.data.storage.usedBytes)}</strong> ·
-                上传中预留 {bytes(settings.data.storage.reservedBytes)}
-                {settings.data.storage.limitBytes > 0 &&
-                  ` / ${bytes(settings.data.storage.limitBytes)}`}
-              </p>
-              {settings.data.storage.backend === "local" && (
-                <p>服务器磁盘剩余 {bytes(settings.data.storage.free)}</p>
-              )}
+                  {!readonly && !d.revoked && (
+                    <div>
+                      <Button
+                        variant="ghost"
+                        className="quiet"
+                        onClick={async () => {
+                          const name = await promptText("设备名称", d.name);
+                          if (name)
+                            void run(async () => {
+                              await api(`/devices/${d.id}`, "PATCH", { name });
+                              refresh((v) => v + 1);
+                            });
+                        }}
+                      >
+                        改名
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="danger quiet"
+                        onClick={async () => {
+                          if (
+                            await confirmAction(
+                              `取消“${d.name}”的配对？电视将无法继续访问家庭媒体库。`,
+                            )
+                          )
+                            void run(async () => {
+                              await api(`/devices/${d.id}/revoke`, "POST");
+                              refresh((v) => v + 1);
+                            });
+                        }}
+                      >
+                        取消配对
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              !devices.loading && <p className="empty">还没有绑定电视</p>
+            )}
+            <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
+          </Card>
+          {!readonly && (
+            <Card className="settings-card">
+              <h2>修改密码</h2>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   void run(async () => {
-                    await api("/settings", "PUT", { timezone });
-                    refresh((v) => v + 1);
-                    notify("时区已更新，观看记录会按新时区重新汇总。");
+                    await api("/password", "POST", {
+                      currentPassword,
+                      newPassword,
+                    });
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    notify("密码已修改。");
                   });
                 }}
               >
                 <label>
-                  报表时区
+                  当前密码
                   <Input
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                    disabled={readonly}
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
                   />
                 </label>
-                {!readonly && <Button variant="outline">保存时区</Button>}
+                <label>
+                  新密码
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                </label>
+                <Button variant="outline">修改密码</Button>
               </form>
-              <p className="muted">
-                云端文件默认长期保留；保存到电视后重复观看优先读取本地副本。
-              </p>
-            </>
+            </Card>
           )}
-        </Card>
-        {!readonly && (
-          <Card className="settings-card">
-            <h2>修改密码</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(async () => {
-                  await api("/password", "POST", {
-                    currentPassword,
-                    newPassword,
-                  });
-                  setCurrentPassword("");
-                  setNewPassword("");
-                  notify("密码已修改。");
-                });
-              }}
-            >
-              <label>
-                当前密码
-                <Input
-                  type="password"
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                新密码
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                />
-              </label>
-              <Button variant="outline">修改密码</Button>
-            </form>
-          </Card>
-        )}
+        </div>
       </div>
     </>
   );
