@@ -11,7 +11,7 @@ test("superadmin invites a new family; activation generates an ID and both login
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await login(page, "operator@example.test", "operator-e2e");
-  await page.getByRole("navigation").getByRole("button", { name: "运营设置" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "运营设置" }).click();
   await page.getByRole("tab", { name: "用户邀请" }).click();
   await page.getByLabel("受邀邮箱", { exact: true }).fill("new-family@example.test");
   await page.getByLabel("家庭名称", { exact: true }).fill("新家庭");
@@ -39,7 +39,7 @@ test("superadmin invites a new family; activation generates an ID and both login
   await invited.getByLabel("密码", { exact: true }).fill("new-family-password");
   await invited.getByRole("button", { name: "登录", exact: true }).click();
   await expect(invited.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
-  await expect(invited.getByRole("button", { name: "运营设置", exact: true })).toHaveCount(0);
+  await expect(invited.getByRole("link", { name: "运营设置", exact: true })).toHaveCount(0);
   await invited.getByRole("button", { name: "账号菜单" }).click();
   await expect(invited.getByText(`账号 ID：${number}`, { exact: true })).toBeVisible();
   await invited.getByRole("menuitem", { name: "退出账号", exact: true }).click();

@@ -10,7 +10,7 @@ async function login(page: import("@playwright/test").Page) {
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
-  await page.getByRole("navigation", { name: "管理导航" }).getByRole("button", { name: "资源库", exact: true }).click();
+  await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "资源库", exact: true }),
   ).toBeVisible();
@@ -59,14 +59,14 @@ test("real upload, parent preview and resource publication", async ({
     }, { timeout: 20000 }).toBe('ready');
     await page
       .getByRole("navigation")
-      .getByRole("button", { name: "上传任务" })
+      .getByRole("link", { name: "上传任务" })
       .click();
     await expect(page.getByText("文件就绪", { exact: true })).toBeVisible({
       timeout: 20000,
     });
     await page
       .getByRole("navigation")
-      .getByRole("button", { name: "资源库" })
+      .getByRole("link", { name: "资源库" })
       .click();
     await page.getByRole("button", { name: "自然与发现", exact: true }).click();
     await page.getByRole("button", { name: "自然小故事", exact: true }).click();
@@ -165,7 +165,7 @@ test("real device telemetry, reports, child management and mobile layout", async
   ).toBe(true);
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "观看记录" })
+    .getByRole("link", { name: "观看记录" })
     .click();
   await page.getByRole("combobox", { name: "儿童", exact: true }).selectOption("child");
   await expect(
@@ -180,7 +180,7 @@ test("real device telemetry, reports, child management and mobile layout", async
   });
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "家庭设置" })
+    .getByRole("link", { name: "家庭设置" })
     .click();
   await page.getByLabel("儿童名称").fill("小豆");
   await page.getByRole("button", { name: "添加儿童" }).click();

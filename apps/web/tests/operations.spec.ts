@@ -8,14 +8,14 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '运营设置', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '运营设置', exact: true })).toHaveCount(0);
   expect((await page.request.get('/api/manage/operations/storage')).status()).toBe(403);
   expect((await page.request.get('/api/manage/operations/client-releases')).status()).toBe(403);
   await page.getByRole('button', { name: '退出账号' }).click();
   await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
   await expect(page.getByRole('heading', { name: '运营设置', exact: true })).toBeVisible();
   await page.getByLabel('OSS Endpoint', { exact: true }).fill('https://oss-cn-hangzhou.aliyuncs.com');
   await page.getByLabel('Bucket', { exact: true }).fill('molly-e2e');
@@ -26,7 +26,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await expect(page.getByRole('status')).toContainText('存储配置已保存并生效');
   await expect(page.getByLabel('AccessKey Secret', { exact: true })).toHaveValue('');
   await page.reload();
-  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
   await expect(page.getByLabel('Bucket', { exact: true })).toHaveValue('molly-e2e');
   await expect(page.getByLabel('播放签名有效期（秒）')).toHaveValue('1200');
   await expect(page.getByLabel('AccessKey Secret', { exact: true })).toHaveValue('');
@@ -42,7 +42,7 @@ test('superadmin browses release history, filters channels and downloads an old 
   await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
   await page.getByRole('tab', { name: '客户端版本' }).click();
   const table = page.locator('.client-releases-table');
   await expect(table.locator('tbody tr')).toHaveCount(3);
@@ -79,7 +79,7 @@ test('client releases render empty and failed inventory states and recover when 
   await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
   await page.getByRole('tab', { name: '客户端版本' }).click();
   await expect(page.getByText(/暂无安装包/)).toBeVisible();
   failed = true;
@@ -98,7 +98,7 @@ test('superadmin uploads a signed APK and sees its published version without ent
   await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
   await page.getByRole('tab', { name: '客户端版本' }).click();
   const options = await page.request.get('/api/manage/operations/client-releases/upload-options');
   test.skip(!options.ok() || !(await options.json()).canUpload, 'Server APK verification tools are required');

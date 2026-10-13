@@ -12,6 +12,7 @@ import { Overview } from "./overview";
 import { Pagination, ResourcePicker, useDebounced, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { HashRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
 import {
   api,
   bytes,
@@ -173,18 +174,19 @@ function Badge({ value }: { value: string }) {
 
 function App() {
   const navigation = useRef<HTMLElement>(null);
-  const [inviteToken, setInviteToken] = useState<string | null>(() =>
-    new URLSearchParams(location.hash.slice(1)).get("invite"),
-  );
-  const [loginAccount, setLoginAccount] = useState("");
-  const [pairCode, setPairCode] = useState<string | null>(() =>
-    new URLSearchParams(location.search).get("pair"),
-  );
+  const location = useLocation();
+  const navigate = useNavigate();
+  const inviteToken = new URLSearchParams(location.search).get("token");
+  const pairCode = new URLSearchParams(location.search).get("code") || "";
+  const page = location.pathname.split("/")[1];
   const [session, updateSession] = useState<Session>(),
     [checking, setChecking] = useState(true);
-  const [page, setPage] = useState("overview"),
-    [error, setError] = useState(""),
+  const [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  useEffect(() => {
+    setError("");
+    setNotice("");
+  }, [location.pathname, location.search]);
   useEffect(() => {
     api<Session>("/auth/session")
       .then((value) => {
@@ -227,45 +229,48 @@ function App() {
     }
   };
   if (checking) return <div className="boot">正在打开家庭媒体库…</div>;
-  if (inviteToken !== null)
-    return <InviteActivation token={inviteToken} login={(email) => {
+  if (location.pathname === "/invite")
+    return <InviteActivation key={inviteToken || ""} token={inviteToken || ""} login={(email) => {
       void run(async () => {
         if (session) await api("/auth/logout", "POST");
         stopUploads(); setSession(undefined); updateSession(undefined);
-        setLoginAccount(email); setInviteToken(null);
-        const url = new URL(location.href); url.hash = "";
-        history.replaceState(null, "", url.pathname + url.search);
+        navigate("/login", { replace: true, state: { account: email } });
       });
     }} />;
+  const returnTo = typeof location.state?.from === "string" &&
+    location.state.from.startsWith("/") && !location.state.from.startsWith("//") &&
+    location.state.from.split(/[?#]/)[0] !== "/login"
+    ? location.state.from : "/overview";
+  if (!session && location.pathname !== "/login")
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
   if (!session)
     return (
       <Login
-        initialAccount={loginAccount}
+        initialAccount={location.state?.account || ""}
         done={(value) => {
           setSession(value);
           updateSession(value);
           setError("");
-          setPage("overview");
+          navigate(returnTo, { replace: true });
         }}
       />
     );
+  if (location.pathname === "/login")
+    return <Navigate to={returnTo} replace />;
   if (!session.user.email)
     return <BindEmail session={session} bound={(user) => {
       const value = { ...session, user }; setSession(value); updateSession(value);
     }} logout={() => { void run(async () => {
       await api("/auth/logout", "POST"); stopUploads(); setSession(undefined); updateSession(undefined);
     }); }} />;
-  if (pairCode !== null)
+  if (location.pathname === "/pair")
     return (
       <PairingPage
+        key={pairCode}
         initialCode={pairCode}
         session={session}
         close={() => {
-          const url = new URL(location.href);
-          url.searchParams.delete("pair");
-          history.replaceState(null, "", url.pathname + url.search + url.hash);
-          setPairCode(null);
-          setPage("family");
+          navigate("/family", { replace: true });
         }}
       />
     );
@@ -282,14 +287,14 @@ function App() {
   return (
     <div className="workspace">
       <header className="workspace-brandbar">
-        <a className="wordmark" href="/manage/">
+        <Link className="wordmark" to="/overview">
           <span className="brand-symbol">
             <Film className="size-5" />
           </span>
           <span className="brand-copy">
             MollyTime<small>家庭媒体管理</small>
           </span>
-        </a>
+        </Link>
         <span className="brandbar-area">家庭媒体管理</span>
         <div className="brandbar-identity">
           <span>{session.family.name}</span>
@@ -335,18 +340,15 @@ function App() {
           {names.map(([id, name]) => (
             <Button
               variant="ghost"
+              asChild
               key={id}
               className={page === id ? "nav-link active" : "nav-link"}
-              aria-current={page === id ? "page" : undefined}
-              onClick={() => {
-                setPage(id);
-                setError("");
-                setNotice("");
-              }}
             >
-              <Icon name={id} />
-              {name}
-              {page === id && <ChevronRight className="ml-auto size-3.5" />}
+              <NavLink to={`/${id}`}>
+                <Icon name={id} />
+                {name}
+                {page === id && <ChevronRight className="ml-auto size-3.5" />}
+              </NavLink>
             </Button>
           ))}
         </nav>
@@ -411,21 +413,24 @@ function App() {
               当前账号可查看资料和观看记录，编辑需要管理员账号。
             </p>
           )}
-          {page === "library" && <Library run={run} readonly={readonly} />}
-          {page === "upload" && <Uploads run={run} readonly={readonly} />}
-          {page === "overview" && <Overview familyName={session.family.name} navigate={setPage} />}
-          {page === "watch" && <Reports />}
-          {page === "operations" && session.user.role === "superadmin" && (
-            <Operations notify={setNotice} />
-          )}
-          {page === "family" && (
-            <Family
+          <Routes>
+            <Route index element={<Navigate to="/overview" replace />} />
+            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(`/${destination}`)} />} />
+            <Route path="library" element={<Library run={run} readonly={readonly} />} />
+            <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
+            <Route path="upload" element={<Uploads run={run} readonly={readonly} />} />
+            <Route path="watch" element={<Reports />} />
+            <Route path="operations/*" element={session.user.role === "superadmin"
+              ? <Operations notify={setNotice} />
+              : <Navigate to="/overview" replace />} />
+            <Route path="family" element={<Family
               run={run}
               readonly={readonly}
               notify={setNotice}
-              onPair={() => setPairCode("")}
-            />
-          )}
+              onPair={() => navigate("/pair")}
+            />} />
+            <Route path="*" element={<Navigate to="/overview" replace />} />
+          </Routes>
           <footer className="manage-footer">
             <span>MollyTime · 家庭放映室</span>
             <span>为下一次一起观看做准备</span>
@@ -541,9 +546,18 @@ function Login({ done, initialAccount }: { done: (session: Session) => void; ini
   );
 }
 
-function Library({ run, readonly }: { run: Run; readonly: boolean }) {
-  const [path, setPath] = useState<Resource[]>([]),
-    [serial, refresh] = useState(0),
+function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean }) {
+  const { folderId = "" } = useParams();
+  const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined);
+  if (folder.error) return <><State error={folder.error} /><Button asChild variant="outline"><Link to="/library">全部文件夹</Link></Button></>;
+  if (folder.loading || folder.data?.id !== folderId) return <State loading />;
+  if (folder.data.type !== "Series") return <Navigate to="/library" replace />;
+  return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} />;
+}
+
+function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource }) {
+  const navigate = useNavigate();
+  const [serial, refresh] = useState(0),
     [search, setSearch] = useState(""),
     [status, setStatus] = useState("");
   const [edit, setEdit] = useState<Resource | "new">(),
@@ -551,7 +565,6 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
     [preview, setPreview] = useState<Resource>();
   const [selected, setSelected] = useState<string[]>([]);
   const [uploadKind, setUploadKind] = useState("video");
-  const parent = path[path.length - 1];
   const query = useDebounced(search);
   const list = usePagedData<Resource>(
     `${parent ? `/folders/${parent.id}/videos` : "/resources"}?q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}`,
@@ -614,26 +627,26 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
         <Button
           variant="outline"
           onClick={() => {
-            setPath([]);
+            navigate("/library");
             setSelected([]);
           }}
         >
           全部文件夹
         </Button>
-        {path.map((p, i) => (
-          <React.Fragment key={p.id}>
+        {parent && (
+          <React.Fragment>
             <span> / </span>
             <Button
               variant="outline"
               onClick={() => {
-                setPath(path.slice(0, i + 1));
+                navigate(`/library/${encodeURIComponent(parent.id)}`);
                 setSelected([]);
               }}
             >
-              {p.name}
+              {parent.name}
             </Button>
           </React.Fragment>
-        ))}
+        )}
       </div>
       <div className="toolbar library-toolbar">
         <div className="search-field">
@@ -714,7 +727,7 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
                     onClick={() =>
                       item.type === "Episode"
                         ? setPreview(item)
-                        : (setPath([...path, item]), setSelected([]))
+                        : navigate(`/library/${encodeURIComponent(item.id)}`)
                     }
                   >
                     {item.name}
@@ -1936,9 +1949,27 @@ function Family({
   );
 }
 
+// Normalize previously issued entry links before HashRouter reads the location.
+// Invitation credentials stay in the browser fragment and never enter request URLs.
+function normalizeEntryLinks() {
+  const entryUrl = new URL(window.location.href);
+  const legacyInvite = new URLSearchParams(entryUrl.hash.slice(1)).get("invite");
+  const legacyPair = entryUrl.searchParams.get("pair");
+  if (legacyInvite !== null || legacyPair !== null) {
+    entryUrl.hash = legacyInvite !== null
+      ? `/invite${legacyInvite ? `?${new URLSearchParams({ token: legacyInvite })}` : ""}`
+      : `/pair?${new URLSearchParams({ code: legacyPair || "" })}`;
+    entryUrl.searchParams.delete("pair");
+    history.replaceState(history.state, "", entryUrl.pathname + entryUrl.search + entryUrl.hash);
+  }
+}
+normalizeEntryLinks();
+window.addEventListener("popstate", normalizeEntryLinks);
+window.addEventListener("hashchange", normalizeEntryLinks);
+
 createRoot(document.getElementById("root")!).render(
   <>
-    <App />
+    <HashRouter><App /></HashRouter>
     <FeedbackDialogs />
   </>,
 );

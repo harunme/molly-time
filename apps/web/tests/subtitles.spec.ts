@@ -8,7 +8,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: /^(概览|资源库)$/ })).toBeVisible();
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '家庭设置', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
   await expect(page.getByRole('heading', { name: '家庭设置', exact: true })).toBeVisible();
   await page.getByLabel('默认字幕', { exact: true }).selectOption('en');
   await page.getByRole('button', { name: '保存默认字幕' }).click();
@@ -85,9 +85,9 @@ test('admin and TV share defaults while remote playback choices stay local to th
     await tv.keyboard.press('Escape');
 
     await page.reload();
-    await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '家庭设置', exact: true }).click();
+    await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
     await expect(page.getByLabel('默认字幕', { exact: true })).toHaveValue('zh-en');
-    await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '资源库', exact: true }).click();
+    await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
     await page.locator('article').filter({ has: page.getByRole('button', { name: 'Browser fixture', exact: true }) }).getByRole('button', { name: '编辑', exact: true }).click();
     await expect(page.getByRole('heading', { name: '字幕资源' })).toBeVisible();

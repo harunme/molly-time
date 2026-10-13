@@ -7,7 +7,7 @@ test('family viewing loads when reports are reopened and does not belong to a ch
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
   const firstReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.ok());
-  await page.getByRole('navigation').getByRole('button', { name: '观看记录' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '观看记录' }).click();
   const baseline = await (await firstReport).json();
   await expect(page.getByText('加载中…', { exact: true })).toHaveCount(0);
   const familyRows = page.getByRole('cell', { name: '家庭观看', exact: false });
@@ -28,9 +28,9 @@ test('family viewing loads when reports are reopened and does not belong to a ch
   });
   expect(synced.ok()).toBe(true);
   await expect(familyRows).toHaveCount(initialFamilyRows);
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '概览', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
   const updatedReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.ok());
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '观看记录', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '观看记录', exact: true }).click();
   const updated = await (await updatedReport).json();
   expect(updated.totalPlayedMs).toBe(baseline.totalPlayedMs + 1000);
   expect(updated.sessions.find((s: { id: string }) => s.id === session.sessionId).childName).toBe('家庭观看');

@@ -79,6 +79,10 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。主题和页面布局在 `src/style.css`，组件配置在 `components.json`，可维护的组件源码在 `src/components/ui`。Geist 字体随应用自托管，图标使用 Lucide。
 
+页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、上传任务 `/manage/#/upload`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
+
+登录入口为 `/manage/#/login`，未登录访问管理页时，登录后回到原 URL。邀请码入口为 `/manage/#/invite`，旧 `#invite=…` 链接仍有效，旧邀请令牌转换为 fragment 内的 `#/invite?token=…`。电视配对入口为 `/manage/#/pair?code=…`，兼容原 `/manage/?pair=…`。路由部分不发送给服务器，因此刷新仍只请求 `/manage/`，无需服务器配置 SPA 路径回退或重启 API；更新前端构建后刷新浏览器即可。
+
 2026-10-13 起，后台参考 Smart AFS 的视觉语言：石墨色顶栏、白色导航和内容区、浅灰画布、黄色主按钮与导航标记。管理页和弹窗共用主题 token。顶栏提供 TV 入口和账号菜单，内容区不展示面包屑栏。
 
 管理列表默认每页 20 条，概览的小列表每页 5 条。使用 `page`、`pageSize` 请求，服务端返回 `{ items, total, page, pageSize }`；`pageSize` 上限为 100。包括资源、文件夹视频、上传任务、儿童、设备和电视保存任务；客户端安装包列表沿用其已有分页。资源搜索和状态筛选先在数据库执行，再统计总数和取当前页。资源列表省略文件和介绍，打开编辑弹窗时通过 `/resources/{id}` 读取详情；文件夹选择器请求 `summary=true` 的轻量候选。

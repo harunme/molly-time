@@ -13,7 +13,7 @@ test('management lists filter on the server, turn pages and clear cross-page sel
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '资源库', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
   await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
   const session = await (await page.request.get('/api/manage/auth/session')).json();
   const headers = { 'X-CSRF-Token': session.csrfToken };
@@ -25,8 +25,8 @@ test('management lists filter on the server, turn pages and clear cross-page sel
     folders.push(await response.json());
   }
   await page.request.post(`/api/manage/resources/${folders[24].id}/unpublish`, { headers });
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '概览', exact: true }).click();
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '资源库', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
   const rows = page.locator('.resource-row');
   await expect(rows).toHaveCount(20);
   await rows.first().getByRole('checkbox').check();
@@ -61,7 +61,7 @@ test('management lists filter on the server, turn pages and clear cross-page sel
     const response = await page.request.post('/api/manage/children', { headers, data: { name: `分页儿童${index}` } });
     expect(response.ok()).toBeTruthy();
   }
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '家庭设置' }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置' }).click();
   const children = page.locator('.settings-card').filter({ has: page.getByRole('heading', { name: '儿童档案', exact: true }) });
   await expect(children.locator('.settings-row')).toHaveCount(20);
   await children.getByRole('navigation', { name: '儿童档案分页', exact: true }).getByRole('button', { name: /下一页/ }).click();

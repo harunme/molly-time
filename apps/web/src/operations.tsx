@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientReleases } from "./client-releases";
 import { Invitations } from "./invitations";
 import { useEffect, useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { api } from "./api";
 
 type StorageConfig = {
@@ -23,13 +24,18 @@ type Form = StorageConfig & {
   oss_access_key_secret: string;
 };
 export function Operations({ notify }: { notify: (message: string) => void }) {
+  const tab = useParams()["*"] || "";
+  const navigate = useNavigate();
+  const validTab = ["storage", "client-releases", "invitations"].includes(tab);
   const [form, setForm] = useState<Form>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const load = (value: StorageConfig) =>
     setForm({ ...value, oss_access_key_id: "", oss_access_key_secret: "" });
   useEffect(() => {
+    if (tab !== "storage") return;
     let alive = true;
+    setError("");
     api<StorageConfig>("/operations/storage")
       .then((value) => {
         if (alive) load(value);
@@ -40,7 +46,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [tab]);
   const submit = async (test: boolean) => {
     if (!form) return;
     setBusy(true);
@@ -67,6 +73,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
       setBusy(false);
     }
   };
+  if (!validTab) return <Navigate to="/operations/storage" replace />;
   return (
     <>
       <div className="page-title">
@@ -75,7 +82,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
           <p>管理用户邀请、平台存储和电视客户端版本，仅平台超管可访问。</p>
         </div>
       </div>
-      <Tabs defaultValue="storage">
+      <Tabs value={tab} activationMode="manual" onValueChange={(value) => navigate(`/operations/${value}`)}>
         <TabsList aria-label="运营设置分类">
           <TabsTrigger value="storage">文件存储</TabsTrigger>
           <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
