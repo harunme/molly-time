@@ -27,7 +27,7 @@
   }
   button,
   [role="button"] {
-    @apply rounded-ui;
+    @apply cursor-pointer rounded-ui;
   }
   :where(
     a[href], button, select, summary,
