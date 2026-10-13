@@ -19,9 +19,11 @@ object DeviceName {
             .filterNot { it.isISOControl() }.trim()
             .takeUnless { it.equals("unknown", ignoreCase = true) }.orEmpty()
         val name = clean(configured)
-        if (name.isNotEmpty()) return name.take(128)
         val maker = clean(manufacturer)
         val product = clean(model)
+        // Some TVs use the model code as their default device name. Include the
+        // manufacturer for those defaults while preserving custom names.
+        if (name.isNotEmpty() && !name.equals(product, ignoreCase = true)) return name.take(128)
         return when {
             product.isEmpty() -> maker.ifEmpty { "Android TV" }
             maker.isEmpty() || product.startsWith(maker, ignoreCase = true) -> product
