@@ -60,7 +60,8 @@ def release_state():
                 raise ValueError('Invalid published TV release metadata')
             highest = max(highest, code)
             if path == latest:
-                current = {'versionCode': code, 'sha256': sha, 'sourceFingerprint': fingerprint}
+                current = {'versionCode': code, 'sha256': sha, 'sourceFingerprint': fingerprint,
+                           'sourceCommit': record.get('sourceCommit')}
         return {'current': current, 'highestVersionCode': highest}
 
 
@@ -107,7 +108,7 @@ def publish_apk(destination, tag, plan):
             'mollytime_server.scripts.publish_tv_release',
             '/ci-release/mollytime-tv-release.apk', '--build-tools', '/usr/bin',
             '--storage', 'auto', '--ci-plan-file', '/ci-release/tv-client-plan.json',
-            '--notes', 'Automatic TV release ' + tag[:12])
+            '--notes', plan.get('releaseNotes') or '电视客户端更新')
 
 
 def run(args, env=None):

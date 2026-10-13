@@ -47,6 +47,8 @@ apps/server/.venv/bin/python -m mollytime_server.scripts.publish_tv_release \
 
 GitHub Actions 已接入原生输入指纹判断、自动构建号、签名和发布，见 [流水线说明](deployment.md#自动判断与发布-tv-apk)。网页/API-only 变更跳过 APK；正式包的 `sourceFingerprint` 和 `sourceCommit` 仅在 CI 发布验证通过后记录。后台重复上传同一 APK 会保留原有 CI 来源信息。
 
+CI 自动发布 APK 时，从 GitHub 仓库的 Actions Secret `OPENAI_API_KEY` 读取已配置的 DeepSeek 密钥（沿用现有 Secret 名称）。流水线只将密钥交给生成更新说明的步骤；该步骤根据上次发布到本次的 TV 原生代码变更调用 DeepSeek Chat Completions API，生成简短中文说明，并随发布计划传到服务器。没有密钥、旧版本缺少 `sourceCommit` 或生成失败时使用“电视客户端版本更新”，不影响 APK 发布。可选变量 `DEEPSEEK_RELEASE_NOTES_MODEL` 可指定模型；密钥不要放入仓库、服务器 `.env` 或 APK。此功能要求先按 [部署文档](deployment.md) 单独更新服务器上的固定部署接收脚本，因为旧脚本不会返回上次发布的提交号。
+
 ## 接口与安装行为
 
 - `GET /api/client/releases/latest?packageName=com.molly.tv`：返回 `{ "release": null }` 或版本、大小、SHA-256、更新说明和下载 URL；debug 使用 `com.molly.tv.debug`。

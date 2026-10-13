@@ -118,6 +118,15 @@ jobs:
             "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME" \
             :client:testDebugUnitTest :client:lintDebug
           python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
+      - name: Generate TV release notes
+        if: steps.native_plan.outputs.required == 'true'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_RELEASE_NOTES_MODEL: ${{ vars.DEEPSEEK_RELEASE_NOTES_MODEL || 'deepseek-flash' }}
+        run: |
+          python tools/generate_tv_release_notes.py \
+            --plan artifacts/tv-client-plan.json \
+            --state "$RUNNER_TEMP/tv-apk-state.json"
       - name: Save APK and publication plan
         if: steps.native_plan.outputs.required == 'true'
         uses: actions/upload-artifact@v4

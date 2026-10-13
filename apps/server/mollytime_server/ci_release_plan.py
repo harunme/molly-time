@@ -20,6 +20,7 @@ class CiReleasePlan(BaseModel):
     expectedRelease: ExpectedRelease | None
     reason: str = Field(max_length=100)
     inputCount: int = Field(ge=1)
+    releaseNotes: str | None = Field(default=None, max_length=4000)
 
     def matches(self, current) -> bool:
         if self.expectedRelease is None:

@@ -106,6 +106,8 @@ def seed_release(root, version=5, fingerprint='b' * 64):
 
 def test_state_uses_published_fingerprint_and_all_historical_versions(tmp_path):
     current = seed_release(tmp_path)
+    current['sourceCommit'] = 'a' * 40
+    (tmp_path / 'data/client-releases/com.molly.tv.json').write_text(json.dumps(current))
     history = tmp_path / 'data/client-releases/history/com.molly.tv/9'
     history.mkdir(parents=True)
     (history / ('d' * 64 + '.json')).write_text(json.dumps(dict(current, versionCode=9, sha256='d' * 64)))
@@ -113,6 +115,7 @@ def test_state_uses_published_fingerprint_and_all_historical_versions(tmp_path):
         result = deploy.release_state()
     assert result['current']['versionCode'] == 5
     assert result['current']['sourceFingerprint'] == 'b' * 64
+    assert result['current']['sourceCommit'] == 'a' * 40
     assert result['highestVersionCode'] == 9
 
 
@@ -164,7 +167,8 @@ def test_apk_publication_failure_restores_application_state(tmp_path, failure):
     plan = {'schemaVersion': 1, 'requiresApk': True, 'sourceCommit': tag,
             'sourceFingerprint': 'd' * 64, 'versionCode': 6, 'versionName': '0.4.0+6',
             'expectedRelease': {'versionCode': 5, 'sha256': current['sha256']},
-            'reason': 'native-inputs-changed', 'inputCount': 20}
+            'reason': 'native-inputs-changed', 'inputCount': 20,
+            'releaseNotes': '修复播放卡顿'}
     bundle = io.BytesIO()
     with tarfile.open(fileobj=io.BytesIO(archive_bytes()), mode='r:gz') as old, \
             tarfile.open(fileobj=bundle, mode='w:gz') as archive:
@@ -180,6 +184,7 @@ def test_apk_publication_failure_restores_application_state(tmp_path, failure):
         calls.append((sha, args))
         if args[0] == 'run':
             assert json.loads((root / 'deployment-state.json').read_text())['tag'] == tag
+            assert args[-2:] == ('--notes', '修复播放卡顿')
             if failure:
                 raise RuntimeError('APK publication failed')
     with patch.multiple(deploy, ROOT=root, STATE=root / 'deployment-state.json', LOCK=root / 'deploy.lock'), \
