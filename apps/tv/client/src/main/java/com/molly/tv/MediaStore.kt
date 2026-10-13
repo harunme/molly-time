@@ -66,10 +66,16 @@ class MediaStore(private val context: Context, private val session: SessionStore
         return DefaultDataSource.Factory(context, OkHttpDataSource.Factory(client))
     }
 
-    fun factory(): CacheDataSource.Factory {
+    fun factory(cacheWrites: Boolean = true): CacheDataSource.Factory {
         synchronizeOwner()
-        return CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(upstream())
+        val factory = CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(upstream())
             .setFlags(CacheDataSource.FLAG_BLOCK_ON_CACHE or CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        // Streaming must still work when the TV has too little free space for a new cache span.
+        // Existing cached spans remain readable; only new writes are disabled.
+        if (!cacheWrites || directory.usableSpace < HouseholdEvictor.RESERVE + 5L * 1024 * 1024) {
+            factory.setCacheWriteDataSinkFactory(null)
+        }
+        return factory
     }
 
     fun uri(info: JSONObject): Uri = Uri.parse(info.getString("url")).let {

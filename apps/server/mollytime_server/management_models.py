@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -156,6 +157,25 @@ class Device(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
+
+
+class DeviceErrorLog(Base):
+    """Bounded, structured device diagnostics. Never store request URLs or credentials."""
+
+    __tablename__ = "device_error_logs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    category: Mapped[str] = mapped_column(String(24))
+    code: Mapped[str] = mapped_column(String(80))
+    cause_types: Mapped[list] = mapped_column(JSON, default=list)
+    episode_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    media_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    position_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    available_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    app_version: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now, index=True)
 
 
 class DeviceRefresh(Base):

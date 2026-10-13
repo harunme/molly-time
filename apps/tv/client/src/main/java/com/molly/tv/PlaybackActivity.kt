@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.*
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerView
 import org.json.JSONObject
 
@@ -71,6 +72,7 @@ class PlaybackActivity : AppCompatActivity() {
     private fun reminderState(): JSONObject = try { app.api.json("GET", "/api/reminders/state") }
         catch (error: ApiFailure) { if (error.status == 404) JSONObject().put("phase", "idle") else throw error }
     private var refreshAttempts = 0
+    private var skipCacheWrites = false
     private var selectedSubtitle: String? = null
     private var playbackSpeed = 1f
     private var playbackMenu: AlertDialog? = null
@@ -177,7 +179,7 @@ class PlaybackActivity : AppCompatActivity() {
         if (runtime > 0 && position >= runtime) position = 0
         val source = detail.getJSONObject("playback")
         sourceInfo = source
-        val dataSource = app.media.factory()
+        val dataSource = app.media.factory(cacheWrites = !skipCacheWrites)
         val exo = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(dataSource)).build()
         player = exo
         playerView.player = exo
@@ -199,7 +201,12 @@ class PlaybackActivity : AppCompatActivity() {
             override fun onTracksChanged(tracks: Tracks) { applySubtitle() }
             override fun onPlaybackParametersChanged(parameters: PlaybackParameters) { playbackSpeed = parameters.speed }
             override fun onPlayerError(error: PlaybackException) {
-                if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && refreshAttempts < 2) {
+                reportPlaybackError(error, source.optString("mediaId"), episodeId)
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED && !skipCacheWrites) {
+                    // A failed cache write is one possible cause. Retry once without writing cache.
+                    skipCacheWrites = true
+                    refreshSource()
+                } else if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && refreshAttempts < 2) {
                     refreshSource()
                 } else status.text = "播放失败（${error.errorCodeName}）。按确定重试，返回退出"
             }
@@ -267,6 +274,7 @@ class PlaybackActivity : AppCompatActivity() {
                         sourceInfo = null
                         selectedSubtitle = null
                         playbackSpeed = 1f
+                        skipCacheWrites = false
                         load()
                     }
                 } }.onFailure { error -> runOnUiThread {
@@ -305,6 +313,7 @@ class PlaybackActivity : AppCompatActivity() {
                         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     }
                     override fun onPlayerError(error: PlaybackException) {
+                        reportPlaybackError(error, info.optString("mediaId"), null)
                         status.text = "家长视频播放失败。按确定重试，返回退出"
                     }
                 })
@@ -358,6 +367,25 @@ class PlaybackActivity : AppCompatActivity() {
                     if (active && current == loadGeneration) status.text = (error.message ?: "播放地址刷新失败") + "。按确定重试"
                 } }
         }
+    }
+
+    private fun reportPlaybackError(error: PlaybackException, mediaId: String?, episode: String?) {
+        // Only structured diagnostics leave the TV; exception messages may contain signed URLs.
+        val causes = generateSequence(error.cause) { it.cause }.take(6).toList()
+        val types = org.json.JSONArray(causes.map { it.javaClass.name })
+        val httpStatus = causes.filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+            .firstOrNull()?.responseCode
+        android.util.Log.e("MollyTimePlayback",
+            "Playback failed: ${error.errorCodeName}, causes=${causes.joinToString(" -> ") { it.javaClass.simpleName }}, http=$httpStatus")
+        val body = JSONObject().put("id", java.util.UUID.randomUUID().toString())
+            .put("category", "playback").put("code", error.errorCodeName)
+            .put("causeTypes", types).put("positionMs", player?.currentPosition?.coerceAtLeast(0) ?: 0)
+            .put("availableBytes", filesDir.usableSpace).put("appVersion", BuildConfig.VERSION_NAME)
+        if (!episode.isNullOrEmpty()) body.put("episodeId", episode)
+        if (!mediaId.isNullOrEmpty()) body.put("mediaId", mediaId)
+        if (httpStatus != null) body.put("httpStatus", httpStatus)
+        app.io.execute { runCatching { app.errorLogQueue.enqueue(body) }
+            .onFailure { android.util.Log.w("MollyTimePlayback", "Could not queue playback error: ${it.javaClass.simpleName}") } }
     }
 
     private fun report(event: String) {

@@ -9,6 +9,7 @@ class MollyTimeApplication : Application() {
     lateinit var api: MollyTimeApi
     lateinit var media: MediaStore
     lateinit var watchQueue: WatchQueue
+    lateinit var errorLogQueue: ErrorLogQueue
     lateinit var updates: ClientUpdates
     lateinit var webBundles: WebBundleStore
     val webUpdateExecutor = Executors.newSingleThreadExecutor()
@@ -24,11 +25,12 @@ class MollyTimeApplication : Application() {
         webBundles = WebBundleStore(this)
         media = MediaStore(this, session, api)
         watchQueue = WatchQueue(this, session, api)
-        io.execute { watchQueue.flush() }
+        errorLogQueue = ErrorLogQueue(this, session, api)
+        io.execute { runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() } }
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         handler.postDelayed(object : Runnable {
             override fun run() {
-                io.execute { runCatching { watchQueue.flush() }; runCatching { media.poll() } }
+                io.execute { runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() }; runCatching { media.poll() } }
                 handler.postDelayed(this, 60000)
             }
         }, 1000)

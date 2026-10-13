@@ -22,6 +22,7 @@ import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
 import { ParentReminders } from "./reminders";
+import { DeviceErrorLogs } from "./device-error-logs";
 import { Pagination, ResourcePicker, useDebounced, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -62,6 +63,7 @@ import {
   UserRound,
   KeyRound,
   LoaderCircle,
+  ScrollText,
 } from "lucide-react";
 import {
   Dialog,
@@ -120,6 +122,7 @@ function Icon({ name }: { name: string; }) {
     overview: LayoutDashboard,
     family: Users,
     operations: Settings2,
+    logs: ScrollText,
   };
   const Component = icons[name] || Film;
   return (
@@ -293,7 +296,7 @@ function App() {
     ["family", "家庭设置"],
   ];
   if (session.user.role === "superadmin")
-    names.push(["operations", "运营设置"]);
+    names.push(["operations", "运营设置"], ["logs", "系统日志"]);
   const readonly = !["admin", "superadmin"].includes(session.user.role);
   return (
     <div className="workspace">
@@ -392,6 +395,9 @@ function App() {
             <Route path="watch" element={<Navigate to="/overview?watch=1" replace />} />
             <Route path="operations/*" element={session.user.role === "superadmin"
               ? <Operations notify={setNotice} />
+              : <Navigate to="/overview" replace />} />
+            <Route path="logs" element={session.user.role === "superadmin"
+              ? <DeviceErrorLogs />
               : <Navigate to="/overview" replace />} />
             <Route path="family" element={<Family
               run={run}

@@ -9,13 +9,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import manage_auth
-from .api import auth as api_auth
 from .api import (
     account_invitations,
     catalog,
     children,
     client_release_uploads,
     client_updates,
+    device_error_logs,
     downloads,
     manage_client_releases,
     manage_family,
@@ -32,6 +32,7 @@ from .api import (
     users,
     watch,
 )
+from .api import auth as api_auth
 from .config import get_settings
 from .db import init_db
 from .tv_web import TvWebFiles
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(api_auth.router)
     app.include_router(account_invitations.router)
     app.include_router(client_updates.router)
+    app.include_router(device_error_logs.device_router)
     app.include_router(pairing.router)
     app.include_router(users.router)
     app.include_router(children.router)
@@ -115,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_home.router)
     app.include_router(manage_overview.router)
     app.include_router(manage_family.router)
+    app.include_router(device_error_logs.manage_router)
     app.include_router(operations.router)
     app.include_router(usage.router)
     app.include_router(manage_client_releases.router)
