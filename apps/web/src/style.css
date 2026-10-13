@@ -174,7 +174,7 @@
 .settings-card > .pagination { @apply border-t pt-3; }
 .report-section > .pagination { @apply mb-0; }
 .overview-metrics { @apply mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4; }
-.overview-metric { @apply gap-0 rounded-ui border bg-white p-5 shadow-none; }
+.overview-metric { @apply gap-0 rounded-ui bg-white p-5; }
 .overview-metric-label { @apply flex items-center justify-between gap-3 text-xs text-muted-foreground; }
 .overview-metric-label svg { @apply text-[#94949f]; }
 .overview-metric-value { @apply mt-4 block text-[2rem] leading-tight font-semibold tracking-tight tabular-nums; }
@@ -182,7 +182,7 @@
 .overview-metric-bottom > span { @apply truncate; }
 .overview-metric-bottom button { @apply -mr-2 shrink-0; }
 .overview-panels { @apply grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]; }
-.overview-panel { @apply gap-0 min-w-0 rounded-ui border bg-white p-5 shadow-none; }
+.overview-panel { @apply gap-0 min-w-0 rounded-ui bg-white p-5; }
 .overview-panel > .section-heading { @apply mb-4; }
 .overview-panel > .pagination { @apply mt-4 mb-0 border-t pt-4; }
 .overview-uploads .empty { @apply min-h-52 border-0; }
@@ -306,7 +306,7 @@
   @apply w-auto;
 }
 .library-toolbar {
-  @apply rounded-ui border bg-white p-3;
+  @apply rounded-ui bg-white p-3;
 }
 .search-field {
   @apply relative w-full sm:max-w-[280px];
@@ -327,7 +327,7 @@
   @apply h-6 border-0 bg-transparent px-0 text-xs font-normal shadow-none hover:bg-transparent hover:text-foreground;
 }
 .resource-list {
-  @apply overflow-hidden rounded-ui border bg-white;
+  @apply overflow-hidden rounded-ui bg-white;
 }
 .resource-list-heading {
   @apply hidden items-center border-b bg-muted/40 px-5 py-3 text-[11px] font-medium text-muted-foreground sm:flex;
@@ -405,7 +405,7 @@
   @apply text-white hover:bg-white/10;
 }
 .empty {
-  @apply flex flex-col items-center justify-center gap-2 rounded-ui border border-dashed bg-white px-6 py-14 text-center text-sm text-muted-foreground;
+  @apply flex flex-col items-center justify-center gap-2 rounded-ui bg-white px-6 py-14 text-center text-sm text-muted-foreground;
 }
 .empty > svg {
   @apply mb-2 text-muted-foreground;
@@ -516,7 +516,7 @@
   @apply w-[74px];
 }
 .pipeline {
-  @apply mb-6 grid grid-cols-2 gap-x-3 gap-y-3 rounded-ui border bg-white p-4 sm:grid-cols-4;
+  @apply mb-6 grid grid-cols-2 gap-x-3 gap-y-3 rounded-ui bg-white p-4 sm:grid-cols-4;
   counter-reset: steps;
 }
 .pipeline span {
@@ -528,7 +528,7 @@
   content: counter(steps);
 }
 .upload-task {
-  @apply gap-0 mb-3 rounded-ui border bg-white p-5 shadow-xs;
+  @apply gap-0 mb-3 rounded-ui bg-white p-5;
 }
 .task-top {
   @apply mb-4 flex items-center justify-between gap-3;
@@ -558,7 +558,7 @@
   @apply h-7 max-w-[220px] border-0 p-0 text-[10px] shadow-none;
 }
 .watch-summary {
-  @apply my-5 grid grid-cols-2 overflow-hidden rounded-ui border bg-white md:grid-cols-3;
+  @apply my-5 grid grid-cols-2 overflow-hidden rounded-ui bg-white md:grid-cols-3;
 }
 .watch-summary > div {
   @apply border-r p-5 last:border-r-0;
@@ -579,7 +579,7 @@
   @apply text-sm font-medium;
 }
 .report-section {
-  @apply gap-0 mb-5 rounded-ui border bg-white p-5;
+  @apply gap-0 mb-5 rounded-ui bg-white p-5;
 }
 .report-section h2 {
   @apply mb-4 text-sm;
@@ -637,7 +637,7 @@ td small {
   @apply grid items-start gap-5 xl:grid-cols-2;
 }
 .settings-card {
-  @apply gap-0 rounded-ui border bg-white p-5 shadow-xs;
+  @apply gap-0 rounded-ui bg-white p-5;
 }
 .settings-card h2 {
   @apply mb-4 text-sm;
@@ -686,7 +686,7 @@ td small {
   @apply mb-0;
 }
 .client-releases-card { max-width: none; min-width: 0; }
-.client-release-upload { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.client-release-upload { margin-bottom: 1.5rem; padding: 1rem; border-radius: var(--radius); }
 .client-release-upload > summary { cursor: pointer; font-weight: 500; }
 .client-release-upload > p { margin: .75rem 0; }
 .client-release-upload fieldset { border: 0; padding: 0; }
@@ -828,7 +828,7 @@ td small {
   @apply grid min-h-dvh place-items-center bg-background px-5 py-10;
 }
 .pairing-card {
-  @apply gap-0 w-full max-w-[440px] rounded-ui border bg-white p-6 shadow-xs sm:p-8;
+  @apply gap-0 w-full max-w-[440px] rounded-ui bg-white p-6 sm:p-8;
 }
 .pairing-card > .wordmark {
   @apply mb-7 text-2xl text-foreground;
@@ -842,6 +842,7 @@ td small {
 .pairing-card form > .primary {
   @apply mb-3 w-full;
 }
+.invitation-link { border: 0; background: var(--accent); }
 .pairing-summary {
   @apply my-5 grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-ui bg-accent/50 p-4 text-xs;
 }
