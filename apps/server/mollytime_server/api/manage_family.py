@@ -196,6 +196,7 @@ def report(
     if childId:
         query = query.filter(WatchSession.child_id == childId)
     days = {(start + dt.timedelta(days=i)).isoformat(): 0 for i in range((end - start).days + 1)}
+    hours = [0] * 24 if start == end else []
     contents, sessions, episodes, catalog = {}, {}, set(), {}
     # Summary totals cover the whole range; stream intervals instead of loading
     # them all at once. Only paged details are sent to the browser.
@@ -227,6 +228,13 @@ def report(
                 local.date() + dt.timedelta(days=1), dt.time.min, zone
             ).astimezone(dt.UTC)
             edge = min(b, midnight)
+            if hours:
+                next_hour = a + dt.timedelta(
+                    minutes=60 - local.minute, seconds=-local.second,
+                    microseconds=-local.microsecond,
+                )
+                edge = min(edge, next_hour)
+                hours[local.hour] += round((edge - a).total_seconds() * 1000)
             days[local.date().isoformat()] += round((edge - a).total_seconds() * 1000)
             a = edge
     started_query = db.query(WatchSession).filter(
@@ -269,6 +277,7 @@ def report(
         if latest and latest.last_reported_at
         else None,
         "days": [{"date": key, "playedMs": value} for key, value in days.items()],
+        "hours": [{"hour": hour, "playedMs": played} for hour, played in enumerate(hours)],
         "contentTotal": len(contents),
         "sessionTotal": len(sessions),
         "pageSize": pageSize,

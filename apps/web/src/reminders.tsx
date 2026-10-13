@@ -133,7 +133,7 @@ export function ParentReminders({ readonly, run, notify }: {
       {(['warning', 'farewell'] as const).map((kind) => <div className="reminder-clip" key={kind}>
         <Label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '休息提醒视频'}</Label>
         <p className="muted">{settings[kind].ready ? '视频已就绪' : '请上传视频，等待处理完成'} · {kind === 'warning' ? '后台发起后主动出现' : '最后一集看完后出现，随后停止播放'}</p>
-        {!readonly && <FileUploadField inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={busy || !uploadPolicy.limits}
+        {!readonly && <FileUploadField className="rounded-full" inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={busy || !uploadPolicy.limits}
           inputLabel={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传休息提醒视频'} placeholder="选择 MP4 视频"
           onFileSelect={(file) => { void upload(kind, file); }} />}
         {settings[kind].ready && <Button type="button" variant="bordered" onClick={() => setPreview(preview === kind ? undefined : kind)}>

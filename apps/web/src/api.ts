@@ -4,7 +4,7 @@ export type Child = { id: string; name: string };
 export type Page<T> = { items: T[]; page: number; pageSize: number; total: number };
 export type ResourceOption = Pick<Resource, 'id' | 'name' | 'type' | 'status'>;
 export type Upload = { id: string; itemId: string; filename: string; size: number; offset: number; status: string; fingerprint: string; kind: string; error: string; taskId: string | null; taskStatus: string | null; transport?: 'local' | 'oss'; partSize?: number };
-export type WatchReport = { timezone: string; totalPlayedMs: number; episodeCount: number; statisticsSince: string | null; lastSync: string | null; days: { date: string; playedMs: number }[]; contents: { id: string; name: string; playedMs: number }[]; sessions: { id: string; name: string; childName: string; deviceName: string; startedAt: string; playedMs: number; positionMs: number; ended: boolean; lastSync: string | null }[] };
+export type WatchReport = { timezone: string; totalPlayedMs: number; episodeCount: number; statisticsSince: string | null; lastSync: string | null; days: { date: string; playedMs: number }[]; hours: { hour: number; playedMs: number }[]; contents: { id: string; name: string; playedMs: number }[]; sessions: { id: string; name: string; childName: string; deviceName: string; startedAt: string; playedMs: number; positionMs: number; ended: boolean; lastSync: string | null }[] };
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 let csrf = '';
 export function setSession(session: Session | undefined) { csrf = session?.csrfToken || ''; }
