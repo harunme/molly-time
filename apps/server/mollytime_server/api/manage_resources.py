@@ -16,7 +16,14 @@ from ..config import get_settings
 from ..deps import DbSession
 from ..images import image_url
 from ..manage_auth import Parent, aware
-from ..management_models import MediaOptions, MediaTask, ResourceState, UploadSession, UploadTarget
+from ..management_models import (
+    FamilyReminders,
+    MediaOptions,
+    MediaTask,
+    ResourceState,
+    UploadSession,
+    UploadTarget,
+)
 from ..models import Item, MediaFile
 from ..remote_uploads import (
     PART_SIZE,
@@ -138,6 +145,13 @@ def resource_summary(db, item):
             "status": state.status if state else "published"}
 
 
+def reminder_resource_ids(db, family_id):
+    reminders = db.get(FamilyReminders, family_id)
+    if reminders is None:
+        return set()
+    return {key for key in (reminders.folder_id, reminders.warning_id, reminders.farewell_id) if key}
+
+
 @router.get("/resources")
 def resources(
     user: Parent, db: DbSession, parentId: str | None = None,
@@ -148,11 +162,16 @@ def resources(
     summary: bool = False, ids: str = Query(default="", max_length=4000),
 ):
     query = db.query(Item).filter(Item.family_id == user.family_id)
+    private_ids = reminder_resource_ids(db, user.family_id)
+    if parentId and parentId in private_ids:
+        raise HTTPException(404, "内容不存在")
     if parentId:
         ensure_active(db, owned(db, Item, parentId, user.family_id))
         query = query.filter(Item.parent_id == parentId)
     else:
         query = query.filter(Item.type == "Series")
+    if private_ids:
+        query = query.filter(Item.id.notin_(private_ids))
     if ids:
         keys = list(dict.fromkeys(ids.split(",")))
         if len(keys) > 100:
@@ -166,15 +185,18 @@ def resources(
 
 @router.get("/resources/stats")
 def resource_stats(user: Parent, db: DbSession):
-    active = (
+    query = (
         db.query(Item.id, Item.type, func.coalesce(ResourceState.status, "published"), func.coalesce(ResourceState.ready, True), Item.runtime_ticks)
         .outerjoin(ResourceState, ResourceState.item_id == Item.id)
         .filter(
             Item.family_id == user.family_id,
             func.coalesce(ResourceState.status, "published").notin_(["archived", "deleted"]),
         )
-        .all()
     )
+    private_ids = reminder_resource_ids(db, user.family_id)
+    if private_ids:
+        query = query.filter(Item.id.notin_(private_ids))
+    active = query.all()
     active_ids = [item_id for item_id, *_ in active]
     subtitle_count = 0
     if active_ids:
@@ -207,6 +229,8 @@ def folder_videos(
     status: str = Query(default="", pattern="^(|draft|published|archived)$"),
 ):
     folder = owned(db, Item, folder_id, user.family_id)
+    if folder_id in reminder_resource_ids(db, user.family_id):
+        raise HTTPException(404, "内容不存在")
     ensure_active(db, folder)
     if folder.type != "Series":
         raise HTTPException(422, "请选择文件夹")

@@ -10,7 +10,13 @@ from test_tv_playback import client  # noqa: F401
 from mollytime_server import db
 from mollytime_server.auth import issue_access_token
 from mollytime_server.device_presence import device_online
-from mollytime_server.management_models import Device, DeviceReminder, ResourceState, WatchSession
+from mollytime_server.management_models import (
+    Device,
+    DeviceReminder,
+    FamilyReminders,
+    ResourceState,
+    WatchSession,
+)
 from mollytime_server.models import Item, MediaFile
 
 
@@ -67,6 +73,27 @@ def start(parent, tv, episode="e1"):
     )
     assert response.status_code == 200
     return response.json()["sessionId"]
+
+
+def test_reminder_clips_stay_out_of_resource_library(parent):
+    seed(parent)
+    with Session(db.get_engine()) as session:
+        reminders = session.get(FamilyReminders, "f1")
+        folder_id = reminders.folder_id
+        clip_ids = {reminders.warning_id, reminders.farewell_id}
+
+    listing = parent.get("/api/manage/resources", params={"page": 1, "pageSize": 1}).json()
+    assert listing["total"] == 1
+    assert [item["id"] for item in listing["items"]] == ["series"]
+    assert parent.get("/api/manage/resources", params={"q": "家长提醒"}).json() == []
+    assert parent.get("/api/manage/resources", params={"summary": "true"}).json()[0]["id"] == "series"
+    assert parent.get("/api/manage/resources", params={"ids": folder_id}).json() == []
+    assert parent.get("/api/manage/resources", params={"parentId": folder_id}).status_code == 404
+    assert parent.get(f"/api/manage/folders/{folder_id}/videos").status_code == 404
+    assert parent.get("/api/manage/resources/stats").json()["folderCount"] == 1
+    assert parent.get("/api/manage/resources/stats").json()["videoCount"] == 2
+    assert all(parent.get("/api/manage/resources", params={"ids": clip_id}).json() == [] for clip_id in clip_ids)
+    assert parent.get("/api/manage/reminders").json()["warning"]["ready"] is True
 
 
 def test_active_episode_reminder_stops_next_and_replay_until_parent_restores(parent):
