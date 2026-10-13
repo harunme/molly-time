@@ -44,6 +44,9 @@ import {
   Archive,
   Eye,
   ShieldCheck,
+  UserRound,
+  KeyRound,
+  LoaderCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -417,93 +420,112 @@ function Login({ done }: { done: (session: Session) => void }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   return (
-    <div className="login">
+    <main className="login">
       <section className="login-story">
-        <div className="wordmark">
-          MollyTime<span>家庭放映室</span>
-        </div>
-        <div>
-          <p className="eyebrow">属于我们家的内容</p>
-          <h1>
+        <header className="login-brand">
+          <div className="wordmark">MollyTime</div>
+          <span className="login-brand-divider" aria-hidden="true" />
+          <p>家庭放映室</p>
+        </header>
+        <div className="login-story-content">
+          <div className="login-story-accent" aria-hidden="true" />
+          <p className="login-eyebrow">属于我们家的内容</p>
+          <h2>
             挑好故事，
             <br />
-            留给好奇的眼睛。
-          </h1>
-          <p>整理家庭资源，绑定电视，了解孩子的播放时间。</p>
-          <div className="login-reels" aria-hidden="true">
-            <div>
-              <Film />
-              <span>故事</span>
-            </div>
-            <div>
-              <Captions />
-              <span>语言</span>
-            </div>
-            <div>
-              <LayoutDashboard />
-              <span>发现</span>
-            </div>
+            <span>留给好奇的眼睛。</span>
+          </h2>
+          <p className="login-story-description">
+            整理家庭资源，绑定电视，了解孩子的播放时间。
+          </p>
+        </div>
+        <footer className="login-story-footer">
+          <span>MollyTime · 家庭放映室</span>
+          <span>为下一次一起观看做准备</span>
+        </footer>
+      </section>
+      <section className="login-panel" aria-labelledby="login-title">
+        <div className="login-panel-content">
+          <header className="login-heading">
+            <p className="login-product">MollyTime 管理后台</p>
+            <h1 id="login-title">进入管理后台</h1>
+            <p className="login-description">登录后管理片单、字幕和电视设备。</p>
+          </header>
+          <form
+            aria-busy={busy}
+            onSubmit={(e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError("");
+              void api<Session>("/auth/login", "POST", {
+                username,
+                password,
+                ...(family ? { familyId: family } : {}),
+              })
+                .then(done)
+                .catch((e) => setError(e.message))
+                .finally(() => setBusy(false));
+            }}
+          >
+            <label>
+              账号
+              <span className="login-input-group">
+                <UserRound aria-hidden="true" />
+                <Input
+                  autoComplete="username"
+                  placeholder="请输入账号"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </span>
+            </label>
+            <label>
+              密码
+              <span className="login-input-group">
+                <KeyRound aria-hidden="true" />
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="请输入密码"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </span>
+            </label>
+            <details>
+              <summary>指定家庭（可选）</summary>
+              <label>
+                家庭 ID
+                <Input
+                  value={family}
+                  onChange={(e) => setFamily(e.target.value)}
+                />
+              </label>
+            </details>
+            {error && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
+            <Button
+              type="submit"
+              variant="default"
+              className="primary"
+              disabled={busy}
+            >
+              {busy && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+              {busy ? "正在登录…" : "登录"}
+            </Button>
+          </form>
+          <div className="login-help">
+            <ShieldCheck aria-hidden="true" />
+            <p>使用超管、家庭管理员或成员账号。</p>
           </div>
         </div>
       </section>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setBusy(true);
-          setError("");
-          void api<Session>("/auth/login", "POST", {
-            username,
-            password,
-            ...(family ? { familyId: family } : {}),
-          })
-            .then(done)
-            .catch((e) => setError(e.message))
-            .finally(() => setBusy(false));
-        }}
-      >
-        <span className="login-badge">
-          <ShieldCheck className="size-3.5" />
-          家庭管理
-        </span>
-        <h2>进入管理后台</h2>
-        <p className="login-description">登录后管理片单、字幕和电视设备。</p>
-        <label>
-          账号
-          <Input
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          密码
-          <Input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
-        <details>
-          <summary>指定家庭（可选）</summary>
-          <label>
-            家庭 ID
-            <Input value={family} onChange={(e) => setFamily(e.target.value)} />
-          </label>
-        </details>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        <Button variant="default" className="primary" disabled={busy}>
-          {busy ? "正在登录…" : "登录"}
-        </Button>
-        <p className="muted">使用超管、家庭管理员或成员账号。</p>
-      </form>
-    </div>
+    </main>
   );
 }
 
