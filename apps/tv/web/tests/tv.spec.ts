@@ -279,6 +279,10 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await expect(page.getByRole('region', { name: '选中内容预览' })).toHaveCount(0);
   const navigationY = await page.locator('.topbar').evaluate((node) => node.getBoundingClientRect().top);
   const firstRail = page.locator('[data-rail="home-row-0"]');
+  const initiallyVisible = await firstRail.evaluate((rail) => Array.from(rail.querySelectorAll<HTMLElement>('button[data-focus]'))
+    .filter((card) => card.offsetLeft + card.offsetWidth <= rail.clientWidth - 20).length);
+  for (let index = 1; index < initiallyVisible; index++) await page.keyboard.press('ArrowRight');
+  expect(await firstRail.evaluate((node) => node.scrollLeft)).toBe(0);
   await page.evaluate(() => {
     const rail = document.querySelector<HTMLElement>('[data-rail="home-row-0"]')!;
     const trace: number[] = [];
@@ -300,7 +304,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   expect(trace[0]).toBe(0);
   expect(trace.at(-1)).toBeGreaterThan(trace[0]);
   expect(trace.some((value) => value > trace[0] && value < trace.at(-1)!)).toBe(true);
-  for (let index = 0; index < 8; index++) await page.keyboard.press('ArrowRight');
+  for (let index = initiallyVisible + 1; index < 10; index++) await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s10"]')).toBeFocused();
   await expect.poll(() => firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
   await expect(page.locator('[data-focus="series-s10"] .card-copy strong')).toHaveText('自然小课堂 10');
@@ -347,7 +351,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await expect(page.locator('[data-focus="series-s1"]')).toHaveCSS('transform', 'none');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
-  expect(await firstRail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+  expect(await firstRail.evaluate((node) => node.scrollLeft)).toBe(0);
 });
 
 test('card covers and resume progress with background artwork only inside folders', async ({ page }) => {
@@ -453,15 +457,29 @@ test('rail scrolling keeps arrow geometry out of animation frames', async ({ pag
   });
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-demo-series-1-episode-2"]')).toBeFocused();
+  expect(await rail.evaluate((node) => node.scrollLeft)).toBe(0);
+  const initiallyVisible = await rail.evaluate((node) => Array.from(node.querySelectorAll<HTMLElement>('button[data-focus]'))
+    .filter((card) => card.offsetLeft + card.offsetWidth <= node.clientWidth - 20).length);
+  const totalCards = await rail.locator('button[data-focus]').count();
+  for (let index = 2; index < initiallyVisible; index++) await page.keyboard.press('ArrowRight');
+  expect(await rail.evaluate((node) => node.scrollLeft)).toBe(0);
+  await page.keyboard.press('ArrowRight');
   await expect(shelf.locator('.rail-direction-left')).toHaveClass(/available/);
-  await expect.poll(() => rail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(300);
+  await expect.poll(() => rail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
   expect(await page.evaluate(() => (window as unknown as { arrowLayoutReads: number }).arrowLayoutReads)).toBe(0);
   expect(await rail.boundingBox()).toEqual(bounds);
-  for (let index = 0; index < 10; index++) await page.keyboard.press('ArrowRight');
-  await expect(page.locator('[data-focus="series-demo-series-1-episode-12"]')).toBeFocused();
+  for (let index = initiallyVisible + 1; index < totalCards; index++) await page.keyboard.press('ArrowRight');
+  await expect(rail.locator('button[data-focus]').last()).toBeFocused();
   await expect(shelf.locator('.rail-direction-right')).not.toHaveClass(/available/);
   await page.keyboard.press('ArrowLeft');
-  await expect(page.locator('[data-focus="series-demo-series-1-episode-11"]')).toBeFocused();
+  await expect(rail.locator('button[data-focus]').nth(totalCards - 2)).toBeFocused();
+  const rightEnd = await rail.evaluate((node) => node.scrollLeft);
+  const firstVisibleAtEnd = await rail.evaluate((node) => Array.from(node.querySelectorAll<HTMLElement>('button[data-focus]'))
+    .findIndex((card) => card.offsetLeft >= node.scrollLeft + 20));
+  for (let index = totalCards - 3; index >= firstVisibleAtEnd; index--) await page.keyboard.press('ArrowLeft');
+  expect(await rail.evaluate((node) => node.scrollLeft)).toBe(rightEnd);
+  for (let index = firstVisibleAtEnd - 1; index >= 0; index--) await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => rail.evaluate((node) => node.scrollLeft)).toBe(0);
   await page.locator('[data-focus="series-demo-series-1-episode-1"]').focus();
   await expect(shelf.locator('.rail-direction-left')).not.toHaveClass(/available/);
   expect(await rail.boundingBox()).toEqual(bounds);

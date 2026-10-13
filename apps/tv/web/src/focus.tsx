@@ -56,7 +56,18 @@ export function finishScrolls(root: HTMLElement | null) {
 // Use untransformed offsets, rather than animated card bounds, for stable targets.
 export function revealCard(node: HTMLElement) {
   const rail = node.closest<HTMLElement>('.rail-track');
-  if (rail) glide(rail, node.offsetLeft, 0);
+  if (rail) {
+    // Keep the row still while the focused card remains visible. Use the
+    // animation target so rapid remote presses do not chase intermediate frames.
+    const content = node.closest<HTMLElement>('.rail-content');
+    const left = node.offsetLeft + (content?.offsetLeft ?? 0);
+    const current = scrolling.get(rail)?.left ?? rail.scrollLeft;
+    const inset = 20;
+    if (left < current + inset) glide(rail, left - inset, 0);
+    else if (left + node.offsetWidth > current + rail.clientWidth - inset) {
+      glide(rail, left + node.offsetWidth - rail.clientWidth + inset, 0);
+    }
+  }
   const shelf = node.closest<HTMLElement>('.shelf');
   const viewport = node.closest<HTMLElement>('.shelves-scroll');
   if (viewport && node.closest('.topbar')) glide(viewport, 0, 0);
