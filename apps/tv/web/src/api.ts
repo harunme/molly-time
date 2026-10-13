@@ -1,8 +1,9 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; serverUrl?: string; suggestedServerUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string };
-export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
-export type Season = { id: string; name: string; image?: { url: string }; indexNumber?: number; episodeCount?: number };
-export type Episode = { id: string; name: string; runtimeMs?: number; image?: { url: string } };
+export type ImageRef = { url: string; directUrl?: string | null };
+export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: ImageRef };
+export type Season = { id: string; name: string; image?: ImageRef; indexNumber?: number; episodeCount?: number };
+export type Episode = { id: string; name: string; runtimeMs?: number; image?: ImageRef };
 export type PageInfo = { page?: number; pageSize?: number; total?: number; hasMore?: boolean };
 export type HomeRow = PageInfo & { id?: string; title: string; items: Series[] };
 export type Home = { rows: HomeRow[] };
@@ -134,10 +135,18 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
     default: throw new ApiError('浏览器仅供预览，请在电视客户端播放');
   }
 }
-export async function imageSource(path: string, width = 480): Promise<string> {
+export async function imageSource(path: string, width = 480, directUrl?: string | null): Promise<string> {
   if (demoEnabled) return demoImage(path);
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !/^\/api\/items\/[A-Za-z0-9-]+\/image$/.test(url.pathname)) throw new ApiError('封面地址无效');
+  if (directUrl) {
+    try {
+      const remote = new URL(directUrl);
+      if (remote.protocol === 'https:' && !remote.port && !remote.username && !remote.password
+        && /^[a-z0-9-]+\.oss-[a-z0-9-]+\.aliyuncs\.com$/i.test(remote.hostname)
+        && remote.searchParams.has('OSSAccessKeyId') && remote.searchParams.has('Signature') && remote.searchParams.has('Expires')) return remote.toString();
+    } catch { /* Fall back to the authenticated image endpoint. */ }
+  }
   const version = url.searchParams.get('v');
   url.search = `?w=${width === 960 ? 960 : 480}`;
   if (version && /^[A-Za-z0-9-]{1,64}$/.test(version)) url.searchParams.set('v', version);

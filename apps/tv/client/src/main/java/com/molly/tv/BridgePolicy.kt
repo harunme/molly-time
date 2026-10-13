@@ -5,7 +5,15 @@ object BridgePolicy {
     private val reads = Regex("/api/(home|me|families/me/children|(?:series|seasons|episodes)/$ID|series/$ID/playlist)")
     private val select = Regex("/api/children/($ID)/select")
     val image = Regex("/api/items/$ID/image")
+    private val ossImageHost = Regex("[a-z0-9-]+\\.oss-[a-z0-9-]+\\.aliyuncs\\.com")
     val id = Regex(ID)
+    fun allowsOssImage(url: String): Boolean = runCatching {
+        val uri = java.net.URI(url)
+        val parameters = uri.rawQuery?.split('&')?.map { it.substringBefore('=') }?.toSet() ?: emptySet()
+        uri.scheme == "https" && uri.port == -1 && uri.userInfo == null &&
+            ossImageHost.matches(uri.host.orEmpty()) && uri.path.orEmpty().isNotEmpty() &&
+            parameters.containsAll(setOf("OSSAccessKeyId", "Signature", "Expires"))
+    }.getOrDefault(false)
     fun allows(method: String, path: String): Boolean {
         if (method == "GET" && path.contains('?')) {
             val route = path.substringBefore('?')

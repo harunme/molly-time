@@ -8,7 +8,7 @@ from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 from ..deps import DbSession
-from ..images import image_url
+from ..images import image_ref
 from ..manage_auth import Parent
 from ..management_models import HomeConfig, HomeRevision, ResourceState, WatchProgress
 from ..models import ChildProfile, Item
@@ -18,6 +18,7 @@ from .pagination import paginate
 from .watch_progress import scoped_progress
 
 router = APIRouter(prefix="/api/manage/home-config", tags=["manage-home"])
+RECENT_PLAYBACK_LIMIT = 10
 DEFAULT = {
     "schemaVersion": 1,
     "rows": [
@@ -231,14 +232,15 @@ def render_home(content, db, family, child=None, modern=True):
                 latest = {key: progress for key, progress in latest.items()
                           if not progress.completed and progress.position_ms > 0}
             episodes = [db.get(Item, key) for key in latest]
-            episodes = [e for e in episodes if e and e.family_id == family and visible(db, e)][: row["limit"]]
+            limit = min(row["limit"], RECENT_PLAYBACK_LIMIT) if recently_played else row["limit"]
+            episodes = [e for e in episodes if e and e.family_id == family and visible(db, e)][:limit]
             items = [
                 dict(
                     EpisodeSummary(
                         id=e.id,
                         name=e.name,
                         runtimeMs=(e.runtime_ticks or 0) // 10000,
-                        image=ImageRef(url=image_url(db, e)),
+                        image=ImageRef(**image_ref(db, e)),
                     ).model_dump(),
                     type="episode",
                     positionMs=latest[e.id].position_ms,
@@ -261,7 +263,7 @@ def render_home(content, db, family, child=None, modern=True):
                     id=s.id,
                     name=s.name,
                     episodeCount=len(published_episodes(db, s.id, family)),
-                    image=ImageRef(url=image_url(db, s)),
+                    image=ImageRef(**image_ref(db, s)),
                 ).model_dump()
                 for s in selected[: row["limit"]]
             ]

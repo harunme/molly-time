@@ -66,7 +66,7 @@ class WebBundleStore(context: Context) {
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(path.substringAfterLast('.', "").lowercase())
             ?: "application/octet-stream"
         val headers = if (path == "index.html") mapOf("Content-Security-Policy" to
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; media-src 'self' https:; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'") else emptyMap()
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: https://*.aliyuncs.com; connect-src 'self'; media-src 'self' https:; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'") else emptyMap()
         android.webkit.WebResourceResponse(mime, if (mime.startsWith("text/") || mime.contains("javascript") || mime.contains("json")) "utf-8" else null,
             200, "OK", headers, input)
     }.getOrNull()

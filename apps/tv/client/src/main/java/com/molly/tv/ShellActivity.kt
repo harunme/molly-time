@@ -189,6 +189,7 @@ class ShellActivity : AppCompatActivity() {
 
             override fun shouldInterceptRequest(v: WebView, req: WebResourceRequest): WebResourceResponse? {
                 assetLoader.shouldInterceptRequest(req.url)?.let { return it }
+                if (req.method == "GET" && BridgePolicy.allowsOssImage(req.url.toString())) return null
                 if (!trustedWebOrigin(req.url)) return blocked()
                 if (!BridgePolicy.image.matches(req.url.path.orEmpty())) return blocked()
                 if (req.method != "GET") return blocked()

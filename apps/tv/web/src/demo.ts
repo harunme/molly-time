@@ -31,7 +31,7 @@ export function demoRequest(path: string, method = 'GET', body?: Record<string, 
   if (path === '/api/me') return { id: 'demo-family' };
   if (path === '/api/home') {
     const home: Home = { rows: [
-      { id: 'recently-played', title: '最近播放', items: episodes(folders[0].id).slice(0, 12).map((episode) => ({ ...episode, type: 'episode' })) },
+      { id: 'recently-played', title: '最近播放', items: episodes(folders[0].id).slice(0, 10).map((episode) => ({ ...episode, type: 'episode' })) },
       { id: 'discover', title: '发现新故事', items: folders.slice(12, 30) },
       { id: 'library', title: '我的媒体库', items: folders },
     ] };

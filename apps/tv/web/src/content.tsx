@@ -41,6 +41,7 @@ export function tone(id: string) { return tones[Array.from(id).reduce((sum, c) =
 
 export function Cover({ item, large = false, children }: { item: Series | Episode; large?: boolean; children?: ReactNode }) {
   const imagePath = item.image?.url ?? '';
+  const directUrl = item.image?.directUrl;
   const [loaded, setLoaded] = useState({ path: '', src: '' });
   const src = loaded.path === imagePath ? loaded.src : '';
   const [visible, setVisible] = useState(large);
@@ -63,19 +64,26 @@ export function Cover({ item, large = false, children }: { item: Series | Episod
       if (previous.startsWith('blob:') && previous !== url) URL.revokeObjectURL(previous);
     };
     if (!item.image?.url) replace('');
-    else if (visible) imageSource(item.image.url, large ? 960 : 480).then((url) => {
-      pendingUrl = url;
-      if (canceled) { if (url.startsWith('blob:')) URL.revokeObjectURL(url); return; }
-      const image = new Image();
-      image.onload = () => replace(url);
-      image.onerror = () => { replace(''); if (url.startsWith('blob:')) URL.revokeObjectURL(url); };
-      image.src = url;
-    }).catch(() => replace(''));
+    else if (visible) {
+      const load = (useDirect: boolean) => imageSource(imagePath, large ? 960 : 480, useDirect ? directUrl : undefined).then((url) => {
+        pendingUrl = url;
+        if (canceled) { if (url.startsWith('blob:')) URL.revokeObjectURL(url); return; }
+        const image = new Image();
+        image.onload = () => replace(url);
+        image.onerror = () => {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+          if (useDirect && url.startsWith('https://')) void load(false).catch(() => replace(''));
+          else replace('');
+        };
+        image.src = url;
+      });
+      void load(!!directUrl).catch(() => replace(''));
+    }
     return () => {
       canceled = true;
       if (pendingUrl.startsWith('blob:') && pendingUrl !== loadedUrl.current) URL.revokeObjectURL(pendingUrl);
     };
-  }, [imagePath, visible, large]);
+  }, [imagePath, directUrl, visible, large]);
   const position = 'positionMs' in item ? item.positionMs : undefined;
   const runtime = 'runtimeMs' in item ? item.runtimeMs : undefined;
   const progress = !large && position !== undefined && runtime !== undefined &&

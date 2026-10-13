@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BridgePolicyTest {
+    @Test fun signedOssCoversAreTheOnlyExternalImagesAllowed() {
+        val cover = "https://covers.oss-cn-test.aliyuncs.com/cover.jpg?OSSAccessKeyId=id&Expires=1&Signature=sig"
+        assertTrue(BridgePolicy.allowsOssImage(cover))
+        assertFalse(BridgePolicy.allowsOssImage(cover.replace("https:", "http:")))
+        assertFalse(BridgePolicy.allowsOssImage(cover.replace(".aliyuncs.com", ".example.com")))
+        assertFalse(BridgePolicy.allowsOssImage(cover.substringBefore("&Signature=")))
+    }
     @Test fun rejectsCredentialAndCrossOriginRequests() {
         for (path in listOf("https://evil.test/api/home", "//evil.test/api/home",
             "/api/auth/refresh", "/api/auth/pairing/poll", "/api/auth/pairing/start", "/api/home?token=secret", "/api/../auth/login",

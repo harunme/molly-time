@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import aliased
 
-from ..images import image_url
+from ..images import image_ref
 from ..management_models import ResourceState, WatchProgress
 from ..models import Item, MediaFile
 from ..resource_policy import visible_item_ids
@@ -44,7 +44,7 @@ def episode_dto(db, episode):
         "seasonName": parent.name, "seasonId": parent.id,
         "indexNumber": episode.index_number,
         "runtimeMs": episode.runtime_ticks // 10000 if episode.runtime_ticks is not None else None,
-        "image": {"url": image_url(db, episode)},
+        "image": image_ref(db, episode),
     }
 
 
@@ -133,7 +133,7 @@ def paged_home(content, db, family, child, page, page_size, row_id):
             items = [{
                 "id": item.id, "name": item.name, "year": item.premiere_year,
                 "sortName": item.sort_name, "episodeCount": count,
-                "image": {"url": image_url(db, item)},
+                "image": image_ref(db, item),
             } for item, count in records]
         if total or row_id is not None:
             result.append({

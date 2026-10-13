@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..deps import CurrentUser, DbSession
-from ..images import image_url
+from ..images import image_ref
 from ..management_models import WatchProgress
 from ..models import ChildProfile, Item, MediaFile
 from ..resource_policy import published_episodes, require_visible, visible
@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api", tags=["catalog"])
 
 class ImageRef(BaseModel):
     url: str
+    directUrl: str | None = None
 
 
 class SeriesSummary(BaseModel):
@@ -161,7 +162,7 @@ def home(
     rowId: str | None = Query(default=None, min_length=1, max_length=64, pattern="^[A-Za-z0-9-]+$"),
 ):
     """Render the effective published family/child configuration for this client."""
-    from .manage_home import effective_content, render_home
+    from .manage_home import RECENT_PLAYBACK_LIMIT, effective_content, render_home
 
     child = None if getattr(request.state, "device_id", None) else request.headers.get("x-molly-child") or None
     content, revision = effective_content(db, user.family_id, child)
@@ -172,7 +173,7 @@ def home(
         while recent_id in ids:
             recent_id = "tv-" + recent_id
         content = {**content, "rows": [
-            {"id": recent_id, "title": "最近播放", "source": "recently-played", "enabled": True, "limit": 24},
+            {"id": recent_id, "title": "最近播放", "source": "recently-played", "enabled": True, "limit": RECENT_PLAYBACK_LIMIT},
             *content["rows"],
         ]}
     if page is not None:
@@ -213,7 +214,7 @@ def series_detail(series_id: str, request: Request, user: CurrentUser, db: DbSes
             "name": s.name,
             "year": s.premiere_year,
             "overview": s.overview,
-            "image": {"url": image_url(db, s)},
+            "image": image_ref(db, s),
         },
         "seasons": [
             SeasonSummary(
@@ -221,7 +222,7 @@ def series_detail(series_id: str, request: Request, user: CurrentUser, db: DbSes
                 name=se.name,
                 indexNumber=se.index_number,
                 episodeCount=len(_season_episodes(db, se.id, user.family_id, request)),
-                image=ImageRef(url=image_url(db, se)),
+                image=ImageRef(**image_ref(db, se)),
             ).model_dump()
             for se in seasons
             if getattr(request.state, "parent_preview", False) or visible(db, se)
@@ -252,7 +253,7 @@ def season_detail(season_id: str, request: Request, user: CurrentUser, db: DbSes
                 name=ep.name,
                 indexNumber=ep.index_number,
                 runtimeMs=_runtime_ms(ep.runtime_ticks),
-                image=ImageRef(url=image_url(db, ep)),
+                image=ImageRef(**image_ref(db, ep)),
             ).model_dump()
             for ep in episodes
             if getattr(request.state, "parent_preview", False) or visible(db, ep)
@@ -279,7 +280,7 @@ def episode_detail(episode_id: str, request: Request, user: CurrentUser, db: DbS
         indexNumber=ep.index_number,
         overview=ep.overview,
         runtimeMs=_runtime_ms(ep.runtime_ticks),
-        image=ImageRef(url=image_url(db, ep)),
+        image=ImageRef(**image_ref(db, ep)),
         sources=[
             MediaSource(
                 container=s.container,
@@ -417,7 +418,7 @@ def series_playlist(
                 "seasonId": e.parent_id,
                 "indexNumber": e.index_number,
                 "runtimeMs": _runtime_ms(e.runtime_ticks),
-                "image": {"url": image_url(db, e)},
+                "image": image_ref(db, e),
             }
             for e in episodes
         ],

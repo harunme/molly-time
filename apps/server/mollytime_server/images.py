@@ -2,6 +2,8 @@
 
 from .models import Item, MediaFile
 from .resource_policy import visible_item_ids
+from .storage import build_storage
+from .storage.settings import get_storage_settings
 
 
 def image_url(db, item):
@@ -47,3 +49,28 @@ def image_url(db, item):
             version = f"?v={candidate.primary_image_tag}" if candidate.primary_image_tag else ""
             return f"/api/items/{candidate.id}/image{version}"
     return f"/api/items/{item.id}/image"
+
+
+def image_ref(db, item):
+    """Return the authenticated fallback and, for OSS artwork, a direct URL."""
+    url = image_url(db, item)
+    result = {"url": url}
+    image_id = url.split("/", 4)[3]
+    current, visited = db.get(Item, image_id), set()
+    while current and current.id not in visited and current.family_id == item.family_id:
+        visited.add(current.id)
+        file = db.query(MediaFile).filter(
+            MediaFile.item_id == current.id,
+            MediaFile.family_id == item.family_id,
+            MediaFile.kind == "image",
+        ).first()
+        if file:
+            if file.storage == "oss":
+                signing = db.info.get("cover_oss_signing")
+                if signing is None:
+                    signing = (build_storage("oss"), get_storage_settings().oss_signed_url_ttl)
+                    db.info["cover_oss_signing"] = signing
+                result["directUrl"] = signing[0].signed_url(file.path, signing[1])
+            break
+        current = db.get(Item, current.parent_id) if current.parent_id else None
+    return result
