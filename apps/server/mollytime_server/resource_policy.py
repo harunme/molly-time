@@ -1,10 +1,32 @@
 """Shared catalog publication rules; parent-cookie previews may inspect drafts."""
 
 from fastapi import HTTPException
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
 from .management_models import ResourceState
 from .models import Item, MediaFile
+
+
+def visible_item_ids(family_id):
+    """SQL equivalent of visible(), including ancestor and family checks.
+
+    Only chains reachable from a root are eligible, so cycles remain invisible.
+    A missing parent terminates a chain, just as in visible().
+    """
+    parent = Item.__table__.alias("publication_parent")
+    allowed = ~select(ResourceState.item_id).where(
+        ResourceState.item_id == Item.id,
+        or_(ResourceState.status != "published", ResourceState.ready.is_(False)),
+    ).exists()
+    tree = select(Item.id).where(
+        Item.family_id == family_id,
+        ~select(parent.c.id).where(parent.c.id == Item.parent_id).exists(),
+        allowed,
+    ).cte("visible_catalog", recursive=True)
+    tree = tree.union_all(select(Item.id).join(tree, Item.parent_id == tree.c.id).where(
+        Item.family_id == family_id, allowed,
+    ))
+    return select(tree.c.id)
 
 
 def visible(db, item: Item) -> bool:

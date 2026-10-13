@@ -4,7 +4,11 @@ export type Child = { id: string; name: string };
 export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
 export type Season = { id: string; name: string; image?: { url: string }; indexNumber?: number; episodeCount?: number };
 export type Episode = { id: string; name: string; runtimeMs?: number; image?: { url: string } };
-export type Home = { rows: { title: string; items: Series[] }[] };
+export type PageInfo = { page?: number; pageSize?: number; total?: number; hasMore?: boolean };
+export type HomeRow = PageInfo & { id?: string; title: string; items: Series[] };
+export type Home = { rows: HomeRow[] };
+export type PlaylistEpisode = Episode & { seasonName: string };
+export type Playlist = PageInfo & { episodes: PlaylistEpisode[]; episodeId: string | null; hasProgress: boolean; resumeEpisode?: PlaylistEpisode | null };
 export class ApiError extends Error { constructor(message: string, public status = 0) { super(message); } }
 
 type NativePort = { postMessage: (message: string) => void; onmessage?: (event: MessageEvent<string>) => void };
@@ -36,7 +40,7 @@ export function call<T>(method: string, args: Record<string, unknown> = {}): Pro
   });
 }
 export const request = <T>(path: string, method = 'GET', body?: Record<string, unknown>) =>
-  call<T>('request', { path, method, body, ...(path === '/api/home' ? { homeSchemaVersion: 2 } : {}) });
+  call<T>('request', { path, method, body, ...(path.split('?')[0] === '/api/home' ? { homeSchemaVersion: 2 } : {}) });
 
 // Browser TV bindings persist for this origin. Native TV credentials never enter JS.
 let access = '', refresh = '', deviceId = '';

@@ -31,4 +31,14 @@ class BridgePolicyTest {
         assertTrue(BridgePolicy.allows("GET", "/api/episodes/episode-1"))
         assertFalse(BridgePolicy.allows("GET", "/api/episodes/"))
     }
+    @Test fun paginationAllowsOnlyBoundedCatalogParameters() {
+        assertTrue(BridgePolicy.allows("GET", "/api/home?page=2&pageSize=24&rowId=library"))
+        assertTrue(BridgePolicy.allows("GET", "/api/series/folder-1/playlist?page=1&pageSize=24"))
+        for (path in listOf("/api/home?page=0", "/api/home?page=2147483648", "/api/home?pageSize=49",
+            "/api/home?page=1&page=2", "/api/home?page=1&token=secret", "/api/home?rowId=a%2Fb",
+            "/api/home?page=1?token=secret", "/api/series/folder-1/playlist?rowId=library", "/api/me?page=1")) {
+            assertFalse(path, BridgePolicy.allows("GET", path))
+        }
+        assertFalse(BridgePolicy.allows("POST", "/api/home?page=1"))
+    }
 }

@@ -19,6 +19,13 @@ const episodes = (seriesId: string) => Array.from({ length: 80 }, (_, index) => 
 }));
 
 export function demoRequest(path: string, method = 'GET', body?: Record<string, unknown>): unknown {
+  const url = new URL(path, location.origin);
+  const paged = url.searchParams.has('page');
+  const page = Number(url.searchParams.get('page') ?? 1);
+  const pageSize = Number(url.searchParams.get('pageSize') ?? 24);
+  const rowId = url.searchParams.get('rowId');
+  path = url.pathname;
+  const batch = <T,>(items: T[]) => items.slice((page - 1) * pageSize, page * pageSize);
   if (path === '/api/settings/playback') {
     if (method === 'PUT') defaultSubtitle = String(body?.defaultSubtitle ?? defaultSubtitle);
     return { defaultSubtitle };
@@ -27,19 +34,25 @@ export function demoRequest(path: string, method = 'GET', body?: Record<string, 
   if (path === '/api/families/me/children') return children;
   const child = /^\/api\/children\/(demo-child-[12])\/select$/.exec(path);
   if (child) { childId = child[1]; return { ok: true }; }
-  if (path === '/api/home') return { rows: [
-    { title: '最近播放', items: episodes(folders[0].id).slice(0, 12).map((episode) => ({ ...episode, type: 'episode' })) },
-    { title: '发现新故事', items: folders.slice(12, 30) },
-    { title: '我的媒体库', items: folders },
-  ] } satisfies Home;
+  if (path === '/api/home') {
+    const home: Home = { rows: [
+      { id: 'recently-played', title: '最近播放', items: episodes(folders[0].id).slice(0, 12).map((episode) => ({ ...episode, type: 'episode' })) },
+      { id: 'discover', title: '发现新故事', items: folders.slice(12, 30) },
+      { id: 'library', title: '我的媒体库', items: folders },
+    ] };
+    return !paged ? home : { rows: home.rows.filter((row) => !rowId || row.id === rowId).map((row) => ({
+      ...row, total: row.items.length, page, pageSize, hasMore: page * pageSize < row.items.length, items: batch(row.items),
+    })) };
+  }
   const playlist = /^\/api\/series\/(demo-series-\d+)\/playlist$/.exec(path);
   if (playlist && folders.some((folder) => folder.id === playlist[1])) return {
-    episodes: episodes(playlist[1]), episodeId: `${playlist[1]}-episode-16`, hasProgress: true,
+    episodes: paged ? batch(episodes(playlist[1])) : episodes(playlist[1]), episodeId: `${playlist[1]}-episode-16`, hasProgress: true,
+    resumeEpisode: episodes(playlist[1])[15], ...(paged ? { page, pageSize, total: 80, hasMore: page * pageSize < 80 } : {}),
   };
   if (path === '/api/playback/sessions') return { sessionId: 'demo-session' };
   if (/\/progress(?:\?|$)/.test(path)) return { positionMs: 0, completed: false };
   if (path.startsWith('/api/playback/sessions/')) return { ok: true };
-  if (/\/playback\?/.test(path)) throw new Error('假数据用于测试浏览和滚动，没有实际视频。请返回视频列表。');
+  if (/\/playback$/.test(path)) throw new Error('假数据用于测试浏览和滚动，没有实际视频。请返回视频列表。');
   throw new Error(`假数据模式未提供此操作：${path}`);
 }
 

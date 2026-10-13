@@ -7,7 +7,7 @@ has seasons; seasons have episodes; episodes have media sources.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -154,7 +154,12 @@ def _summarize_files(files: list[MediaFile], preference="zh") -> list[MediaSourc
 
 
 @router.get("/home")
-def home(request: Request, user: CurrentUser, db: DbSession):
+def home(
+    request: Request, user: CurrentUser, db: DbSession,
+    page: int | None = Query(default=None, ge=1, le=2147483647),
+    pageSize: int = Query(default=24, ge=1, le=48),
+    rowId: str | None = Query(default=None, min_length=1, max_length=64, pattern="^[A-Za-z0-9-]+$"),
+):
     """Render the effective published family/child configuration for this client."""
     from .manage_home import effective_content, render_home
 
@@ -162,13 +167,19 @@ def home(request: Request, user: CurrentUser, db: DbSession):
     content, revision = effective_content(db, user.family_id, child)
     modern = request.headers.get("x-molly-home-schema") == "2"
     if modern:
+        recent_id = "recently-played"
+        ids = {row["id"] for row in content["rows"]}
+        while recent_id in ids:
+            recent_id = "tv-" + recent_id
         content = {**content, "rows": [
-            {"title": "最近播放", "source": "recently-played", "enabled": True, "limit": 24},
+            {"id": recent_id, "title": "最近播放", "source": "recently-played", "enabled": True, "limit": 24},
             *content["rows"],
         ]}
-    result = render_home(
-        content, db, user.family_id, child, modern=modern
-    )
+    if page is not None:
+        from .catalog_pagination import paged_home
+        result = paged_home(content, db, user.family_id, child, page, pageSize, rowId)
+    else:
+        result = render_home(content, db, user.family_id, child, modern=modern)
     return dict(result, revision=revision)
 
 
@@ -348,15 +359,16 @@ def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSes
         return {"episodeId": None}
     folder = _get_item(db, folder_id, "Series", user.family_id)
     require_visible(db, folder, request)
-    _, episodes = _folder_playlist(db, folder_id, user.family_id)
-    index = next((i for i, item in enumerate(episodes) if item.id == episode_id), None)
-    following = episodes[index + 1] if index is not None and index + 1 < len(episodes) else None
-    return {"episodeId": following.id if following else None}
+    from .catalog_pagination import following_episode_id, ordered_playlist
+    query, order = ordered_playlist(db, user.family_id, folder_id)
+    return {"episodeId": following_episode_id(query, order, episode_id)}
 
 
 @router.get("/series/{series_id}/playlist")
 def series_playlist(
-    series_id: str, request: Request, user: CurrentUser, db: DbSession, childId: str | None = None
+    series_id: str, request: Request, user: CurrentUser, db: DbSession, childId: str | None = None,
+    page: int | None = Query(default=None, ge=1, le=2147483647),
+    pageSize: int = Query(default=24, ge=1, le=48),
 ):
     series = _get_item(db, series_id, "Series", user.family_id)
     require_visible(db, series, request)
@@ -365,6 +377,9 @@ def series_playlist(
         child = db.get(ChildProfile, child_id)
         if child is None or child.family_id != user.family_id:
             raise HTTPException(404)
+    if page is not None:
+        from .catalog_pagination import paged_playlist
+        return paged_playlist(db, user.family_id, user.id, child_id, series, page, pageSize)
     seasons, episodes = _folder_playlist(db, series_id, user.family_id)
     progress = None
     if episodes:

@@ -4,7 +4,8 @@ test('subtitle dropdown supports remote selection, cancellation and save failure
   await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
     accessToken: 'test-access', refreshToken: 'test-refresh', deviceId: 'test-device', childId: '',
   })));
-  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
+  await page.route('**/api/home**', (route) => route.fulfill({ json: { rows: [] } }));
+  await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
   let saved = 'en', fail = false;
   const writes: string[] = [];

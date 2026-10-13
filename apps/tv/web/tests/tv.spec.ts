@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
+});
+
 for (const supported of [true, false]) {
   test(`client update setting respects native capability: ${supported}`, async ({ page }) => {
     await page.addInitScript((supportsUpdates) => {
@@ -12,7 +16,7 @@ for (const supported of [true, false]) {
         const { id, method, args } = JSON.parse(raw);
         let result: unknown = { ok: true };
         if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl: 'https://media.example.test', authenticated: true, childId: '', nativePlayback: true, clientUpdates: supportsUpdates, shellVersion: '0.4.0' };
-        if (method === 'request' && args.path === '/api/home') result = { rows: [{ title: '媒体库', items: [{ id: 'story', name: '故事', episodeCount: 1 }] }] };
+        if (method === 'request' && args.path.split('?')[0] === '/api/home') result = { rows: [{ title: '媒体库', items: [{ id: 'story', name: '故事', episodeCount: 1 }] }] };
         if (method === 'request' && args.path === '/api/families/me/children') result = [];
         if (method === 'checkUpdate') { w.updateChecks++; result = { release: { versionName: '0.5.0', size: 2097152, notes: '网页显示更新说明' } }; }
         setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
@@ -66,7 +70,7 @@ test('recent playback precedes library and supports remote playback and return',
       let result: unknown = { ok: true };
       if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: 'c1', nativePlayback: true };
       if (method === 'request' && args.path === '/api/families/me/children') result = [{ id: 'c1', name: '小朋友' }];
-      if (method === 'request' && args.path === '/api/home') result = { rows: [
+      if (method === 'request' && args.path.split('?')[0] === '/api/home') result = { rows: [
         { title: '最近播放', items: [
           { id: 'recent', name: '最近的视频', type: 'episode', runtimeMs: 120000, positionMs: 30000, completed: false },
           { id: 'finished', name: '播完的视频', type: 'episode', runtimeMs: 120000, positionMs: 120000, completed: true },
@@ -109,7 +113,7 @@ test('remote navigation, playback return, folder restoration and durable binding
       let result: unknown = { ok: true };
       if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: '', nativePlayback: true };
       if (method === 'request') {
-        const path = args.path;
+        const path = args.path.split('?')[0];
         if (path === '/api/home') result = { rows: [{ title: '宝宝课堂', items: [
           { id: 's1', name: '动物小故事', episodeCount: 2 }, { id: 's2', name: '一起学颜色', episodeCount: 3 },
         ] }] };
@@ -202,7 +206,7 @@ test('TV starts at home, pairs without a password, renews expired codes and open
   await page.route('**/api/auth/pairing/cancel', (route) => route.fulfill({ json: { ok: true } }));
   await page.route('**/api/auth/pairing/poll', (route) => route.fulfill({ json: started === 1 ? { status: 'expired' } :
     { status: 'authorized', auth: { accessToken: 'test', refreshToken: 'refresh', deviceId: 'device-1' } } }));
-  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
+  await page.route('**/api/home**', (route) => route.fulfill({ json: { rows: [] } }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/settings/playback', (route) => route.fulfill({ json: { defaultSubtitle: 'zh' } }));
   await page.goto('/tv/');
@@ -222,8 +226,8 @@ test('TV starts at home, pairs without a password, renews expired codes and open
   await page.reload();
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
   await expect(page.getByRole('button', { name: '绑定家庭媒体库' })).toHaveCount(0);
-  await page.unroute('**/api/home');
-  await page.route('**/api/home', (route) => route.fulfill({ status: 503, json: { detail: 'Temporary outage' } }));
+  await page.unroute('**/api/home**');
+  await page.route('**/api/home**', (route) => route.fulfill({ status: 503, json: { detail: 'Temporary outage' } }));
   await page.reload();
   await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).not.toBeNull();
@@ -233,7 +237,7 @@ test('re-pair confirmation retains binding on failure and opens a new code only 
   await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
     accessToken: 'cached-access', refreshToken: 'cached-device', deviceId: 'device-1', childId: 'c1',
   })));
-  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
+  await page.route('**/api/home**', (route) => route.fulfill({ json: { rows: [] } }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/settings/playback', (route) => route.fulfill({ json: { defaultSubtitle: 'zh' } }));
   let attempts = 0;
@@ -265,7 +269,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
       let result: unknown = { ok: true };
       if (method === 'getCapabilities') result = { bridgeVersion: 1, authenticated: true, childId: 'c1', nativePlayback: true };
       if (method === 'request' && args.path === '/api/families/me/children') result = [{ id: 'c1', name: '小米' }, { id: 'c2', name: '小麦' }];
-      if (method === 'request' && args.path === '/api/home') result = { rows: ['今晚一起看', '发现新故事', '继续观看'].map((title, row) => ({ title,
+      if (method === 'request' && args.path.split('?')[0] === '/api/home') result = { rows: ['今晚一起看', '发现新故事', '继续观看'].map((title, row) => ({ title,
         items: Array.from({ length: 12 }, (_, i) => ({ id: `s${i + 1}`, name: `${['自然小课堂', '奇妙动物', '一起学英语'][row]} ${i + 1}`, episodeCount: 12 + i,
           ...(row === 2 ? { type: 'episode', runtimeMs: 180000 } : {}) })).filter((item) => !removedAfterPlayback || item.id !== 's10') })) };
       if (method === 'playEpisode') removedAfterPlayback = true;
@@ -364,7 +368,7 @@ test('card covers and resume progress with background artwork only inside folder
   const heroRequests: string[] = [];
   await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [{ title: '继续观看', items: [
+  await page.route('**/api/home**', (route) => route.fulfill({ json: { rows: [{ title: '继续观看', items: [
     { id: 'a', name: '第一集', type: 'episode', positionMs: 30000, runtimeMs: 120000, image: { url: '/api/items/a/image?v=first' } },
     { id: 'b', name: '第二集', type: 'episode', positionMs: 10, runtimeMs: 0, image: { url: '/api/items/b/image' } },
     { id: 'c', name: '自然课堂', episodeCount: 1, image: { url: '/api/items/c/image?v=third' } },
@@ -376,7 +380,7 @@ test('card covers and resume progress with background artwork only inside folder
     const width = url.pathname.includes('/c/') ? 720 : 640;
     return route.fulfill({ contentType: 'image/svg+xml', body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="360"><rect width="100%" height="100%" fill="#446655"/></svg>` });
   });
-  await page.route('**/api/series/c/playlist', (route) => route.fulfill({ json: { episodeId: 'ready', episodes: [
+  await page.route('**/api/series/c/playlist**', (route) => route.fulfill({ json: { episodeId: 'ready', episodes: [
     { id: 'ready', name: '动物', runtimeMs: 60000, image: { url: '/api/items/c/image?v=third' } },
   ] } }));
   await page.goto('/tv/');
@@ -413,8 +417,8 @@ test('folder videos form a vertical grid with remote row navigation', async ({ p
   })));
   await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [{ title: '媒体库', items: [{ id: 'grid', name: '故事集', episodeCount: 26 }] }] } }));
-  await page.route('**/api/series/grid/playlist', (route) => route.fulfill({ json: {
+  await page.route('**/api/home**', (route) => route.fulfill({ json: { rows: [{ title: '媒体库', items: [{ id: 'grid', name: '故事集', episodeCount: 26 }] }] } }));
+  await page.route('**/api/series/grid/playlist**', (route) => route.fulfill({ json: {
     episodes: Array.from({ length: 26 }, (_, index) => ({ id: `grid-${index}`, name: `第 ${index + 1} 集`, runtimeMs: 300000 })),
   } }));
   await page.goto('/tv/');
@@ -504,7 +508,7 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   await expect(recentRail.locator('.rail-direction-left')).toHaveClass(/available/);
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => page.locator('[data-rail="home-row-1"] .focused').count()).toBe(1);
-  await expect(page.locator('[data-grid="home-row-2"] .poster')).toHaveCount(36);
+  await expect(page.locator('[data-grid="home-row-2"] .poster')).toHaveCount(24);
   await expect(page.locator('.library-shelf .rail-track')).toHaveCount(0);
   await page.locator('[data-focus="home-2-demo-series-1"]').focus();
   await page.keyboard.press('ArrowDown');
@@ -513,7 +517,7 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   await expect(page.locator('[data-focus="home-2-demo-series-1"]')).toBeFocused();
   await page.keyboard.press('Enter');
   const cards = page.locator('.episode-grid .poster');
-  await expect(cards).toHaveCount(80);
+  await expect(cards).toHaveCount(24);
   await expect(page.locator('[data-focus="episode-demo-series-1-episode-16"]')).toBeFocused();
   await expect(cards.first().locator('img')).toHaveAttribute('src', /^data:image\/svg\+xml/);
   const columns = await cards.evaluateAll((nodes) => nodes.filter((node) => (node as HTMLElement).offsetTop === (nodes[0] as HTMLElement).offsetTop).length);
@@ -525,6 +529,7 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   }
   await expect(cards.nth(index)).toBeInViewport();
   await expect.poll(() => cards.nth(index).evaluate((node) => node.getBoundingClientRect().bottom - node.closest('.shelves-scroll')!.getBoundingClientRect().bottom)).toBeLessThanOrEqual(0);
+  await expect(cards).toHaveCount(80);
   await page.screenshot({ path: 'test-results/tv-mock-grid.png' });
   await page.keyboard.press('Enter');
   await expect(page.getByRole('alert')).toContainText('没有实际视频');

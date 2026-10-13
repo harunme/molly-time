@@ -1,6 +1,27 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import { imageSource, type Episode, type Series } from './api';
+import { FocusButton } from './focus';
+
+export function LoadMore({ focusKey, loading, error, disabled, onLoad, onRetry, onFocus }: {
+  focusKey: string; loading?: boolean; error?: string; disabled: boolean;
+  onLoad: () => void; onRetry: () => void; onFocus: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ref.current || disabled || loading || error) return;
+    const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) onLoad(); },
+      { root: ref.current.closest('.shelves-scroll'), rootMargin: '240px' });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [disabled, loading, error, onLoad]);
+  return <div ref={ref} className="load-more">
+    {error && <p role="alert">{error}</p>}
+    <FocusButton focusKey={focusKey} className="text-button" disabled={disabled} onFocus={() => { onFocus(); if (!error) onLoad(); }} onClick={onRetry}>
+      {loading ? '正在加载更多…' : error ? '重试加载' : '加载更多'}
+    </FocusButton>
+  </div>;
+}
 
 export function Icon({ name }: { name: 'home' | 'people' | 'settings' | 'back' | 'play' | 'check' | 'menu' }) {
   const paths = {

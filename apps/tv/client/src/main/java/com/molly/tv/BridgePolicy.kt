@@ -6,8 +6,23 @@ object BridgePolicy {
     private val select = Regex("/api/children/($ID)/select")
     val image = Regex("/api/items/$ID/image")
     val id = Regex(ID)
-    fun allows(method: String, path: String): Boolean =
-        (method == "GET" && reads.matches(path)) || (method == "POST" && select.matches(path)) ||
+    fun allows(method: String, path: String): Boolean {
+        if (method == "GET" && path.contains('?')) {
+            val route = path.substringBefore('?')
+            if (route != "/api/home" && !Regex("/api/series/$ID/playlist").matches(route)) return false
+            val pairs = path.substringAfter('?').split('&').map { it.split('=') }
+            if (pairs.any { it.size != 2 } || pairs.map { it[0] }.distinct().size != pairs.size) return false
+            return pairs.all { (key, value) ->
+                when (key) {
+                    "page" -> value.matches(Regex("[0-9]+")) && (value.toIntOrNull() ?: 0) > 0
+                    "pageSize" -> value.matches(Regex("[0-9]+")) && (value.toIntOrNull() ?: 0) in 1..48
+                    "rowId" -> route == "/api/home" && id.matches(value)
+                    else -> false
+                }
+            }
+        }
+        return (method == "GET" && reads.matches(path)) || (method == "POST" && select.matches(path)) ||
             (method in listOf("GET", "PUT") && path == "/api/settings/playback")
+    }
     fun selectedChild(path: String): String? = select.matchEntire(path)?.groupValues?.get(1)
 }

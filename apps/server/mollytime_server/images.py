@@ -1,7 +1,7 @@
 """Versioned covers, including published episode artwork for empty containers."""
 
 from .models import Item, MediaFile
-from .resource_policy import visible
+from .resource_policy import visible_item_ids
 
 
 def image_url(db, item):
@@ -37,13 +37,13 @@ def image_url(db, item):
                 Item.type.in_(["Season", "Episode"]),
                 MediaFile.family_id == item.family_id,
                 MediaFile.kind == "image",
+                Item.id.in_(visible_item_ids(item.family_id)),
             )
             .order_by(Item.type.desc(), Item.index_number, Item.name, Item.id)
             .distinct()
-            .all()
+            .limit(1).all()
         )
         for candidate in candidates:
-            if visible(db, candidate):
-                version = f"?v={candidate.primary_image_tag}" if candidate.primary_image_tag else ""
-                return f"/api/items/{candidate.id}/image{version}"
+            version = f"?v={candidate.primary_image_tag}" if candidate.primary_image_tag else ""
+            return f"/api/items/{candidate.id}/image{version}"
     return f"/api/items/{item.id}/image"

@@ -200,11 +200,14 @@ def follow_family(user: Parent, db: DbSession, childId: str):
 def render_home(content, db, family, child=None, modern=True):
     from .catalog import EpisodeSummary, ImageRef, SeriesSummary
 
-    # Hold containers for the duration of the request to avoid weak-identity-map N+1 reads.
-    db.info["home_containers"] = (
-        db.query(Item).filter(Item.family_id == family, Item.type.in_(["Series", "Season"])).all()
-    )
-    available = published_series(db, family)
+    needs_series = any(row["enabled"] and row["source"] not in ("continue", "recently-played")
+                       for row in content["rows"])
+    # Continue/recent playback rows do not need to enumerate the media library.
+    if needs_series:
+        db.info["home_containers"] = (
+            db.query(Item).filter(Item.family_id == family, Item.type.in_(["Series", "Season"])).all()
+        )
+    available = published_series(db, family) if needs_series else []
     lookup = {s.id: s for s in available}
     result = []
     for row in content["rows"]:

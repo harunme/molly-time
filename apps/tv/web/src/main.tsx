@@ -3,9 +3,10 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { PlaybackSettings } from './playback-settings';
-import { ApiError, call, request, type Capabilities, type Child, type Episode, type Home, type Series } from './api';
+import { ApiError, call, request, type Capabilities, type Child, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
+import { appendItems, appendRow, catalogRequest, loadHome, loadPlaylist } from './catalog';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
-import { Cover, DetailHeader, HomeGreeting, Icon, Shelf, tone } from './content';
+import { Cover, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf, tone } from './content';
 import { PairingPanel } from './pairing';
 import './style.css';
 
@@ -15,6 +16,7 @@ init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true
 type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, number> };
 type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | 'connection' | 'client-update' | null;
 const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
+const emptyVideos: PlaylistEpisode[] = [];
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
 const playbackTime = (ms: number) => {
   const seconds = Math.floor(ms / 1000);
@@ -34,8 +36,11 @@ function App() {
   const [capabilities, setCapabilities] = useState<Capabilities>();
   const [authenticated, setAuthenticated] = useState(false);
   const [folder, setFolder] = useState<Series>();
-  const [videos, setVideos] = useState<(Episode & { seasonName: string })[]>([]);
-  const [resumeId, setResumeId] = useState('');
+  const [playlist, setPlaylist] = useState<Playlist>();
+  const videos = playlist?.episodes ?? emptyVideos;
+  const resumeId = playlist?.hasProgress ? playlist.episodeId ?? '' : '';
+  const resume = playlist?.resumeEpisode;
+  const displayedVideos = resume && !videos.some((item) => item.id === resume.id) ? [resume, ...videos] : videos;
   const homeSnapshot = useRef<ViewSnapshot | undefined>(undefined);
   const [home, setHome] = useState<Home>({ rows: [] });
   const [children, setChildren] = useState<Child[]>([]);
@@ -57,6 +62,12 @@ function App() {
   const overlayOrigin = useRef('');
   const viewport = useRef<HTMLDivElement>(null);
   const loadSerial = useRef(0);
+  const appended = useRef(false);
+  const homeCache = useRef<{ scope: string; reload: number; data: Home } | undefined>(undefined);
+  const playlistCache = useRef<{ scope: string; reload: number; folder: string; data: Playlist } | undefined>(undefined);
+  const [pageStates, setPageStates] = useState<Record<string, { loading?: boolean; error?: string }>>({});
+  const [readyToAppend, setReadyToAppend] = useState(false);
+  const pageRequests = useRef(new Set<string>());
   const updateRequestTime = useRef(-Infinity);
   const checkClientUpdate = async () => {
     // Remote Enter may also dispatch a native button click for the same press.
@@ -135,24 +146,84 @@ function App() {
     return () => { canceled = true; };
   }, [authenticated, fail, serverEpoch]);
   useEffect(() => {
-    if (!authenticated) return;
     const serial = ++loadSerial.current;
+    appended.current = false;
+    setReadyToAppend(false);
+    setPageStates({});
+    if (!authenticated) { homeCache.current = undefined; playlistCache.current = undefined; return; }
+    const scope = `${serverEpoch}:${child}`;
     setBusy(true); setError('');
-    const task = folder ? request<{ episodes: (Episode & { seasonName: string })[]; episodeId: string | null; hasProgress: boolean }>(`/api/series/${folder.id}/playlist`).then((data) => {
-      if (serial === loadSerial.current) { setVideos(data.episodes); setResumeId(data.hasProgress ? data.episodeId ?? '' : ''); }
-    }) : request<Home>('/api/home').then((data) => {
+    const cachedHome = homeCache.current?.scope === scope ? homeCache.current : undefined;
+    const cachedPlaylist = playlistCache.current?.scope === scope && playlistCache.current.folder === folder?.id ? playlistCache.current : undefined;
+    const active = () => serial === loadSerial.current;
+    const task = folder ? loadPlaylist(folder.id, cachedPlaylist?.data, active).then((data) => {
       if (serial === loadSerial.current) {
-        const order = (title: string) => title === '最近播放' ? 0 : title === '我的媒体库' ? 2 : 1;
-        setHome({ rows: [...data.rows].sort((a, b) => order(a.title) - order(b.title)) });
+        playlistCache.current = { scope, reload, folder: folder.id, data };
+        setPlaylist(data);
+      }
+    }) : (cachedHome?.reload === reload ? Promise.resolve(cachedHome.data) : loadHome(cachedHome?.data, active)).then((data) => {
+      if (serial === loadSerial.current) {
+        homeCache.current = { scope, reload, data };
+        setHome(data);
       }
     });
     task.catch((error) => { if (serial === loadSerial.current) fail(error); })
       .finally(() => { if (serial === loadSerial.current) setBusy(false); });
     return () => { loadSerial.current++; };
-  }, [authenticated, folder, reload, fail, serverEpoch]);
+  }, [authenticated, folder, reload, fail, serverEpoch, child]);
+
+  const loadMore = (rowId = 'playlist', retry = false) => {
+    if (busy || !readyToAppend || overlay || playing || (!retry && pageStates[rowId]?.error)) return;
+    const row = home.rows.find((item) => item.id === rowId);
+    const current = folder ? playlist : row;
+    if (!current?.hasMore) return;
+    const serial = loadSerial.current;
+    const key = `${serial}:${rowId}`;
+    if (pageRequests.current.has(key)) return;
+    pageRequests.current.add(key);
+    setPageStates((state) => ({ ...state, [rowId]: { loading: true } }));
+    const task = folder ? catalogRequest<Playlist>(`/api/series/${folder.id}/playlist`, (current.page ?? 1) + 1).then((more) => {
+      if (serial !== loadSerial.current) return;
+      appended.current = true;
+      if (getCurrentFocusKey() === 'more-playlist' && more.episodes[0]) {
+        restore.current = { ...snapshot(), focus: `episode-${more.episodes[0].id}` };
+      }
+      const data = { ...more, episodes: appendItems(videos, more.episodes) };
+      if (playlistCache.current) playlistCache.current.data = data;
+      setPlaylist(data);
+    }) : catalogRequest<Home>('/api/home', (current.page ?? 1) + 1, rowId).then((more) => {
+      if (serial !== loadSerial.current) return;
+      const next = more.rows[0];
+      if (!next || next.id !== rowId) throw new ApiError('栏目已更新，请重新打开媒体库');
+      appended.current = true;
+      if (getCurrentFocusKey() === `more-${rowId}` && next.items[0]) {
+        restore.current = { ...snapshot(), focus: homeFocus(home.rows.findIndex((item) => item.id === rowId), next.items[0]) };
+      }
+      // Other rows may finish loading concurrently.
+      setHome((previous) => {
+        const data = appendRow(previous, next);
+        if (homeCache.current) homeCache.current.data = data;
+        return data;
+      });
+    });
+    void task.catch((failure) => {
+      if (serial !== loadSerial.current) return;
+      if (failure instanceof ApiError && failure.status === 401) fail(failure);
+      else setPageStates((state) => ({ ...state, [rowId]: { error: failure instanceof Error ? failure.message : '加载失败，请重试' } }));
+    }).finally(() => {
+      pageRequests.current.delete(key);
+      if (serial === loadSerial.current) setPageStates((state) => ({ ...state, [rowId]: { ...state[rowId], loading: false } }));
+    });
+  };
 
   useEffect(() => {
     if (busy || playing) return;
+    // Appending cards keeps existing DOM focus and scroll position. Do not run
+    // the route-entry focus reset after every background batch.
+    if (appended.current) {
+      appended.current = false;
+      if (!restore.current) return;
+    }
     const timer = setTimeout(() => {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' : overlay === 'children' ? `child-${child || children[0]?.id}` :
@@ -169,6 +240,7 @@ function App() {
         viewport.current.querySelectorAll<HTMLElement>('[data-rail]').forEach((node) => { node.scrollLeft = saved.rails[node.dataset.rail!] ?? 0; });
       } else if (viewport.current && !overlay) viewport.current.scrollTop = 0;
       restore.current = undefined;
+      setReadyToAppend(true);
     }, 60);
     return () => clearTimeout(timer);
   }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, children, child, serverAddress, capabilities?.serverUrl]);
@@ -300,21 +372,25 @@ function App() {
           <FocusButton focusKey="settings" className="settings-trigger" ariaLabel="设置" disabled={!!overlay} onArrow={topbarArrow} onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>
         </div>
       </div>
-        {authenticated && (folder ? <DetailHeader series={folder} total={videos.length} loading={busy} /> : <HomeGreeting name={selectedChild?.name} />)}
+        {authenticated && (folder ? <DetailHeader series={folder} total={playlist?.total ?? videos.length} loading={busy} /> : <HomeGreeting name={selectedChild?.name} />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1>{capabilities?.serverUrl ? <><p>已连接媒体库，请绑定家庭电视。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></> : <><p>输入家庭媒体库地址开始使用。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('connection')}>设置媒体库地址</FocusButton></>}</div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
-            {videos.map((item) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
-              onArrow={cardArrow(true)} onFocus={() => remember(`episode-${item.id}`)} onClick={() => { void play(item.id); }}>
+            {displayedVideos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
+              onArrow={cardArrow(true)} onFocus={() => { remember(`episode-${item.id}`); if (index >= displayedVideos.length - 8) loadMore(); }} onClick={() => { void play(item.id); }}>
               <Cover item={item}><span>{item.id === resumeId ? '继续观看 · ' : ''}{watchedPosition(item) || duration(item.runtimeMs)}</span><Icon name="play" /></Cover><div className="card-copy"><strong>{item.name}</strong></div>
             </FocusButton>)}
+            {playlist?.hasMore && <LoadMore focusKey="more-playlist" loading={pageStates.playlist?.loading} error={pageStates.playlist?.error}
+              disabled={!!overlay || playing || !readyToAppend} onLoad={() => loadMore()} onRetry={() => loadMore('playlist', true)} onFocus={() => remember('more-playlist')} />}
           </Shelf> : home.rows.map((row, rowIndex) => {
             const rowKey = `home-row-${rowIndex}`;
-            return <Shelf key={rowKey} focusKey={rowKey} title={row.title} kind={row.title === '我的媒体库' ? 'library-shelf' : ''}>
-              {row.items.map((item) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
-                onArrow={cardArrow(rowIndex === 0)} onFocus={() => remember(key)}
+            return <Shelf key={rowKey} focusKey={rowKey} title={row.title} kind={row.id === 'library' || row.title === '我的媒体库' ? 'library-shelf' : ''}>
+              {row.items.map((item, index) => { const key = homeFocus(rowIndex, item); return <FocusButton key={item.id} focusKey={key} className="poster" disabled={!!overlay}
+                onArrow={cardArrow(rowIndex === 0)} onFocus={() => { remember(key); if (row.id && index >= row.items.length - 8) loadMore(row.id); }}
                 onClick={() => { if (item.type === 'episode') void play(item.id); else { homeSnapshot.current = snapshot(); setFolder(item); } }}>
                 <Cover item={item}>{item.type === 'episode' && <><span>{episodeAction(item)}</span><Icon name="play" /></>}</Cover><div className="card-copy"><strong>{item.name}</strong>{item.type !== 'episode' && <span>{item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}</span>}</div>
               </FocusButton>; })}
+              {row.id && row.hasMore && <LoadMore focusKey={`more-${row.id}`} loading={pageStates[row.id]?.loading} error={pageStates[row.id]?.error}
+                disabled={!!overlay || playing || !readyToAppend} onLoad={() => loadMore(row.id)} onRetry={() => loadMore(row.id, true)} onFocus={() => remember(`more-${row.id}`)} />}
             </Shelf>;
           }))}
           {authenticated && !busy && !error && (folder ? videos.length === 0 : home.rows.length === 0) &&
