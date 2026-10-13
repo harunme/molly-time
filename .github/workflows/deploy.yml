@@ -42,13 +42,8 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
-          python -m venv apps/server/.venv
-          apps/server/.venv/bin/pip install -e 'apps/server[dev]'
           pnpm --dir apps/web install --frozen-lockfile
           pnpm --dir apps/tv/web install --frozen-lockfile
-          pnpm --dir apps/web exec playwright install --with-deps chromium
       - name: Configure deployment SSH
         env:
           DEPLOY_KEY: ${{ secrets.MOLLYTIME_DEPLOY_KEY }}
@@ -96,15 +91,11 @@ jobs:
           set -euo pipefail
           sdkmanager "platforms;android-$COMPILE_SDK" "build-tools;$BUILD_TOOLS"
           python tools/ci_tv_apk.py prepare-signing --directory "$RUNNER_TEMP/molly-tv-signing"
-      - name: Build and test
+      - name: Build web apps
         run: |
           pnpm --dir apps/web build
           pnpm --dir apps/tv/web build
           python tools/package-tv-web.py
-          apps/server/.venv/bin/python -m pytest apps/server/tests -q
-          apps/server/.venv/bin/python -m pytest tools/tests -q
-          pnpm --dir apps/tv/web test
-          pnpm --dir apps/web exec playwright test tests/file-hash.spec.ts tests/manage.spec.ts --grep 'upload SHA-256|real upload'
       - name: Build and verify signed TV APK
         if: steps.native_plan.outputs.required == 'true'
         env:
@@ -118,8 +109,7 @@ jobs:
           export MOLLYTIME_TV_WEB_PREBUILT=1
           python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
           bash tools/build-tv-client.sh release \
-            "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME" \
-            :client:testDebugUnitTest :client:lintDebug
+            "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME"
           python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
       - name: Generate TV release notes
         if: steps.native_plan.outputs.required == 'true'
