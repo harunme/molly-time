@@ -7,18 +7,7 @@ help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 dev: ## Start API, TV web, and parent web development servers
-	@set -m; \
-	  bash tools/run-server.sh & server_pid=$$!; \
-	  bash tools/run-tv-web.sh & tv_pid=$$!; \
-	  pnpm --dir apps/web dev & web_pid=$$!; \
-	  cleanup() { kill $$server_pid $$tv_pid $$web_pid 2>/dev/null || true; wait 2>/dev/null || true; }; \
-	  trap cleanup EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; \
-	  while kill -0 $$server_pid 2>/dev/null && kill -0 $$tv_pid 2>/dev/null && kill -0 $$web_pid 2>/dev/null; do sleep 1; done; \
-	  status=0; \
-	  for pid in $$server_pid $$tv_pid $$web_pid; do \
-	    if ! kill -0 $$pid 2>/dev/null; then wait $$pid || status=$$?; fi; \
-	  done; \
-	  exit $$status
+	@bash tools/run-dev.sh
 
 tv: ## Start only the TV web development server
 	bash tools/run-tv-web.sh
