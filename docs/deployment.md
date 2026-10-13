@@ -43,7 +43,7 @@ CI 签名文件只写入 runner 临时目录，权限 600，任务结束时清�
 
 GitHub 仓库 Secrets 已配置 `MOLLYTIME_DEPLOY_KEY` 和 `MOLLYTIME_DEPLOY_KNOWN_HOSTS`。部署密钥使用独立 Ed25519 密钥，服务器通过 SSH forced command 限制为 `check`、只读的 `apk-state` 和 `deploy <40位提交SHA>`；不能执行普通 shell 命令、转发端口或开启终端。主机公钥固定，CI 不使用动态 `ssh-keyscan` 或关闭主机验证。
 
-服务器的固定接收入口为 `/usr/local/sbin/mollytime-github-deploy` 和 `/usr/local/lib/mollytime-deploy.py`，源码见 `infra/github-deploy-gate.sh` 和 `infra/github-deploy.py`。这些入口脚本变更需通过现有管理 SSH 连接单独安装，不由上传发布包覆盖。
+服务器的固定接收入口为 `/usr/local/sbin/mollytime-github-deploy` 和 `/usr/local/lib/mollytime-deploy.py`，源码见 `infra/github-deploy-gate.sh` 和 `infra/github-deploy.py`。这些入口脚本变更需通过现有管理 SSH 连接单独安装，不由上传发布包覆盖。已有签名 Secrets 时，使用 `python3 tools/setup_tv_ci.py --receiver-only` 只更新接收入口；TV 更新说明通过 UTF-8 文件传入发布容器，兼容服务器 Python 3.6 的 ASCII 环境。
 
 每次发布解压到 `/opt/mollytime/releases/<SHA>-<随机后缀>/`。接收器拒绝越界路径、链接、未知文件和过大的发布包；共享 `.env`、`data/` 与 `tls/` 保留在服务器根部署目录。镜像使用提交 SHA 标记。启动前将 SQLite 在线备份到 `data/backups/`；启动后检查容器健康、可信 HTTPS、管理端和 TV 页面。失败时恢复上一版本的镜像和代理配置，成功后才更新部署状态。
 

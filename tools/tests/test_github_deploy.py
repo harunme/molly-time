@@ -157,7 +157,8 @@ def test_deploy_receiver_remains_python36_compatible():
 
 
 @pytest.mark.parametrize('failure', [False, True])
-def test_apk_publication_failure_restores_application_state(tmp_path, failure):
+@pytest.mark.parametrize('release_notes', ['修复播放卡顿', None])
+def test_apk_publication_failure_restores_application_state(tmp_path, failure, release_notes):
     root = tmp_path / 'server'
     root.mkdir()
     (root / '.env').write_text('MOLLYTIME_RELEASE=previous\nMOLLYTIME_AUTH_SECRET=keep\n')
@@ -168,7 +169,7 @@ def test_apk_publication_failure_restores_application_state(tmp_path, failure):
             'sourceFingerprint': 'd' * 64, 'versionCode': 6, 'versionName': '0.4.0+6',
             'expectedRelease': {'versionCode': 5, 'sha256': current['sha256']},
             'reason': 'native-inputs-changed', 'inputCount': 20,
-            'releaseNotes': '修复播放卡顿'}
+            'releaseNotes': release_notes}
     bundle = io.BytesIO()
     with tarfile.open(fileobj=io.BytesIO(archive_bytes()), mode='r:gz') as old, \
             tarfile.open(fileobj=bundle, mode='w:gz') as archive:
@@ -184,7 +185,9 @@ def test_apk_publication_failure_restores_application_state(tmp_path, failure):
         calls.append((sha, args))
         if args[0] == 'run':
             assert json.loads((root / 'deployment-state.json').read_text())['tag'] == tag
-            assert args[-2:] == ('--notes', '修复播放卡顿')
+            assert args[-2:] == ('--notes-file', '/ci-release/tv-release-notes.txt')
+            assert (Path(args[4].split(':', 1)[0]) / 'tv-release-notes.txt').read_text(encoding='utf-8') == (release_notes or '电视客户端更新')
+            assert all(str(arg).isascii() for arg in args)
             if failure:
                 raise RuntimeError('APK publication failed')
     with patch.multiple(deploy, ROOT=root, STATE=root / 'deployment-state.json', LOCK=root / 'deploy.lock'), \

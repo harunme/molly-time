@@ -186,7 +186,7 @@ def main():
     parser.add_argument("--notes-file", type=Path)
     parser.add_argument("--build-tools", type=Path, required=True)
     args = parser.parse_args()
-    notes = args.notes_file.read_text() if args.notes_file else args.notes
+    notes = args.notes_file.read_text(encoding="utf-8") if args.notes_file else args.notes
     try:
         ci_plan = (
             CiReleasePlan.model_validate_json(args.ci_plan_file.read_text())

@@ -102,13 +102,18 @@ def publish_apk(destination, tag, plan):
     if not plan or not plan['requiresApk']:
         validate_plan(destination, tag)
         return
+    notes = plan.get('releaseNotes') or '电视客户端更新'
+    if not isinstance(notes, str) or len(notes) > 4000:
+        raise ValueError('Invalid TV release notes')
+    notes_file = destination / 'artifacts/tv-release-notes.txt'
+    notes_file.write_text(notes, encoding='utf-8')
     compose(destination, tag, 'run', '--rm', '--no-deps',
             '-v', str(destination / 'artifacts') + ':/ci-release:ro',
             'mollytime-server', 'python', '-m',
             'mollytime_server.scripts.publish_tv_release',
             '/ci-release/mollytime-tv-release.apk', '--build-tools', '/usr/bin',
             '--storage', 'auto', '--ci-plan-file', '/ci-release/tv-client-plan.json',
-            '--notes', plan.get('releaseNotes') or '电视客户端更新')
+            '--notes-file', '/ci-release/tv-release-notes.txt')
 
 
 def run(args, env=None):

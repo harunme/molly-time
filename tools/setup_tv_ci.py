@@ -156,9 +156,12 @@ def main():
     parser.add_argument("--repo", default="harunme/molly-time")
     parser.add_argument("--host", default="118.89.122.66")
     parser.add_argument("--identity", type=Path, default=Path("MollyTime_SSH.pem"))
+    parser.add_argument("--receiver-only", action="store_true",
+                        help="Update the server deployment receiver without accessing GitHub Secrets")
     args = parser.parse_args()
     root = args.root.resolve()
-    configure_secrets(root, args.repo)
+    if not args.receiver_only:
+        configure_secrets(root, args.repo)
     install_receiver(root, args.host, args.identity.resolve())
 
 
