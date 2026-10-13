@@ -73,6 +73,21 @@ def upgrade_reminder_sessions(engine) -> None:
         """)
 
 
+def upgrade_trash_entries(engine) -> None:
+    """Add deletion progress to early recycle-bin tables, preserving existing entries."""
+    with engine.begin() as connection:
+        # API and standalone worker startup may overlap. Check under the write lock.
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        columns = inspect(connection).get_columns("trash_entries")
+        if "deleted_objects" in {column["name"] for column in columns}:
+            return
+        connection.exec_driver_sql(
+            "ALTER TABLE trash_entries ADD COLUMN "
+            "deleted_objects JSON NOT NULL DEFAULT '[]'"
+        )
+
+
 def init_db() -> None:
     """Create tables. Idempotent."""
     # Import models so they register with Base.metadata.
@@ -98,6 +113,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     # create_all creates new tables but does not upgrade columns in existing ones.
     upgrade_reminder_sessions(engine)
+    upgrade_trash_entries(engine)
     # create_all does not add indexes to existing tables. Enforce the same global
     # username invariant on legacy databases without rewriting users or their IDs.
     with engine.begin() as connection:
@@ -130,6 +146,9 @@ def init_db() -> None:
     # Storage tables are additive: existing uploads/files need no ALTER or backfill.
     # Existing scan resources remain available; explicit state rows govern new uploads.
     with get_session_factory()() as session:
+        from .trash import backfill_trash
+
+        backfill_trash(session)
         accounts.backfill_identities(session)
         if session.get(management_models.SchemaRevision, "management-v1") is None:
             session.add(management_models.SchemaRevision(id="management-v1"))

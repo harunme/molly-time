@@ -86,6 +86,22 @@ class ResourceState(Base):
     published_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class TrashEntry(Base):
+    __tablename__ = "trash_entries"
+    item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), primary_key=True)
+    archived_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now, index=True)
+    previous_status: Mapped[str] = mapped_column(String(16), default="draft")
+    deleting: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str] = mapped_column(String(256), default="")
+    deleted_objects: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class TrashSettings(Base):
+    __tablename__ = "trash_settings"
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), primary_key=True)
+    retention_days: Mapped[int] = mapped_column(Integer, default=7)  # 0 disables expiry.
+
+
 class UploadSession(Base):
     __tablename__ = "upload_sessions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

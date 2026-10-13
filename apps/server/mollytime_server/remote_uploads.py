@@ -62,7 +62,7 @@ def ensure_capacity(db, family, size):
         return
     used = (
         db.query(func.coalesce(func.sum(MediaFile.size_bytes), 0))
-        .filter(MediaFile.family_id == family)
+        .filter(MediaFile.family_id == family, MediaFile.kind != "deleted")
         .scalar()
     )
     reserved = (

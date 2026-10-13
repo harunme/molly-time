@@ -55,6 +55,8 @@ def visible(db, item: Item) -> bool:
 
 
 def require_visible(db, item, request):
+    if item.type == "Deleted":
+        raise HTTPException(404, "内容已删除")
     if not getattr(request.state, "parent_preview", False) and not visible(db, item):
         raise HTTPException(404, "内容未发布或不可访问")
 

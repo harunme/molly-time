@@ -29,6 +29,7 @@ from ..remote_uploads import (
 from ..storage import build_storage
 from ..storage.settings import get_storage_settings
 from ..transactions import serialize_sqlite_write
+from ..trash import archive, ensure_active
 from .pagination import paginate
 
 router = APIRouter(prefix="/api/manage", tags=["manage-resources"])
@@ -36,7 +37,7 @@ router = APIRouter(prefix="/api/manage", tags=["manage-resources"])
 
 def owned(db, model, key, family):
     row = db.get(model, key)
-    if row is None or row.family_id != family:
+    if row is None or row.family_id != family or (model is Item and row.type == "Deleted"):
         raise HTTPException(404, "内容不存在")
     return row
 
@@ -121,10 +122,13 @@ def dto(db, item, include_files=True):
 def resource_filters(query, q, status):
     if q:
         query = query.filter(Item.name.icontains(q.strip(), autoescape=True))
+    query = query.outerjoin(ResourceState, ResourceState.item_id == Item.id)
+    effective_status = func.coalesce(ResourceState.status, "published")
     if status:
-        query = query.outerjoin(ResourceState, ResourceState.item_id == Item.id).filter(
-            func.coalesce(ResourceState.status, "published") == status
-        )
+        query = query.filter(effective_status == status)
+    else:
+        # Hide archives before pagination/counting; explicit archive searches remain available.
+        query = query.filter(effective_status.notin_(["archived", "deleted"]))
     return query
 
 
@@ -145,7 +149,7 @@ def resources(
 ):
     query = db.query(Item).filter(Item.family_id == user.family_id)
     if parentId:
-        owned(db, Item, parentId, user.family_id)
+        ensure_active(db, owned(db, Item, parentId, user.family_id))
         query = query.filter(Item.parent_id == parentId)
     else:
         query = query.filter(Item.type == "Series")
@@ -160,6 +164,40 @@ def resources(
                     lambda rows: prime_resources(db, rows, summary or page is not None))
 
 
+@router.get("/resources/stats")
+def resource_stats(user: Parent, db: DbSession):
+    active = (
+        db.query(Item.id, Item.type, func.coalesce(ResourceState.status, "published"), func.coalesce(ResourceState.ready, True), Item.runtime_ticks)
+        .outerjoin(ResourceState, ResourceState.item_id == Item.id)
+        .filter(
+            Item.family_id == user.family_id,
+            func.coalesce(ResourceState.status, "published").notin_(["archived", "deleted"]),
+        )
+        .all()
+    )
+    active_ids = [item_id for item_id, *_ in active]
+    subtitle_count = 0
+    if active_ids:
+        subtitle_count = db.query(func.count(MediaFile.id)).filter(
+            MediaFile.item_id.in_(active_ids), MediaFile.kind == "subtitle",
+        ).scalar() or 0
+    episode_ids = {item_id for item_id, item_type, *_ in active if item_type == "Episode"}
+    subtitle_video_count = 0
+    if episode_ids:
+        subtitle_video_count = db.query(func.count(func.distinct(MediaFile.item_id))).filter(
+            MediaFile.item_id.in_(episode_ids), MediaFile.kind == "subtitle",
+        ).scalar() or 0
+    return {
+        "videoCount": sum(item_type == "Episode" for _, item_type, *_ in active),
+        "folderCount": sum(item_type == "Series" for _, item_type, *_ in active),
+        "subtitleCount": subtitle_count,
+        "publishedVideoCount": sum(item_type == "Episode" and status == "published" for _, item_type, status, _, _ in active),
+        "readyVideoCount": sum(item_type == "Episode" and ready for _, item_type, _, ready, _ in active),
+        "subtitleVideoCount": subtitle_video_count,
+        "durationMs": sum((runtime_ticks or 0) // 10000 for _, item_type, _, _, runtime_ticks in active if item_type == "Episode"),
+    }
+
+
 @router.get("/folders/{folder_id}/videos")
 def folder_videos(
     folder_id: str, user: Parent, db: DbSession,
@@ -169,6 +207,7 @@ def folder_videos(
     status: str = Query(default="", pattern="^(|draft|published|archived)$"),
 ):
     folder = owned(db, Item, folder_id, user.family_id)
+    ensure_active(db, folder)
     if folder.type != "Series":
         raise HTTPException(422, "请选择文件夹")
     seasons = db.query(Item.id).filter(
@@ -199,6 +238,8 @@ def create(body: ResourceBody, user: Parent, db: DbSession):
     if not name:
         raise HTTPException(422, "名称不能为空")
     parent = owned(db, Item, body.parentId, user.family_id) if body.parentId else None
+    if parent:
+        ensure_active(db, parent)
     expected = {"Season": ("Series",), "Episode": ("Series", "Season")}.get(body.type)
     if (expected and (parent is None or parent.type not in expected)) or (
         body.type == "Series" and parent
@@ -250,8 +291,11 @@ class MoveBody(BaseModel):
 
 @router.post("/resources/{item_id}/move")
 def move_video(item_id: str, body: MoveBody, user: Parent, db: DbSession):
+    serialize_sqlite_write(db)
     item = owned(db, Item, item_id, user.family_id)
     folder = owned(db, Item, body.folderId, user.family_id)
+    ensure_active(db, item)
+    ensure_active(db, folder)
     if item.type != "Episode" or folder.type != "Series":
         raise HTTPException(422, "只能把视频移到文件夹")
     duplicate = (
@@ -284,7 +328,9 @@ class EditBody(BaseModel):
 
 @router.patch("/resources/{item_id}")
 def edit(item_id: str, body: EditBody, user: Parent, db: DbSession):
+    serialize_sqlite_write(db)
     item = owned(db, Item, item_id, user.family_id)
+    ensure_active(db, item)
     if not body.name.strip():
         raise HTTPException(422, "名称不能为空")
     item.name = item.sort_name = body.name.strip()
@@ -301,7 +347,13 @@ def edit(item_id: str, body: EditBody, user: Parent, db: DbSession):
 def transition(item_id: str, action: str, user: Parent, db: DbSession):
     if action not in ("publish", "unpublish", "archive"):
         raise HTTPException(404)
+    serialize_sqlite_write(db)
     item = owned(db, Item, item_id, user.family_id)
+    if action == "archive":
+        archive(db, item)
+        db.commit()
+        return dto(db, item)
+    ensure_active(db, item)
     state = state_for(db, item)
     if action == "publish":
         if not state.ready or (
@@ -319,7 +371,7 @@ def transition(item_id: str, action: str, user: Parent, db: DbSession):
             parent_state.published_at = parent_state.published_at or state.published_at
             ancestor = db.get(Item, ancestor.parent_id) if ancestor.parent_id else None
     else:
-        state.status = "archived" if action == "archive" else "draft"
+        state.status = "draft"
     db.commit()
     return dto(db, item)
 
@@ -393,6 +445,7 @@ def uploads(
 def start_upload(body: UploadBody, user: Parent, db: DbSession):
     serialize_sqlite_write(db)
     item = owned(db, Item, body.itemId, user.family_id)
+    ensure_active(db, item)
     ext = Path(body.filename).suffix.lower()
     extensions = {
         "video": {".mp4"},
@@ -590,10 +643,12 @@ def cancel_upload(upload_id: str, user: Parent, db: DbSession):
 
 @router.post("/tasks/{task_id}/retry")
 def retry_task(task_id: str, user: Parent, db: DbSession):
+    serialize_sqlite_write(db)
     task = db.get(MediaTask, task_id)
     if task is None:
         raise HTTPException(404)
     row = owned(db, UploadSession, task.upload_id, user.family_id)
+    ensure_active(db, owned(db, Item, row.item_id, user.family_id))
     if task.status != "failed":
         raise HTTPException(409, "任务没有失败")
     task.status, task.error = "queued", ""
@@ -640,11 +695,11 @@ class SubtitleOptionsBody(BaseModel):
 def subtitle_options(
     item_id: str, media_id: str, body: SubtitleOptionsBody, user: Parent, db: DbSession
 ):
-    owned(db, Item, item_id, user.family_id)
+    serialize_sqlite_write(db)
+    ensure_active(db, owned(db, Item, item_id, user.family_id))
     media = owned(db, MediaFile, media_id, user.family_id)
     if media.item_id != item_id or media.kind != "subtitle":
         raise HTTPException(404)
-    serialize_sqlite_write(db)
     media.language = body.language
     options = db.get(MediaOptions, media_id) or MediaOptions(media_id=media_id)
     options.label, options.offset_ms = body.label.strip(), body.offsetMs

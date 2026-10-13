@@ -50,7 +50,7 @@ Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体�
 
 默认在服务内运行一个媒体任务线程。需要独立进程时，API 设置 `MOLLYTIME_MEDIA_WORKER_ENABLED=false`，同环境启动 `python -m mollytime_server.media_worker`；不需要 Redis 或消息队列。管理静态目录可通过 `MOLLYTIME_PARENT_WEB_DIR` 覆盖。单个视频默认上限 500 MiB（界面显示 500 MB），普通上传和家长提醒视频共用限制；前端选择时检查，后端在创建上传会话前拒绝超限文件。`MOLLYTIME_MAX_UPLOAD_BYTES` 和 `MOLLYTIME_MEDIA_PROCESSING_MAX_BYTES` 可覆盖上限，有效上限取两者较小值。
 
-当前支持本地/OSS 存储、平台超管、家庭管理员和成员三种角色、过期未完成上传清理、字幕设置及保存到电视任务。永久删除已入库素材、旧版本自动清理、自动转码、儿童内容限制、观看限额、CDN、支付和离线网页包尚未实现。OSS 配置与下载限制见 [部署说明](../../docs/oss-storage.md)。预览展示栏目比例和可见内容，完整遥控器交互仍在 TV 页面验收。
+当前支持本地/OSS 存储、平台超管、家庭管理员和成员三种角色、过期未完成上传清理、字幕设置及保存到电视任务。仅旧版本的独立自动清理、自动转码、儿童内容限制、观看限额、CDN、支付和离线网页包尚未实现。OSS 配置与下载限制见 [部署说明](../../docs/oss-storage.md)。预览展示栏目比例和可见内容，完整遥控器交互仍在 TV 页面验收。
 
 ## 验证
 
@@ -79,7 +79,7 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。基础组件迁移自 `smart-afs-platform/frontend/smartafs/src/components/ui`，组件源码统一在 `src/components/ui`。Tailwind v4 的 CSS-first 全局配置在 `src/styles/theme.css`，集中维护颜色、字号、圆角、控件尺寸、阴影、层级及动效变量；`src/styles/ui-motion.css` 提供配套动画，`src/style.css` 只保留应用基础规则和页面布局。组件不再各自写固定颜色或重复定义变量。Geist 字体随应用自托管，图标使用 Lucide。
 
-页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
+页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
 
 上传任务合并到资源库，通过页面顶部“上传任务”打开弹窗。上传开始后自动显示进度，关闭弹窗继续管理资源，后台传输不会停止；暂停、续传、重新选文件、重试及分页保留。弹窗状态使用资源库或文件夹 URL 的 `?uploads=1`，关闭和浏览器后退保留当前目录、搜索、页码与选择；直接访问、刷新及概览“全部任务”均支持打开弹窗。旧 `/manage/#/upload` 链接重定向到 `/manage/#/library?uploads=1`。弹窗内部滚动，任务错误显示在弹窗内。
 
@@ -114,3 +114,13 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 管理页内容区使用右侧全部可用宽度，运营卡片不再单独限制宽度。字号统一为：页面标题 24px，卡片及弹窗标题 18px，表单输入与日期字段 16px，正文、按钮、导航及表格 14px，说明、状态及分页 12px；同一角色使用相同 Tailwind 字号，避免业务页面随意缩小基础组件。操作按钮、日期、邮箱和状态保持完整，长资源标题截断并保留完整 title，详细数据表在自身容器横向滚动。
 
 热力图使用 `--spacing-heatmap-cell` / `--spacing-heatmap-gap` / `--radius-heatmap`，日期格保持正方形，全年格子不随屏幕宽度拉伸。桌面摘要与日期图分栏，手机显示最近日期并允许横向滚动，原有点击和键盘选择保留。`FileUploadField` 提供紧凑的中文文件选择入口，与其他控件共用高度和字号。`manage-layout.spec.ts` 覆盖 390、1280、1920px 下的所有管理主页面和运营页签，以及长时长、热力图比例和表单一致性。
+
+## 回收站
+
+资源库的“移入回收站”会隐藏资源并阻止电视开始播放，文件夹连同子内容一起处理。回收站独立列出内容、移入时间、预计自动删除时间、OSS/本地占用和可释放空间；包含字幕、封面、保留的旧版本和失败上传残留，按实际文件去重。被其他资源引用的文件不会删除，大小未知的 OSS 文件会标记统计不完整。
+
+默认从移入起保留 **7 天**，管理员可在家庭设置的“回收站自动删除”卡片修改为 14/30/90/365 天或关闭自动删除；更改也适用于已有内容。首次升级时，旧归档从升级时开始计时，不会立即清理。保留期内可以恢复至移入前的发布状态；旧归档没有此前状态，恢复为草稿。
+
+“立即删除”经确认后清理 OSS 和本地文件，无法恢复。删除失败保留记录和进度供重试；开始删除后不能再恢复。观看历史保留，已保存到电视的文件会在电视重连后收到移除命令。仍在上传或处理的资源须先完成或取消任务。
+
+自动清理由媒体工作线程每 5 分钟检查一次。默认随 API 启动；若设置 `MOLLYTIME_MEDIA_WORKER_ENABLED=false`，需运行同环境的 `python -m mollytime_server.media_worker`，否则不会自动清理。停机期间到期的内容在工作线程恢复后清理。

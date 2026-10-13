@@ -54,6 +54,9 @@ class LocalStorage:
     def open(self, key: str) -> bytes:
         return self._abspath(key).read_bytes()
 
+    def delete(self, key: str) -> None:
+        self._abspath(key).unlink(missing_ok=True)
+
     def signed_url(self, key: str, ttl_seconds: int) -> str | None:
         # Local backend cannot issue CDN-style signed URLs. Caller decides
         # whether to fall back to direct streaming.

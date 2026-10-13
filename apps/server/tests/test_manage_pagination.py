@@ -61,6 +61,45 @@ def test_folder_pages_include_direct_and_season_videos(parent):
     assert second["items"][0]["indexNumber"] == 21
 
 
+@pytest.mark.parametrize("kind,endpoint", [
+    ("Series", "resources"),
+    ("Episode", "folders/series/videos"),
+])
+def test_archives_are_hidden_before_pagination_and_can_be_found_explicitly(parent, kind, endpoint):
+    with Session(db.get_engine()) as session:
+        for index in range(6):
+            key = f"archive-check-{index}"
+            session.add(Item(
+                id=key, family_id="f1", type=kind, name=f"Archive check {index}",
+                index_number=index + 1,
+                parent_id=("series" if index % 2 else "season") if kind == "Episode" else None,
+            ))
+            session.flush()
+            if index in (1, 2):
+                session.add(ResourceState(item_id=key, status="draft" if index == 1 else "published"))
+        session.commit()
+    for index in (0, 5):
+        response = parent.post(f"/api/manage/resources/archive-check-{index}/archive")
+        assert response.status_code == 200
+    path = f"/api/manage/{endpoint}?q=Archive%20check"
+    first = parent.get(path + "&page=1&pageSize=3&status=").json()
+    second = parent.get(path + "&page=2&pageSize=3").json()
+    assert first["total"] == second["total"] == 4
+    assert [row["id"] for row in first["items"]] == [f"archive-check-{i}" for i in (1, 2, 3)]
+    assert [row["id"] for row in second["items"]] == ["archive-check-4"]
+    assert len(parent.get(path).json()) == 4
+    assert parent.get(path + "&page=1&status=draft").json()["total"] == 1
+    assert parent.get(path + "&page=1&status=published").json()["total"] == 3
+    archived = parent.get(path + "&page=1&status=archived").json()
+    assert archived["total"] == 2
+    assert [row["id"] for row in archived["items"]] == ["archive-check-0", "archive-check-5"]
+    assert all(row["status"] == "archived" for row in archived["items"])
+    if kind == "Series":
+        assert parent.get(path + "&page=1&summary=true").json()["total"] == 4
+    detail = parent.get("/api/manage/resources/archive-check-0")
+    assert detail.status_code == 200 and detail.json()["status"] == "archived"
+
+
 def test_settings_upload_and_revision_lists_have_complete_pages(parent):
     with Session(db.get_engine()) as session:
         session.add(HomeConfig(id="f1:default", family_id="f1", draft={"schemaVersion": 1, "rows": []}))

@@ -14,12 +14,12 @@ export function useDebounced(value: string, delay = 300) {
   return settled;
 }
 
-export function usePagedData<T extends { id: string; }>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false) {
+export function usePagedData<T extends { id: string; }, Response extends Page<T> = Page<T>>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false) {
   const [position, setPosition] = useState({ path, page: 1 });
   const page = position.path === path ? position.page : 1;
   const setPage = (next: number) => setPosition({ path, page: next });
   const key = `${path}|${page}|${pageSize}`;
-  const [result, setResult] = useState<{ key: string; value: Page<T>; }>();
+  const [result, setResult] = useState<{ key: string; value: Response; }>();
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(true);
   const [known, setKnown] = useState<Record<string, T>>({});
@@ -30,7 +30,7 @@ export function usePagedData<T extends { id: string; }>(path: string, serial = 0
     url.searchParams.set('page', String(page));
     url.searchParams.set('pageSize', String(pageSize));
     setRefreshing(true); setError('');
-    api<Page<T>>(url.pathname + url.search, 'GET', undefined, undefined, controller.signal)
+    api<Response>(url.pathname + url.search, 'GET', undefined, undefined, controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
         if (!Array.isArray(value.items) || !Number.isSafeInteger(value.total) || value.total < 0) {
@@ -47,7 +47,7 @@ export function usePagedData<T extends { id: string; }>(path: string, serial = 0
   }, [path, page, pageSize, serial, key, enabled, remember]);
   const current = result?.key === key ? result.value : undefined;
   return {
-    data: current?.items ?? [], total: current?.total ?? 0, page, pageSize, setPage,
+    response: current, data: current?.items ?? [], total: current?.total ?? 0, page, pageSize, setPage,
     known, error, loading: enabled && !current && !error, refreshing: enabled && refreshing
   };
 }

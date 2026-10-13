@@ -272,6 +272,12 @@ def loop(stop):
                     expire_uploads()
                 except Exception:  # Cleanup failure must not starve media tasks.
                     logger.exception("Upload expiry cleanup failed")
+                try:
+                    from .trash import cleanup_expired
+
+                    cleanup_expired(now)
+                except Exception:
+                    logger.exception("Recycle bin cleanup failed")
             worked = run_once()
         except Exception:
             logger.exception("Media worker iteration failed")

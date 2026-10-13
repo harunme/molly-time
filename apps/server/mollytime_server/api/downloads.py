@@ -12,6 +12,7 @@ from ..models import Item, MediaFile
 from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..transactions import serialize_sqlite_write
+from ..trash import ensure_active
 from .manage_resources import owned
 from .pagination import paginate
 from .playback import playback_info
@@ -72,7 +73,9 @@ class CommandBody(BaseModel):
 
 @router.post("/api/manage/resources/{item_id}/downloads")
 def command(item_id: str, body: CommandBody, user: Parent, db: DbSession):
+    serialize_sqlite_write(db)
     item = owned(db, Item, item_id, user.family_id)
+    ensure_active(db, item)
     device = owned(db, Device, body.deviceId, user.family_id)
     if device.revoked:
         raise HTTPException(409, "设备已取消配对")
@@ -81,7 +84,6 @@ def command(item_id: str, body: CommandBody, user: Parent, db: DbSession):
     )
     if not media:
         raise HTTPException(409, "暂无处理完成的视频")
-    serialize_sqlite_write(db)
     if not media.size_bytes:
         media.size_bytes = build_storage(media.storage).size(media.path)
     row = (

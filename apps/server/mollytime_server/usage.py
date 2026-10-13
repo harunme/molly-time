@@ -49,7 +49,7 @@ def storage_totals(db, family_ids):
     objects = db.query(
         MediaFile.family_id, MediaFile.storage, MediaFile.path,
         func.max(MediaFile.size_bytes),
-    ).filter(MediaFile.family_id.in_(family_ids)).group_by(
+    ).filter(MediaFile.family_id.in_(family_ids), MediaFile.kind != "deleted").group_by(
         MediaFile.family_id, MediaFile.storage, MediaFile.path,
     )
     for family, backend, path, size in objects.yield_per(256):

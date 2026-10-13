@@ -17,6 +17,8 @@ import { SelectField } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
+import { Trash, TrashRetentionSettings } from "./trash";
+import { ResourceSummary } from "./resource-summary";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
 import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
@@ -59,6 +61,7 @@ import {
   Captions,
   Pencil,
   Archive,
+  Trash2,
   Eye,
   ShieldCheck,
   UserRound,
@@ -119,6 +122,7 @@ function useData<T>(path: string, initial: T, serial = 0) {
 function Icon({ name }: { name: string; }) {
   const icons: Record<string, typeof FolderOpen> = {
     library: FolderOpen,
+    trash: Trash2,
     overview: LayoutDashboard,
     watch: ChartNoAxesCombined,
     family: Users,
@@ -293,6 +297,7 @@ function App() {
     ["overview", "概览"],
     ["watch", "观看记录"],
     ["library", "资源库"],
+    ["trash", "回收站"],
     ["family", "家庭设置"],
   ];
   if (session.user.role === "superadmin")
@@ -393,6 +398,7 @@ function App() {
             <Route index element={<Navigate to="/overview" replace />} />
             <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<Library run={run} readonly={readonly} />} />
+            <Route path="trash" element={<Trash readonly={readonly} />} />
             <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
             <Route path="upload" element={<Navigate to="/library?uploads=1" replace />} />
             <Route path="watch" element={<Reports />} />
@@ -529,6 +535,7 @@ function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
   const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined);
   if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
   if (folder.loading || folder.data?.id !== folderId) return <State loading />;
+  if (folder.data.status === "archived") return <Navigate to="/trash" replace />;
   if (folder.data.type !== "Series") return <Navigate to="/library" replace />;
   return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} />;
 }
@@ -570,6 +577,12 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   );
   const kind = !parent ? "Series" : "Episode";
   const filtered = list.data;
+  const stats = useData<{ videoCount: number; folderCount: number; subtitleCount: number; publishedVideoCount: number; readyVideoCount: number; subtitleVideoCount: number; durationMs: number } | undefined>("/resources/stats", undefined, serial);
+  const ratio = (value: number, total: number) => total ? `${Math.round(value * 100 / total)}%` : "—";
+  const duration = (value: number) => {
+    const minutes = Math.round(value / 60000);
+    return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
+  };
   useEffect(() => { setSelected([]); }, [parent?.id, query, status, list.page]);
   const changed = () => {
     refresh((v) => v + 1);
@@ -649,28 +662,36 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           </React.Fragment>
         )}
       </div>
-      <div className="toolbar library-toolbar">
-        <InputGroup className="search-field">
-          <InputGroupAddon><Search /></InputGroupAddon>
-          <InputGroupInput
-            aria-label="搜索资源"
-            placeholder="搜索名称…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </InputGroup>
-        <SelectField
-          aria-label="资源状态"
-          value={status}
-          onValueChange={(value) => setStatus(value)}
-          options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> }), ({ value: "archived", label: <> 已归档 </> })]} />
-        <span className="toolbar-count">
-          {list.total} 个{parent ? "视频" : "文件夹"}
-        </span>
-      </div>
-      <State loading={list.loading} error={list.error} />
-      {!list.loading && !list.error && (
-        <div className="resource-list">
+      {stats.data && <ResourceSummary className="library-summary" icon={FolderOpen} title="资源库内容"
+        count={`${stats.data.videoCount + stats.data.folderCount} 项资源`}
+        primary={`${stats.data.videoCount} 个视频`}
+        secondary={<>文件夹 <strong className="font-medium text-foreground">{stats.data.folderCount}</strong> · 字幕 <strong className="font-medium text-foreground">{stats.data.subtitleCount}</strong></>}
+        detail={<>已发布 {ratio(stats.data.publishedVideoCount, stats.data.videoCount)} · 已就绪 {ratio(stats.data.readyVideoCount, stats.data.videoCount)} · 字幕覆盖 {ratio(stats.data.subtitleVideoCount, stats.data.videoCount)}</>}
+        note={<>视频总时长 {duration(stats.data.durationMs)}，资源整理完成后即可发布到电视。</>}
+      />}
+      <div className="resource-library-card">
+        <div className="toolbar library-toolbar">
+          <InputGroup className="search-field">
+            <InputGroupAddon><Search /></InputGroupAddon>
+            <InputGroupInput
+              aria-label="搜索资源"
+              placeholder="搜索名称…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </InputGroup>
+          <SelectField
+            aria-label="资源状态"
+            value={status}
+            onValueChange={(value) => setStatus(value)}
+            options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> })]} />
+          <span className="toolbar-count">
+            {list.total} 个{parent ? "视频" : "文件夹"}
+          </span>
+        </div>
+        <State loading={list.loading} error={list.error} />
+        {!list.loading && !list.error && (
+          <div className="resource-list">
           <div className="resource-list-heading">
             <span>名称</span>
             <span>状态</span>
@@ -811,14 +832,14 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                             onSelect={async () => {
                               if (
                                 await confirmAction(
-                                  `归档“${item.name}”？电视将无法开始播放此内容。`,
+                                  `将“${item.name}”移入回收站？${item.type === "Series" ? "文件夹内的所有内容也会移入回收站。" : ""}电视将无法开始播放此内容。保留期内可恢复，到期后按回收站策略彻底删除文件。`,
                                 )
                               )
                                 action([item.id], "archive");
                             }}
                           >
                             <Archive />
-                            归档
+                            移入回收站
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -840,9 +861,10 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
               </p>
             </Empty>
           )}
-        </div>
-      )}
-      <Pagination {...list} loading={list.refreshing} label="资源库分页" />
+          <Pagination {...list} loading={list.refreshing} label="资源库分页" />
+          </div>
+        )}
+      </div>
       {!!selected.length && (
         <div className="selection-bar">
           已选 {selected.length} 项
@@ -1830,6 +1852,7 @@ function Family({
               </>
             )}
           </Card>
+          <TrashRetentionSettings readonly={readonly} run={run} notify={notify} />
         </div>
         <div className="settings-column">
           <Card className="settings-card">
