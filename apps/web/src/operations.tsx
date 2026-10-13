@@ -82,8 +82,8 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
           <p>管理用户邀请、平台存储和电视客户端版本，仅平台超管可访问。</p>
         </div>
       </div>
-      <Tabs value={tab} activationMode="manual" onValueChange={(value) => navigate(`/operations/${value}`)}>
-        <TabsList aria-label="运营设置分类">
+      <Tabs className="operations-tabs" value={tab} activationMode="manual" onValueChange={(value) => navigate(`/operations/${value}`)}>
+        <TabsList variant="line" aria-label="运营设置分类">
           <TabsTrigger value="storage">文件存储</TabsTrigger>
           <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
           <TabsTrigger value="invitations">用户邀请</TabsTrigger>

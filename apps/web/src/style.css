@@ -83,7 +83,20 @@
   }
   button,
   [role="button"] {
-    @apply cursor-pointer rounded-ui;
+    @apply rounded-ui;
+  }
+  :where(
+    a[href], button, select, summary,
+    [role="button"], [role="link"], [role="tab"],
+    [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"],
+    [role="checkbox"], [role="radio"], [role="switch"],
+    input:is([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+    label:has(input:is([type="checkbox"], [type="radio"]), [role="checkbox"], [role="radio"], [role="switch"])
+  ):not(:disabled):not([aria-disabled="true"]):not([data-disabled]) {
+    @apply cursor-pointer;
+  }
+  input[type="file"]::file-selector-button {
+    @apply cursor-pointer;
   }
   button:disabled {
     @apply cursor-not-allowed;
@@ -735,6 +748,28 @@ td small {
 .client-releases-table details p { white-space: pre-wrap; margin: .75rem 0; }
 .client-releases-table dd { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
 .client-releases-table dt { font-size: .8rem; color: var(--muted-foreground); }
+.operations-tabs {
+  @apply min-w-0 gap-6;
+}
+.operations-tabs [data-slot="tabs-list"] {
+  @apply grid h-auto w-full grid-cols-4 justify-start gap-1 rounded-none border-b bg-transparent p-0 sm:flex sm:gap-4;
+}
+.operations-tabs [data-slot="tabs-trigger"] {
+  @apply h-12 min-w-0 flex-none rounded-none border-0 bg-transparent px-1.5 py-3 text-xs font-medium text-muted-foreground shadow-none transition-colors sm:px-4 sm:text-sm;
+}
+.operations-tabs [data-slot="tabs-trigger"]:hover {
+  @apply bg-accent text-foreground;
+}
+.operations-tabs [data-slot="tabs-trigger"][data-state="active"] {
+  @apply bg-transparent font-semibold text-foreground shadow-none;
+}
+.operations-tabs [data-slot="tabs-trigger"]::after {
+  @apply inset-x-1.5 -bottom-px h-[3px] rounded-t-sm bg-black sm:inset-x-4;
+}
+.operations-tabs [data-slot="tabs-trigger"]:focus-visible {
+  @apply outline-none ring-0;
+  box-shadow: inset 0 0 0 2px var(--foreground);
+}
 .operations-card {
   @apply max-w-[960px];
 }
