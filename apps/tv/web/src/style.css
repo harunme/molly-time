@@ -80,9 +80,10 @@ h2 { font-size: 1.25rem; line-height: 1.4; margin: 0; font-weight: 600; }
 .rail-direction-left { left: -2.5rem; --arrow-drift: -.18rem; }
 .rail-direction-right { right: -2.5rem; --arrow-drift: .18rem; }
 .rail-track { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding: 1.1rem .6rem 1.5rem; overscroll-behavior-x: contain; }
-.rail-shell.fade-right .rail-track { -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 2.5rem), transparent 100%); mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 2.5rem), transparent 100%); }
-.rail-shell.fade-left .rail-track { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 2.5rem, #000 100%); mask-image: linear-gradient(to right, transparent 0, #000 2.5rem, #000 100%); }
-.rail-shell.fade-left.fade-right .rail-track { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 2.5rem, #000 calc(100% - 2.5rem), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 2.5rem, #000 calc(100% - 2.5rem), transparent 100%); }
+.rail-shell::before, .rail-shell::after { content: ''; position: absolute; top: 0; bottom: 0; width: 2.5rem; z-index: 2; pointer-events: none; opacity: 0; }
+.rail-shell::before { left: 0; background: linear-gradient(to right, var(--canvas), transparent); }
+.rail-shell::after { right: 0; background: linear-gradient(to left, var(--canvas), transparent); }
+.rail-shell.fade-left::before, .rail-shell.fade-right::after { opacity: 1; }
 .rail-content { position: relative; display: flex; gap: 1.35rem; width: max-content; }
 .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.4rem, 1fr)); gap: 1.35rem; padding: 1.1rem 3.4rem 1.5rem; }
 .episode-grid .poster { width: 100%; min-width: 0; }

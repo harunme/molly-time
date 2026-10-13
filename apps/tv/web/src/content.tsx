@@ -82,18 +82,29 @@ export function Shelf({ focusKey, title, children, kind = '' }: {
     const node = rail.current;
     if (!node) return;
     const cover = node.querySelector<HTMLElement>('.cover');
-    const update = () => {
-      let center = (cover?.offsetHeight ?? 0) / 2;
-      for (let element: HTMLElement | null = cover; element && element !== node.parentElement; element = element.offsetParent as HTMLElement | null) center += element.offsetTop;
-      setDirections({ left: node.scrollLeft > 2, right: node.scrollLeft + node.clientWidth < node.scrollWidth - 2, center });
+    let center = 0, maxScroll = 0;
+    let previous: typeof directions | undefined;
+    const updateDirections = () => {
+      const left = node.scrollLeft > 2, right = node.scrollLeft < maxScroll - 2;
+      if (previous?.left === left && previous.right === right && previous.center === center) return;
+      previous = { left, right, center };
+      setDirections(previous);
     };
-    update();
-    node.addEventListener('scroll', update, { passive: true });
-    const observer = new ResizeObserver(update);
+    // Scroll frames only read the position. Measure fixed geometry on resize,
+    // and render only when an arrow's availability or position actually changes.
+    const measure = () => {
+      center = (cover?.offsetHeight ?? 0) / 2;
+      for (let element: HTMLElement | null = cover; element && element !== node.parentElement; element = element.offsetParent as HTMLElement | null) center += element.offsetTop;
+      maxScroll = Math.max(0, node.scrollWidth - node.clientWidth);
+      updateDirections();
+    };
+    measure();
+    node.addEventListener('scroll', updateDirections, { passive: true });
+    const observer = new ResizeObserver(measure);
     observer.observe(node);
     if (cover) observer.observe(cover);
     if (node.firstElementChild) observer.observe(node.firstElementChild);
-    return () => { node.removeEventListener('scroll', update); observer.disconnect(); };
+    return () => { node.removeEventListener('scroll', updateDirections); observer.disconnect(); };
   }, [children, grid]);
   return <FocusContext.Provider value={focusKey}><section ref={ref} className={`shelf ${hasFocusedChild ? 'active-shelf' : ''} ${kind}`}>
     <div className="shelf-heading"><h2>{title}</h2></div>

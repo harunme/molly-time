@@ -440,6 +440,41 @@ test('folder videos form a vertical grid with remote row navigation', async ({ p
   await page.screenshot({ path: 'test-results/tv-video-grid.png' });
 });
 
+test('rail scrolling keeps arrow geometry out of animation frames', async ({ page }) => {
+  await page.goto('/tv/?mock=1');
+  const rail = page.locator('[data-rail="home-row-0"]');
+  const shelf = page.locator('.shelf').first();
+  await expect(page.locator('[data-focus="series-demo-series-1-episode-1"]')).toBeFocused();
+  await expect(rail.locator('.cover img').first()).toBeVisible();
+  // Wait for initial arrow measurements before counting layout reads during motion.
+  await expect.poll(() => shelf.evaluate((node) => parseFloat((node.querySelector('.rail-shell') as HTMLElement).style.getPropertyValue('--rail-arrow-top')))).toBeGreaterThan(0);
+  const bounds = await rail.boundingBox();
+  await rail.evaluate((node) => {
+    const cover = node.querySelector<HTMLElement>('.cover')!;
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!.get!;
+    const w = window as unknown as { arrowLayoutReads: number };
+    w.arrowLayoutReads = 0;
+    Object.defineProperty(cover, 'offsetHeight', { configurable: true, get() { w.arrowLayoutReads++; return height.call(this); } });
+  });
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="series-demo-series-1-episode-2"]')).toBeFocused();
+  await expect(shelf.locator('.rail-direction-left')).toHaveClass(/available/);
+  await expect.poll(() => rail.evaluate((node) => node.scrollLeft)).toBeGreaterThan(300);
+  expect(await page.evaluate(() => (window as unknown as { arrowLayoutReads: number }).arrowLayoutReads)).toBe(0);
+  expect(await rail.boundingBox()).toEqual(bounds);
+  for (let index = 0; index < 10; index++) await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-focus="series-demo-series-1-episode-12"]')).toBeFocused();
+  await expect(shelf.locator('.rail-direction-right')).not.toHaveClass(/available/);
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-focus="series-demo-series-1-episode-11"]')).toBeFocused();
+  await page.locator('[data-focus="series-demo-series-1-episode-1"]').focus();
+  await expect(shelf.locator('.rail-direction-left')).not.toHaveClass(/available/);
+  expect(await rail.boundingBox()).toEqual(bounds);
+  await page.setViewportSize({ width: 960, height: 540 });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { arrowLayoutReads: number }).arrowLayoutReads)).toBeGreaterThan(0);
+  await page.screenshot({ path: 'test-results/tv-scroll-directions.png' });
+});
+
 test('mock preview browses 80 episodes without backend or binding changes', async ({ page }) => {
   const apiRequests: string[] = [];
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
