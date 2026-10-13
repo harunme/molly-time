@@ -8,7 +8,7 @@ async function openBrowserVideo(page: import('@playwright/test').Page) {
     accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId, childId: 'autoplay-child',
   });
   await page.goto('http://127.0.0.1:8098/tv/');
-  await page.locator('[data-focus="series-series"]').click();
+  await page.getByRole('button', { name: /^英语启蒙/ }).click();
   await page.locator('[data-focus="episode-browser-episode"]').click();
   await expect(page.getByRole('dialog', { name: '视频播放' })).toBeVisible();
   await expect.poll(() => page.locator('video').evaluate((video) => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);

@@ -1002,3 +1002,13 @@ td small {
     transition-duration: 0.01ms !important;
   }
 }
+
+.parent-reminders .reminder-clip { border-top: 1px solid var(--border); padding: 18px 0; }
+.parent-reminders .reminder-clip label { font-weight: 600; }
+.parent-reminders .reminder-clip input { margin: 10px 0; }
+.parent-reminders video { width: 100%; max-height: 280px; margin-top: 12px; background: #000; border-radius: 8px; }
+.parent-reminder-actions .reminder-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+
+.parent-reminder-actions { margin-bottom: 20px; }
+.parent-reminder-actions label { display: block; font-weight: 600; margin: 16px 0 8px; }
+.parent-reminder-actions [data-slot="native-select-wrapper"] { max-width: 420px; }

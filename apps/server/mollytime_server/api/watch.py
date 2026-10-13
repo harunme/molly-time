@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..deps import CurrentUser, DbSession
 from ..manage_auth import aware
-from ..management_models import Device, WatchInterval, WatchProgress, WatchSession
+from ..management_models import Device, DeviceReminder, WatchInterval, WatchProgress, WatchSession
 from ..resource_policy import require_visible
 from ..transactions import serialize_sqlite_write
 from .playback import _child, _episode
@@ -25,9 +25,16 @@ class Start(BaseModel):
 def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
     if getattr(request.state, "parent_preview", False):
         raise HTTPException(403, "家长预览不写入儿童播放记录")
+    serialize_sqlite_write(db)
     episode = _episode(db, body.episodeId, user.family_id)
     require_visible(db, episode, request)
     _child(db, body.childId, user.family_id)
+    device_id = getattr(request.state, "device_id", None)
+    reminder = db.get(DeviceReminder, device_id) if device_id else None
+    if reminder and reminder.phase != "idle":
+        if reminder.phase == "done" or (reminder.episode_id and reminder.episode_id != episode.id):
+            raise HTTPException(403, "今天的最后一集已安排，请家长在后台恢复播放")
+        reminder.episode_id = episode.id
     row = WatchSession(
         family_id=user.family_id,
         user_id=user.id,
@@ -40,6 +47,9 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
         ),
     )
     db.add(row)
+    db.flush()
+    if reminder and reminder.phase != "idle":
+        reminder.session_id = row.id
     if row.device_id:
         device = db.get(Device, row.device_id)
         device.last_seen = dt.datetime.now(dt.UTC)
@@ -126,6 +136,9 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
         row.last_reported_at = dt.datetime.now(dt.UTC)
         if row.device_id:
             db.get(Device, row.device_id).last_seen = row.last_reported_at
+            reminder = db.get(DeviceReminder, row.device_id)
+            if reminder and reminder.session_id == row.id and body.completed and body.stopped:
+                reminder.phase = "done"
         key = f"{user.family_id}:{row.child_id or user.id}:{row.item_id}"
         progress = db.get(WatchProgress, key)
         # Newer session wins. Late events from old sessions cannot roll progress back.

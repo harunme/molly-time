@@ -26,6 +26,7 @@ from .api import (
     pairing,
     playback,
     playback_settings,
+    reminders,
     users,
     watch,
 )
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(playback.router)
     app.include_router(playback_settings.router)
+    app.include_router(reminders.router)
     app.include_router(manage_auth.router)
     app.include_router(downloads.router)
     app.include_router(manage_resources.router)

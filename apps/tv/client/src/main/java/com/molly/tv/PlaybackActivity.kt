@@ -39,6 +39,37 @@ class PlaybackActivity : AppCompatActivity() {
     private var loadGeneration = 0
     private var watchId = ""
     private var sourceInfo: JSONObject? = null
+    private var parentClipPath = ""
+    private var parentClipAfter = false
+    private var parentClipPosition = 0L
+    private var reminderRequestId = ""
+    private var reminderChecking = false
+    private val reminderPoll = object : Runnable {
+        override fun run() {
+            if (!active || isFinishing) return
+            if (!reminderChecking && parentClipPath.isEmpty() && !advancing) {
+                reminderChecking = true
+                val generation = loadGeneration
+                app.io.execute {
+                    runCatching { reminderState() }.onSuccess { state -> runOnUiThread {
+                        if (active && generation == loadGeneration && !isFinishing && player != null &&
+                            state.optString("phase") == "pending" && state.optString("episodeId") == episodeId &&
+                            state.optString("requestId") != reminderRequestId) {
+                            reminderRequestId = state.getString("requestId")
+                            report("stop")
+                            release()
+                            showParentClip(state.getString("warningPath"), false)
+                        }
+                    } }.onFailure { error -> if (error is ApiFailure && error.status in listOf(401, 403)) runOnUiThread { finish() } }
+                    runOnUiThread { reminderChecking = false }
+                }
+            }
+            handler.postDelayed(this, 2000)
+        }
+    }
+
+    private fun reminderState(): JSONObject = try { app.api.json("GET", "/api/reminders/state") }
+        catch (error: ApiFailure) { if (error.status == 404) JSONObject().put("phase", "idle") else throw error }
     private var refreshAttempts = 0
     private var selectedSubtitle: String? = null
     private var playbackSpeed = 1f
@@ -72,6 +103,10 @@ class PlaybackActivity : AppCompatActivity() {
         playOnResume = state?.getBoolean("play", true) ?: true
         awaitingNext = state?.getBoolean("awaitingNext", false) ?: false
         completed = awaitingNext
+        parentClipPath = state?.getString("parentClipPath") ?: ""
+        parentClipAfter = state?.getBoolean("parentClipAfter", false) ?: false
+        parentClipPosition = state?.getLong("parentClipPosition", 0) ?: 0
+        reminderRequestId = state?.getString("reminderRequestId") ?: ""
         selectedSubtitle = state?.getString("selectedSubtitle")
         playbackSpeed = state?.getFloat("playbackSpeed", 1f) ?: 1f
         resumeFromProgress = state?.getBoolean("resumeFromProgress", true) ?: true
@@ -89,7 +124,8 @@ class PlaybackActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         active = true
-        if (awaitingNext) advance() else load()
+        handler.post(reminderPoll)
+        if (parentClipPath.isNotEmpty()) loadParentClip() else if (awaitingNext) advance() else load()
     }
 
     private fun load() {
@@ -98,6 +134,12 @@ class PlaybackActivity : AppCompatActivity() {
         status.text = "正在加载视频…"
         app.io.execute {
             runCatching {
+                val reminder = reminderState()
+                if (reminder.optString("phase") == "pending" &&
+                    (reminder.isNull("episodeId") || reminder.optString("episodeId") == loadingEpisode) &&
+                    reminder.optString("requestId") != reminderRequestId) {
+                    return@runCatching Triple(JSONObject().put("parentReminder", reminder), JSONObject(), "")
+                }
                 val detail = app.api.json("GET", "/api/episodes/$loadingEpisode")
                 val resume = app.api.json("GET", app.api.progressPath(loadingEpisode, child))
                 val body = JSONObject().put("episodeId", loadingEpisode)
@@ -110,6 +152,12 @@ class PlaybackActivity : AppCompatActivity() {
                 Triple(detail, resume, sessionId)
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
                 if (active && current == loadGeneration && !isDestroyed && !isFinishing) {
+                    if (detail.has("parentReminder")) {
+                        val reminder = detail.getJSONObject("parentReminder")
+                        reminderRequestId = reminder.getString("requestId")
+                        showParentClip(reminder.getString("warningPath"), false)
+                        return@runOnUiThread
+                    }
                     watchId = sessionId
                     clock = PlayingClock(SystemClock.elapsedRealtime())
                     sequence = 0
@@ -188,15 +236,26 @@ class PlaybackActivity : AppCompatActivity() {
         val finishedEpisode = episodeId
         status.text = "正在准备下一集…"
         app.io.execute {
-            runCatching { app.api.json("GET", "/api/episodes/$finishedEpisode/next") }
+            runCatching {
+                val reminder = reminderState()
+                if (reminder.optString("episodeId") == finishedEpisode && reminder.optString("phase") != "idle")
+                    JSONObject().put("parentFarewell", reminder.getString("farewellPath"))
+                else app.api.json("GET", "/api/episodes/$finishedEpisode/next")
+            }
                 .onSuccess { result -> runOnUiThread {
                     if (!active || current != loadGeneration || isFinishing || isDestroyed) return@runOnUiThread
                     advancing = false
+                    if (result.has("parentFarewell")) {
+                        awaitingNext = false
+                        showParentClip(result.getString("parentFarewell"), true)
+                        return@runOnUiThread
+                    }
                     val next = if (result.isNull("episodeId")) "" else result.optString("episodeId")
                     if (next.isEmpty()) {
                         awaitingNext = false
                         finish()
                     } else {
+                        reminderRequestId = ""
                         episodeId = next
                         position = 0L
                         completed = false
@@ -215,6 +274,69 @@ class PlaybackActivity : AppCompatActivity() {
                     advancing = false
                     if (error is ApiFailure && error.status in listOf(401, 403, 404)) finish()
                     else status.text = "下一集加载失败。按确定重试，返回退出"
+                } }
+        }
+    }
+
+    private fun showParentClip(path: String, after: Boolean) {
+        parentClipPath = path
+        parentClipAfter = after
+        parentClipPosition = 0L
+        clock = null
+        loadParentClip()
+    }
+
+    private fun loadParentClip() {
+        val generation = ++loadGeneration
+        status.text = if (parentClipAfter) "茉莉看完咯，拜拜" else "茉莉，还剩 1 集哦"
+        app.io.execute {
+            runCatching { app.api.json("GET", parentClipPath) }.onSuccess { info -> runOnUiThread {
+                if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread
+                val exo = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(app.media.factory())).build()
+                player = exo
+                playerView.player = exo
+                exo.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) status.text = ""
+                        if (state == Player.STATE_ENDED) finishParentClip()
+                    }
+                    override fun onIsPlayingChanged(playing: Boolean) {
+                        if (playing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    override fun onPlayerError(error: PlaybackException) {
+                        status.text = "家长视频播放失败。按确定重试，返回退出"
+                    }
+                })
+                exo.setMediaItem(MediaItem.Builder().setUri(app.media.uri(info)).setCustomCacheKey(app.media.key(info))
+                    .setMimeType(info.optString("mime", "video/mp4")).build(), parentClipPosition)
+                exo.prepare()
+                exo.playWhenReady = playOnResume
+                handler.postDelayed(heartbeat, 15000)
+                playerView.requestFocus()
+            } }.onFailure { error -> runOnUiThread {
+                if (active && generation == loadGeneration) status.text = (error.message ?: "家长视频加载失败") + "。按确定重试，返回退出"
+            } }
+        }
+    }
+
+    private fun finishParentClip() {
+        release()
+        if (parentClipAfter) { finish(); return }
+        val generation = ++loadGeneration
+        status.text = "正在返回最后一集…"
+        app.io.execute {
+            runCatching { app.api.json("POST", "/api/reminders/requests/$reminderRequestId/ack") }
+                .onSuccess { runOnUiThread {
+                    if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread
+                    parentClipPath = ""
+                    parentClipPosition = 0L
+                    playOnResume = true
+                    if (completed) { awaitingNext = true; advance() } else load()
+                } }.onFailure { error -> runOnUiThread {
+                    if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread
+                    if (error is ApiFailure && error.status == 404) { parentClipPath = ""; load() }
+                    else status.text = "提醒确认失败。按确定重试，返回退出"
                 } }
         }
     }
@@ -239,6 +361,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun report(event: String) {
+        if (parentClipPath.isNotEmpty()) return
         val exo = player ?: return
         position = exo.currentPosition.coerceAtLeast(0)
         val done = completed
@@ -282,6 +405,8 @@ class PlaybackActivity : AppCompatActivity() {
     }
     override fun onStop() {
         active = false
+        handler.removeCallbacks(reminderPoll)
+        if (parentClipPath.isNotEmpty()) parentClipPosition = player?.currentPosition?.coerceAtLeast(0) ?: parentClipPosition
         advancing = false
         loadGeneration++
         report("stop")
@@ -289,8 +414,12 @@ class PlaybackActivity : AppCompatActivity() {
         super.onStop()
     }
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("parentClipPath", parentClipPath)
+        outState.putBoolean("parentClipAfter", parentClipAfter)
+        outState.putLong("parentClipPosition", if (parentClipPath.isNotEmpty()) player?.currentPosition ?: parentClipPosition else 0)
+        outState.putString("reminderRequestId", reminderRequestId)
         outState.putString("episodeId", episodeId)
-        outState.putLong("position", player?.currentPosition ?: position)
+        outState.putLong("position", if (parentClipPath.isEmpty()) player?.currentPosition ?: position else position)
         outState.putBoolean("play", player?.playWhenReady ?: playOnResume)
         outState.putBoolean("awaitingNext", awaitingNext)
         outState.putBoolean("resumeFromProgress", resumeFromProgress)
@@ -300,7 +429,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val exo = player
-        if (exo != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
+        if (exo != null && parentClipPath.isEmpty() && event.keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) showPlaybackMenu()
             return true
         }
@@ -320,7 +449,7 @@ class PlaybackActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.repeatCount == 0 && keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER) &&
             (player == null || player?.playerError != null)) {
-            if (awaitingNext) advance() else { report("stop"); release(); load() }
+            if (parentClipPath.isNotEmpty()) { release(); loadParentClip() } else if (awaitingNext) advance() else { report("stop"); release(); load() }
             return true
         }
         return super.onKeyDown(keyCode, event)

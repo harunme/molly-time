@@ -44,6 +44,35 @@ def get_session_factory() -> sessionmaker[Session]:
     return _SessionLocal
 
 
+def upgrade_reminder_sessions(engine) -> None:
+    """Add session binding to early reminder tables without replacing existing rows."""
+    with engine.begin() as connection:
+        # Startup and the media worker may initialize the same SQLite database.
+        # Lock before checking the schema so only one initializer adds the column.
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        columns = inspect(connection).get_columns("device_reminders")
+        if "session_id" in {column["name"] for column in columns}:
+            return
+        connection.exec_driver_sql(
+            "ALTER TABLE device_reminders ADD COLUMN "
+            "session_id VARCHAR(36) REFERENCES watch_sessions(id)"
+        )
+        # Preserve requests already attached to a currently active episode.
+        # Idle requests stay unbound until their first playback session starts.
+        connection.exec_driver_sql("""
+            UPDATE device_reminders SET session_id = (
+                SELECT id FROM watch_sessions
+                WHERE watch_sessions.family_id = device_reminders.family_id
+                  AND watch_sessions.device_id = device_reminders.device_id
+                  AND watch_sessions.item_id = device_reminders.episode_id
+                  AND watch_sessions.ended = false
+                ORDER BY watch_sessions.started_at DESC, watch_sessions.id DESC
+                LIMIT 1
+            ) WHERE phase IN ('pending', 'watching')
+        """)
+
+
 def init_db() -> None:
     """Create tables. Idempotent."""
     # Import models so they register with Base.metadata.
@@ -66,6 +95,8 @@ def init_db() -> None:
                 with sqlite3.connect(database) as source, sqlite3.connect(backup) as target:
                     source.backup(target)
     Base.metadata.create_all(bind=engine)
+    # create_all creates new tables but does not upgrade columns in existing ones.
+    upgrade_reminder_sessions(engine)
     # create_all does not add indexes to existing tables. Enforce the same global
     # username invariant on legacy databases without rewriting users or their IDs.
     with engine.begin() as connection:

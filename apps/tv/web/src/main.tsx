@@ -189,6 +189,7 @@ function App() {
       finally { checking = false; }
     };
     const resumed = () => { if (document.visibilityState === 'visible') void check(); };
+    void check();
     const timer = setInterval(() => { void check(); }, 30000);
     document.addEventListener('visibilitychange', resumed);
     return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', resumed); };

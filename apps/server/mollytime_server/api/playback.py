@@ -10,14 +10,14 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..storage.settings import get_storage_settings
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
-from ..management_models import MediaOptions, WatchProgress, WatchSession
+from ..management_models import DeviceReminder, MediaOptions, WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
 from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..storage.local import LocalStorage
+from ..storage.settings import get_storage_settings
 from ..utils.image import resize_to_file
 from ..utils.subtitles import webvtt
 
@@ -78,6 +78,12 @@ def parse_range(header: str, total: int) -> tuple[int, int]:
 
 def authorized_file(db, episode_id, request, user, mediaId=None, sessionId=None):
     episode = _episode(db, episode_id, user.family_id)
+    device_id = getattr(request.state, "device_id", None)
+    reminder = db.get(DeviceReminder, device_id) if device_id else None
+    if reminder and reminder.phase != "idle" and (
+        reminder.phase == "done" or reminder.episode_id != episode_id
+    ):
+        raise HTTPException(403, "请家长在后台恢复播放")
     watch = db.get(WatchSession, sessionId) if sessionId else None
     valid_session = (
         watch
@@ -108,6 +114,7 @@ def resolve_playback(
 
 def playback_info(db, file, session_id=None):
     from urllib.parse import urlencode
+
     from ..playback_settings import default_subtitle, preferred_subtitle_index
 
     storage = build_storage(file.storage)
@@ -175,6 +182,11 @@ def play(
 ):
     """Legacy playback entry: local Range delivery or authorized OSS redirect."""
     file = authorized_file(db, episode_id, request, user, mediaId, sessionId)
+    return stream_file(file, request)
+
+
+def stream_file(file, request):
+    """Shared authenticated delivery for catalog videos and private parent clips."""
     storage = build_storage(file.storage)
     if not isinstance(storage, LocalStorage):
         return RedirectResponse(

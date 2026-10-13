@@ -9,6 +9,7 @@ import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
 import { PairingPage } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
+import { ParentReminders } from "./reminders";
 import { Pagination, ResourcePicker, useDebounced, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -277,9 +278,9 @@ function App() {
     );
   const names = [
     ["overview", "概览"],
+    ["watch", "观看记录"],
     ["library", "资源库"],
     ["upload", "上传任务"],
-    ["watch", "观看记录"],
     ["family", "家庭设置"],
   ];
   if (session.user.role === "superadmin")
@@ -416,7 +417,7 @@ function App() {
           )}
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
-            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(`/${destination}`)} />} />
+            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(`/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<Library run={run} readonly={readonly} />} />
             <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
             <Route path="upload" element={<Uploads run={run} readonly={readonly} />} />
@@ -1903,6 +1904,7 @@ function Family({
             )}
             <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
           </Card>
+          <ParentReminders readonly={readonly} run={run} notify={notify} />
           {!readonly && (
             <Card className="settings-card">
               <h2>修改密码</h2>

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, bytes, dateTime, type Upload } from "./api";
 import { Pagination, usePagedData } from "./pagination";
+import { ParentReminderActions } from "./reminders";
+import type { Run } from "./main";
 
 type OverviewData = {
   media: { folders: number; videos: number; published: number; draft: number; archived: number };
@@ -20,8 +22,9 @@ const uploadNames: Record<string, string> = {
   uploading: "上传中", processing: "检查中", ready: "文件就绪", failed: "检查失败", cancelled: "已取消",
 };
 
-export function Overview({ familyName, navigate }: {
+export function Overview({ familyName, navigate, run, readonly, notify }: {
   familyName: string; navigate: (page: Destination) => void;
+  run: Run; readonly: boolean; notify: (value: string) => void;
 }) {
   const [data, setData] = useState<OverviewData>();
   const [error, setError] = useState("");
@@ -61,6 +64,7 @@ export function Overview({ familyName, navigate }: {
         <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon-sm" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
       </Card>)}
     </div>
+    <ParentReminderActions readonly={readonly} run={run} notify={notify} />
     <div className="overview-panels">
       <Card className="overview-panel overview-uploads">
         <div className="section-heading"><h2>最近上传</h2><Button variant="ghost" size="sm" onClick={() => navigate("upload")}>全部任务<ArrowRight className="size-3.5" /></Button></div>

@@ -14,6 +14,7 @@ test('overview is the default home, uses aggregates and paged widgets, and links
   await page.getByRole('button', { name: '登录', exact: true }).click();
   const data = await (await response).json();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '播放控制', exact: true })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: '管理导航', exact: true });
   await expect(navigation.getByRole('link', { name: '概览', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(navigation.getByRole('button', { name: '首页编排', exact: true })).toHaveCount(0);
@@ -29,6 +30,7 @@ test('overview is the default home, uses aggregates and paged widgets, and links
   await navigation.getByRole('link', { name: '概览', exact: true }).click();
   await page.getByRole('button', { name: '查看近 7 天观看次数', exact: true }).click();
   await expect(page.getByRole('heading', { name: '观看记录', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '播放控制', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: '观看记录', exact: true })).toBeVisible();
   await navigation.getByRole('link', { name: '概览', exact: true }).click();

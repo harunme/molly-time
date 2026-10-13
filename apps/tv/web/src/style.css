@@ -194,3 +194,7 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .watch-progress span { display: block; height: 100%; background: #fff; border-radius: inherit; }
 
 .detail-page .topbar { position: absolute; inset: 1rem 0 auto; }
+ .parent-clip-player { position: fixed; inset: 0; z-index: 100; background: #000; color: #fff; display: grid; place-items: center; }
+ .parent-clip-player video { width: 100%; height: 100%; }
+ .parent-clip-player .player-close { position: absolute; top: 20px; right: 20px; }
+ .parent-clip-error { position: absolute; text-align: center; }

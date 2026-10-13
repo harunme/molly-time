@@ -55,6 +55,29 @@ class PlaybackSettings(Base):
     default_subtitle: Mapped[str] = mapped_column(String(16), default="zh")
 
 
+class FamilyReminders(Base):
+    """Private parent clips; a separate table keeps existing databases additive."""
+
+    __tablename__ = "family_reminders"
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    folder_id: Mapped[str | None] = mapped_column(ForeignKey("items.id"), nullable=True)
+    warning_id: Mapped[str | None] = mapped_column(ForeignKey("items.id"), nullable=True)
+    farewell_id: Mapped[str | None] = mapped_column(ForeignKey("items.id"), nullable=True)
+
+
+class DeviceReminder(Base):
+    """A parent grants one last episode to one paired TV, then blocks replay."""
+
+    __tablename__ = "device_reminders"
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36), default=uid)
+    episode_id: Mapped[str | None] = mapped_column(ForeignKey("items.id"), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("watch_sessions.id"), nullable=True)
+    phase: Mapped[str] = mapped_column(String(16), default="pending")
+
+
 class ResourceState(Base):
     __tablename__ = "resource_states"
     item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), primary_key=True)

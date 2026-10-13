@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from ..accounts import account_dto
 from ..deps import CurrentUser, DbSession
+from ..device_presence import touch_device
 from ..models import Family
 
 router = APIRouter(prefix="/api", tags=["users"])
@@ -24,7 +25,10 @@ class MeResponse(BaseModel):
 
 
 @router.get("/me", response_model=MeResponse)
-def me(user: CurrentUser, db: DbSession):
+def me(request: Request, user: CurrentUser, db: DbSession):
+    device_id = getattr(request.state, "device_id", None)
+    if device_id:
+        touch_device(db, device_id)
     fam = db.get(Family, user.family_id)
     return MeResponse(
         user=account_dto(db, user),
