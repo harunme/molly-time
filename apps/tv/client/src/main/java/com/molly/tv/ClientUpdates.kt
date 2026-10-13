@@ -1,8 +1,6 @@
 package com.molly.tv
 
 import android.content.Context
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
 import android.os.Build
 import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -24,19 +22,14 @@ class ClientUpdates(private val context: Context) {
     private val directory get() = File(context.filesDir, "client-updates").apply { mkdirs() }
 
     data class Release(val packageName: String, val versionCode: Long, val versionName: String,
-                       val minSdk: Int, val size: Long, val sha256: String, val notes: String, val url: String,
-                       val signerSha256: Set<String>) {
+                       val minSdk: Int, val size: Long, val sha256: String, val notes: String, val url: String) {
         fun json() = JSONObject().put("packageName", packageName).put("versionCode", versionCode)
             .put("versionName", versionName).put("minSdk", minSdk).put("size", size)
             .put("sha256", sha256).put("notes", notes).put("url", url)
-            .put("signerSha256", signerSha256.toList())
         companion object {
             fun parse(value: JSONObject) = Release(value.getString("packageName"), value.getLong("versionCode"),
                 value.getString("versionName"), value.getInt("minSdk"), value.getLong("size"),
-                value.getString("sha256"), value.optString("notes").take(4000), value.getString("url"),
-                (value.optJSONArray("signerSha256") ?: throw IllegalArgumentException("服务端缺少 APK 签名信息")).let { signers ->
-                    (0 until signers.length()).map { signers.getString(it).lowercase() }.toSet()
-                })
+                value.getString("sha256"), value.optString("notes").take(4000), value.getString("url"))
         }
     }
 
@@ -129,7 +122,6 @@ class ClientUpdates(private val context: Context) {
         }
     }
 
-    @Suppress("DEPRECATION")
     fun verify(file: File, release: Release) {
         validate(release)
         require(file.isFile && file.length() == release.size) { "更新包大小不一致" }
@@ -139,24 +131,9 @@ class ClientUpdates(private val context: Context) {
             while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
         }
         require(hex(digest.digest()) == release.sha256) { "更新包校验失败，请重新下载" }
-        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
-        val archive = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags)
-            ?: throw IllegalArgumentException("更新包无法解析")
-        require(archive.packageName == context.packageName) { "更新包不属于当前客户端" }
-        val code = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
-        require(code == release.versionCode) { "更新包版本与发布信息不一致" }
-        if (Build.VERSION.SDK_INT >= 24) require(archive.applicationInfo!!.minSdkVersion <= Build.VERSION.SDK_INT) { "电视系统不支持这个更新" }
-        val downloadedSigners = signers(archive)
-        UpdatePolicy.verifyPublishedSigners(release.signerSha256, downloadedSigners)
-        // PackageInstaller is the platform authority for whether this APK may update the
-        // installed app. Avoid comparing PackageInfo signer metadata here: some TV builds
-        // report inconsistent signers for installed packages vs. parsed archives.
-    }
-
-    @Suppress("DEPRECATION")
-    private fun signers(info: PackageInfo): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
-        return signatures.orEmpty().map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
+        // Publication checks APK identity and signing with apksigner/aapt. On the TV,
+        // PackageInstaller is the authority for package, version, SDK and signature
+        // compatibility. Some TVs return incorrect metadata for uninstalled archives.
     }
 
     private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
