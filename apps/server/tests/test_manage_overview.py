@@ -45,7 +45,7 @@ def test_overview_aggregates_only_the_current_family_and_real_watch_sessions(par
             session.add(ResourceState(item_id=key, status=state, ready=False))
         session.add(Item(id="other-folder", family_id="f2", type="Series", name="Other family"))
         session.add_all([
-            Device(id="active-tv", family_id="f1", user_id="u1", name="Active"),
+            Device(id="active-tv", family_id="f1", user_id="u1", name="Active", last_seen=fixed),
             Device(id="revoked-tv", family_id="f1", user_id="u1", name="Revoked", revoked=True),
             Device(id="other-tv", family_id="f2", user_id="u1", name="Other"),
         ])
@@ -63,7 +63,7 @@ def test_overview_aggregates_only_the_current_family_and_real_watch_sessions(par
             ("too-old", "f1", lower - dt.timedelta(microseconds=1), "child_watch", None, 1000),
             ("future", "f1", upper, "family_watch", None, 1000),
             ("preview", "f1", fixed, "parent_preview", None, 1000),
-            ("legacy-tv", "f1", fixed, "parent_preview", "active-tv", 1000),
+            ("legacy-tv", "f1", fixed - dt.timedelta(minutes=1), "parent_preview", "active-tv", 1000),
             ("not-played", "f1", fixed, "child_watch", None, 0),
             ("other-watch", "f2", fixed, "family_watch", "other-tv", 1000),
         ]
@@ -81,13 +81,82 @@ def test_overview_aggregates_only_the_current_family_and_real_watch_sessions(par
     data = response.json()
     assert data["media"] == {"folders": 1, "videos": 3, "published": 1, "draft": 1, "archived": 1}
     assert data["uploads"] == {"active": 2, "failed": 1, "ready": 1}
-    assert data["devices"] == {"active": 1, "revoked": 1}
+    assert data["devices"] == {"active": 1, "revoked": 1, "online": 1}
     assert data["children"] == 1 and data["storageBytes"] == 14
-    assert data["watch"] == {"last7DaysSessions": 3, "timezone": str(zone)}
+    watch = data["watch"]
+    assert watch["last7DaysSessions"] == 3 and watch["timezone"] == str(zone)
+    assert watch["todayPlayedMs"] == 3000 and watch["weekPlayedMs"] == 3000
+    assert watch["weekStart"] == "2026-10-12"
+    assert watch["favoriteVideo"] == {"id": "e1", "name": "One", "playedMs": 5000}
+    assert len(watch["days"]) == 365
+    assert sum(day["playedMs"] for day in watch["days"]) == 5000
     with Session(db.get_engine()) as session:
         session.get(User, "u1").role = "member"
         session.commit()
     assert parent.get("/api/manage/overview").json() == data
+
+
+def test_overview_splits_local_days_and_week_and_includes_resumed_old_sessions(parent, monkeypatch):
+    fixed = dt.datetime(2026, 10, 13, 2, 0, tzinfo=dt.UTC)
+    zone = ZoneInfo("Asia/Shanghai")
+
+    class Clock(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None)
+
+    monkeypatch.setattr(manage_overview, "dt", SimpleNamespace(
+        datetime=Clock, timedelta=dt.timedelta, time=dt.time, UTC=dt.UTC,
+    ))
+    with Session(db.get_engine()) as session:
+        session.add(FamilySettings(family_id="f1", timezone=str(zone)))
+        session.add(Item(id="runner-up", family_id="f1", type="Episode", name="Runner up"))
+        # The stale and future heartbeat timestamps must not count as online;
+        # the boundary is inclusive and revoked/other-family devices are excluded.
+        for key, age, revoked, family in [
+            ("boundary", 90, False, "f1"), ("stale", 91, False, "f1"),
+            ("future-device", -1, False, "f1"), ("revoked", 0, True, "f1"),
+            ("other", 0, False, "f2"),
+        ]:
+            session.add(Device(id=key, family_id=family, user_id="u1", name=key,
+                revoked=revoked, last_seen=fixed - dt.timedelta(seconds=age)))
+        session.flush()
+        cases = [
+            ("midnight", dt.datetime(2026, 10, 12, 23, 59, 50, tzinfo=zone), 0, 20000, "e1"),
+            ("sunday", dt.datetime(2026, 10, 11, 23, 59, 50, tzinfo=zone), 0, 20000, "e1"),
+            ("year-edge", dt.datetime(2025, 10, 13, 23, 59, 50, tzinfo=zone), 0, 20000, "e1"),
+            ("paused", fixed - dt.timedelta(seconds=40), 0, 10000, "e1"),
+            ("clip-now", fixed - dt.timedelta(seconds=10), 0, 20000, "runner-up"),
+        ]
+        old = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+        resume_offset = int((fixed - dt.timedelta(seconds=30) - old).total_seconds() * 1000)
+        cases.append(("resumed", old, resume_offset, resume_offset + 20000, "e1"))
+        for key, started, start_ms, end_ms, item in cases:
+            session.add(WatchSession(id=key, family_id="f1", user_id="u1", item_id=item,
+                item_name="Recorded name", started_at=started.astimezone(dt.UTC), purpose="family_watch"))
+            session.flush()
+            session.add(WatchInterval(session_id=key, seq=0, start_ms=start_ms, end_ms=end_ms,
+                played_ms=0 if key == "paused" else end_ms - start_ms, position_ms=0))
+        session.commit()
+    data = parent.get("/api/manage/overview").json()
+    watch = data["watch"]
+    days = {day["date"]: day["playedMs"] for day in watch["days"]}
+    assert next(iter(days)) == "2025-10-14" and next(reversed(days)) == "2026-10-13"
+    assert days["2025-10-14"] == 10000
+    assert days["2026-10-11"] == 10000 and days["2026-10-12"] == 20000
+    assert days["2026-10-13"] == watch["todayPlayedMs"] == 40000
+    assert watch["weekPlayedMs"] == 60000
+    assert watch["favoriteVideo"] == {"id": "e1", "name": "One", "playedMs": 80000}
+    assert data["devices"] == {"active": 3, "revoked": 1, "online": 1}
+
+
+def test_overview_empty_watch_history(parent):
+    data = parent.get("/api/manage/overview").json()
+    assert data["devices"]["online"] == 0
+    assert data["watch"]["todayPlayedMs"] == data["watch"]["weekPlayedMs"] == 0
+    assert data["watch"]["favoriteVideo"] is None
+    assert len(data["watch"]["days"]) == 365
+    assert all(day["playedMs"] == 0 for day in data["watch"]["days"])
 
 
 def test_overview_query_count_stays_constant_as_media_grows(parent):

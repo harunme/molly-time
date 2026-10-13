@@ -191,7 +191,7 @@
 .overview-metric-label { @apply flex items-center justify-between gap-3 text-xs text-muted-foreground; }
 .overview-metric-label svg { @apply text-[#94949f]; }
 .overview-metric-value { @apply mt-4 block text-[2rem] leading-tight font-semibold tracking-tight tabular-nums; }
-.overview-metric-bottom { @apply mt-3 flex min-w-0 items-center justify-between gap-1 text-[0.6875rem] text-muted-foreground; }
+.overview-metric-bottom { @apply mt-auto flex min-w-0 items-center justify-between gap-1 pt-3 text-[0.6875rem] text-muted-foreground; }
 .overview-metric-bottom > span { @apply truncate; }
 .overview-metric-bottom button { @apply -mr-2 shrink-0; }
 .overview-panels { @apply grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]; }
@@ -223,6 +223,29 @@
 .overview-devices small { @apply mt-1 block text-[0.6875rem]; }
 .overview-empty-note { @apply py-5 text-xs leading-relaxed text-muted-foreground; }
 .overview-watch-note { @apply mt-5 text-[0.6875rem] leading-relaxed text-muted-foreground; }
+.overview-favorite-value { @apply text-lg leading-7; overflow-wrap: anywhere; }
+.overview-heatmap { @apply mb-5; }
+.overview-heatmap-summary { @apply mb-5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground; }
+.overview-heatmap-summary strong { @apply font-medium text-foreground tabular-nums; }
+.overview-heatmap-summary > span:last-child { @apply text-[0.6875rem] tabular-nums; }
+.overview-heatmap-scroll { @apply overflow-x-auto pb-2; }
+.overview-heatmap-grid { display: grid; grid-template-rows: 20px repeat(7, 12px); gap: 4px; min-width: 760px; }
+.overview-heatmap-month, .overview-heatmap-weekday { @apply text-[0.625rem] text-muted-foreground; }
+.overview-heatmap-month { @apply truncate; }
+.overview-heatmap-weekday { @apply self-center; }
+.overview-heatmap-day, .overview-heatmap-swatch { background: #eff1f0; border: 1px solid rgb(27 78 52 / 8%); border-radius: 3px; }
+.overview-heatmap-day { @apply p-0; min-width: 0; }
+.overview-heatmap-day[data-level="1"], .overview-heatmap-swatch[data-level="1"] { background: #c6e6cf; }
+.overview-heatmap-day[data-level="2"], .overview-heatmap-swatch[data-level="2"] { background: #7ec997; }
+.overview-heatmap-day[data-level="3"], .overview-heatmap-swatch[data-level="3"] { background: #39965d; }
+.overview-heatmap-day[data-level="4"], .overview-heatmap-swatch[data-level="4"] { background: #1b643b; }
+.overview-heatmap-day:hover, .overview-heatmap-day:focus-visible { outline: 2px solid #2e2e38; outline-offset: 2px; }
+.overview-heatmap-day[aria-pressed="true"] { box-shadow: inset 0 0 0 1px #2e2e38; }
+.overview-heatmap-footer { @apply mt-3 flex flex-wrap items-center justify-between gap-3 text-[0.6875rem] text-muted-foreground; }
+.overview-heatmap-footer p { @apply m-0 tabular-nums; }
+.overview-heatmap-footer strong { @apply ml-2 font-medium text-foreground; }
+.overview-heatmap-legend { @apply flex items-center gap-1.5; }
+.overview-heatmap-swatch { width: 12px; height: 12px; }
 @media (prefers-reduced-motion: no-preference) {
   .page-content { animation: workspace-in 180ms ease-out; }
 }
@@ -1016,8 +1039,14 @@ td small {
 .parent-reminders .reminder-clip label { font-weight: 600; }
 .parent-reminders .reminder-clip input { margin: 10px 0; }
 .parent-reminders video { width: 100%; max-height: 280px; margin-top: 12px; background: #000; border-radius: 8px; }
-.parent-reminder-actions .reminder-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
 
-.parent-reminder-actions { margin-bottom: 20px; }
-.parent-reminder-actions label { display: block; font-weight: 600; margin: 16px 0 8px; }
-.parent-reminder-actions [data-slot="native-select-wrapper"] { max-width: 420px; }
+.overview-playback-control { @apply mt-3 border-t pt-3; }
+.overview-playback-actions { @apply flex flex-wrap gap-2; }
+.overview-playback-status, .overview-playback-note { @apply mb-3 text-[0.6875rem] leading-relaxed text-muted-foreground; overflow-wrap: anywhere; }
+.overview-playback-note { @apply mt-3 mb-0; }
+.overview-playback-devices { @apply grid gap-3; }
+.overview-playback-device { @apply h-auto min-w-0 justify-between gap-4 px-3 py-3 text-sm; }
+.overview-playback-device > span:first-child { @apply min-w-0 text-left; }
+.overview-playback-device strong { @apply block font-medium; overflow-wrap: anywhere; }
+.overview-playback-device small { @apply mt-1 block text-xs font-normal text-muted-foreground; white-space: normal; }
+.overview-playback-device > span:last-child { @apply shrink-0 text-xs; }

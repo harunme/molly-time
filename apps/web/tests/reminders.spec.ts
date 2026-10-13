@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const apiOrigin = process.env.MOLLYTIME_TEST_API_ORIGIN || 'http://127.0.0.1:8098';
+
 test('parent uploads clips and actively ends the TV after its current episode', async ({ page }, testInfo) => {
   const folder = mkdtempSync(join(tmpdir(), 'mollytime-reminders-'));
   const file = join(folder, '家长提醒.mp4');
@@ -18,7 +20,7 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
     await expect(page.getByRole('heading', { name: '家长视频提醒' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '发起提醒：只剩 1 集' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '发起提醒', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '恢复播放', exact: true })).toHaveCount(0);
     await page.getByLabel('上传剩 1 集提醒视频').setInputFiles(file);
     await expect.poll(async () => (await (await page.request.get('/api/manage/reminders')).json()).warning.ready,
@@ -28,24 +30,23 @@ test('parent uploads clips and actively ends the TV after its current episode', 
       { timeout: 20000 }).toBe(true);
     await expect(page.getByRole('button', { name: '预览告别', exact: true })).toBeVisible({ timeout: 10000 });
 
-    const auth = await (await page.request.post('http://127.0.0.1:8098/api/auth/login', {
+    const auth = await (await page.request.post(`${apiOrigin}/api/auth/login`, {
       headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
     })).json();
     const parentPage = await page.context().newPage();
     await parentPage.goto('/manage/');
     await parentPage.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
-    await expect(parentPage.getByRole('heading', { name: '播放控制' })).toBeVisible();
+    await expect(parentPage.getByRole('group', { name: '播放控制', exact: true })).toBeVisible();
     await expect(parentPage.getByLabel('上传剩 1 集提醒视频')).toHaveCount(0);
-    await parentPage.getByLabel('提醒哪台电视').selectOption(auth.deviceId);
-    await expect(parentPage.getByLabel('提醒哪台电视').locator('option:checked')).toContainText('在线');
-    await expect(parentPage.getByRole('button', { name: '发起提醒：只剩 1 集' })).toBeEnabled();
+    await expect(parentPage.getByLabel('提醒哪台电视')).toHaveCount(0);
+    await expect(parentPage.getByRole('button', { name: '发起提醒', exact: true })).toBeEnabled();
     await parentPage.screenshot({ path: testInfo.outputPath('parent-reminders.png'), fullPage: true });
     await page.addInitScript((binding) => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), {
       accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId, childId: 'autoplay-child',
     });
     // Keep real MP4 upload validation. Supply the same test video in WebM for
     // headless Chromium builds that lack H.264; all reminder APIs remain real.
-    const webm = await (await page.request.get('http://127.0.0.1:8098/api/episodes/browser-episode/play', {
+    const webm = await (await page.request.get(`${apiOrigin}/api/episodes/browser-episode/play`, {
       headers: { Authorization: `Bearer ${auth.accessToken}` },
     })).body();
     await page.route('**/api/reminders/*/play?*', (route) => {
@@ -56,14 +57,14 @@ test('parent uploads clips and actively ends the TV after its current episode', 
         headers: { 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1),
           ...(range ? { 'Content-Range': `bytes ${start}-${end}/${webm.length}` } : {}) } });
     });
-    await page.goto('http://127.0.0.1:8098/tv/');
+    await page.goto(`${apiOrigin}/tv/`);
     await page.getByRole('button', { name: /^英语启蒙/ }).click();
     await page.locator('[data-focus="episode-browser-episode"]').click();
     const mainVideo = page.getByRole('dialog', { name: '视频播放', exact: true }).locator(':scope > video');
     await expect.poll(() => mainVideo.evaluate((video) => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
     await mainVideo.evaluate((video) => { (video as HTMLVideoElement).pause(); (video as HTMLVideoElement).currentTime = 1; });
     const issued = parentPage.waitForResponse((response) => response.url().endsWith('/api/manage/reminders/requests') && response.request().method() === 'POST');
-    await parentPage.getByRole('button', { name: '发起提醒：只剩 1 集' }).click();
+    await parentPage.getByRole('button', { name: '发起提醒', exact: true }).click();
     const command = await issued;
     expect(command.ok()).toBe(true);
     const clip = page.getByRole('dialog', { name: '家长视频提醒', exact: true });
@@ -81,15 +82,15 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     await expect.poll(() => clip.locator('video').evaluate((video) => (video as HTMLVideoElement).paused)).toBe(false);
     await clip.locator('video').evaluate((video) => { (video as HTMLVideoElement).currentTime = (video as HTMLVideoElement).duration - 0.1; });
     await expect(page.getByRole('dialog', { name: '视频播放', exact: true })).toHaveCount(0);
-    const state = await (await page.request.get('http://127.0.0.1:8098/api/reminders/state', {
+    const state = await (await page.request.get(`${apiOrigin}/api/reminders/state`, {
       headers: { Authorization: `Bearer ${auth.accessToken}` },
     })).json();
     expect(state.phase).toBe('done');
-    expect((await page.request.post('http://127.0.0.1:8098/api/playback/sessions', {
+    expect((await page.request.post(`${apiOrigin}/api/playback/sessions`, {
       headers: { Authorization: `Bearer ${auth.accessToken}` }, data: { episodeId: 'browser-next' },
     })).status()).toBe(403);
     const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-    const report = await (await page.request.get(`http://127.0.0.1:8098/api/manage/reports/watch-time?childId=autoplay-child&start=${date}&end=${date}`)).json();
+    const report = await (await page.request.get(`${apiOrigin}/api/manage/reports/watch-time?childId=autoplay-child&start=${date}&end=${date}`)).json();
     expect(report.sessions.filter((session: { deviceName: string }) => session.deviceName === 'MollyTime TV').every(
       (session: { name: string }) => session.name === 'Browser fixture')).toBe(true);
     await parentPage.route('**/api/manage/reminders/devices', async (route) => {
@@ -98,13 +99,13 @@ test('parent uploads clips and actively ends the TV after its current episode', 
       await route.fulfill({ json: devices.map((device: { id: string }) => device.id === auth.deviceId
         ? { ...device, online: false, lastSeen: '2026-10-01T00:00:00+00:00' } : device) });
     });
-    await expect(parentPage.getByText(/^电视离线，暂时不能发起提醒/)).toBeVisible({ timeout: 10000 });
-    await expect(parentPage.getByRole('button', { name: '发起提醒：只剩 1 集' })).toBeDisabled();
-    await expect(parentPage.getByRole('button', { name: '恢复播放' })).toBeEnabled();
-    await parentPage.getByRole('button', { name: '恢复播放' }).click();
+    await expect(parentPage.getByRole('group', { name: '播放控制', exact: true })).toHaveCount(0, { timeout: 10000 });
+    await expect(parentPage.getByRole('button', { name: '恢复播放', exact: true })).toHaveCount(0);
     await parentPage.unroute('**/api/manage/reminders/devices');
-    await expect(parentPage.getByText(/^电视在线/)).toBeVisible({ timeout: 10000 });
-    await expect(parentPage.getByRole('button', { name: '发起提醒：只剩 1 集' })).toBeEnabled();
+    await expect(parentPage.getByRole('group', { name: '播放控制', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(parentPage.getByRole('button', { name: '恢复播放', exact: true })).toBeEnabled();
+    await parentPage.getByRole('button', { name: '恢复播放', exact: true }).click();
+    await expect(parentPage.getByRole('button', { name: '发起提醒', exact: true })).toBeEnabled();
     expect(errors).toEqual([]);
   } finally { rmSync(folder, { recursive: true, force: true }); }
 });
