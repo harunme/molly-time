@@ -121,7 +121,7 @@ jobs:
       - name: Generate TV release notes
         if: steps.native_plan.outputs.required == 'true'
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_RELEASE_NOTES_MODEL: ${{ vars.DEEPSEEK_RELEASE_NOTES_MODEL || 'deepseek-flash' }}
         run: |
           python tools/generate_tv_release_notes.py \
