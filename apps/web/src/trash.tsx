@@ -88,7 +88,6 @@ export function Trash({ readonly }: { readonly: boolean }) {
     {(error || list.error) && <Alert variant="destructive" role="alert" className="mb-5"><AlertDescription>{error || list.error}</AlertDescription></Alert>}
     {notice && <Alert role="status" className="mb-5"><AlertDescription>{notice}</AlertDescription></Alert>}
     {summary && <ResourceSummary className="trash-summary" icon={Trash2} title="回收站占用"
-      count={`${summary.entryCount} 项内容`}
       primary={bytes(summary.storage.usedBytes)} primaryTitle={`${summary.storage.usedBytes} 字节`} primaryTestId="trash-used"
       secondary={<>可释放 <strong className="font-medium text-foreground" data-testid="trash-reclaimable">{bytes(summary.storage.reclaimableBytes)}</strong></>}
       detail={<>OSS {bytes(summary.storage.ossBytes)} · 本地 {bytes(summary.storage.localBytes)}</>}
@@ -99,7 +98,6 @@ export function Trash({ readonly }: { readonly: boolean }) {
     <Card className="settings-card">
       <div className="toolbar">
         <InputGroup className="search-field"><InputGroupAddon><Search /></InputGroupAddon><InputGroupInput aria-label="搜索回收站" placeholder="搜索回收站名称…" value={search} onChange={(event) => setSearch(event.target.value)} /></InputGroup>
-        <span className="toolbar-count">{list.total} 项内容</span>
       </div>
       {list.loading ? <Loading className="min-h-48" label="正在加载回收站…" /> : !list.error && <>
         <Table className="trash-table min-w-256">

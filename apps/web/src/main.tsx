@@ -651,7 +651,6 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         )}
       </div>
       {stats.data && <ResourceSummary className="library-summary" icon={FolderOpen} title="资源库内容"
-        count={`${stats.data.videoCount + stats.data.folderCount} 项资源`}
         primary={`${stats.data.videoCount} 个视频`}
         secondary={<>文件夹 <strong className="font-medium text-foreground">{stats.data.folderCount}</strong> · 字幕 <strong className="font-medium text-foreground">{stats.data.subtitleCount}</strong></>}
         detail={<>已发布 {ratio(stats.data.publishedVideoCount, stats.data.videoCount)} · 已就绪 {ratio(stats.data.readyVideoCount, stats.data.videoCount)} · 字幕覆盖 {ratio(stats.data.subtitleVideoCount, stats.data.videoCount)}</>}
@@ -673,9 +672,6 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
             value={status}
             onValueChange={(value) => setStatus(value)}
             options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> })]} />
-          <span className="toolbar-count">
-            {list.total} 个{parent ? "视频" : "文件夹"}
-          </span>
         </div>
         <State loading={list.loading} error={list.error} />
         {!list.loading && !list.error && (
@@ -1501,11 +1497,6 @@ function Family({
   };
   const [serial, refresh] = useState(0),
     [timezone, setTimezone] = useState("");
-  const previousPairingOpen = useRef(pairingOpen);
-  useEffect(() => {
-    if (previousPairingOpen.current && !pairingOpen) refresh((v) => v + 1);
-    previousPairingOpen.current = pairingOpen;
-  }, [pairingOpen]);
   const [defaultSubtitle, setDefaultSubtitle] = useState("zh");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
