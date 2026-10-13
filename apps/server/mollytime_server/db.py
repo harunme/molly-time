@@ -80,6 +80,7 @@ def init_db() -> None:
         accounts,
         management_models,
         models,
+        usage_models,  # noqa: F401 -- register usage tables with Base.metadata
     )
 
     engine = get_engine()
@@ -141,6 +142,9 @@ def init_db() -> None:
             session.commit()
         if session.get(management_models.SchemaRevision, "email-accounts-v1") is None:
             session.add(management_models.SchemaRevision(id="email-accounts-v1"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "family-usage-v1") is None:
+            session.add(management_models.SchemaRevision(id="family-usage-v1"))
             session.commit()
 
 

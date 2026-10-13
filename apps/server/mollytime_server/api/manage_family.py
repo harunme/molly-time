@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from ..auth import hash_password, verify_password
@@ -15,9 +14,10 @@ from ..deps import DbSession
 from ..manage_auth import Parent, aware
 from ..transactions import serialize_sqlite_write
 from ..playback_settings import SubtitlePreference, default_subtitle, save_default_subtitle
-from ..management_models import Device, FamilySettings, UploadSession, WatchInterval, WatchSession
-from ..models import ChildProfile, Item, MediaFile
+from ..management_models import Device, FamilySettings, WatchInterval, WatchSession
+from ..models import ChildProfile, Item
 from ..storage.settings import get_storage_settings
+from ..usage import storage_totals
 from .manage_resources import owned
 from .pagination import paginate
 from .watch_filters import family_watch_clause
@@ -110,6 +110,7 @@ def settings(user: Parent, db: DbSession):
     path = get_settings().resolved_media_dir()
     path.mkdir(parents=True, exist_ok=True)
     disk = shutil.disk_usage(path)
+    usage = storage_totals(db, [user.family_id])[user.family_id]
     return {
         "timezone": row.timezone if row else "Asia/Shanghai",
         "defaultSubtitle": default_subtitle(db, user.family_id),
@@ -117,15 +118,8 @@ def settings(user: Parent, db: DbSession):
             "total": disk.total,
             "free": disk.free,
             "backend": get_storage_settings().storage_backend,
-            "usedBytes": db.query(func.coalesce(func.sum(MediaFile.size_bytes), 0))
-            .filter(MediaFile.family_id == user.family_id)
-            .scalar(),
-            "reservedBytes": db.query(func.coalesce(func.sum(UploadSession.size), 0))
-            .filter(
-                UploadSession.family_id == user.family_id,
-                UploadSession.status.in_(["uploading", "processing", "failed"]),
-            )
-            .scalar(),
+            "usedBytes": usage["usedBytes"],
+            "reservedBytes": usage["reservedBytes"],
             "limitBytes": get_settings().family_storage_limit_bytes,
         },
     }

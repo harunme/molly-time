@@ -321,6 +321,9 @@
 .toolbar [data-slot="native-select-wrapper"] {
   @apply w-auto;
 }
+.toolbar [data-slot="date-picker"] {
+  @apply w-auto;
+}
 .library-toolbar {
   @apply rounded-ui bg-white p-3;
 }
@@ -649,6 +652,8 @@
 table {
   @apply w-full border-collapse text-left text-xs;
 }
+.shared-calendar table { table-layout: auto; }
+.shared-calendar th, .shared-calendar td { border: 0; padding: 0; }
 th {
   @apply whitespace-nowrap font-medium text-muted-foreground;
 }
@@ -740,6 +745,10 @@ td small {
 .client-releases-toolbar { margin-bottom: 1rem; }
 .client-releases-toolbar label { display: grid; gap: .5rem; min-width: 12rem; }
 .client-releases-pagination { margin-top: 1rem; justify-content: flex-end; }
+.family-usage-table { min-width: 760px; }
+.family-usage-table td { vertical-align: top; }
+.family-usage-table small { display: block; margin-top: .35rem; overflow-wrap: anywhere; }
+.usage-import { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
 .client-releases-table { min-width: 900px; }
 .client-releases-table td { vertical-align: top; }
 .client-releases-table small { display: block; margin-top: .4rem; }

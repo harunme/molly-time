@@ -27,12 +27,14 @@ from .api import (
     playback,
     playback_settings,
     reminders,
+    usage,
     users,
     watch,
 )
 from .config import get_settings
 from .db import init_db
 from .tv_web import TvWebFiles
+from .usage_meter import UsageMeter
 
 
 def create_app() -> FastAPI:
@@ -57,6 +59,8 @@ def create_app() -> FastAPI:
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    app.add_middleware(UsageMeter)
 
     @app.on_event("startup")
     def _startup() -> None:
@@ -110,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_overview.router)
     app.include_router(manage_family.router)
     app.include_router(operations.router)
+    app.include_router(usage.router)
     app.include_router(manage_client_releases.router)
     app.include_router(client_release_uploads.router)
     app.include_router(watch.router)

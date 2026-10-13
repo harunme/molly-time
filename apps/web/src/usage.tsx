@@ -1,0 +1,110 @@
+import { useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MonthPicker } from "@/components/ui/month-picker";
+import { api, bytes as largeBytes, dateTime } from "./api";
+import { Pagination, useDebounced, usePagedData } from "./pagination";
+
+type Usage = {
+  id: string; name: string; accountCount: number; month: string; timezone: string;
+  statisticsSince: string | null; storageMeasuredAt: string;
+  storage: { usedBytes: number; localBytes: number; ossBytes: number; pendingBytes: number;
+    reservedBytes: number; objectCount: number; unknownSizeCount: number };
+  traffic: { totalBytes: number; localBytes: number; ossBytes: number; requestCount: number;
+    lastOssImportAt: string | null };
+};
+
+const currentMonth = () => new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit",
+}).format(new Date());
+const exactBytes = (value: number) => `${value.toLocaleString("zh-CN")} 字节`;
+const bytes = (value: number) => value < 1024 ? `${value} B`
+  : value < 1024 ** 2 ? `${(value / 1024).toFixed(1)} KB` : largeBytes(value);
+
+function UsageNotes() {
+  return <p className="muted">存储为当前家庭文件占用，包含保留的旧版本；流量按北京时间自然月汇总，包含播放、下载、字幕和封面。OSS 流量以已导入的公网访问日志为准，导入前及日志缺失时数据不完整。结算前请核对日志覆盖范围。</p>;
+}
+
+export function FamilyUsage() {
+  const [month, setMonth] = useState(currentMonth);
+  const [result, setResult] = useState<{ month: string; value: Usage }>();
+  const [error, setError] = useState("");
+  const [serial, refresh] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setError("");
+    api<Usage>(`/usage?month=${encodeURIComponent(month)}`, "GET", undefined, undefined, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) setResult({ month, value }); })
+      .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  }, [month, serial]);
+  const row = result?.month === month ? result.value : undefined;
+  return <Card className="settings-card">
+    <div className="section-heading"><h2>家庭用量</h2><Button variant="outline" onClick={() => refresh((value) => value + 1)}>刷新</Button></div>
+    <label>用量月份<MonthPicker aria-label="用量月份" value={month} onValueChange={setMonth} /></label>
+    {error ? <p className="error" role="alert">{error}</p> : !row ? <p className="empty">正在加载家庭用量…</p> : <>
+      <p>当前文件占用 <strong title={exactBytes(row.storage.usedBytes)}>{bytes(row.storage.usedBytes)}</strong> · 待处理上传 {bytes(row.storage.pendingBytes)}</p>
+      <p>本月已统计流量 <strong title={exactBytes(row.traffic.totalBytes)}>{bytes(row.traffic.totalBytes)}</strong></p>
+      <p className="muted">服务器下行 {bytes(row.traffic.localBytes)} · OSS 公网下行 {bytes(row.traffic.ossBytes)}<br />计量启用时间：{dateTime(row.statisticsSince)}</p>
+      {row.storage.unknownSizeCount > 0 && <p className="error">{row.storage.unknownSizeCount} 个文件大小尚未确认，存储统计不完整。</p>}
+    </>}
+    <UsageNotes />
+  </Card>;
+}
+
+export function OperationsUsage() {
+  const [month, setMonth] = useState(currentMonth), [search, setSearch] = useState("");
+  const [serial, refresh] = useState(0), [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(""), [error, setError] = useState("");
+  const query = useDebounced(search);
+  const params = new URLSearchParams({ month, q: query }).toString();
+  const list = usePagedData<Usage>(`/operations/usage?${params}`, serial);
+  const importLog = async (file: File) => {
+    setError(""); setMessage("");
+    if (file.size > 10 * 1024 ** 2) { setError("每次最多导入 10 MiB 日志，请分批导入。"); return; }
+    setBusy(true);
+    try {
+      const result = await api<{ imported: number; duplicates: number; ignored: number; unresolved: number }>("/operations/usage/oss-logs", "POST", file);
+      setMessage(`已导入 ${result.imported} 条，重复 ${result.duplicates} 条，忽略 ${result.ignored} 条，未识别家庭 ${result.unresolved} 条。`);
+      refresh((value) => value + 1);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "日志导入失败"); }
+    finally { setBusy(false); }
+  };
+  return <Card className="settings-card usage-card">
+    <div className="section-heading"><h2>家庭用量</h2><div className="actions">
+      <Button variant="outline" disabled={list.refreshing} onClick={() => refresh((value) => value + 1)}>刷新用量</Button>
+      <Button variant="outline" asChild><a href={`/api/manage/operations/usage/export?${params}`} download>导出月度 CSV</a></Button>
+    </div></div>
+    <UsageNotes />
+    <div className="form-grid">
+      <label>用量月份<MonthPicker aria-label="用量月份" value={month} onValueChange={setMonth} /></label>
+      <label>搜索家庭或账号<Input placeholder="家庭名称、家庭 ID、邮箱或账号 ID" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+    </div>
+    {(error || list.error) && <p className="error" role="alert">{error || list.error}</p>}
+    {message && <p role="status">{message}</p>}
+    {list.loading ? <p className="empty">正在加载家庭用量…</p> : !list.error && <>
+      <div className="table-scroll"><table className="family-usage-table">
+        <thead><tr><th>家庭</th><th>当前存储</th><th>待处理上传</th><th>所选月份流量</th><th>OSS 日志</th></tr></thead>
+        <tbody>{list.data.map((row) => <tr key={row.id}>
+          <td><strong>{row.name}</strong><small>{row.accountCount} 个账号</small><small>{row.id}</small></td>
+          <td><strong title={exactBytes(row.storage.usedBytes)}>{bytes(row.storage.usedBytes)}</strong><small>本地 {bytes(row.storage.localBytes)} · OSS {bytes(row.storage.ossBytes)}</small><small>{row.storage.objectCount} 个文件</small>{row.storage.unknownSizeCount > 0 && <small className="error">{row.storage.unknownSizeCount} 个大小未确认</small>}</td>
+          <td title={exactBytes(row.storage.pendingBytes)}>{bytes(row.storage.pendingBytes)}</td>
+          <td><strong title={exactBytes(row.traffic.totalBytes)}>{bytes(row.traffic.totalBytes)}</strong><small>服务器 {bytes(row.traffic.localBytes)}</small><small>OSS 公网 {bytes(row.traffic.ossBytes)}</small></td>
+          <td><small>{row.traffic.lastOssImportAt ? `最近导入：${dateTime(row.traffic.lastOssImportAt)}` : "所选月份尚无已导入记录"}</small><small>计量启用：{dateTime(row.statisticsSince)}</small></td>
+        </tr>)}</tbody>
+      </table></div>
+      {!list.data.length && <p className="empty">没有匹配的家庭。</p>}
+      <Pagination {...list} loading={list.refreshing} label="家庭用量分页" />
+    </>}
+    <div className="usage-import">
+      <h3>导入 OSS 访问日志</h3>
+      <p className="muted">上传从已配置 Bucket 下载的 UTF-8 访问日志（最多 10 MiB、20000 行）。按 OSS 请求 ID 去重，可重复导入。内网处理、上传、HEAD 和 CDN 回源请求会被忽略。</p>
+      <label>OSS 访问日志<Input type="file" accept=".log,.txt,text/plain" disabled={busy} onChange={(event) => {
+        const file = event.target.files?.[0]; event.target.value = "";
+        if (file) void importLog(file);
+      }} /></label>
+      {busy && <p role="status">正在导入日志…</p>}
+    </div>
+  </Card>;
+}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientReleases } from "./client-releases";
 import { Invitations } from "./invitations";
+import { OperationsUsage } from "./usage";
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { api } from "./api";
@@ -26,7 +27,7 @@ type Form = StorageConfig & {
 export function Operations({ notify }: { notify: (message: string) => void }) {
   const tab = useParams()["*"] || "";
   const navigate = useNavigate();
-  const validTab = ["storage", "client-releases", "invitations"].includes(tab);
+  const validTab = ["storage", "client-releases", "invitations", "usage"].includes(tab);
   const [form, setForm] = useState<Form>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -79,7 +80,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
       <div className="page-title">
         <div>
           <h1>运营设置</h1>
-          <p>管理用户邀请、平台存储和电视客户端版本，仅平台超管可访问。</p>
+          <p>管理家庭用量、用户邀请、平台存储和电视客户端版本，仅平台超管可访问。</p>
         </div>
       </div>
       <Tabs className="operations-tabs" value={tab} activationMode="manual" onValueChange={(value) => navigate(`/operations/${value}`)}>
@@ -87,6 +88,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
           <TabsTrigger value="storage">文件存储</TabsTrigger>
           <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
           <TabsTrigger value="invitations">用户邀请</TabsTrigger>
+          <TabsTrigger value="usage">家庭用量</TabsTrigger>
         </TabsList>
         <TabsContent value="storage">
       {error && (
@@ -267,6 +269,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
         </TabsContent>
         <TabsContent value="client-releases"><ClientReleases /></TabsContent>
         <TabsContent value="invitations"><Invitations /></TabsContent>
+        <TabsContent value="usage"><OperationsUsage /></TabsContent>
       </Tabs>
     </>
   );

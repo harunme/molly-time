@@ -20,6 +20,7 @@ from ..storage.local import LocalStorage
 from ..storage.settings import get_storage_settings
 from ..utils.image import resize_to_file
 from ..utils.subtitles import webvtt
+from ..usage_meter import meter_media
 
 router = APIRouter(prefix="/api", tags=["playback"])
 
@@ -182,10 +183,10 @@ def play(
 ):
     """Legacy playback entry: local Range delivery or authorized OSS redirect."""
     file = authorized_file(db, episode_id, request, user, mediaId, sessionId)
-    return stream_file(file, request)
+    return stream_file(file, request, user.family_id)
 
 
-def stream_file(file, request):
+def stream_file(file, request, family_id=None):
     """Shared authenticated delivery for catalog videos and private parent clips."""
     storage = build_storage(file.storage)
     if not isinstance(storage, LocalStorage):
@@ -215,6 +216,7 @@ def stream_file(file, request):
         headers["Content-Range"] = f"bytes {start}-{end}/{total}"
     if request.method == "HEAD":
         return Response(status_code=200, headers=headers)
+    meter_media(request, family_id or file.family_id)
     return StreamingResponse(
         storage.iter_range(file.path, start, end), status_code=code, headers=headers
     )
@@ -315,6 +317,7 @@ def subtitle(
     if f is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     storage = build_storage(f.storage)
+    meter_media(request, user.family_id)
     options = db.get(MediaOptions, f.id)
     if format == "vtt":
         cache = get_settings().data_dir / "subtitle-cache"
@@ -390,6 +393,7 @@ def image(
     if not cache_path.exists():
         resize_to_file(storage.open(file.path), cache_path, target_w)
     data = cache_path.read_bytes()
+    meter_media(request, user.family_id)
     return Response(
         content=data, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"}
     )

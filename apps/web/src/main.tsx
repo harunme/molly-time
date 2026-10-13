@@ -2,9 +2,12 @@ import { FeedbackDialogs, confirmAction, promptText } from "./feedback";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
+import { dateKey, parseDateKey } from "@/lib/date-only";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
+import { FamilyUsage } from "./usage";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
 import { PairingPage } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
@@ -1481,12 +1484,10 @@ function Reports() {
   const children = usePagedData<Child>("/children", 0, 20, true, true),
     [child, setChild] = useState("");
   const today = new Date();
-  const localDate = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const week = new Date(today);
   week.setDate(week.getDate() - 6);
-  const [start, setStart] = useState(localDate(week)),
-    [end, setEnd] = useState(localDate(today));
+  const [start, setStart] = useState(dateKey(week)),
+    [end, setEnd] = useState(dateKey(today));
   const reportKey = `${start}|${end}|${child}`;
   const [position, setPosition] = useState({ key: reportKey, session: 1, content: 1 });
   const pages = position.key === reportKey ? position : { key: reportKey, session: 1, content: 1 };
@@ -1522,26 +1523,28 @@ function Reports() {
         </label>
         <label>
           开始日期
-          <Input
-            type="date"
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
+          <DatePicker
+            aria-label="开始日期"
+            data-testid="watch-start-date"
+            value={parseDateKey(start)}
+            onValueChange={(date) => setStart(dateKey(date))}
           />
         </label>
         <label>
           结束日期
-          <Input
-            type="date"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
+          <DatePicker
+            aria-label="结束日期"
+            data-testid="watch-end-date"
+            value={parseDateKey(end)}
+            onValueChange={(date) => setEnd(dateKey(date))}
           />
         </label>
         <Button
           variant="ghost"
           className="quiet"
           onClick={() => {
-            setStart(localDate(today));
-            setEnd(localDate(today));
+            setStart(dateKey(today));
+            setEnd(dateKey(today));
           }}
         >
           今天
@@ -1550,8 +1553,8 @@ function Reports() {
           variant="ghost"
           className="quiet"
           onClick={() => {
-            setStart(localDate(week));
-            setEnd(localDate(today));
+            setStart(dateKey(week));
+            setEnd(dateKey(today));
           }}
         >
           近 7 天
@@ -1720,11 +1723,12 @@ function Family({
       <div className="page-title">
         <div>
           <h1>家庭设置</h1>
-          <p>儿童档案、电视设备、播放偏好与存储空间。</p>
+          <p>儿童档案、电视设备、播放偏好与家庭用量。</p>
         </div>
       </div>
       <div className="settings-grid">
         <div className="settings-column">
+          <FamilyUsage />
           <Card className="settings-card">
             <h2>儿童档案</h2>
             <State loading={children.loading} error={children.error} />
