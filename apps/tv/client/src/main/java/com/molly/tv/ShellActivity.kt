@@ -325,7 +325,8 @@ class ShellActivity : AppCompatActivity() {
         if (id < 0 || id != prefs.getInt("session", -1) || result.getStringExtra("nonce") != prefs.getString("nonce", null)) {
             dispatch("molly:clientUpdateProgress", JSONObject().put("state", "安装结果已失效，请重新检查更新")); return
         }
-        when (result.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, android.content.pm.PackageInstaller.STATUS_FAILURE)) {
+        val status = result.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, android.content.pm.PackageInstaller.STATUS_FAILURE)
+        when (status) {
             android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirmation = result.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 if (confirmation != null) startActivity(confirmation)
@@ -337,7 +338,10 @@ class ShellActivity : AppCompatActivity() {
             }
             else -> {
                 prefs.edit().clear().commit(); installReady = false
-                dispatch("molly:clientUpdateProgress", JSONObject().put("state", "安装失败或已取消，请检查系统安装权限后重试"))
+                val detail = result.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE)
+                    ?.replace(Regex("\\s+"), " ")?.take(300)?.takeIf { it.isNotBlank() }
+                val message = "安装失败（系统状态 $status）" + (detail?.let { "：$it" } ?: "，请重试")
+                dispatch("molly:clientUpdateProgress", JSONObject().put("state", message))
             }
         }
     }
