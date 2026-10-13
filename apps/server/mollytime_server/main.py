@@ -19,6 +19,7 @@ from .api import (
     manage_client_releases,
     manage_family,
     manage_home,
+    manage_overview,
     manage_resources,
     operations,
     pairing,
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(downloads.router)
     app.include_router(manage_resources.router)
     app.include_router(manage_home.router)
+    app.include_router(manage_overview.router)
     app.include_router(manage_family.router)
     app.include_router(operations.router)
     app.include_router(manage_client_releases.router)

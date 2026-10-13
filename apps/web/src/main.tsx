@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
 import { PairingPage } from "./pairing";
+import { Overview } from "./overview";
+import { Pagination, ResourcePicker, useDebounced, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -14,14 +16,9 @@ import {
   bytes,
   dateTime,
   minutes,
-  scope,
   setSession,
   type Child,
-  type Config,
-  type Content,
-  type Home,
   type Resource,
-  type Row,
   type Session,
   type Upload,
   type WatchReport,
@@ -30,7 +27,7 @@ import { enqueue, hasFile, live, pause, resume, stopUploads } from "./uploads";
 import {
   FolderOpen,
   UploadCloud,
-  PanelsTopLeft,
+  LayoutDashboard,
   ChartNoAxesCombined,
   Users,
   Settings2,
@@ -46,7 +43,6 @@ import {
   Pencil,
   Archive,
   Eye,
-  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -75,9 +71,10 @@ function useData<T>(path: string, initial: T, serial = 0) {
     [loading, setLoading] = useState(true);
   useEffect(() => {
     let alive = true;
+    const controller = new AbortController();
     setLoading(true);
     setError("");
-    api<T>(path)
+    api<T>(path, "GET", undefined, undefined, controller.signal)
       .then((value) => {
         if (alive) setData(value);
       })
@@ -89,6 +86,7 @@ function useData<T>(path: string, initial: T, serial = 0) {
       });
     return () => {
       alive = false;
+      controller.abort();
     };
   }, [path, serial]);
   return { data, error, loading };
@@ -97,7 +95,7 @@ function Icon({ name }: { name: string }) {
   const icons: Record<string, typeof FolderOpen> = {
     library: FolderOpen,
     upload: UploadCloud,
-    home: PanelsTopLeft,
+    overview: LayoutDashboard,
     watch: ChartNoAxesCombined,
     family: Users,
     operations: Settings2,
@@ -176,7 +174,7 @@ function App() {
   );
   const [session, updateSession] = useState<Session>(),
     [checking, setChecking] = useState(true);
-  const [page, setPage] = useState("library"),
+  const [page, setPage] = useState("overview"),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   useEffect(() => {
@@ -228,6 +226,7 @@ function App() {
           setSession(value);
           updateSession(value);
           setError("");
+          setPage("overview");
         }}
       />
     );
@@ -246,19 +245,18 @@ function App() {
       />
     );
   const names = [
+    ["overview", "概览"],
     ["library", "资源库"],
     ["upload", "上传任务"],
-    ["home", "首页编排"],
     ["watch", "观看记录"],
     ["family", "家庭设置"],
   ];
   if (session.user.role === "superadmin")
     names.push(["operations", "运营设置"]);
   const readonly = !["admin", "superadmin"].includes(session.user.role);
-  const currentPage = names.find(([id]) => id === page)?.[1] || "资源库";
   return (
     <div className="workspace">
-      <aside className="manage-sidebar">
+      <header className="workspace-brandbar">
         <a className="wordmark" href="/manage/">
           <span className="brand-symbol">
             <Film className="size-5" />
@@ -267,6 +265,38 @@ function App() {
             MollyTime<small>家庭媒体管理</small>
           </span>
         </a>
+        <span className="brandbar-area">家庭媒体管理</span>
+        <div className="brandbar-identity">
+          <span>{session.family.name}</span>
+          <a className="brandbar-tv-link" href="/tv/" target="_blank" rel="noreferrer" aria-label="打开 TV 网页">
+            <ExternalLink className="size-3.5" />
+            <span>打开 TV 网页</span>
+          </a>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" className="user-avatar" aria-label="账号菜单">
+                {session.user.name[0].toUpperCase()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{session.user.name}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => {
+                void run(async () => {
+                  await api("/auth/logout", "POST");
+                  stopUploads();
+                  setSession(undefined);
+                  updateSession(undefined);
+                });
+              }}>
+                <LogOut />退出账号
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <strong>{session.user.name}</strong>
+        </div>
+      </header>
+      <aside className="manage-sidebar">
         <div className="family-name">
           <span className="family-avatar">{session.family.name[0]}</span>
           <div>
@@ -330,50 +360,6 @@ function App() {
         </div>
       </aside>
       <main className="manage-main">
-        <header className="topbar">
-          <div>
-            <span>工作空间</span>
-            <ChevronRight className="size-3.5" />
-            <strong>{currentPage}</strong>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <a href="/tv/" target="_blank" rel="noreferrer">
-                <ExternalLink className="size-3.5" />
-                打开 TV 网页
-              </a>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="lg:hidden"
-                  aria-label="账号菜单"
-                >
-                  <Users className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{session.user.name}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => {
-                    void run(async () => {
-                      await api("/auth/logout", "POST");
-                      stopUploads();
-                      setSession(undefined);
-                      updateSession(undefined);
-                    });
-                  }}
-                >
-                  <LogOut />
-                  退出账号
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </header>
         <div className="page-content">
           {error && (
             <div className="banner error" role="alert">
@@ -401,9 +387,7 @@ function App() {
           )}
           {page === "library" && <Library run={run} readonly={readonly} />}
           {page === "upload" && <Uploads run={run} readonly={readonly} />}
-          {page === "home" && (
-            <HomeEditor run={run} readonly={readonly} notify={setNotice} />
-          )}
+          {page === "overview" && <Overview familyName={session.family.name} navigate={setPage} />}
           {page === "watch" && <Reports />}
           {page === "operations" && session.user.role === "superadmin" && (
             <Operations notify={setNotice} />
@@ -445,7 +429,7 @@ function Login({ done }: { done: (session: Session) => void }) {
             <br />
             留给好奇的眼睛。
           </h1>
-          <p>整理资源，安排首页，了解孩子的播放时间。</p>
+          <p>整理家庭资源，绑定电视，了解孩子的播放时间。</p>
           <div className="login-reels" aria-hidden="true">
             <div>
               <Film />
@@ -456,7 +440,7 @@ function Login({ done }: { done: (session: Session) => void }) {
               <span>语言</span>
             </div>
             <div>
-              <PanelsTopLeft />
+              <LayoutDashboard />
               <span>发现</span>
             </div>
           </div>
@@ -534,21 +518,20 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [uploadKind, setUploadKind] = useState("video");
   const parent = path[path.length - 1];
-  const list = useData<Resource[]>(
-    parent ? `/folders/${parent.id}/videos` : "/resources",
-    [],
+  const query = useDebounced(search);
+  const list = usePagedData<Resource>(
+    `${parent ? `/folders/${parent.id}/videos` : "/resources"}?q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}`,
     serial,
   );
-  const folders = useData<Resource[]>("/resources", [], serial);
   const kind = !parent ? "Series" : "Episode";
-  const filtered = list.data.filter(
-    (item) =>
-      item.name.toLowerCase().includes(search.toLowerCase()) &&
-      (!status || item.status === status),
-  );
+  const filtered = list.data;
+  useEffect(() => { setSelected([]); }, [parent?.id, query, status, list.page]);
   const changed = () => {
     refresh((v) => v + 1);
     setSelected([]);
+  };
+  const openEditor = (item: Resource) => {
+    void run(async () => setEdit(await api<Resource>(`/resources/${item.id}`)));
   };
   const action = (ids: string[], mode: string) => {
     void run(async () => {
@@ -638,12 +621,8 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
           <option value="draft">草稿</option>
           <option value="archived">已归档</option>
         </NativeSelect>
-        <Button variant="ghost" className="quiet" onClick={changed}>
-          <RefreshCw className="size-3.5" />
-          刷新
-        </Button>
         <span className="toolbar-count">
-          {filtered.length} 个{parent ? "视频" : "文件夹"}
+          {list.total} 个{parent ? "视频" : "文件夹"}
         </span>
       </div>
       <State loading={list.loading} error={list.error} />
@@ -722,7 +701,7 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
                   <Button
                     variant="ghost"
                     className="quiet"
-                    onClick={() => setEdit(item)}
+                    onClick={() => openEditor(item)}
                   >
                     <Pencil className="size-3.5" />
                     {readonly ? "详情" : "编辑"}
@@ -820,15 +799,16 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
           )}
         </div>
       )}
+      <Pagination {...list} loading={list.refreshing} label="资源库分页" />
       {!!selected.length && (
         <div className="selection-bar">
           已选 {selected.length} 项
           {parent && (
-            <NativeSelect
-              aria-label="移动到文件夹"
-              value=""
-              onChange={(e) => {
-                const folderId = e.target.value;
+            <ResourcePicker
+              label="移动到文件夹"
+              placeholder="移动到文件夹…"
+              exclude={[parent.id]}
+              onChange={(folderId) => {
                 if (!folderId) return;
                 void run(async () => {
                   const errors: string[] = [];
@@ -843,16 +823,7 @@ function Library({ run, readonly }: { run: Run; readonly: boolean }) {
                   if (errors.length) throw new Error(errors.join("；"));
                 });
               }}
-            >
-              <option value="">移动到文件夹…</option>
-              {folders.data
-                .filter((f) => f.id !== parent.id)
-                .map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-            </NativeSelect>
+            />
           )}
           <Button variant="outline" onClick={() => action(selected, "publish")}>
             批量发布
@@ -1070,7 +1041,6 @@ function UploadDialog({
   run: Run;
   close: () => void;
 }) {
-  const series = useData<Resource[]>("/resources", []);
   const [seriesId, setSeriesId] = useState(
       parent?.type === "Series" ? parent.id : "",
     ),
@@ -1141,20 +1111,15 @@ function UploadDialog({
       >
         {!item && !parent && (
           <div className="form-grid">
-            <label>
-              文件夹
-              <NativeSelect
+            <div className="picker-field">
+              <span>文件夹</span>
+              <ResourcePicker
+                label="文件夹"
                 value={seriesId}
-                onChange={(e) => setSeriesId(e.target.value)}
-              >
-                <option value="">新建文件夹</option>
-                {series.data.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
+                placeholder="新建文件夹"
+                onChange={setSeriesId}
+              />
+            </div>
             {!seriesId && (
               <label>
                 新文件夹名称
@@ -1315,13 +1280,11 @@ function UploadDialog({
 function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
   const [serial, refresh] = useState(0),
     [localSerial, localRefresh] = useState(0);
-  const list = useData<Upload[]>("/uploads", [], serial);
+  const list = usePagedData<Upload>("/uploads", serial);
   useEffect(() => {
-    const timer = setInterval(() => refresh((v) => v + 1), 3000);
     const changed = () => localRefresh((v) => v + 1);
     window.addEventListener("mollytime:uploads", changed);
     return () => {
-      clearInterval(timer);
       window.removeEventListener("mollytime:uploads", changed);
     };
   }, []);
@@ -1341,7 +1304,8 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
         <span>检查与封面</span>
         <span>预览后发布</span>
       </div>
-      {!list.data.length && (
+      <State loading={list.loading} />
+      {!list.loading && !list.data.length && (
         <div className="empty">
           <h3>还没有上传任务</h3>
           <p>到资源库选择视频，或给已有视频添加字幕和封面。</p>
@@ -1457,527 +1421,13 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
           </Card>
         );
       })}
-    </>
-  );
-}
-
-function TvHomePreview({ home }: { home: Home }) {
-  const featured = home.rows[0]?.items[0];
-  const cover = (item: Home["rows"][number]["items"][number]) => (
-    <div className="tv-cover" key={item.image?.url || item.id}>
-      <span>{item.name.slice(0, 2)}</span>
-      {item.image?.url && (
-        <img
-          src={item.image.url}
-          alt=""
-          onError={(event) => {
-            event.currentTarget.style.display = "none";
-          }}
-        />
-      )}
-    </div>
-  );
-  return (
-    <div className="tv-preview">
-      <div className="tv-sidebar">
-        <div className="tv-wordmark">MollyTime</div>
-        <span className="tv-nav-active">首页</span>
-        <span>谁在看</span>
-        <span>设置</span>
-      </div>
-      <div className="tv-preview-content">
-        <small>我们的媒体库</small>
-        <div className="tv-feature">
-          <div>
-            <small>现在想看什么？</small>
-            <h3>{featured?.name || "家庭放映室"}</h3>
-            {featured && (
-              <p>
-                确定 · {featured.type === "episode" ? "继续播放" : "打开文件夹"}
-              </p>
-            )}
-          </div>
-          {featured && cover(featured)}
-        </div>
-        <div className="tv-preview-rows">
-          {home.rows.map((row, index) => (
-            <div className="tv-shelf" key={index}>
-              <strong>{row.title}</strong>
-              <div>
-                {row.items.map((item) => (
-                  <Button variant="outline" key={item.id} title={item.name}>
-                    {cover(item)}
-                    <span>{item.name}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ))}
-          {home.rows.length === 0 && (
-            <p>还没有可展示的内容。选择已发布文件夹，或为儿童添加播放记录。</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HomeEditor({
-  run,
-  readonly,
-  notify,
-}: {
-  run: Run;
-  readonly: boolean;
-  notify: (value: string) => void;
-}) {
-  const children = useData<Child[]>("/children", []),
-    series = useData<Resource[]>("/resources", []);
-  const [child, setChild] = useState(""),
-    [config, setConfig] = useState<Config>(),
-    [content, setContent] = useState<Content>({ schemaVersion: 1, rows: [] });
-  const [selected, setSelected] = useState(0),
-    [preview, setPreview] = useState<Home>({ rows: [] }),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const [history, setHistory] =
-      useState<{ id: string; createdAt: string; content: Content }[]>(),
-    [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setError("");
-    api<Config>("/home-config" + scope(child))
-      .then((value) => {
-        if (alive) {
-          setConfig(value);
-          setContent(value.content);
-          setDirty(false);
-          setSelected(0);
-        }
-      })
-      .catch((e) => {
-        if (alive) setError(e.message);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [child]);
-  useEffect(() => {
-    let alive = true;
-    const timer = setTimeout(() => {
-      api<Home>("/home-config/preview", "POST", {
-        content,
-        childId: child || null,
-      })
-        .then((value) => {
-          if (alive) setPreview(value);
-        })
-        .catch(() => {
-          if (alive) setPreview({ rows: [] });
-        });
-    }, 300);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [content, child]);
-  useEffect(() => {
-    const guard = (e: BeforeUnloadEvent) => {
-      if (dirty) e.preventDefault();
-    };
-    window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
-  const change = (value: Content) => {
-    setContent(value);
-    setDirty(true);
-  };
-  const editRow = (update: Partial<Row>) =>
-    change({
-      ...content,
-      rows: content.rows.map((row, i) =>
-        i === selected ? { ...row, ...update } : row,
-      ),
-    });
-  const reorder = (index: number, delta: number) => {
-    const rows = [...content.rows];
-    if (index + delta < 0 || index + delta >= rows.length) return;
-    [rows[index], rows[index + delta]] = [rows[index + delta], rows[index]];
-    change({ ...content, rows });
-    setSelected(index + delta);
-  };
-  const save = (publish: boolean) => {
-    if (!config) return;
-    setBusy(true);
-    void run(async () => {
-      let result = await api<Config>("/home-config" + scope(child), "PUT", {
-        revision: config.revision,
-        content,
-      });
-      // Retain the saved revision even if publication validation fails.
-      setConfig(result);
-      setDirty(false);
-      if (publish) {
-        result = await api<Config>(
-          "/home-config/publish" + scope(child),
-          "POST",
-          { revision: result.revision },
-        );
-        setConfig(result);
-      }
-      notify(
-        publish
-          ? "首页已发布。电视进入或返回首页时更新。"
-          : "草稿已保存，电视首页尚未改变。",
-      );
-    }).finally(() => setBusy(false));
-  };
-  const row = content.rows[selected];
-  return (
-    <>
-      <div className="page-title">
-        <div>
-          <h1>首页编排</h1>
-          <p>按栏目组织内容，发布后再出现在电视上。</p>
-        </div>
-        <div className="actions">
-          {!readonly && (
-            <>
-              <Button
-                variant="outline"
-                disabled={busy || loading}
-                onClick={() => save(false)}
-              >
-                保存草稿
-              </Button>
-              <Button
-                variant="default"
-                className="primary"
-                disabled={busy || loading}
-                onClick={() => save(true)}
-              >
-                {busy ? "正在保存…" : "发布首页"}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="toolbar">
-        <label>
-          编辑对象
-          <NativeSelect
-            value={child}
-            onChange={async (e) => {
-              if (
-                !dirty ||
-                (await confirmAction("切换对象将放弃未保存修改，继续吗？"))
-              )
-                setChild(e.target.value);
-            }}
-          >
-            <option value="">家庭默认首页</option>
-            {children.data.map((c) => (
-              <option value={c.id} key={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <span className="muted">
-          {dirty
-            ? "有未保存修改"
-            : config?.followingFamily
-              ? "当前跟随家庭首页；发布后独立配置"
-              : config?.publishedId
-                ? "已有发布版本"
-                : "尚未独立发布"}
-        </span>
-        <Button
-          variant="ghost"
-          className="quiet"
-          onClick={() => {
-            void run(async () =>
-              setHistory(await api("/home-config/revisions" + scope(child))),
-            );
-          }}
-        >
-          版本记录
-        </Button>
-        {child && !readonly && (
-          <Button
-            variant="ghost"
-            className="quiet"
-            onClick={async () => {
-              if (
-                await confirmAction(
-                  "切回家庭首页？独立发布版本会保留在历史中。",
-                )
-              )
-                void run(async () => {
-                  const value = await api<Config>(
-                    "/home-config" + scope(child),
-                    "DELETE",
-                  );
-                  setConfig(value);
-                  setContent(value.content);
-                  setDirty(false);
-                });
-            }}
-          >
-            跟随家庭
-          </Button>
-        )}
-      </div>
-      <State loading={loading} error={error} />
-      {!loading && !error && (
-        <div className="home-editor">
-          <Card className="column-editor">
-            <h2>栏目顺序</h2>
-            {content.rows.map((r, i) => (
-              <div
-                key={r.id}
-                className={`column-row ${selected === i ? "selected" : ""}`}
-              >
-                <Button
-                  variant="ghost"
-                  className="quiet column-name"
-                  onClick={() => setSelected(i)}
-                >
-                  {r.title}
-                  <small>{r.enabled ? "显示" : "隐藏"}</small>
-                </Button>
-                {!readonly && (
-                  <div>
-                    <Button
-                      variant="ghost"
-                      className="quiet"
-                      aria-label={`上移 ${r.title}`}
-                      disabled={i === 0}
-                      onClick={() => reorder(i, -1)}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="quiet"
-                      aria-label={`下移 ${r.title}`}
-                      disabled={i === content.rows.length - 1}
-                      onClick={() => reorder(i, 1)}
-                    >
-                      ↓
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-            {!readonly && (
-              <Button
-                variant="outline"
-                className="add-column"
-                disabled={content.rows.length >= 12}
-                onClick={() => {
-                  change({
-                    ...content,
-                    rows: [
-                      ...content.rows,
-                      {
-                        id: crypto.randomUUID(),
-                        title: "新栏目",
-                        source: "manual",
-                        enabled: true,
-                        limit: 12,
-                        itemIds: [],
-                      },
-                    ],
-                  });
-                  setSelected(content.rows.length);
-                }}
-              >
-                ＋ 添加栏目
-              </Button>
-            )}
-            {row && (
-              <fieldset disabled={readonly}>
-                <legend>栏目设置</legend>
-                <label>
-                  栏目标题
-                  <Input
-                    value={row.title}
-                    maxLength={40}
-                    onChange={(e) => editRow({ title: e.target.value })}
-                  />
-                </label>
-                <label>
-                  内容来源
-                  <NativeSelect
-                    value={row.source}
-                    onChange={(e) =>
-                      editRow({
-                        source: e.target.value as Row["source"],
-                        itemIds: [],
-                      })
-                    }
-                  >
-                    <option value="manual">手选文件夹</option>
-                    <option value="recent">最近发布</option>
-                    <option value="continue">继续观看</option>
-                  </NativeSelect>
-                </label>
-                <label>
-                  最多显示
-                  <Input
-                    type="number"
-                    min="1"
-                    max="48"
-                    value={row.limit}
-                    onChange={(e) => editRow({ limit: Number(e.target.value) })}
-                  />
-                </label>
-                <label className="check-label">
-                  <Checkbox
-                    checked={row.enabled}
-                    onCheckedChange={(checked) =>
-                      editRow({ enabled: checked === true })
-                    }
-                  />
-                  显示这个栏目
-                </label>
-                {row.source === "manual" && (
-                  <div className="series-picker">
-                    <p>按选择顺序显示文件夹</p>
-                    {row.itemIds.map((id, i) => (
-                      <div className="picked-series" key={id}>
-                        <span>
-                          {series.data.find((s) => s.id === id)?.name ||
-                            "资源已不可用"}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          className="quiet"
-                          type="button"
-                          aria-label="前移文件夹"
-                          disabled={i === 0}
-                          onClick={() => {
-                            const ids = [...row.itemIds];
-                            [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
-                            editRow({ itemIds: ids });
-                          }}
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="quiet"
-                          type="button"
-                          aria-label="移除文件夹"
-                          onClick={() =>
-                            editRow({
-                              itemIds: row.itemIds.filter((key) => key !== id),
-                            })
-                          }
-                        >
-                          ×
-                        </Button>
-                      </div>
-                    ))}
-                    <NativeSelect
-                      aria-label="添加文件夹"
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value)
-                          editRow({
-                            itemIds: [...row.itemIds, e.target.value],
-                          });
-                      }}
-                    >
-                      <option value="">＋ 选择文件夹</option>
-                      {series.data
-                        .filter((s) => !row.itemIds.includes(s.id))
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                            {s.status !== "published" ? "（未发布）" : ""}
-                          </option>
-                        ))}
-                    </NativeSelect>
-                  </div>
-                )}
-                {row.source === "continue" && (
-                  <p className="muted">
-                    根据儿童的未看完的视频自动显示。旧 TV 客户端会跳过此栏目。
-                  </p>
-                )}
-                <Button
-                  variant="ghost"
-                  type="button"
-                  className="danger quiet"
-                  onClick={() => {
-                    change({
-                      ...content,
-                      rows: content.rows.filter((_, i) => i !== selected),
-                    });
-                    setSelected(0);
-                  }}
-                >
-                  删除栏目
-                </Button>
-              </fieldset>
-            )}
-          </Card>
-          <section className="preview-panel">
-            <div className="preview-label">
-              <h2>TV 比例预览</h2>
-              <span>
-                {children.data.find((c) => c.id === child)?.name || "家庭默认"}
-              </span>
-            </div>
-            <TvHomePreview home={preview} />
-            <p className="muted">
-              预览会过滤未发布或下架内容。首页顺序不限制儿童访问其他已发布内容。
-            </p>
-          </section>
-        </div>
-      )}
-      {history && (
-        <Modal title="已发布版本" close={() => setHistory(undefined)}>
-          {history.length ? (
-            history.map((r) => (
-              <div className="history-row" key={r.id}>
-                <span>{dateTime(r.createdAt)}</span>
-                <Button
-                  variant="outline"
-                  disabled={readonly}
-                  onClick={async () => {
-                    if (
-                      await confirmAction(
-                        "将这个版本恢复到草稿？发布后电视才会更新。",
-                      )
-                    ) {
-                      change(r.content);
-                      setHistory(undefined);
-                    }
-                  }}
-                >
-                  恢复到草稿
-                </Button>
-              </div>
-            ))
-          ) : (
-            <p className="empty">还没有发布记录</p>
-          )}
-        </Modal>
-      )}
+      <Pagination {...list} loading={list.refreshing} label="上传任务分页" />
     </>
   );
 }
 
 function Reports() {
-  const children = useData<Child[]>("/children", []),
+  const children = usePagedData<Child>("/children", 0, 20, true, true),
     [child, setChild] = useState("");
   const today = new Date();
   const localDate = (date: Date) =>
@@ -1985,24 +1435,16 @@ function Reports() {
   const week = new Date(today);
   week.setDate(week.getDate() - 6);
   const [start, setStart] = useState(localDate(week)),
-    [end, setEnd] = useState(localDate(today)),
-    [serial, refresh] = useState(0);
-  const report = useData<WatchReport | undefined>(
-    `/reports/watch-time?start=${start}&end=${end}${child ? `&childId=${child}` : ""}`,
+    [end, setEnd] = useState(localDate(today));
+  const reportKey = `${start}|${end}|${child}`;
+  const [position, setPosition] = useState({ key: reportKey, session: 1, content: 1 });
+  const pages = position.key === reportKey ? position : { key: reportKey, session: 1, content: 1 };
+  const report = useData<(WatchReport & { sessionTotal: number; contentTotal: number; pageSize: number }) | undefined>(
+    `/reports/watch-time?start=${start}&end=${end}${child ? `&childId=${encodeURIComponent(child)}` : ""}&sessionPage=${pages.session}&contentPage=${pages.content}&pageSize=20`,
     undefined,
-    serial,
   );
   const data = report.data,
     max = Math.max(...(data?.days.map((d) => d.playedMs) || [0]), 60000);
-  useEffect(() => {
-    const update = () => { if (!document.hidden) refresh((v) => v + 1); };
-    const timer = setInterval(update, 15000);
-    document.addEventListener("visibilitychange", update);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", update);
-    };
-  }, []);
   return (
     <>
       <div className="page-title">
@@ -2010,9 +1452,6 @@ function Reports() {
           <h1>观看记录</h1>
           <p>统计真实播放时间，暂停、缓冲和拖动不计入。</p>
         </div>
-        <Button variant="outline" onClick={() => refresh((v) => v + 1)}>
-          刷新记录
-        </Button>
       </div>
       <div className="toolbar report-filters">
         <label>
@@ -2021,6 +1460,7 @@ function Reports() {
             value={child}
             onChange={(e) => setChild(e.target.value)}
           >
+            {child && children.known[child] && !children.data.some((c) => c.id === child) && <option value={child}>{children.known[child].name}</option>}
             <option value="">全家庭</option>
             {children.data.map((c) => (
               <option key={c.id} value={c.id}>
@@ -2066,6 +1506,8 @@ function Reports() {
           近 7 天
         </Button>
       </div>
+      {children.total > children.pageSize && <Pagination {...children} loading={children.refreshing} label="儿童筛选分页" />}
+      <State error={children.error} />
       <State loading={report.loading} error={report.error} />
       {!report.loading &&
         !report.error &&
@@ -2138,6 +1580,7 @@ function Reports() {
               ) : (
                 <p className="muted">所选日期内没有有效播放。</p>
               )}
+            <Pagination page={pages.content} pageSize={data.pageSize} total={data.contentTotal} setPage={(content) => setPosition({ ...pages, content })} label="内容分布分页" />
             </Card>
             <Card className="report-section">
               <h2>播放明细</h2>
@@ -2169,9 +1612,9 @@ function Reports() {
                 </table>
               </div>
               <p className="muted">
-                家长预览不计入。断网记录会补传；未能保存的崩溃尾段无法补算。明细最多展示最近
-                200 次。
+                家长预览不计入。断网记录会补传；未能保存的崩溃尾段无法补算。
               </p>
+              <Pagination page={pages.session} pageSize={data.pageSize} total={data.sessionTotal} setPage={(session) => setPosition({ ...pages, session })} label="播放明细分页" />
             </Card>
           </>
         ))}
@@ -2195,10 +1638,10 @@ function Family({
     [timezone, setTimezone] = useState("");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
-  const children = useData<Child[]>("/children", [], serial),
-    devices = useData<
-      { id: string; name: string; revoked: boolean; lastSeen: string }[]
-    >("/devices", [], serial);
+  const children = usePagedData<Child>("/children", serial),
+    devices = usePagedData<
+      { id: string; name: string; revoked: boolean; lastSeen: string }
+    >("/devices", serial);
   const settings = useData<
     | {
         timezone: string;
@@ -2227,7 +1670,7 @@ function Family({
       <div className="settings-grid">
         <Card className="settings-card">
           <h2>儿童档案</h2>
-          <State error={children.error} />
+          <State loading={children.loading} error={children.error} />
           {children.data.map((c) => (
             <div className="settings-row" key={c.id}>
               <span className="child-avatar">{c.name[0]}</span>
@@ -2250,6 +1693,7 @@ function Family({
               )}
             </div>
           ))}
+          <Pagination {...children} loading={children.refreshing} label="儿童档案分页" />
           {!readonly && (
             <form
               className="inline-form"
@@ -2258,6 +1702,7 @@ function Family({
                 void run(async () => {
                   await api("/children", "POST", { name: childName });
                   setChildName("");
+                  children.setPage(Math.max(1, Math.ceil((children.total + 1) / children.pageSize)));
                   refresh((v) => v + 1);
                 });
               }}
@@ -2286,7 +1731,7 @@ function Family({
           <p className="muted">
             扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。
           </p>
-          <State error={devices.error} />
+          <State loading={devices.loading} error={devices.error} />
           {devices.data.length ? (
             devices.data.map((d) => (
               <div className="device-row" key={d.id}>
@@ -2336,8 +1781,9 @@ function Family({
               </div>
             ))
           ) : (
-            <p className="empty">还没有绑定电视</p>
+            !devices.loading && <p className="empty">还没有绑定电视</p>
           )}
+          <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
         </Card>
         <Card className="settings-card">
           <h2>时区与存储</h2>

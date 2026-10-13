@@ -6,12 +6,12 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
-from ..storage.settings import get_storage_settings
 from ..config import get_settings
 from ..deps import DbSession
 from ..images import image_url
@@ -27,7 +27,9 @@ from ..remote_uploads import (
     verified_parts,
 )
 from ..storage import build_storage
+from ..storage.settings import get_storage_settings
 from ..transactions import serialize_sqlite_write
+from .pagination import paginate
 
 router = APIRouter(prefix="/api/manage", tags=["manage-resources"])
 
@@ -49,31 +51,56 @@ def state_for(db, item):
     return row
 
 
-def dto(db, item):
-    state = db.get(ResourceState, item.id)
-    media = (
+def prime_resources(db, items, summary=False):
+    keys = [item.id for item in items]
+    states = {row.item_id: row for row in db.query(ResourceState).filter(ResourceState.item_id.in_(keys)).all()}
+    db.info["manage_states"] = {key: states.get(key) for key in keys}
+    if summary:
+        return
+    files = db.query(MediaFile).filter(MediaFile.item_id.in_(keys), MediaFile.kind.in_(["video", "subtitle", "image"])).all()
+    grouped = {key: [] for key in keys}
+    for file in files:
+        grouped[file.item_id].append(file)
+    db.info["manage_files"] = grouped
+    options = {row.media_id: row for row in db.query(MediaOptions).filter(MediaOptions.media_id.in_([file.id for file in files])).all()}
+    db.info["manage_options"] = {file.id: options.get(file.id) for file in files}
+
+
+def resource_state(db, item):
+    cached = db.info.get("manage_states", {})
+    return cached[item.id] if item.id in cached else db.get(ResourceState, item.id)
+
+
+def dto(db, item, include_files=True):
+    state = resource_state(db, item)
+    media = db.info.get("manage_files", {}).get(item.id) if include_files else []
+    if media is None:
+        media = (
         db.query(MediaFile)
         .filter(MediaFile.item_id == item.id, MediaFile.kind.in_(["video", "subtitle", "image"]))
         .all()
-    )
+        )
+    options = db.info.get("manage_options", {})
+    options = {file.id: options[file.id] if file.id in options else db.get(MediaOptions, file.id) for file in media}
+    cover = image_url(db, item)
     return {
         "id": item.id,
         "name": item.name,
         "type": item.type,
         "parentId": item.parent_id,
-        "overview": item.overview,
+        "overview": item.overview if include_files else "",
         "indexNumber": item.index_number,
         "status": state.status if state else "published",
         "legacy": state is None,
         "ready": state.ready if state else True,
         "runtimeMs": (item.runtime_ticks or 0) // 10000,
-        "imageUrl": image_url(db, item) + ("&" if "?" in image_url(db, item) else "?") + "w=320",
+        "imageUrl": cover + ("&" if "?" in cover else "?") + "w=320",
         "files": [
             {
                 "id": f.id,
                 "name": (
-                    db.get(MediaOptions, f.id).label
-                    if db.get(MediaOptions, f.id) and db.get(MediaOptions, f.id).label
+                    options[f.id].label
+                    if options[f.id] and options[f.id].label
                     else Path(f.path).name
                 ),
                 "kind": f.kind,
@@ -83,7 +110,7 @@ def dto(db, item):
                 "version": f.sha256 or f.id,
                 "isDefault": f.is_default,
                 "offsetMs": (
-                    db.get(MediaOptions, f.id).offset_ms if db.get(MediaOptions, f.id) else 0
+                    options[f.id].offset_ms if options[f.id] else 0
                 ),
             }
             for f in media
@@ -91,43 +118,70 @@ def dto(db, item):
     }
 
 
+def resource_filters(query, q, status):
+    if q:
+        query = query.filter(Item.name.icontains(q.strip(), autoescape=True))
+    if status:
+        query = query.outerjoin(ResourceState, ResourceState.item_id == Item.id).filter(
+            func.coalesce(ResourceState.status, "published") == status
+        )
+    return query
+
+
+def resource_summary(db, item):
+    state = resource_state(db, item)
+    return {"id": item.id, "name": item.name, "type": item.type,
+            "status": state.status if state else "published"}
+
+
 @router.get("/resources")
-def resources(user: Parent, db: DbSession, parentId: str | None = None):
+def resources(
+    user: Parent, db: DbSession, parentId: str | None = None,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    q: str = Query(default="", max_length=256),
+    status: str = Query(default="", pattern="^(|draft|published|archived)$"),
+    summary: bool = False, ids: str = Query(default="", max_length=4000),
+):
     query = db.query(Item).filter(Item.family_id == user.family_id)
     if parentId:
         owned(db, Item, parentId, user.family_id)
         query = query.filter(Item.parent_id == parentId)
     else:
         query = query.filter(Item.type == "Series")
-    return [dto(db, i) for i in query.order_by(Item.index_number, Item.sort_name, Item.name).all()]
+    if ids:
+        keys = list(dict.fromkeys(ids.split(",")))
+        if len(keys) > 100:
+            raise HTTPException(422, "单次最多查询 100 个资源")
+        query = query.filter(Item.id.in_(keys))
+    query = resource_filters(query, q, status)
+    return paginate(query.order_by(Item.index_number, Item.sort_name, Item.name, Item.id),
+                    page, pageSize, lambda item: resource_summary(db, item) if summary else dto(db, item, page is None),
+                    lambda rows: prime_resources(db, rows, summary or page is not None))
 
 
 @router.get("/folders/{folder_id}/videos")
-def folder_videos(folder_id: str, user: Parent, db: DbSession):
+def folder_videos(
+    folder_id: str, user: Parent, db: DbSession,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    q: str = Query(default="", max_length=256),
+    status: str = Query(default="", pattern="^(|draft|published|archived)$"),
+):
     folder = owned(db, Item, folder_id, user.family_id)
     if folder.type != "Series":
         raise HTTPException(422, "请选择文件夹")
-    parents = [folder.id] + [
-        i.id
-        for i in db.query(Item)
-        .filter(
-            Item.family_id == user.family_id,
-            Item.parent_id == folder.id,
-            Item.type == "Season",
-        )
-        .all()
-    ]
-    return [
-        dto(db, i)
-        for i in db.query(Item)
-        .filter(
-            Item.family_id == user.family_id,
-            Item.type == "Episode",
-            Item.parent_id.in_(parents),
-        )
-        .order_by(Item.index_number, Item.name)
-        .all()
-    ]
+    seasons = db.query(Item.id).filter(
+        Item.family_id == user.family_id, Item.parent_id == folder.id, Item.type == "Season"
+    )
+    query = db.query(Item).filter(
+        Item.family_id == user.family_id, Item.type == "Episode",
+        or_(Item.parent_id == folder.id, Item.parent_id.in_(seasons)),
+    )
+    query = resource_filters(query, q, status)
+    return paginate(query.order_by(Item.index_number, Item.name, Item.id),
+                    page, pageSize, lambda item: dto(db, item, page is None),
+                    lambda rows: prime_resources(db, rows, page is not None))
 
 
 class ResourceBody(BaseModel):
@@ -280,7 +334,10 @@ class UploadBody(BaseModel):
 
 
 def upload_dto(db, row):
-    task = db.query(MediaTask).filter(MediaTask.upload_id == row.id).first()
+    tasks = db.info.get("manage_upload_tasks", {})
+    targets = db.info.get("manage_upload_targets", {})
+    task = tasks[row.id] if row.id in tasks else db.query(MediaTask).filter(MediaTask.upload_id == row.id).first()
+    target = targets[row.id] if row.id in targets else transport(db, row)
     return {
         "id": row.id,
         "itemId": row.item_id,
@@ -293,21 +350,29 @@ def upload_dto(db, row):
         "error": row.error,
         "taskId": task.id if task else None,
         "taskStatus": task.status if task else None,
-        "transport": (transport(db, row).backend if transport(db, row) else "local"),
+        "transport": target.backend if target else "local",
         "partSize": PART_SIZE,
     }
 
 
 @router.get("/uploads")
-def uploads(user: Parent, db: DbSession):
-    rows = (
+def uploads(
+    user: Parent, db: DbSession,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+):
+    query = (
         db.query(UploadSession)
         .filter(UploadSession.family_id == user.family_id)
-        .order_by(UploadSession.created_at.desc())
-        .limit(200)
-        .all()
+        .order_by(UploadSession.created_at.desc(), UploadSession.id.desc())
     )
-    return [upload_dto(db, r) for r in rows]
+    def preload(rows):
+        keys = [row.id for row in rows]
+        tasks = {row.upload_id: row for row in db.query(MediaTask).filter(MediaTask.upload_id.in_(keys)).all()}
+        targets = {row.upload_id: row for row in db.query(UploadTarget).filter(UploadTarget.upload_id.in_(keys)).all()}
+        db.info["manage_upload_tasks"] = {key: tasks.get(key) for key in keys}
+        db.info["manage_upload_targets"] = {key: targets.get(key) for key in keys}
+    return paginate(query, page, pageSize, lambda row: upload_dto(db, row), preload)
 
 
 @router.post("/uploads")

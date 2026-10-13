@@ -36,14 +36,15 @@ export function ClientReleases() {
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     setLoading(true); setError(""); setData(undefined);
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (channel) query.set("packageName", channel);
-    api<Inventory>(`/operations/client-releases?${query}`)
+    api<Inventory>(`/operations/client-releases?${query}`, "GET", undefined, undefined, controller.signal)
       .then((value) => { if (active) setData(value); })
       .catch((failure) => { if (active) setError(failure instanceof Error ? failure.message : "安装包列表加载失败，请重试"); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [channel, page, refresh]);
 
   const download = async (release: Release) => {
@@ -71,7 +72,6 @@ export function ClientReleases() {
   return <Card className="settings-card client-releases-card">
     <div className="client-releases-heading">
       <div><h2>客户端版本</h2><p className="muted">查看电视安装包历史与各渠道当前发布的版本。</p></div>
-      <Button variant="outline" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>刷新列表</Button>
     </div>
     <ClientReleaseUpload published={() => { setChannel(""); setPage(1); setRefresh((value) => value + 1); }} />
     <div className="client-releases-toolbar">
@@ -81,7 +81,7 @@ export function ClientReleases() {
       {data && <span className="muted">共 {data.total} 个安装包</span>}
     </div>
     {error && <p role="alert" className="error">{error}</p>}
-    {!!data?.invalidRecords && <p role="alert" className="error">{data.invalidRecords} 条版本记录无法读取，请恢复版本记录备份后刷新。</p>}
+    {!!data?.invalidRecords && <p role="alert" className="error">{data.invalidRecords} 条版本记录无法读取，请恢复版本记录备份后重新进入此页。</p>}
     {loading ? <p role="status" className="empty">正在加载安装包…</p> : data && !data.items.length ?
       <p className="empty">{data.total ? "本页没有安装包，请返回上一页。" : "暂无安装包。发布客户端版本后，安装包会显示在这里。"}</p> : data &&
       <div className="table-scroll"><table className="client-releases-table"><thead><tr>

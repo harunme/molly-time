@@ -24,7 +24,7 @@ export function ClientReleaseUpload({ published }: { published: () => void }) {
     alive.current = true;
     api<Options>("/operations/client-releases/upload-options")
       .then((value) => { if (alive.current) setOptions(value); })
-      .catch((failure) => { if (alive.current) setError(failure instanceof Error ? failure.message : "上传配置加载失败，请刷新页面"); })
+      .catch((failure) => { if (alive.current) setError(failure instanceof Error ? failure.message : "上传配置加载失败，请稍后重新进入此页"); })
       .finally(() => { if (alive.current) setOptionsLoading(false); });
     return () => { alive.current = false; request.current?.abort(); };
   }, []);

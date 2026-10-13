@@ -9,6 +9,8 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
   await page.getByLabel("账号", { exact: true }).fill("parent");
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
   await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "管理导航" }).getByRole("button", { name: "资源库", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "英语启蒙", exact: true }),
   ).toBeVisible();

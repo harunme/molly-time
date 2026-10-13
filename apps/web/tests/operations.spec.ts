@@ -7,7 +7,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await page.getByLabel('账号', { exact: true }).fill('parent');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '运营设置', exact: true })).toHaveCount(0);
   expect((await page.request.get('/api/manage/operations/storage')).status()).toBe(403);
   expect((await page.request.get('/api/manage/operations/client-releases')).status()).toBe(403);
@@ -62,8 +62,6 @@ test('superadmin browses release history, filters channels and downloads an old 
   await expect(table).toContainText('Debug 测试版');
   await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv');
   await expect(table.locator('tbody tr')).toHaveCount(2);
-  await page.getByRole('button', { name: '刷新列表' }).click();
-  await expect(table.locator('tbody tr')).toHaveCount(2);
   await page.screenshot({ path: '../../artifacts/operations-client-releases.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('heading', { name: '客户端版本', exact: true })).toBeVisible();
@@ -71,7 +69,7 @@ test('superadmin browses release history, filters channels and downloads an old 
   await page.screenshot({ path: '../../artifacts/operations-client-releases-mobile.png', fullPage: true });
 });
 
-test('client releases render empty and failed inventory states with refresh recovery', async ({ page }) => {
+test('client releases render empty and failed inventory states and recover when changing filters', async ({ page }) => {
   let failed = false;
   await page.route('**/api/manage/operations/client-releases?*', (route) => route.fulfill({
     status: failed ? 503 : 200, contentType: 'application/json',
@@ -85,10 +83,10 @@ test('client releases render empty and failed inventory states with refresh reco
   await page.getByRole('tab', { name: '客户端版本' }).click();
   await expect(page.getByText(/暂无安装包/)).toBeVisible();
   failed = true;
-  await page.getByRole('button', { name: '刷新列表' }).click();
+  await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv');
   await expect(page.getByRole('alert')).toContainText('安装包记录不可用');
   failed = false;
-  await page.getByRole('button', { name: '刷新列表' }).click();
+  await page.getByLabel('发布渠道', { exact: true }).selectOption('');
   await expect(page.getByText(/暂无安装包/)).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

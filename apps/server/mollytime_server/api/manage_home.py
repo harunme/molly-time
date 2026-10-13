@@ -2,7 +2,7 @@
 
 import datetime as dt
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from ..management_models import HomeConfig, HomeRevision, ResourceState, WatchPr
 from ..models import ChildProfile, Item
 from ..resource_policy import published_episodes, published_series, visible
 from .manage_resources import owned
+from .pagination import paginate
 
 router = APIRouter(prefix="/api/manage/home-config", tags=["manage-home"])
 DEFAULT = {
@@ -166,19 +167,20 @@ def publish(body: Publish, user: Parent, db: DbSession, childId: str | None = No
 
 
 @router.get("/revisions")
-def revisions(user: Parent, db: DbSession, childId: str | None = None):
+def revisions(
+    user: Parent, db: DbSession, childId: str | None = None,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+):
     check_child(db, childId, user.family_id)
-    rows = (
+    query = (
         db.query(HomeRevision)
         .filter(HomeRevision.config_id == config_key(user.family_id, childId))
-        .order_by(HomeRevision.created_at.desc())
-        .limit(20)
-        .all()
+        .order_by(HomeRevision.created_at.desc(), HomeRevision.id.desc())
     )
-    return [
-        {"id": r.id, "createdAt": r.created_at.isoformat() + "Z", "content": r.content}
-        for r in rows
-    ]
+    return paginate(query, page, pageSize, lambda r: {
+        "id": r.id, "createdAt": r.created_at.isoformat() + "Z", "content": r.content
+    })
 
 
 @router.delete("")

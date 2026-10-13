@@ -2,7 +2,7 @@
 
 import datetime as dt
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ..deps import CurrentUser, DbSession
@@ -13,6 +13,7 @@ from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..transactions import serialize_sqlite_write
 from .manage_resources import owned
+from .pagination import paginate
 from .playback import playback_info
 
 router = APIRouter(tags=["downloads"])
@@ -40,15 +41,28 @@ def download_dto(row, db):
 
 
 @router.get("/api/manage/resources/{item_id}/downloads")
-def list_downloads(item_id: str, user: Parent, db: DbSession):
+def list_downloads(
+    item_id: str, user: Parent, db: DbSession,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    deviceIds: str = Query(default="", max_length=4000),
+    mediaId: str | None = None,
+):
     owned(db, Item, item_id, user.family_id)
-    rows = (
+    query = (
         db.query(DeviceDownload)
         .join(MediaFile)
         .filter(DeviceDownload.family_id == user.family_id, MediaFile.item_id == item_id)
-        .all()
     )
-    return [download_dto(row, db) for row in rows]
+    if deviceIds:
+        keys = list(dict.fromkeys(deviceIds.split(",")))
+        if len(keys) > 100:
+            raise HTTPException(422, "单次最多查询 100 个设备")
+        query = query.filter(DeviceDownload.device_id.in_(keys))
+    if mediaId:
+        query = query.filter(DeviceDownload.media_id == mediaId)
+    return paginate(query.order_by(DeviceDownload.updated_at.desc(), DeviceDownload.id),
+                    page, pageSize, lambda row: download_dto(row, db))
 
 
 class CommandBody(BaseModel):

@@ -1,12 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-test('family viewing appears while reports stay open and does not belong to a child', async ({ page }) => {
+test('family viewing loads when reports are reopened and does not belong to a child', async ({ page }) => {
   await page.goto('/manage/');
   await page.getByLabel('账号', { exact: true }).fill('parent');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
-  await page.clock.install();
+  await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
   const firstReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.ok());
   await page.getByRole('navigation').getByRole('button', { name: '观看记录' }).click();
   const baseline = await (await firstReport).json();
@@ -29,8 +28,9 @@ test('family viewing appears while reports stay open and does not belong to a ch
   });
   expect(synced.ok()).toBe(true);
   await expect(familyRows).toHaveCount(initialFamilyRows);
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '概览', exact: true }).click();
   const updatedReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.ok());
-  await page.clock.fastForward(15000);
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('button', { name: '观看记录', exact: true }).click();
   const updated = await (await updatedReport).json();
   expect(updated.totalPlayedMs).toBe(baseline.totalPlayedMs + 1000);
   expect(updated.sessions.find((s: { id: string }) => s.id === session.sessionId).childName).toBe('家庭观看');

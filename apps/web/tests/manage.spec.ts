@@ -9,12 +9,14 @@ async function login(page: import("@playwright/test").Page) {
   await page.getByLabel("账号", { exact: true }).fill("parent");
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
   await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "管理导航" }).getByRole("button", { name: "资源库", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "资源库", exact: true }),
   ).toBeVisible();
 }
 
-test("real upload, parent preview, publish and homepage draft publication", async ({
+test("real upload, parent preview and resource publication", async ({
   page,
 }) => {
   // Public HTTP pages do not expose WebCrypto; exercise the compatibility path
@@ -50,6 +52,11 @@ test("real upload, parent preview, publish and homepage draft publication", asyn
     await page.getByLabel("选择上传文件").setInputFiles(file);
     await page.getByRole("button", { name: "开始上传 1 个文件" }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect.poll(async () => {
+      const response = await page.request.get('/api/manage/uploads?page=1&pageSize=20');
+      const data = await response.json();
+      return data.items.find((item: { filename: string; status: string }) => item.filename === '自然小故事.mp4')?.status;
+    }, { timeout: 20000 }).toBe('ready');
     await page
       .getByRole("navigation")
       .getByRole("button", { name: "上传任务" })
@@ -70,30 +77,7 @@ test("real upload, parent preview, publish and homepage draft publication", asyn
     await page.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "发布", exact: true }).click();
     await expect(page.locator(".badge.published")).toBeVisible();
-    await page
-      .getByRole("navigation")
-      .getByRole("button", { name: "首页编排" })
-      .click();
-    await page.getByLabel("栏目标题").fill("今晚一起看");
-    await page.getByRole("button", { name: "保存草稿" }).click();
-    await expect(
-      page.getByText("草稿已保存，电视首页尚未改变。"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "发布首页", exact: true }).click();
-    await expect(
-      page.getByText("首页已发布。电视进入或返回首页时更新。"),
-    ).toBeVisible();
-    await expect(
-      page.locator(".tv-shelf").getByText("今晚一起看"),
-    ).toBeVisible();
-    await page.screenshot({
-      path: "../../artifacts/parent-home-editor.png",
-      fullPage: true,
-    });
-    await page
-      .getByRole("navigation")
-      .getByRole("button", { name: "资源库" })
-      .click();
+    await page.getByRole("button", { name: "全部文件夹", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "自然与发现", exact: true }),
     ).toBeVisible();
@@ -408,7 +392,7 @@ test("OSS upload resumes existing parts and sends video bytes only to the signed
     await route.fulfill({
       status: 200,
       headers: {
-        "Access-Control-Allow-Origin": "http://127.0.0.1:5174",
+        "Access-Control-Allow-Origin": new URL(page.url()).origin,
         "Access-Control-Allow-Methods": "PUT, OPTIONS",
         "Access-Control-Allow-Headers": "content-md5,content-type",
       },

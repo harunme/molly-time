@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { api, bytes, dateTime, type Resource } from "./api";
+import { Pagination, usePagedData } from "./pagination";
 
 type Playback = {
   mediaId: string;
@@ -52,7 +53,7 @@ export function MediaPreview({ id }: { id: string }) {
           autoPlay
           crossOrigin="anonymous"
           className="video-preview"
-          onError={() => setError("播放地址可能已过期，请重新加载")}
+          onError={() => setError("播放地址可能已过期，请重试播放")}
         >
           {source.subtitles.map((sub) => (
             <track
@@ -70,7 +71,7 @@ export function MediaPreview({ id }: { id: string }) {
         <p className="error">
           {error}{" "}
           <Button variant="outline" onClick={() => setRefresh((v) => v + 1)}>
-            重新加载
+            重试播放
           </Button>
         </p>
       )}
@@ -105,37 +106,13 @@ export function TvDownloads({
   item: Resource;
   readonly: boolean;
 }) {
-  const [devices, setDevices] = useState<
-    { id: string; name: string; revoked: boolean }[]
-  >([]);
-  const [rows, setRows] = useState<Download[]>([]),
-    [error, setError] = useState(""),
+  const [serial, refresh] = useState(0);
+  const devices = usePagedData<{ id: string; name: string; revoked: boolean }>("/devices?activeOnly=true", serial);
+  const mediaId = item.files.find((file) => file.kind === "video")?.id;
+  const params = new URLSearchParams({ deviceIds: devices.data.map((device) => device.id).join(","), mediaId: mediaId ?? "" });
+  const downloads = usePagedData<Download>(`/resources/${item.id}/downloads?${params}`, serial, 100, !!devices.data.length && !!mediaId);
+  const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      Promise.all([
-        api<typeof devices>("/devices"),
-        api<Download[]>(`/resources/${item.id}/downloads`),
-      ])
-        .then(([d, r]) => {
-          if (alive) {
-            setDevices(d);
-            setRows(r);
-          }
-        })
-        .catch((e) => {
-          if (alive) setError(e.message);
-        });
-    void load();
-    const timer = setInterval(() => {
-      void load();
-    }, 10000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [item.id]);
   const command = async (deviceId: string, desired: string) => {
     setBusy(true);
     setError("");
@@ -144,7 +121,7 @@ export function TvDownloads({
         deviceId,
         desired,
       });
-      setRows(await api(`/resources/${item.id}/downloads`));
+      refresh((value) => value + 1);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -157,10 +134,9 @@ export function TvDownloads({
       <p className="muted">
         电视连接后自动下载。保存的视频不会被普通缓存清理，云端原文件仍保留。
       </p>
-      {devices
-        .filter((d) => !d.revoked)
+      {devices.data
         .map((d) => {
-          const row = rows.find(
+          const row = downloads.data.find(
             (r) =>
               r.deviceId === d.id &&
               r.mediaId === item.files.find((f) => f.kind === "video")?.id &&
@@ -185,7 +161,7 @@ export function TvDownloads({
                   <Button
                     variant="outline"
                     type="button"
-                    disabled={busy || !item.ready}
+                    disabled={busy || downloads.refreshing || !item.ready}
                     onClick={() => void command(d.id, "saved")}
                   >
                     {row?.status === "failed" ? "重试保存" : "保存到电视"}
@@ -205,10 +181,11 @@ export function TvDownloads({
             </div>
           );
         })}
-      {!devices.some((d) => !d.revoked) && (
+      {!devices.loading && !devices.data.length && (
         <p className="muted">先在家庭设置中绑定电视。</p>
       )}
-      {error && <p className="error">{error}</p>}
+      <Pagination {...devices} loading={devices.refreshing || busy} label="电视保存设备分页" />
+      {(error || devices.error || downloads.error) && <p role="alert" className="error">{error || devices.error || downloads.error}</p>}
     </section>
   );
 }

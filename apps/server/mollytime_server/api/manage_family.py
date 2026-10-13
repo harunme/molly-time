@@ -4,32 +4,35 @@ import datetime as dt
 import shutil
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from ..auth import hash_password, verify_password
-from ..storage.settings import get_storage_settings
 from ..config import get_settings
 from ..deps import DbSession
 from ..manage_auth import Parent, aware
 from ..management_models import Device, FamilySettings, UploadSession, WatchInterval, WatchSession
 from ..models import ChildProfile, Item, MediaFile
+from ..storage.settings import get_storage_settings
 from .manage_resources import owned
+from .pagination import paginate
+from .watch_filters import family_watch_clause
 
 router = APIRouter(prefix="/api/manage", tags=["manage-family"])
 
 
 @router.get("/children")
-def children(user: Parent, db: DbSession):
-    return [
-        {"id": c.id, "name": c.name}
-        for c in db.query(ChildProfile)
+def children(
+    user: Parent, db: DbSession,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+):
+    query = (db.query(ChildProfile)
         .filter(ChildProfile.family_id == user.family_id)
-        .order_by(ChildProfile.created_at)
-        .all()
-    ]
+        .order_by(ChildProfile.created_at, ChildProfile.id))
+    return paginate(query, page, pageSize, lambda c: {"id": c.id, "name": c.name})
 
 
 class ChildBody(BaseModel):
@@ -60,20 +63,23 @@ def edit_child(child_id: str, body: ChildBody, user: Parent, db: DbSession):
 
 
 @router.get("/devices")
-def devices(user: Parent, db: DbSession):
-    return [
-        {
+def devices(
+    user: Parent, db: DbSession,
+    page: int | None = Query(default=None, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    activeOnly: bool = False,
+):
+    query = (db.query(Device).filter(Device.family_id == user.family_id)
+             .order_by(Device.created_at.desc(), Device.id.desc()))
+    if activeOnly:
+        query = query.filter(Device.revoked.is_(False))
+    return paginate(query, page, pageSize, lambda r: {
             "id": r.id,
             "name": r.name,
             "revoked": r.revoked,
             "createdAt": aware(r.created_at).isoformat(),
             "lastSeen": aware(r.last_seen).isoformat(),
-        }
-        for r in db.query(Device)
-        .filter(Device.family_id == user.family_id)
-        .order_by(Device.created_at.desc())
-        .all()
-    ]
+        })
 
 
 class DeviceBody(BaseModel):
@@ -158,7 +164,12 @@ def password(body: PasswordBody, user: Parent, db: DbSession):
 
 
 @router.get("/reports/watch-time")
-def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: str | None = None):
+def report(
+    user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: str | None = None,
+    sessionPage: int = Query(default=1, ge=1),
+    contentPage: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+):
     if childId:
         owned(db, ChildProfile, childId, user.family_id)
     if end < start or (end - start).days > 365:
@@ -169,10 +180,7 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
     upper = dt.datetime.combine(end + dt.timedelta(days=1), dt.time.min, zone).astimezone(dt.UTC)
     # Earlier TV sessions without a child were incorrectly labeled as previews.
     # Only authenticated device sessions qualify; parent previews stay excluded.
-    viewing = or_(
-        WatchSession.purpose.in_(("child_watch", "family_watch")),
-        and_(WatchSession.purpose == "parent_preview", WatchSession.device_id.is_not(None)),
-    )
+    viewing = family_watch_clause()
     query = (
         db.query(WatchSession, WatchInterval)
         .join(WatchInterval, WatchInterval.session_id == WatchSession.id)
@@ -185,8 +193,10 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
     if childId:
         query = query.filter(WatchSession.child_id == childId)
     days = {(start + dt.timedelta(days=i)).isoformat(): 0 for i in range((end - start).days + 1)}
-    contents, sessions, episodes = {}, {}, set()
-    for watch, interval in query.all():
+    contents, sessions, episodes, catalog = {}, {}, set(), {}
+    # Summary totals cover the whole range; stream intervals instead of loading
+    # them all at once. Only paged details are sent to the browser.
+    for watch, interval in query.yield_per(256):
         if not interval.played_ms:
             continue
         a = max(aware(watch.started_at) + dt.timedelta(milliseconds=interval.start_ms), lower)
@@ -195,37 +205,19 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
             continue
         played = round((b - a).total_seconds() * 1000)
         episodes.add(watch.item_id)
-        episode = db.get(Item, watch.item_id)
-        season = db.get(Item, episode.parent_id) if episode and episode.parent_id else None
-        series = db.get(Item, season.parent_id) if season and season.parent_id else None
-        name = series.name if series else watch.item_name
-        content_id = series.id if series else watch.item_id
+        if watch.item_id not in catalog:
+            episode = db.get(Item, watch.item_id)
+            parent = db.get(Item, episode.parent_id) if episode and episode.parent_id else None
+            series = parent if parent and parent.type == "Series" else (
+                db.get(Item, parent.parent_id) if parent and parent.parent_id else None
+            )
+            catalog[watch.item_id] = (series.id, series.name) if series else (watch.item_id, watch.item_name)
+        content_id, name = catalog[watch.item_id]
         bucket = contents.setdefault(content_id, {"id": content_id, "name": name, "playedMs": 0})
         bucket["playedMs"] += played
-        if watch.id not in sessions:
-            child = db.get(ChildProfile, watch.child_id) if watch.child_id else None
-            device = db.get(Device, watch.device_id) if watch.device_id else None
-            latest_event = (
-                db.query(WatchInterval)
-                .filter(WatchInterval.session_id == watch.id, WatchInterval.seq == watch.last_seq)
-                .first()
-            )
-            sessions[watch.id] = {
-                "id": watch.id,
-                "name": watch.item_name,
-                "childName": child.name if child else "家庭观看",
-                "deviceName": device.name if device else "旧设备身份",
-                "startedAt": aware(watch.started_at).isoformat(),
-                "playedMs": 0,
-                "positionMs": latest_event.position_ms if latest_event else 0,
-                "ended": watch.ended,
-                "lastSync": aware(watch.last_reported_at).isoformat()
-                if watch.last_reported_at
-                else None,
-            }
+        sessions.setdefault(watch.id, {"id": watch.id,
+            "startedAt": aware(watch.started_at).isoformat(), "playedMs": 0})
         sessions[watch.id]["playedMs"] += played
-        if interval.seq == watch.last_seq:
-            sessions[watch.id]["positionMs"] = interval.position_ms
         while a < b:
             local = a.astimezone(zone)
             midnight = dt.datetime.combine(
@@ -246,6 +238,25 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
         started_query = started_query.filter(WatchSession.child_id == childId)
     first = started_query.order_by(WatchSession.started_at).first()
     latest = started_query.order_by(WatchSession.last_reported_at.desc()).first()
+    selected = sorted(sessions.values(), key=lambda row: (row["startedAt"], row["id"]), reverse=True)[
+        (sessionPage - 1) * pageSize : sessionPage * pageSize
+    ]
+    keys = [row["id"] for row in selected]
+    watches = {row.id: row for row in db.query(WatchSession).filter(WatchSession.id.in_(keys)).all()}
+    children = {row.id: row for row in db.query(ChildProfile).filter(ChildProfile.id.in_(
+        [watch.child_id for watch in watches.values() if watch.child_id])).all()}
+    devices = {row.id: row for row in db.query(Device).filter(Device.id.in_(
+        [watch.device_id for watch in watches.values() if watch.device_id])).all()}
+    positions = dict(db.query(WatchInterval.session_id, WatchInterval.position_ms)
+        .join(WatchSession, WatchSession.id == WatchInterval.session_id)
+        .filter(WatchSession.id.in_(keys), WatchInterval.seq == WatchSession.last_seq).all())
+    for row in selected:
+        watch = watches[row["id"]]
+        child, device = children.get(watch.child_id), devices.get(watch.device_id)
+        row.update({"name": watch.item_name, "childName": child.name if child else "家庭观看",
+            "deviceName": device.name if device else "旧设备身份",
+            "positionMs": positions.get(watch.id, 0), "ended": watch.ended,
+            "lastSync": aware(watch.last_reported_at).isoformat() if watch.last_reported_at else None})
     return {
         "timezone": str(zone),
         "totalPlayedMs": sum(days.values()),
@@ -255,6 +266,11 @@ def report(user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: s
         if latest and latest.last_reported_at
         else None,
         "days": [{"date": key, "playedMs": value} for key, value in days.items()],
-        "contents": sorted(contents.values(), key=lambda c: -c["playedMs"]),
-        "sessions": sorted(sessions.values(), key=lambda r: r["startedAt"], reverse=True)[:200],
+        "contentTotal": len(contents),
+        "sessionTotal": len(sessions),
+        "pageSize": pageSize,
+        "contents": sorted(contents.values(), key=lambda c: (-c["playedMs"], c["id"]))[
+            (contentPage - 1) * pageSize : contentPage * pageSize
+        ],
+        "sessions": selected,
     }

@@ -57,7 +57,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
       } else {
         load(await api<StorageConfig>("/operations/storage", "PUT", body));
         notify(
-          "存储配置已保存并生效。切换 Bucket 或地域后，请刷新页面再上传。",
+          "存储配置已保存并生效。切换 Bucket 或地域后，请重新进入客户端版本页再上传。",
         );
       }
     } catch (e) {
