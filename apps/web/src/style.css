@@ -136,10 +136,10 @@
 .overview-resource-status > div { @apply flex items-center justify-between gap-3; }
 .overview-resource-status dd { @apply text-base font-semibold tabular-nums; }
 .overview-resource-status dd > span { @apply ml-1 text-xs font-normal text-muted-foreground; }
-.overview-storage { @apply mt-5 flex items-center justify-between gap-3 border-t pt-4 text-xs text-muted-foreground; }
+.overview-storage { @apply mt-5 flex items-center justify-between gap-3 pt-4 text-xs text-muted-foreground; }
 .overview-storage strong { @apply font-medium text-foreground; }
 .overview-devices { @apply grid; }
-.overview-devices > div { @apply flex min-w-0 items-start gap-3 border-b py-3 first:pt-0 last:border-b-0 last:pb-0; }
+.overview-devices > div { @apply flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0; }
 .overview-devices > div > svg { @apply mt-0.5 shrink-0 text-muted-foreground; }
 .overview-devices span { @apply min-w-0; }
 .overview-devices strong { @apply block truncate text-sm font-medium; }
