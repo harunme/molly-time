@@ -1,10 +1,12 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { api, type Session } from "./api";
 
-type Pending = { name: string; expiresAt: string };
+type Pending = { name: string; expiresAt: string; };
 export function PairingPage({
   initialCode,
   session,
@@ -73,8 +75,8 @@ export function PairingPage({
           </>
         ) : !admin ? (
           <>
-            <p role="alert">绑定电视需要家庭管理员账号。</p>
-            <Button variant="outline" onClick={close}>
+            <Alert variant="destructive" role="alert"><AlertDescription>绑定电视需要家庭管理员账号。</AlertDescription></Alert>
+            <Button variant="bordered" onClick={close}>
               返回管理后台
             </Button>
           </>
@@ -88,7 +90,7 @@ export function PairingPage({
                   void lookup(code);
                 }}
               >
-                <label>
+                <Label>
                   电视配对码
                   <Input
                     autoComplete="off"
@@ -103,7 +105,7 @@ export function PairingPage({
                     }
                     required
                   />
-                </label>
+                </Label>
                 <Button
                   variant="default"
                   className="primary"
@@ -125,7 +127,7 @@ export function PairingPage({
                   <span>绑定到</span>
                   <strong>{session.family.name}</strong>
                 </div>
-                <label>
+                <Label>
                   电视名称
                   <Input
                     value={name}
@@ -133,7 +135,7 @@ export function PairingPage({
                     onChange={(event) => setName(event.target.value)}
                     required
                   />
-                </label>
+                </Label>
                 <Button variant="default" className="primary" disabled={busy}>
                   {busy ? "正在绑定…" : "确认绑定这台电视"}
                 </Button>
@@ -152,9 +154,9 @@ export function PairingPage({
               </form>
             )}
             {error && (
-              <p role="alert" className="error">
+              <Alert variant="destructive" role="alert" className="error"><AlertDescription>
                 {error}
-              </p>
+              </AlertDescription></Alert>
             )}
             <Button
               variant="ghost"

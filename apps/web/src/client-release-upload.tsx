@@ -1,13 +1,15 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { FileUploadField } from "@/components/ui/upload";
+import { SelectField } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { api, bytes, uploadApi } from "./api";
 
-type Options = { canUpload: boolean; ossConfigured: boolean; maxSize: number };
-export function ClientReleaseUpload({ published }: { published: () => void }) {
+type Options = { canUpload: boolean; ossConfigured: boolean; maxSize: number; };
+export function ClientReleaseUpload({ published }: { published: () => void; }) {
   const [options, setOptions] = useState<Options>();
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [file, setFile] = useState<File>();
@@ -18,7 +20,6 @@ export function ClientReleaseUpload({ published }: { published: () => void }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const request = useRef<AbortController | undefined>(undefined);
-  const input = useRef<HTMLInputElement>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -40,14 +41,14 @@ export function ClientReleaseUpload({ published }: { published: () => void }) {
     setBusy(true); setPercent(0);
     let ticketId: string | undefined;
     try {
-      const ticket = await api<{ id: string }>("/operations/client-releases/uploads", "POST", { filename: file.name, size: file.size, storage, notes });
+      const ticket = await api<{ id: string; }>("/operations/client-releases/uploads", "POST", { filename: file.name, size: file.size, storage, notes });
       ticketId = ticket.id;
       if (!alive.current || controller.signal.aborted) {
-        await api(`/operations/client-releases/uploads/${ticket.id}`, "DELETE").catch(() => {});
+        await api(`/operations/client-releases/uploads/${ticket.id}`, "DELETE").catch(() => { });
         if (alive.current) setError("上传已取消");
         return;
       }
-      const result = await uploadApi<{ release: { versionName: string; packageName: string } }>(
+      const result = await uploadApi<{ release: { versionName: string; packageName: string; }; }>(
         `/operations/client-releases/uploads/${ticket.id}`, file,
         (value) => { if (alive.current) setPercent(value); }, controller.signal,
       );
@@ -55,10 +56,9 @@ export function ClientReleaseUpload({ published }: { published: () => void }) {
       const channel = result.release.packageName.endsWith(".debug") ? "Debug 测试版" : "正式版";
       setSuccess(`${channel} ${result.release.versionName} 已发布，电视下次检查更新时可获取。`);
       setFile(undefined); setNotes("");
-      if (input.current) input.current.value = "";
       published();
     } catch (failure) {
-      if (controller.signal.aborted && ticketId) await api(`/operations/client-releases/uploads/${ticketId}`, "DELETE").catch(() => {});
+      if (controller.signal.aborted && ticketId) await api(`/operations/client-releases/uploads/${ticketId}`, "DELETE").catch(() => { });
       if (alive.current) setError(failure instanceof Error ? failure.message : "安装包上传失败，请重试");
     } finally {
       request.current = undefined;
@@ -74,18 +74,16 @@ export function ClientReleaseUpload({ published }: { published: () => void }) {
     <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <fieldset disabled={busy || !options?.canUpload}>
         <div className="form-grid">
-          <label>APK 安装包<Input ref={input} type="file" accept=".apk,application/vnd.android.package-archive" required onChange={(event) => { setFile(event.target.files?.[0]); setError(""); setSuccess(""); }} /></label>
-          <label>安装包存储<NativeSelect aria-label="安装包存储" value={storage} onChange={(event) => setStorage(event.target.value)}>
-            <option value="local">服务器</option><option value="oss" disabled={!options?.ossConfigured}>私有 OSS{!options?.ossConfigured ? "（尚未配置）" : ""}</option>
-          </NativeSelect></label>
+          <div className="picker-field"><Label htmlFor="client-release-apk">APK 安装包</Label><FileUploadField inputId="client-release-apk" inputLabel="APK 安装包" fileName={file?.name} placeholder="选择 APK 安装包" disabled={busy || !options?.canUpload} accept=".apk,application/vnd.android.package-archive" onFileSelect={(value) => { setFile(value); setError(""); setSuccess(""); }} /></div>
+          <Label>安装包存储<SelectField aria-label="安装包存储" value={storage} onValueChange={(value) => setStorage(value)} options={[({ value: "local", label: <> 服务器 </> }), ({ value: "oss", label: <> 私有 OSS{!options?.ossConfigured ? "（尚未配置）" : ""} </>, disabled: !options?.ossConfigured })]} /></Label>
         </div>
         {file && <p className="muted">{file.name} · {bytes(file.size)}</p>}
-        <label>更新说明<Textarea value={notes} maxLength={4000} rows={3} placeholder="说明这次更新的内容" onChange={(event) => setNotes(event.target.value)} /></label>
+        <Label>更新说明<Textarea value={notes} maxLength={4000} rows={3} placeholder="说明这次更新的内容" onChange={(event) => setNotes(event.target.value)} /></Label>
         <Button type="submit" disabled={!file || !options?.canUpload}>上传并发布</Button>
       </fieldset>
     </form>
-    {busy && <div className="client-release-upload-progress"><Progress aria-label="APK 上传进度" value={percent} /><p role="status">{percent < 100 ? `正在上传 ${percent}%` : "正在验证并发布安装包…"}</p><Button variant="outline" disabled={percent >= 100} onClick={() => request.current?.abort()}>取消上传</Button></div>}
-    {error && <p role="alert" className="error">{error}</p>}
+    {busy && <div className="client-release-upload-progress"><Progress aria-label="APK 上传进度" value={percent} /><p role="status">{percent < 100 ? `正在上传 ${percent}%` : "正在验证并发布安装包…"}</p><Button variant="bordered" disabled={percent >= 100} onClick={() => request.current?.abort()}>取消上传</Button></div>}
+    {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
     {success && <p role="status">{success}</p>}
   </details>;
 }

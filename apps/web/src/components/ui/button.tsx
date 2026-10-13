@@ -1,63 +1,111 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
-import { Slot } from "radix-ui"
+import { Slot as SlotPrimitive } from "radix-ui";
+import { cva, type VariantProps } from "class-variance-authority";
+import { Check, CircleAlert, LoaderCircle } from "lucide-react";
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { pressMotionClassName } from "@/components/ui/motion";
+
+const Slot = SlotPrimitive.Root;
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-ui text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  `inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-ui font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 ${pressMotionClassName}`,
   {
     variants: {
       variant: {
-        default: "bg-primary font-semibold text-primary-foreground hover:bg-[#f0d800]",
+        default:
+          "border border-transparent bg-primary font-semibold text-foreground hover:bg-primary-hover",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
-        outline:
-          "border bg-white shadow-none hover:border-primary hover:bg-white hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border border-destructive bg-destructive text-white hover:bg-destructive-hover",
+        bordered:
+          "border border-border bg-card text-foreground hover:border-primary hover:bg-card hover:shadow-primary-inset",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border border-transparent bg-border text-foreground hover:bg-border-strong",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "text-foreground underline-offset-4 hover:underline",
+          "border border-transparent bg-transparent text-foreground hover:bg-muted",
+        link: "h-auto bg-transparent px-1 text-info underline-offset-[0.25rem] hover:underline",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        xs: "h-6 gap-1 px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 px-3 has-[>svg]:px-2.5",
-        lg: "h-10 px-6 has-[>svg]:px-4",
-        icon: "size-9",
-        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-8",
-        "icon-lg": "size-10",
+        default: "h-control min-w-button px-4 text-ui",
+        sm: "h-control-sm px-3 text-sm",
+        lg: "h-control-lg px-6 text-ui",
+        icon: "h-control-sm w-control-sm min-w-0 p-0",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
     },
-  }
-)
+  },
+);
+
+type ButtonProps = React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & { asChild?: boolean; };
 
 function Button({
   className,
-  variant = "default",
-  size = "default",
+  variant,
+  size,
   asChild = false,
   ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
-  const Comp = asChild ? Slot.Root : "button"
-
+}: ButtonProps) {
+  const Comp = asChild ? Slot : "button";
   return (
     <Comp
       data-slot="button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      data-variant={variant ?? "default"}
+      data-size={size ?? "default"}
+      className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />
-  )
+  );
 }
 
-export { Button, buttonVariants }
+type StatefulButtonProps = Omit<ButtonProps, "asChild" | "children"> & {
+  state?: "idle" | "loading" | "success" | "error";
+  children: React.ReactNode;
+  loadingLabel?: React.ReactNode;
+  successLabel?: React.ReactNode;
+  errorLabel?: React.ReactNode;
+};
+
+function StatefulButton({
+  state = "idle",
+  children,
+  loadingLabel = "处理中",
+  successLabel = "已完成",
+  errorLabel = "操作失败",
+  className,
+  variant,
+  disabled,
+  ...props
+}: StatefulButtonProps) {
+  const content = {
+    idle: { icon: null, label: children },
+    loading: { icon: <LoaderCircle className="animate-spin motion-reduce:animate-none" />, label: loadingLabel },
+    success: { icon: <Check />, label: successLabel },
+    error: { icon: <CircleAlert />, label: errorLabel },
+  }[state];
+
+  return (
+    <Button
+      data-state={state}
+      aria-busy={state === "loading" || undefined}
+      className={cn(state === "loading" && "disabled:opacity-100", className)}
+      variant={variant ?? (state === "error" ? "destructive" : undefined)}
+      disabled={disabled || state === "loading"}
+      {...props}
+    >
+      <span
+        key={state}
+        aria-live="polite"
+        className="inline-flex items-center justify-center gap-2 animate-[ui-action-swap-in_var(--motion-duration-fast)_var(--motion-ease-standard)] motion-reduce:animate-none"
+      >
+        {content.icon}
+        {content.label}
+      </span>
+    </Button>
+  );
+}
+
+export { Button, StatefulButton, buttonVariants };
+export type { ButtonProps, StatefulButtonProps };

@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select";
 import { test, expect } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -11,7 +12,8 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await expect(page.getByRole('link', { name: '运营设置', exact: true })).toHaveCount(0);
   expect((await page.request.get('/api/manage/operations/storage')).status()).toBe(403);
   expect((await page.request.get('/api/manage/operations/client-releases')).status()).toBe(403);
-  await page.getByRole('button', { name: '退出账号' }).click();
+  await page.getByRole('button', { name: '账号菜单' }).click();
+  await page.getByRole('menuitem', { name: '退出账号', exact: true }).click();
   await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
@@ -57,10 +59,10 @@ test('superadmin browses release history, filters channels and downloads an old 
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载 正式版 0.3.0', exact: true }).click();
   expect((await downloaded).suggestedFilename()).toBe('mollytime-tv-0.3.0.apk');
-  await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv.debug');
+  await chooseSelect(page.getByLabel('发布渠道', { exact: true }), 'com.molly.tv.debug');
   await expect(table.locator('tbody tr')).toHaveCount(1);
   await expect(table).toContainText('Debug 测试版');
-  await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv');
+  await chooseSelect(page.getByLabel('发布渠道', { exact: true }), 'com.molly.tv');
   await expect(table.locator('tbody tr')).toHaveCount(2);
   await page.screenshot({ path: '../../artifacts/operations-client-releases.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -83,10 +85,10 @@ test('client releases render empty and failed inventory states and recover when 
   await page.getByRole('tab', { name: '客户端版本' }).click();
   await expect(page.getByText(/暂无安装包/)).toBeVisible();
   failed = true;
-  await page.getByLabel('发布渠道', { exact: true }).selectOption('com.molly.tv');
+  await chooseSelect(page.getByLabel('发布渠道', { exact: true }), 'com.molly.tv');
   await expect(page.getByRole('alert')).toContainText('安装包记录不可用');
   failed = false;
-  await page.getByLabel('发布渠道', { exact: true }).selectOption('');
+  await chooseSelect(page.getByLabel('发布渠道', { exact: true }), '');
   await expect(page.getByText(/暂无安装包/)).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

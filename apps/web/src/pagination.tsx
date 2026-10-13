@@ -1,8 +1,8 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Pagination as PaginationRoot, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Input } from '@/components/ui/input';
-import { NativeSelect } from '@/components/ui/native-select';
+import { SelectField } from "@/components/ui/select";
 import { api, type Page, type ResourceOption } from './api';
 
 export function useDebounced(value: string, delay = 300) {
@@ -14,12 +14,12 @@ export function useDebounced(value: string, delay = 300) {
   return settled;
 }
 
-export function usePagedData<T extends { id: string }>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false) {
+export function usePagedData<T extends { id: string; }>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false) {
   const [position, setPosition] = useState({ path, page: 1 });
   const page = position.path === path ? position.page : 1;
   const setPage = (next: number) => setPosition({ path, page: next });
   const key = `${path}|${page}|${pageSize}`;
-  const [result, setResult] = useState<{ key: string; value: Page<T> }>();
+  const [result, setResult] = useState<{ key: string; value: Page<T>; }>();
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(true);
   const [known, setKnown] = useState<Record<string, T>>({});
@@ -46,8 +46,10 @@ export function usePagedData<T extends { id: string }>(path: string, serial = 0,
     return () => controller.abort();
   }, [path, page, pageSize, serial, key, enabled, remember]);
   const current = result?.key === key ? result.value : undefined;
-  return { data: current?.items ?? [], total: current?.total ?? 0, page, pageSize, setPage,
-    known, error, loading: enabled && !current && !error, refreshing: enabled && refreshing };
+  return {
+    data: current?.items ?? [], total: current?.total ?? 0, page, pageSize, setPage,
+    known, error, loading: enabled && !current && !error, refreshing: enabled && refreshing
+  };
 }
 
 export function Pagination({ page, pageSize = 20, total, setPage, loading = false, label = '列表分页' }: {
@@ -55,12 +57,12 @@ export function Pagination({ page, pageSize = 20, total, setPage, loading = fals
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (loading && !total) return null;
-  return <nav className="pagination" aria-label={label}>
+  return <PaginationRoot className="pagination" aria-label={label}>
     <span className="pagination-total">共 {total} 条</span>
-    <Button type="button" variant="outline" size="sm" aria-label={`${label}：上一页`} disabled={loading || page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft />上一页</Button>
+    <PaginationPrevious type="button" variant="bordered" size="sm" aria-label={`${label}：上一页`} disabled={loading || page <= 1} onClick={() => setPage(page - 1)} />
     <span aria-live="polite" className="pagination-position">第 {page} / {pages} 页</span>
-    <Button type="button" variant="outline" size="sm" aria-label={`${label}：下一页`} disabled={loading || page >= pages} onClick={() => setPage(page + 1)}>下一页<ChevronRight /></Button>
-  </nav>;
+    <PaginationNext type="button" variant="bordered" size="sm" aria-label={`${label}：下一页`} disabled={loading || page >= pages} onClick={() => setPage(page + 1)} />
+  </PaginationRoot>;
 }
 
 export function ResourcePicker({ value = '', onChange, placeholder, label, exclude = [], initial }: {
@@ -73,12 +75,8 @@ export function ResourcePicker({ value = '', onChange, placeholder, label, exclu
   const selected = list.known[value] ?? (initial?.id === value ? initial : undefined);
   return <div className="paged-picker">
     <Input aria-label="检索候选名称" placeholder="搜索文件夹名称…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
-    <NativeSelect aria-label={label} value={value} disabled={list.loading} onChange={(e) => onChange(e.target.value, list.known[e.target.value])}>
-      <option value="">{placeholder}</option>
-      {selected && !list.data.some((item) => item.id === value) && <option value={value}>{selected.name}</option>}
-      {list.data.filter((item) => !exclude.includes(item.id) || item.id === value).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status !== 'published' ? '（未发布）' : ''}</option>)}
-    </NativeSelect>
-    {list.error && <p role="alert" className="error">{list.error}</p>}
+    <SelectField aria-label={label} value={value} disabled={list.loading} onValueChange={(value) => onChange(value, list.known[value])} options={[({ value: "", label: <> {placeholder} </> }), selected && !list.data.some((item) => item.id === value) && ({ value: value, label: <> {selected.name} </> }), list.data.filter((item) => !exclude.includes(item.id) || item.id === value).map((item) => ({ value: item.id, label: <> {item.name}{item.status !== 'published' ? '（未发布）' : ''} </> }))]} />
+    {list.error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{list.error}</AlertDescription></Alert>}
     <Pagination {...list} loading={list.refreshing} label="候选资源分页" />
   </div>;
 }

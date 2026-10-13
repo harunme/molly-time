@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select";
 import { test, expect } from '@playwright/test';
 
 test('management lists filter on the server, turn pages and clear cross-page selections', async ({ page }) => {
@@ -38,9 +39,9 @@ test('management lists filter on the server, turn pages and clear cross-page sel
   await page.getByRole('textbox', { name: '搜索资源', exact: true }).fill('分页资源24');
   await expect(rows).toHaveCount(1);
   await expect(pagination).toContainText('第 1 / 1 页');
-  await page.getByRole('combobox', { name: '资源状态' }).selectOption('published');
+  await chooseSelect(page.getByRole('combobox', { name: '资源状态' }), 'published');
   await expect(page.getByText('没有匹配的资源')).toBeVisible();
-  await page.getByRole('combobox', { name: '资源状态' }).selectOption('draft');
+  await chooseSelect(page.getByRole('combobox', { name: '资源状态' }), 'draft');
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText('分页资源24');
   await page.screenshot({ path: '../../artifacts/manage-paginated-library.png', fullPage: true });
@@ -50,10 +51,12 @@ test('management lists filter on the server, turn pages and clear cross-page sel
   const search = dialog.getByRole('textbox', { name: '检索候选名称', exact: true });
   await search.fill('分页资源24');
   await expect(dialog.getByRole('combobox', { name: '文件夹', exact: true })).toBeEnabled();
-  await expect(dialog.getByRole('combobox', { name: '文件夹', exact: true }).locator('option')).toHaveCount(2);
+  await dialog.getByRole('combobox', { name: '文件夹', exact: true }).click();
+  await expect(page.getByRole('option')).toHaveCount(2);
+  await page.keyboard.press('Escape');
   await search.press('Enter');
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('combobox', { name: '文件夹', exact: true }).selectOption(folders[24].id);
+  await chooseSelect(dialog.getByRole('combobox', { name: '文件夹', exact: true }), folders[24].id);
   await expect(dialog.getByLabel('新文件夹名称')).toHaveCount(0);
   await page.keyboard.press('Escape');
 

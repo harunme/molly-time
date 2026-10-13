@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -103,7 +104,7 @@ test("parents create learning folders and move videos without uploading them aga
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await page.getByRole("button", { name: "自然与发现", exact: true }).click();
   await page.getByRole("checkbox", { name: "选择 自然小故事" }).check();
-  await page.getByLabel("移动到文件夹").selectOption({ label: "小动物学习" });
+  await chooseSelect(page.getByLabel("移动到文件夹"), { label: "小动物学习" });
   await expect(
     page.getByRole("button", { name: "自然小故事", exact: true }),
   ).toHaveCount(0);
@@ -167,7 +168,7 @@ test("real device telemetry, reports, child management and mobile layout", async
     .getByRole("navigation")
     .getByRole("link", { name: "观看记录" })
     .click();
-  await page.getByRole("combobox", { name: "儿童", exact: true }).selectOption("child");
+  await chooseSelect(page.getByRole("combobox", { name: "儿童", exact: true }), "child");
   await expect(
     page.locator(".watch-summary").getByText("1 秒", { exact: true }),
   ).toBeVisible();
@@ -197,7 +198,7 @@ test("real device telemetry, reports, child management and mobile layout", async
   ).toBe(true);
   await page.locator(".device-row").filter({ hasText: "观看记录测试电视" }).getByRole("button", { name: "取消配对", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "确认", exact: true })
     .click();
   await expect(page.getByText("已取消配对", { exact: true })).toBeVisible();
@@ -303,7 +304,7 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
       .getByRole("button", { name: "取消配对", exact: true })
       .click();
     await page
-      .getByRole("dialog")
+      .getByRole("alertdialog")
       .getByRole("button", { name: "确认", exact: true })
       .click();
     await expect(

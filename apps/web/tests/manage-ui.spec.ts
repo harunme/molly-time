@@ -32,7 +32,7 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
   await expect(
     page.getByRole("dialog", { name: "上传文件 · Hello" }),
   ).toBeVisible();
-  await expect(page.getByLabel("文件用途")).toHaveValue("subtitle");
+  await expect(page.getByLabel("文件用途")).toHaveAttribute("data-value", "subtitle");
   await expect(
     page.getByText("UTF-8 编码的 SRT / VTT", { exact: true }),
   ).toBeVisible();

@@ -1,4 +1,6 @@
-import { NativeSelect } from "@/components/ui/native-select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
+import { SelectField } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
@@ -16,7 +18,7 @@ type Playback = {
     isDefault: boolean;
   }[];
 };
-export function MediaPreview({ id }: { id: string }) {
+export function MediaPreview({ id }: { id: string; }) {
   const [source, setSource] = useState<Playback>(),
     [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -75,7 +77,7 @@ export function MediaPreview({ id }: { id: string }) {
       {error && (
         <p className="error">
           {error}{" "}
-          <Button variant="outline" onClick={() => setRefresh((v) => v + 1)}>
+          <Button variant="bordered" onClick={() => setRefresh((v) => v + 1)}>
             重试播放
           </Button>
         </p>
@@ -112,7 +114,7 @@ export function TvDownloads({
   readonly: boolean;
 }) {
   const [serial, refresh] = useState(0);
-  const devices = usePagedData<{ id: string; name: string; revoked: boolean }>("/devices?activeOnly=true", serial);
+  const devices = usePagedData<{ id: string; name: string; revoked: boolean; }>("/devices?activeOnly=true", serial);
   const mediaId = item.files.find((file) => file.kind === "video")?.id;
   const params = new URLSearchParams({ deviceIds: devices.data.map((device) => device.id).join(","), mediaId: mediaId ?? "" });
   const downloads = usePagedData<Download>(`/resources/${item.id}/downloads?${params}`, serial, 100, !!devices.data.length && !!mediaId);
@@ -164,7 +166,7 @@ export function TvDownloads({
               {!readonly && (
                 <>
                   <Button
-                    variant="outline"
+                    variant="bordered"
                     type="button"
                     disabled={busy || downloads.refreshing || !item.ready}
                     onClick={() => void command(d.id, "saved")}
@@ -173,7 +175,7 @@ export function TvDownloads({
                   </Button>
                   {row && (
                     <Button
-                      variant="outline"
+                      variant="bordered"
                       type="button"
                       disabled={busy}
                       onClick={() => void command(d.id, "removed")}
@@ -190,7 +192,7 @@ export function TvDownloads({
         <p className="muted">先在家庭设置中绑定电视。</p>
       )}
       <Pagination {...devices} loading={devices.refreshing || busy} label="电视保存设备分页" />
-      {(error || devices.error || downloads.error) && <p role="alert" className="error">{error || devices.error || downloads.error}</p>}
+      {(error || devices.error || downloads.error) && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error || devices.error || downloads.error}</AlertDescription></Alert>}
     </section>
   );
 }
@@ -213,7 +215,7 @@ export function SubtitleSettings({
       {files.map((file) => (
         <fieldset disabled={readonly || busy} key={file.id}>
           <legend>{file.name}</legend>
-          <label>
+          <Label>
             显示名称
             <Input
               value={file.name}
@@ -226,28 +228,22 @@ export function SubtitleSettings({
                 )
               }
             />
-          </label>
-          <label>
+          </Label>
+          <Label>
             字幕类型
-            <NativeSelect
+            <SelectField
               aria-label="字幕类型"
               value={file.language}
-              onChange={(e) =>
+              onValueChange={(value) =>
                 setFiles(
                   files.map((f) =>
-                    f.id === file.id ? { ...f, language: e.target.value } : f,
+                    f.id === file.id ? { ...f, language: value } : f,
                   ),
                 )
               }
-            >
-              <option value="und">未指定</option>
-              <option value="zh">中文</option>
-              <option value="en">英文</option>
-              <option value="zh-en">中英文</option>
-              {!["und", "zh", "en", "zh-en"].includes(file.language) && <option value={file.language}>{file.language}</option>}
-            </NativeSelect>
-          </label>
-          <label>
+              options={[({ value: "und", label: <> 未指定 </> }), ({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> }), !["und", "zh", "en", "zh-en"].includes(file.language) && ({ value: file.language, label: <> {file.language} </> })]} />
+          </Label>
+          <Label>
             时间偏移（毫秒，正值延后）
             <Input
               type="number"
@@ -264,10 +260,10 @@ export function SubtitleSettings({
                 )
               }
             />
-          </label>
+          </Label>
           {!readonly && (
             <Button
-              variant="outline"
+              variant="bordered"
               type="button"
               onClick={() => {
                 setBusy(true);

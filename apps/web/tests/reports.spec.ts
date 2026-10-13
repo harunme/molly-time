@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select";
 import { test, expect } from '@playwright/test';
 
 test('family viewing loads when reports are reopened and does not belong to a child', async ({ page }) => {
@@ -36,9 +37,9 @@ test('family viewing loads when reports are reopened and does not belong to a ch
   expect(updated.sessions.find((s: { id: string }) => s.id === session.sessionId).childName).toBe('家庭观看');
   await expect(familyRows).toHaveCount(initialFamilyRows + 1);
   const childReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.url().includes('childId=child') && r.ok());
-  await page.getByRole('combobox', { name: '儿童', exact: true }).selectOption('child');
+  await chooseSelect(page.getByRole('combobox', { name: '儿童', exact: true }), 'child');
   expect((await (await childReport).json()).sessions.some((s: { id: string }) => s.id === session.sessionId)).toBe(false);
   await expect(familyRows).toHaveCount(0);
-  await page.getByRole('combobox', { name: '儿童', exact: true }).selectOption('');
+  await chooseSelect(page.getByRole('combobox', { name: '儿童', exact: true }), '');
   await expect(familyRows).toHaveCount(initialFamilyRows + 1);
 });

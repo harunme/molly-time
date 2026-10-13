@@ -1,3 +1,6 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty } from "@/components/ui/empty";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Clock, FolderOpen, Heart, Monitor, UploadCloud } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,15 +12,15 @@ import { ParentReminderActions, useReminderData } from "./reminders";
 import type { Run } from "./main";
 
 type OverviewData = {
-  media: { folders: number; videos: number; published: number; draft: number; archived: number };
-  uploads: { active: number; failed: number; ready: number };
-  devices: { active: number; revoked: number; online: number };
+  media: { folders: number; videos: number; published: number; draft: number; archived: number; };
+  uploads: { active: number; failed: number; ready: number; };
+  devices: { active: number; revoked: number; online: number; };
   children: number;
   storageBytes: number;
   watch: {
     last7DaysSessions: number; timezone: string; todayPlayedMs: number; weekPlayedMs: number;
-    weekStart: string; favoriteVideo: { id: string; name: string; playedMs: number } | null;
-    days: { date: string; playedMs: number }[];
+    weekStart: string; favoriteVideo: { id: string; name: string; playedMs: number; } | null;
+    days: { date: string; playedMs: number; }[];
   };
 };
 
@@ -38,7 +41,7 @@ function heatLevel(playedMs: number) {
   return playedMs === 0 ? 0 : playedMs < 15 * 60000 ? 1 : playedMs < 30 * 60000 ? 2 : playedMs < 60 * 60000 ? 3 : 4;
 }
 
-function WatchHeatmap({ watch }: { watch: OverviewData["watch"] }) {
+function WatchHeatmap({ watch }: { watch: OverviewData["watch"]; }) {
   const [selectedDate, setSelectedDate] = useState<string>();
   const scroll = useRef<HTMLDivElement>(null);
   const days = watch.days;
@@ -60,16 +63,19 @@ function WatchHeatmap({ watch }: { watch: OverviewData["watch"] }) {
   const total = days.reduce((sum, day) => sum + day.playedMs, 0);
   const months = days.flatMap((day, index) => index === 0 || day.date.slice(0, 7) !== days[index - 1].date.slice(0, 7)
     ? [{ label: `${Number(day.date.slice(5, 7))}月`, column: Math.floor((index + offset) / 7) + 2, key: day.date }] : [])
-    .filter((month, index, labels) => !labels[index + 1] || labels[index + 1].column - month.column >= 2);
-  return <>
-    <div className="overview-heatmap-summary"><span>近一年 <strong>{activeDays}</strong> 天有观看 · 共 <strong>{duration(total)}</strong></span><span>{firstDate} 至 {days[days.length - 1].date}</span></div>
+    .filter((month, index, labels) => !labels[index + 1] || labels[index + 1].column - month.column >= 3);
+  return <div className="overview-heatmap-body">
+    <div className="overview-heatmap-summary"><span>近一年 <strong>{activeDays}</strong> 天有观看</span><span>共 <strong>{duration(total)}</strong></span><span>{firstDate} 至 {days[days.length - 1].date}</span>
+      {!activeDays && <p className="overview-empty-note">近一年还没有观看记录，电视播放后会在这里显示。</p>}
+    </div>
+    <div className="overview-heatmap-visual">
     <div className="overview-heatmap-scroll" ref={scroll}>
-      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" style={{ gridTemplateColumns: `28px repeat(${columns}, minmax(10px, 1fr))` }}>
+      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击或用方向键查看，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, var(--spacing-heatmap-cell))` }}>
         {months.map((month) => <span className="overview-heatmap-month" key={month.key} style={{ gridColumn: `${month.column} / span ${Math.min(4, columns + 2 - month.column)}`, gridRow: 1 }}>{month.label}</span>)}
         {["一", "二", "三", "四", "五", "六", "日"].map((day, index) => <span className="overview-heatmap-weekday" key={day} style={{ gridRow: index + 2, gridColumn: 1 }}>{index % 2 === 0 ? day : ""}</span>)}
         {days.map((day, index) => {
           const label = `${day.date} · ${day.playedMs ? duration(day.playedMs) : "未观看"}`;
-          return <button type="button" key={day.date} className="overview-heatmap-day" data-level={heatLevel(day.playedMs)}
+          return <Button variant="ghost" size="icon" type="button" key={day.date} className="overview-heatmap-day" data-level={heatLevel(day.playedMs)}
             style={{ gridColumn: Math.floor((index + offset) / 7) + 2, gridRow: (index + offset) % 7 + 2 }}
             aria-label={label} title={label} aria-pressed={selected.date === day.date} tabIndex={selected.date === day.date ? 0 : -1}
             onClick={() => setSelectedDate(day.date)} onFocus={() => setSelectedDate(day.date)}
@@ -88,8 +94,8 @@ function WatchHeatmap({ watch }: { watch: OverviewData["watch"] }) {
       <p aria-live="polite">{selected.date} <strong>{selected.playedMs ? `观看 ${duration(selected.playedMs)}` : "未观看"}</strong></p>
       <div className="overview-heatmap-legend" aria-label="颜色越深，观看时长越长"><span>少</span>{heatLevels.map((label, index) => <span key={label} className="overview-heatmap-swatch" data-level={index} title={label} aria-label={label} />)}<span>多</span></div>
     </div>
-    {!activeDays && <p className="overview-empty-note">近一年还没有观看记录，电视播放后会在这里显示。</p>}
-  </>;
+    </div>
+  </div>;
 }
 
 export function Overview({ familyName, navigate, run, readonly, notify }: {
@@ -102,7 +108,7 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
   const reminders = useReminderData(true);
   const onlineCount = reminders.devices?.filter((device) => device.online).length ?? data?.devices.online;
   const uploads = usePagedData<Upload>("/uploads", 0, 5);
-  const devices = usePagedData<{ id: string; name: string; lastSeen: string }>(
+  const devices = usePagedData<{ id: string; name: string; lastSeen: string; }>(
     "/devices?activeOnly=true", 0, 5,
   );
   useEffect(() => {
@@ -120,7 +126,7 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
     { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "family" },
     { label: "今日观看时长", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
     { label: "本周观看时长", value: data ? duration(data.watch.weekPlayedMs) : "—", detail: "本周一至现在", icon: Clock, page: "watch" },
-    { label: "最喜欢的视频", value: data ? data.watch.favoriteVideo?.name ?? "暂无观看记录" : "—", detail: data?.watch.favoriteVideo ? `累计观看 ${duration(data.watch.favoriteVideo.playedMs)} · 按总时长排名` : "按单个视频累计观看时长排名", icon: Heart, page: "watch" },
+    { label: "最喜欢的视频", value: data ? data.watch.favoriteVideo?.name ?? "暂无观看记录" : "—", detail: data?.watch.favoriteVideo ? `累计观看 ${duration(data.watch.favoriteVideo.playedMs)}` : "按累计观看时长排名", icon: Heart, page: "watch" },
   ] as const;
   return <>
     <div className="page-title">
@@ -129,28 +135,30 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
         <Button onClick={() => navigate("library")}><FolderOpen className="size-4" />管理资源</Button>
       </div>
     </div>
-    {error && <p role="alert" className="banner error">{error}</p>}
+    {error && <Alert variant="destructive" role="alert" className="banner error"><AlertDescription>{error}</AlertDescription></Alert>}
     {!data && busy && <p role="status" className="muted">正在加载概览…</p>}
     <div className="overview-metrics">
       {metrics.map((metric) => <Card className="overview-metric" key={metric.label}>
         <div className="overview-metric-label"><span>{metric.label}</span><metric.icon className="size-4" /></div>
-        <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : ""}`} title={metric.value}>{metric.value}</strong>
-        <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon-sm" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
+        <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : ""}`} title={metric.value}>
+          {metric.label === "最喜欢的视频" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
+        </strong>
+        <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
         {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
       </Card>)}
     </div>
     <Card className="overview-panel overview-heatmap">
       <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" onClick={() => navigate("watch")}>观看记录<ArrowRight className="size-3.5" /></Button></div>
       {data ? <WatchHeatmap watch={data.watch} /> : <p className="overview-empty-note">{busy ? "正在加载观看热力图…" : "观看热力图加载失败，请重新进入概览。"}</p>}
-      {data && <p className="overview-watch-note">按家庭时区 {data.watch.timezone} 统计实际播放时长，不含家长预览。每格代表一天，点击或用方向键查看。<span className="sm:hidden">左右滑动可查看全年。</span></p>}
+      {data && <p className="overview-watch-note">时区 {data.watch.timezone} · 每格一天 · 不含家长预览</p>}
     </Card>
     <div className="overview-panels">
       <Card className="overview-panel overview-uploads">
         <div className="section-heading"><h2>最近上传</h2><Button variant="ghost" size="sm" onClick={() => navigate("upload")}>全部任务<ArrowRight className="size-3.5" /></Button></div>
-        {uploads.error ? <p role="alert" className="error">{uploads.error}</p> : uploads.loading ? <p role="status" className="empty">正在加载上传记录…</p> : uploads.data.length ?
-          <div className="table-scroll"><table className="overview-upload-table"><thead><tr><th scope="col">文件</th><th scope="col">状态</th><th scope="col">大小</th></tr></thead><tbody>
-            {uploads.data.map((item) => <tr key={item.id}><td><strong title={item.filename}>{item.filename}</strong><small>{item.kind === "video" ? "视频" : item.kind === "subtitle" ? "字幕" : "封面"}</small></td><td><Badge variant="secondary" className={`badge ${item.status}`}>{uploadNames[item.status] ?? item.status}</Badge></td><td>{bytes(item.size)}</td></tr>)}
-          </tbody></table></div> : <div className="empty"><UploadCloud className="size-7" /><h3>还没有上传记录</h3><p>进入资源库，上传视频并整理到文件夹中。</p><Button variant="outline" onClick={() => navigate("library")}>打开资源库</Button></div>}
+        {uploads.error ? <Alert variant="destructive" role="alert" className="error"><AlertDescription>{uploads.error}</AlertDescription></Alert> : uploads.loading ? <Empty role="status" className="empty">正在加载上传记录…</Empty> : uploads.data.length ?
+          <div className="table-scroll"><Table className="overview-upload-table"><TableHeader><TableRow><TableHead scope="col">文件</TableHead><TableHead scope="col">状态</TableHead><TableHead scope="col">大小</TableHead></TableRow></TableHeader><TableBody>
+            {uploads.data.map((item) => <TableRow key={item.id}><TableCell><strong title={item.filename}>{item.filename}</strong><small>{item.kind === "video" ? "视频" : item.kind === "subtitle" ? "字幕" : "封面"}</small></TableCell><TableCell><Badge variant="secondary" className={`badge ${item.status}`}>{uploadNames[item.status] ?? item.status}</Badge></TableCell><TableCell>{bytes(item.size)}</TableCell></TableRow>)}
+          </TableBody></Table></div> : <Empty className="empty"><UploadCloud className="size-7" /><h3>还没有上传记录</h3><p>进入资源库，上传视频并整理到文件夹中。</p><Button variant="bordered" onClick={() => navigate("library")}>打开资源库</Button></Empty>}
         <Pagination {...uploads} loading={uploads.refreshing} label="概览上传分页" />
       </Card>
       <div className="overview-side">
@@ -163,7 +171,7 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
         </Card>
         <Card className="overview-panel">
           <div className="section-heading"><h2>电视设备</h2><Button variant="ghost" size="sm" onClick={() => navigate("family")}>家庭设置<ArrowRight className="size-3.5" /></Button></div>
-          {devices.error ? <p role="alert" className="error">{devices.error}</p> : devices.loading ? <p role="status" className="muted">正在加载设备…</p> : devices.data.length ?
+          {devices.error ? <Alert variant="destructive" role="alert" className="error"><AlertDescription>{devices.error}</AlertDescription></Alert> : devices.loading ? <p role="status" className="muted">正在加载设备…</p> : devices.data.length ?
             <div className="overview-devices">{devices.data.map((device) => <div key={device.id}><Monitor className="size-4" /><span><strong>{device.name}</strong><small>最近连接：{dateTime(device.lastSeen)}</small></span></div>)}</div> : <p className="overview-empty-note">还没有绑定电视。可在家庭设置中绑定。</p>}
           <Pagination {...devices} loading={devices.refreshing} label="概览设备分页" />
         </Card>

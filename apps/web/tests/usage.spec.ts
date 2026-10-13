@@ -55,15 +55,15 @@ test("operator filters usage, exports exact bytes and opens the route directly o
   await page.getByRole("button", { name: "用量月份", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "选择月份" });
   await expect(picker.getByRole("button", { name: "本月", exact: true })).toBeVisible();
-  await page.screenshot({ path: "../../artifacts/family-usage-month-picker-mobile.png", fullPage: true });
+  await page.screenshot({ path: "../../artifacts/family-usage-month-picker-mobile.png", fullPage: true, animations: "disabled" });
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(page.getByRole("button", { name: "用量月份", exact: true })).toBeFocused();
   await expect(page.getByLabel("OSS 访问日志", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: "../../artifacts/family-usage-mobile.png", fullPage: true });
+  await page.screenshot({ path: "../../artifacts/family-usage-mobile.png", fullPage: true, animations: "disabled" });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.screenshot({ path: "../../artifacts/family-usage-desktop.png", fullPage: true });
+  await page.screenshot({ path: "../../artifacts/family-usage-desktop.png", fullPage: true, animations: "disabled" });
 });
 
 test("OSS import reports deduplication and unresolved owners, and recovers from an invalid log", async ({ page }) => {

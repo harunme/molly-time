@@ -59,7 +59,7 @@ test("date calendar and year dropdown fit mobile and support keyboard date selec
   await page.getByRole("button", { name: "结束日期", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "选择日期", exact: true });
   await expect(dialog.getByRole("combobox", { name: "选择年份", exact: true })).toBeVisible();
-  await page.screenshot({ path: "../../artifacts/watch-date-picker-mobile.png", fullPage: true });
+  await page.screenshot({ path: "../../artifacts/watch-date-picker-mobile.png", fullPage: true, animations: "disabled" });
   const box = await dialog.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(390);

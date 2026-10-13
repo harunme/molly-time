@@ -77,7 +77,7 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 ## 管理后台界面
 
-管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。主题和页面布局在 `src/style.css`，组件配置在 `components.json`，可维护的组件源码在 `src/components/ui`。Geist 字体随应用自托管，图标使用 Lucide。
+管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。基础组件迁移自 `smart-afs-platform/frontend/smartafs/src/components/ui`，组件源码统一在 `src/components/ui`。Tailwind v4 的 CSS-first 全局配置在 `src/styles/theme.css`，集中维护颜色、字号、圆角、控件尺寸、阴影、层级及动效变量；`src/styles/ui-motion.css` 提供配套动画，`src/style.css` 只保留应用基础规则和页面布局。组件不再各自写固定颜色或重复定义变量。Geist 字体随应用自托管，图标使用 Lucide。
 
 页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、上传任务 `/manage/#/upload`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
 
@@ -92,3 +92,19 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 观看报表使用 `sessionPage`、`contentPage` 分别翻页，返回 `sessionTotal`、`contentTotal`，总时长与每日统计覆盖完整日期范围。区间按批流式读取，设备和儿童等明细信息只为当前页批量查询。搜索输入防抖 300 毫秒，切换页面与筛选取消旧请求。所有管理页均无刷新按钮、定时轮询或切回窗口时的自动刷新；进入页面、翻页、筛选和写操作完成后按需加载。正在上传的本地文件进度由实际传输事件更新。旧的无页码列表调用暂时保持数组形状，但限制最多 100 条。
 
 新增组件可在本目录执行 `pnpm dlx shadcn@latest add <组件名>`，新增页面复用现有按钮、表单、弹窗和状态组件。视频行的更多操作菜单支持直接上传字幕；手机导航可横向滚动，账号菜单支持退出登录。
+
+
+### 基础组件使用
+
+页面表单使用 `Input`、`Textarea`、`Label` 和 `SelectField`，不再使用原生下拉框。`SelectField` 由迁入的 `Select` 组合，保留业务空字符串、禁用项与动态候选；`MonthPicker` 由迁入的 Button / Select / Popover 组合，并保持 YYYY-MM 接口。日期选择保留中文、键盘操作和本地日期语义。
+
+弹窗使用 Dialog / ConfirmDialog，表格使用 Table 系列，分页使用公共 Pagination 控件，复制等短暂通知使用 `message` / Sonner；业务层只负责路由、接口、候选数据和校验。Radix 继续由已有 `radix-ui` 包提供，新增依赖仅为组件库所需的 cmdk、react-hook-form 和 sonner。黑色 tab 下划线及全局 pointer 光标保留。
+
+调整所有表单尺寸使用 `--spacing-control` / `--spacing-control-sm` / `--spacing-control-lg`；调整基础组件圆角使用 `--radius-ui` / `--radius-control-mark` / `--radius-dialog`；配色使用 `--color-*`。不要在页面重新覆盖基础控件的颜色、圆角或焦点样式。
+
+
+卡片与浮层层次借鉴 [YourDynamicDashboard](https://github.com/xtditom/YourDynamicDashboard)：卡片采用 `--radius-card` 的 1.5rem 大圆角、淡边线和轻阴影；弹窗及菜单采用 1rem 圆角与扩散阴影。面板、控件和弹窗分别使用 `--radius-card`、`--radius-ui`、`--radius-dialog` / `--radius-popover`，阴影统一由 `--shadow-card` / `--shadow-dialog` / `--shadow-popover` 控制。首页卡片间距、内边距由 `--spacing-card-gap` / `--spacing-card-padding` 控制。
+
+管理页内容区使用右侧全部可用宽度，运营卡片不再单独限制宽度。字号统一为：页面标题 24px，卡片及弹窗标题 18px，表单输入与日期字段 16px，正文、按钮、导航及表格 14px，说明、状态及分页 12px；同一角色使用相同 Tailwind 字号，避免业务页面随意缩小基础组件。操作按钮、日期、邮箱和状态保持完整，长资源标题截断并保留完整 title，详细数据表在自身容器横向滚动。
+
+热力图使用 `--spacing-heatmap-cell` / `--spacing-heatmap-gap` / `--radius-heatmap`，日期格保持正方形，全年格子不随屏幕宽度拉伸。桌面摘要与日期图分栏，手机显示最近日期并允许横向滚动，原有点击和键盘选择保留。`FileUploadField` 提供紧凑的中文文件选择入口，与其他控件共用高度和字号。`manage-layout.spec.ts` 覆盖 390、1280、1920px 下的所有管理主页面和运营页签，以及长时长、热力图比例和表单一致性。

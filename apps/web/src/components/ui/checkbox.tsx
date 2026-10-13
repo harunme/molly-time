@@ -1,9 +1,8 @@
-"use client"
-
-import * as React from "react"
-import { cn } from "@/lib/utils"
-import { CheckIcon } from "lucide-react"
-import { Checkbox as CheckboxPrimitive } from "radix-ui"
+import { Checkbox as CheckboxPrimitive } from "radix-ui";
+import { CheckIcon, MinusIcon } from "lucide-react";
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { controlMotionClassName } from "@/components/ui/motion";
 
 function Checkbox({
   className,
@@ -13,19 +12,18 @@ function Checkbox({
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer size-4 shrink-0 rounded-ui border border-input shadow-xs transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary",
-        className
+        "peer h-4 w-4 shrink-0 cursor-pointer rounded-control-mark border border-control-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-focus-ring active:not-disabled:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-white data-[state=indeterminate]:border-foreground data-[state=indeterminate]:bg-foreground data-[state=indeterminate]:text-white motion-reduce:active:not-disabled:scale-100",
+        controlMotionClassName,
+        className,
       )}
       {...props}
     >
-      <CheckboxPrimitive.Indicator
-        data-slot="checkbox-indicator"
-        className="grid place-content-center text-current transition-none"
-      >
-        <CheckIcon className="size-3.5" />
+      <CheckboxPrimitive.Indicator forceMount data-slot="checkbox-indicator" className="group/checkbox-indicator relative grid size-full place-items-center">
+        <CheckIcon strokeWidth={3} className="absolute h-3 w-3 scale-75 opacity-0 transition-[opacity,transform] duration-[var(--motion-duration-quick)] ease-[var(--motion-ease-emphasized)] group-data-[state=checked]/checkbox-indicator:scale-100 group-data-[state=checked]/checkbox-indicator:opacity-100 motion-reduce:transition-none" />
+        <MinusIcon className="absolute h-3 w-3 scale-75 opacity-0 transition-[opacity,transform] duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-emphasized)] group-data-[state=indeterminate]/checkbox-indicator:scale-100 group-data-[state=indeterminate]/checkbox-indicator:opacity-100 motion-reduce:transition-none" />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
-  )
+  );
 }
 
-export { Checkbox }
+export { Checkbox };

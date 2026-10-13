@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select";
 import { test, expect } from '@playwright/test';
 
 test('admin and TV share defaults while remote playback choices stay local to the video', async ({ page, browser }) => {
@@ -10,7 +11,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
   await expect(page.getByRole('heading', { name: /^(概览|资源库)$/ })).toBeVisible();
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
   await expect(page.getByRole('heading', { name: '家庭设置', exact: true })).toBeVisible();
-  await page.getByLabel('默认字幕', { exact: true }).selectOption('en');
+  await chooseSelect(page.getByLabel('默认字幕', { exact: true }), 'en');
   await page.getByRole('button', { name: '保存默认字幕' }).click();
   await expect.poll(async () => (await (await page.request.get('/api/manage/settings')).json()).defaultSubtitle).toBe('en');
   await page.screenshot({ path: 'test-results/subtitle-admin-settings.png', fullPage: true });
@@ -86,13 +87,13 @@ test('admin and TV share defaults while remote playback choices stay local to th
 
     await page.reload();
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-    await expect(page.getByLabel('默认字幕', { exact: true })).toHaveValue('zh-en');
+    await expect(page.getByLabel('默认字幕', { exact: true })).toHaveAttribute('data-value', 'zh-en');
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
     await page.locator('article').filter({ has: page.getByRole('button', { name: 'Browser fixture', exact: true }) }).getByRole('button', { name: '编辑', exact: true }).click();
     await expect(page.getByRole('heading', { name: '字幕资源' })).toBeVisible();
     await expect(page.getByText('默认字幕', { exact: true })).toHaveCount(0);
-    await expect(page.getByLabel('字幕类型').nth(2)).toHaveValue('zh-en');
+    await expect(page.getByLabel('字幕类型').nth(2)).toHaveAttribute('data-value', 'zh-en');
     expect(errors).toEqual([]);
   } finally { await context.close(); }
 });

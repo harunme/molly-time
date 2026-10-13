@@ -1,5 +1,8 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty } from "@/components/ui/empty";
+import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,7 +27,7 @@ type Form = StorageConfig & {
   oss_access_key_id: string;
   oss_access_key_secret: string;
 };
-export function Operations({ notify }: { notify: (message: string) => void }) {
+export function Operations({ notify }: { notify: (message: string) => void; }) {
   const tab = useParams()["*"] || "";
   const navigate = useNavigate();
   const validTab = ["storage", "client-releases", "invitations", "usage"].includes(tab);
@@ -56,7 +59,7 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
     const { credentialsConfigured: _configured, ...body } = form;
     try {
       if (test) {
-        const result = await api<{ message: string }>(
+        const result = await api<{ message: string; }>(
           "/operations/storage/test",
           "POST",
           body,
@@ -84,188 +87,185 @@ export function Operations({ notify }: { notify: (message: string) => void }) {
         </div>
       </div>
       <Tabs className="operations-tabs" value={tab} activationMode="manual" onValueChange={(value) => navigate(`/operations/${value}`)}>
-        <TabsList variant="line" aria-label="运营设置分类">
+        <TabsList aria-label="运营设置分类">
           <TabsTrigger value="storage">文件存储</TabsTrigger>
           <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
           <TabsTrigger value="invitations">用户邀请</TabsTrigger>
           <TabsTrigger value="usage">家庭用量</TabsTrigger>
         </TabsList>
         <TabsContent value="storage">
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {!form ? (
-        <p className="empty">正在加载存储配置…</p>
-      ) : (
-        <Card className="settings-card operations-card">
-          <h2>文件存储</h2>
-          <p className="muted">
-            已有文件继续使用原存储。已有云端资源时，切换 Bucket
-            或地域需要先迁移资源。
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit(false);
-            }}
-          >
-            <fieldset disabled={busy}>
-              <label>
-                存储方式
-                <NativeSelect
-                  value={form.storage_backend}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      storage_backend: e.target.value as "local" | "oss",
-                    })
-                  }
-                >
-                  <option value="local">服务器本地磁盘</option>
-                  <option value="oss">阿里云 OSS</option>
-                </NativeSelect>
-              </label>
-              <div className="form-grid">
-                <label>
-                  OSS Endpoint
-                  <Input
-                    placeholder="https://oss-cn-hangzhou.aliyuncs.com"
-                    value={form.oss_endpoint}
-                    onChange={(e) =>
-                      setForm({ ...form, oss_endpoint: e.target.value })
-                    }
-                    required={form.storage_backend === "oss"}
-                  />
-                </label>
-                <label>
-                  Bucket
-                  <Input
-                    placeholder="私有 Bucket 名称"
-                    value={form.oss_bucket}
-                    onChange={(e) =>
-                      setForm({ ...form, oss_bucket: e.target.value })
-                    }
-                    required={form.storage_backend === "oss"}
-                  />
-                </label>
-                <label>
-                  AccessKey ID
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    value={form.oss_access_key_id}
-                    placeholder={
-                      form.credentialsConfigured
-                        ? "已保存；留空保留原值"
-                        : "输入 AccessKey ID"
-                    }
-                    onChange={(e) =>
-                      setForm({ ...form, oss_access_key_id: e.target.value })
-                    }
-                    required={
-                      form.storage_backend === "oss" &&
-                      !form.credentialsConfigured
-                    }
-                  />
-                </label>
-                <label>
-                  AccessKey Secret
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    value={form.oss_access_key_secret}
-                    placeholder={
-                      form.credentialsConfigured
-                        ? "已保存；留空保留原值"
-                        : "输入 AccessKey Secret"
-                    }
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        oss_access_key_secret: e.target.value,
-                      })
-                    }
-                    required={
-                      form.storage_backend === "oss" &&
-                      !form.credentialsConfigured
-                    }
-                  />
-                </label>
-              </div>
+          {error && (
+            <Alert variant="destructive" className="error" role="alert"><AlertDescription>
+              {error}
+            </AlertDescription></Alert>
+          )}
+          {!form ? (
+            <Empty className="empty">正在加载存储配置…</Empty>
+          ) : (
+            <Card className="settings-card operations-card">
+              <h2>文件存储</h2>
               <p className="muted">
-                {form.credentialsConfigured
-                  ? "访问密钥已配置。"
-                  : "尚未配置访问密钥。"}{" "}
-                密钥加密保存，不会回显。
+                已有文件继续使用原存储。已有云端资源时，切换 Bucket
+                或地域需要先迁移资源。
               </p>
-              <label>
-                内网 Endpoint（可选）
-                <Input
-                  placeholder="仅同地域阿里云服务器使用，本机开发留空"
-                  value={form.oss_internal_endpoint}
-                  onChange={(e) =>
-                    setForm({ ...form, oss_internal_endpoint: e.target.value })
-                  }
-                />
-              </label>
-              <div className="form-grid">
-                <label>
-                  上传签名有效期（秒）
-                  <Input
-                    type="number"
-                    min={60}
-                    max={3600}
-                    value={form.oss_upload_ttl}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        oss_upload_ttl: Number(e.target.value),
-                      })
-                    }
-                    required
-                  />
-                </label>
-                <label>
-                  播放签名有效期（秒）
-                  <Input
-                    type="number"
-                    min={60}
-                    max={14400}
-                    value={form.oss_signed_url_ttl}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        oss_signed_url_ttl: Number(e.target.value),
-                      })
-                    }
-                    required
-                  />
-                </label>
-              </div>
-              <p className="muted">
-                Bucket 需设为私有，并允许管理网页和 TV 网页来源的 CORS
-                请求。服务端测试会创建、读取并删除一个临时对象。
-              </p>
-              <div className="actions">
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => {
-                    void submit(true);
-                  }}
-                >
-                  {busy ? "正在处理…" : "测试 OSS 连接"}
-                </Button>
-                <Button variant="default" className="primary" type="submit">
-                  保存存储配置
-                </Button>
-              </div>
-            </fieldset>
-          </form>
-        </Card>
-      )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submit(false);
+                }}
+              >
+                <fieldset disabled={busy}>
+                  <Label>
+                    存储方式
+                    <SelectField
+                      value={form.storage_backend}
+                      onValueChange={(value) =>
+                        setForm({
+                          ...form,
+                          storage_backend: value as "local" | "oss",
+                        })
+                      }
+                      options={[({ value: "local", label: <> 服务器本地磁盘 </> }), ({ value: "oss", label: <> 阿里云 OSS </> })]} />
+                  </Label>
+                  <div className="form-grid">
+                    <Label>
+                      OSS Endpoint
+                      <Input
+                        placeholder="https://oss-cn-hangzhou.aliyuncs.com"
+                        value={form.oss_endpoint}
+                        onChange={(e) =>
+                          setForm({ ...form, oss_endpoint: e.target.value })
+                        }
+                        required={form.storage_backend === "oss"}
+                      />
+                    </Label>
+                    <Label>
+                      Bucket
+                      <Input
+                        placeholder="私有 Bucket 名称"
+                        value={form.oss_bucket}
+                        onChange={(e) =>
+                          setForm({ ...form, oss_bucket: e.target.value })
+                        }
+                        required={form.storage_backend === "oss"}
+                      />
+                    </Label>
+                    <Label>
+                      AccessKey ID
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={form.oss_access_key_id}
+                        placeholder={
+                          form.credentialsConfigured
+                            ? "已保存；留空保留原值"
+                            : "输入 AccessKey ID"
+                        }
+                        onChange={(e) =>
+                          setForm({ ...form, oss_access_key_id: e.target.value })
+                        }
+                        required={
+                          form.storage_backend === "oss" &&
+                          !form.credentialsConfigured
+                        }
+                      />
+                    </Label>
+                    <Label>
+                      AccessKey Secret
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={form.oss_access_key_secret}
+                        placeholder={
+                          form.credentialsConfigured
+                            ? "已保存；留空保留原值"
+                            : "输入 AccessKey Secret"
+                        }
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            oss_access_key_secret: e.target.value,
+                          })
+                        }
+                        required={
+                          form.storage_backend === "oss" &&
+                          !form.credentialsConfigured
+                        }
+                      />
+                    </Label>
+                  </div>
+                  <p className="muted">
+                    {form.credentialsConfigured
+                      ? "访问密钥已配置。"
+                      : "尚未配置访问密钥。"}{" "}
+                    密钥加密保存，不会回显。
+                  </p>
+                  <Label>
+                    内网 Endpoint（可选）
+                    <Input
+                      placeholder="仅同地域阿里云服务器使用，本机开发留空"
+                      value={form.oss_internal_endpoint}
+                      onChange={(e) =>
+                        setForm({ ...form, oss_internal_endpoint: e.target.value })
+                      }
+                    />
+                  </Label>
+                  <div className="form-grid">
+                    <Label>
+                      上传签名有效期（秒）
+                      <Input
+                        type="number"
+                        min={60}
+                        max={3600}
+                        value={form.oss_upload_ttl}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            oss_upload_ttl: Number(e.target.value),
+                          })
+                        }
+                        required
+                      />
+                    </Label>
+                    <Label>
+                      播放签名有效期（秒）
+                      <Input
+                        type="number"
+                        min={60}
+                        max={14400}
+                        value={form.oss_signed_url_ttl}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            oss_signed_url_ttl: Number(e.target.value),
+                          })
+                        }
+                        required
+                      />
+                    </Label>
+                  </div>
+                  <p className="muted">
+                    Bucket 需设为私有，并允许管理网页和 TV 网页来源的 CORS
+                    请求。服务端测试会创建、读取并删除一个临时对象。
+                  </p>
+                  <div className="actions">
+                    <Button
+                      variant="bordered"
+                      type="button"
+                      onClick={() => {
+                        void submit(true);
+                      }}
+                    >
+                      {busy ? "正在处理…" : "测试 OSS 连接"}
+                    </Button>
+                    <Button variant="default" className="primary" type="submit">
+                      保存存储配置
+                    </Button>
+                  </div>
+                </fieldset>
+              </form>
+            </Card>
+          )}
         </TabsContent>
         <TabsContent value="client-releases"><ClientReleases /></TabsContent>
         <TabsContent value="invitations"><Invitations /></TabsContent>

@@ -44,9 +44,9 @@ export function MonthPicker({ value, onValueChange, min = "1970-01", max = "2100
     setOpen(next);
   }}>
     <PopoverTrigger asChild>
-      <Button id={id} type="button" variant="outline" disabled={disabled} aria-label={label}
+      <Button id={id} type="button" variant="bordered" disabled={disabled} aria-label={label}
         data-slot="month-picker"
-        className={cn("w-full justify-start border-transparent bg-input-surface font-normal hover:bg-input-surface", className)}>
+        className={cn("w-full justify-start px-3 text-base text-left font-normal tabular-nums", className)}>
         <CalendarIcon className="text-muted-foreground" aria-hidden="true" />
         <span>{Number(value.slice(0, 4))}年{Number(value.slice(5, 7))}月</span>
       </Button>
@@ -56,7 +56,7 @@ export function MonthPicker({ value, onValueChange, min = "1970-01", max = "2100
       buttons.current[Number(value.slice(5, 7)) - 1]?.focus();
     }}>
       <div className="mb-3 flex items-center gap-2">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="上一年"
+        <Button type="button" variant="ghost" size="icon" aria-label="上一年"
           disabled={!validYear || year <= Number(min.slice(0, 4))}
           onClick={() => setYearText(String(year - 1))}><ChevronLeftIcon aria-hidden="true" /></Button>
         <Select value={yearText} onValueChange={setYearText}>
@@ -66,7 +66,7 @@ export function MonthPicker({ value, onValueChange, min = "1970-01", max = "2100
             return <SelectItem key={option} value={option}>{option}年</SelectItem>;
           })}</SelectContent>
         </Select>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="下一年"
+        <Button type="button" variant="ghost" size="icon" aria-label="下一年"
           disabled={!validYear || year >= Number(max.slice(0, 4))}
           onClick={() => setYearText(String(year + 1))}><ChevronRightIcon aria-hidden="true" /></Button>
       </div>
@@ -74,9 +74,10 @@ export function MonthPicker({ value, onValueChange, min = "1970-01", max = "2100
         {Array.from({ length: 12 }, (_, index) => {
           const month = `${yearText}-${String(index + 1).padStart(2, "0")}`;
           const selected = value === month;
-          return <Button key={index} type="button" variant={selected ? "default" : "ghost"}
+          return <Button key={index} type="button" variant="ghost"
             ref={(button) => { buttons.current[index] = button; }}
             aria-label={`${yearText}年${index + 1}月`} aria-pressed={selected}
+            className={cn("min-w-0 px-1", selected && "bg-selection font-semibold")}
             disabled={!validYear || !allowed(month)}
             onKeyDown={(event) => moveFocus(event, index)} onClick={() => choose(month)}>
             {index + 1}月

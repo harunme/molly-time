@@ -1,10 +1,19 @@
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Empty } from "@/components/ui/empty";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loading } from "@/components/ui/loading";
+import { FileUpload, FileUploadField } from "@/components/ui/upload";
+import { Toaster } from "@/components/ui/sonner";
 import { FeedbackDialogs, confirmAction, promptText } from "./feedback";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { dateKey, parseDateKey } from "@/lib/date-only";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
@@ -57,6 +66,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -100,7 +110,7 @@ function useData<T>(path: string, initial: T, serial = 0) {
   }, [path, serial]);
   return { data, error, loading };
 }
-function Icon({ name }: { name: string }) {
+function Icon({ name }: { name: string; }) {
   const icons: Record<string, typeof FolderOpen> = {
     library: FolderOpen,
     upload: UploadCloud,
@@ -141,9 +151,9 @@ function Modal({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         {error && (
-          <p className="error" role="alert">
+          <Alert variant="destructive" className="error" role="alert"><AlertDescription>
             {error}
-          </p>
+          </AlertDescription></Alert>
         )}
         {children}
       </DialogContent>
@@ -151,14 +161,11 @@ function Modal({
   );
 }
 
-function State({ loading, error }: { loading?: boolean; error?: string }) {
-  return loading || error ? (
-    <p className={error ? "error" : "empty"} role={error ? "alert" : "status"}>
-      {error || "正在加载…"}
-    </p>
-  ) : null;
+function State({ loading, error }: { loading?: boolean; error?: string; }) {
+  if (error) return <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>;
+  return loading ? <Loading size="sm" className="min-h-32" /> : null;
 }
-function Badge({ value }: { value: string }) {
+function Badge({ value }: { value: string; }) {
   const names: Record<string, string> = {
     draft: "草稿",
     published: "已发布",
@@ -190,6 +197,7 @@ function App() {
   useEffect(() => {
     setError("");
     setNotice("");
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location.pathname, location.search]);
   useEffect(() => {
     api<Session>("/auth/session")
@@ -197,7 +205,7 @@ function App() {
         setSession(value);
         updateSession(value);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setChecking(false));
     const expired = () => {
       stopUploads();
@@ -210,10 +218,14 @@ function App() {
   useEffect(() => {
     const nav = navigation.current;
     if (!nav) return;
-    const reveal = () =>
-      nav
-        .querySelector('[aria-current="page"]')
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const reveal = () => {
+      const active = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!active || nav.scrollWidth <= nav.clientWidth) return;
+      const container = nav.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      if (item.left < container.left) nav.scrollLeft += item.left - container.left;
+      else if (item.right > container.right) nav.scrollLeft += item.right - container.right;
+    };
     reveal();
     const observer = new ResizeObserver(reveal);
     observer.observe(nav);
@@ -232,7 +244,7 @@ function App() {
       );
     }
   };
-  if (checking) return <div className="boot">正在打开家庭媒体库…</div>;
+  if (checking) return <Loading className="min-h-dvh" label="正在打开家庭媒体库…" />;
   if (location.pathname === "/invite")
     return <InviteActivation key={inviteToken || ""} token={inviteToken || ""} login={(email) => {
       void run(async () => {
@@ -265,9 +277,11 @@ function App() {
   if (!session.user.email)
     return <BindEmail session={session} bound={(user) => {
       const value = { ...session, user }; setSession(value); updateSession(value);
-    }} logout={() => { void run(async () => {
-      await api("/auth/logout", "POST"); stopUploads(); setSession(undefined); updateSession(undefined);
-    }); }} />;
+    }} logout={() => {
+      void run(async () => {
+        await api("/auth/logout", "POST"); stopUploads(); setSession(undefined); updateSession(undefined);
+      });
+    }} />;
   if (location.pathname === "/pair")
     return (
       <PairingPage
@@ -309,11 +323,14 @@ function App() {
           </a>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="user-avatar" aria-label="账号菜单">
-                {session.user.name[0].toUpperCase()}
+              <Button variant="ghost" size="icon" className="user-avatar" aria-label="账号菜单">
+                <Avatar className="size-7"><AvatarFallback className="bg-white text-foreground">{session.user.name[0].toUpperCase()}</AvatarFallback></Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuLabel>
+                {session.user.name} · {session.user.role === "superadmin" ? "平台超管" : readonly ? "家长成员" : "家庭管理员"}
+              </DropdownMenuLabel>
               <DropdownMenuLabel>{session.user.email}</DropdownMenuLabel>
               <DropdownMenuLabel>账号 ID：{session.user.accountId}</DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -333,14 +350,6 @@ function App() {
         </div>
       </header>
       <aside className="manage-sidebar">
-        <div className="family-name">
-          <span className="family-avatar">{session.family.name[0]}</span>
-          <div>
-            <strong>{session.family.name}</strong>
-            <small>家庭工作空间</small>
-          </div>
-        </div>
-        <p className="nav-label">媒体管理</p>
         <nav ref={navigation} aria-label="管理导航">
           {names.map(([id, name]) => (
             <Button
@@ -361,62 +370,30 @@ function App() {
           <Film className="size-4" />
           <span>好故事，一起看。</span>
         </div>
-        <div className="sidebar-bottom">
-          <span className="user-avatar">
-            {session.user.name[0].toUpperCase()}
-          </span>
-          <div>
-            <strong>{session.user.name}</strong>
-            <small>
-              {session.user.role === "superadmin"
-                ? "平台超管"
-                : readonly
-                  ? "家长成员"
-                  : "家庭管理员"}
-            </small>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="退出账号"
-            onClick={() => {
-              void run(async () => {
-                await api("/auth/logout", "POST");
-                stopUploads();
-                setSession(undefined);
-                updateSession(undefined);
-              });
-            }}
-          >
-            <LogOut className="size-4" />
-          </Button>
-        </div>
       </aside>
       <main className="manage-main">
-        <div className={`page-content${page === "family" ? " page-content-full" : ""}`}>
+        <div className="page-content">
           {error && (
-            <div className="banner error" role="alert">
-              {error}
+            <Alert className="mb-5" variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon"
                 aria-label="关闭错误"
                 onClick={() => setError("")}
               >
                 ×
               </Button>
-            </div>
+            </Alert>
           )}
           {notice && (
-            <div className="banner notice" role="status">
+            <Alert className="mb-5" role="status">
               <CircleCheck className="size-4 shrink-0" />
-              {notice}
-            </div>
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
           )}
           {readonly && (
-            <p className="banner">
-              当前账号可查看资料和观看记录，编辑需要管理员账号。
-            </p>
+            <Alert className="mb-5"><AlertDescription>当前账号可查看资料和观看记录，编辑需要管理员账号。</AlertDescription></Alert>
           )}
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
@@ -446,7 +423,7 @@ function App() {
   );
 }
 
-function Login({ done, initialAccount, invite }: { done: (session: Session) => void; initialAccount: string; invite: () => void }) {
+function Login({ done, initialAccount, invite }: { done: (session: Session) => void; initialAccount: string; invite: () => void; }) {
   const [username, setUsername] = useState(initialAccount),
     [password, setPassword] = useState(""),
     [busy, setBusy] = useState(false),
@@ -498,11 +475,11 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
                 .finally(() => setBusy(false));
             }}
           >
-            <label>
+            <Label>
               账号
-              <span className="login-input-group">
-                <UserRound aria-hidden="true" />
-                <Input
+              <InputGroup>
+                <InputGroupAddon><UserRound aria-hidden="true" /></InputGroupAddon>
+                <InputGroupInput
                   autoComplete="username"
                   placeholder="邮箱或数字 ID"
                   maxLength={254}
@@ -510,13 +487,13 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
                   onChange={(e) => setUsername(e.target.value)}
                   required
                 />
-              </span>
-            </label>
-            <label>
+              </InputGroup>
+            </Label>
+            <Label>
               密码
-              <span className="login-input-group">
-                <KeyRound aria-hidden="true" />
-                <Input
+              <InputGroup>
+                <InputGroupAddon><KeyRound aria-hidden="true" /></InputGroupAddon>
+                <InputGroupInput
                   type="password"
                   autoComplete="current-password"
                   placeholder="请输入密码"
@@ -524,12 +501,12 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-              </span>
-            </label>
+              </InputGroup>
+            </Label>
             {error && (
-              <p role="alert" className="error">
+              <Alert variant="destructive" role="alert" className="error"><AlertDescription>
                 {error}
-              </p>
+              </AlertDescription></Alert>
             )}
             <Button
               type="submit"
@@ -552,16 +529,16 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
   );
 }
 
-function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean }) {
+function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
   const { folderId = "" } = useParams();
   const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined);
-  if (folder.error) return <><State error={folder.error} /><Button asChild variant="outline"><Link to="/library">全部文件夹</Link></Button></>;
+  if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
   if (folder.loading || folder.data?.id !== folderId) return <State loading />;
   if (folder.data.type !== "Series") return <Navigate to="/library" replace />;
   return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} />;
 }
 
-function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource }) {
+function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource; }) {
   const navigate = useNavigate();
   const [serial, refresh] = useState(0),
     [search, setSearch] = useState(""),
@@ -610,7 +587,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         <div className="actions">
           {!readonly && (
             <>
-              <Button variant="outline" onClick={() => setEdit("new")}>
+              <Button variant="bordered" onClick={() => setEdit("new")}>
                 新建{kind === "Series" ? "文件夹" : "视频"}
               </Button>
               <Button
@@ -631,7 +608,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       </div>
       <div className="breadcrumbs">
         <Button
-          variant="outline"
+          variant="bordered"
           onClick={() => {
             navigate("/library");
             setSelected([]);
@@ -643,7 +620,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           <React.Fragment>
             <span> / </span>
             <Button
-              variant="outline"
+              variant="bordered"
               onClick={() => {
                 navigate(`/library/${encodeURIComponent(parent.id)}`);
                 setSelected([]);
@@ -655,25 +632,20 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         )}
       </div>
       <div className="toolbar library-toolbar">
-        <div className="search-field">
-          <Search className="size-4" />
-          <Input
+        <InputGroup className="search-field">
+          <InputGroupAddon><Search /></InputGroupAddon>
+          <InputGroupInput
             aria-label="搜索资源"
             placeholder="搜索名称…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
-        <NativeSelect
+        </InputGroup>
+        <SelectField
           aria-label="资源状态"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">全部状态</option>
-          <option value="published">已发布</option>
-          <option value="draft">草稿</option>
-          <option value="archived">已归档</option>
-        </NativeSelect>
+          onValueChange={(value) => setStatus(value)}
+          options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> }), ({ value: "archived", label: <> 已归档 </> })]} />
         <span className="toolbar-count">
           {list.total} 个{parent ? "视频" : "文件夹"}
         </span>
@@ -728,7 +700,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                 </div>
                 <div className="resource-name">
                   <Button
-                    variant="outline"
+                    variant="bordered"
                     className="name-button"
                     onClick={() =>
                       item.type === "Episode"
@@ -780,7 +752,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
-                            size="icon-sm"
+                            size="icon"
                             aria-label={`更多操作 ${item.name}`}
                           >
                             <MoreHorizontal className="size-4" />
@@ -838,7 +810,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
               </article>
             ))
           ) : (
-            <div className="empty">
+            <Empty className="empty">
               <FolderOpen className="size-9" />
               <h3>
                 {search || status ? "没有匹配的资源" : "放入第一份好故事"}
@@ -848,7 +820,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                   ? "试试其他名称或状态。"
                   : "上传视频，检查完成后预览并发布。"}
               </p>
-            </div>
+            </Empty>
           )}
         </div>
       )}
@@ -878,11 +850,11 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
               }}
             />
           )}
-          <Button variant="outline" onClick={() => action(selected, "publish")}>
+          <Button variant="bordered" onClick={() => action(selected, "publish")}>
             批量发布
           </Button>
           <Button
-            variant="outline"
+            variant="bordered"
             onClick={() => action(selected, "unpublish")}
           >
             批量下架
@@ -983,7 +955,7 @@ function ResourceEditor({
           }).finally(() => setBusy(false));
         }}
       >
-        <label>
+        <Label>
           名称
           <Input
             value={name}
@@ -992,9 +964,9 @@ function ResourceEditor({
             required
             disabled={readonly}
           />
-        </label>
+        </Label>
         {(item?.type || type) !== "Series" && (
-          <label>
+          <Label>
             排序序号
             <Input
               type="number"
@@ -1004,9 +976,9 @@ function ResourceEditor({
               onChange={(e) => setIndex(e.target.value)}
               disabled={readonly}
             />
-          </label>
+          </Label>
         )}
-        <label>
+        <Label>
           介绍
           <Textarea
             value={overview}
@@ -1014,7 +986,7 @@ function ResourceEditor({
             rows={3}
             disabled={readonly}
           />
-        </label>
+        </Label>
         {item && (
           <section className="file-list">
             <h3>配套文件</h3>
@@ -1040,7 +1012,7 @@ function ResourceEditor({
             )}
             {!readonly && (
               <Button
-                variant="outline"
+                variant="bordered"
                 type="button"
                 onClick={() => attach(item)}
               >
@@ -1058,21 +1030,21 @@ function ResourceEditor({
           </>
         )}
         {!readonly && (
-          <div className="modal-actions">
-            <Button variant="outline" type="button" onClick={close}>
+          <DialogFooter className="modal-actions">
+            <Button variant="bordered" type="button" onClick={close}>
               取消
             </Button>
             <Button variant="default" className="primary" disabled={busy}>
               {busy ? "正在保存…" : "保存"}
             </Button>
-          </div>
+          </DialogFooter>
         )}
       </form>
     </Modal>
   );
 }
 
-function Preview({ item, close }: { item: Resource; close: () => void }) {
+function Preview({ item, close }: { item: Resource; close: () => void; }) {
   return (
     <Modal title={`家长预览 · ${item.name}`} close={close}>
       <MediaPreview id={item.id} />
@@ -1095,16 +1067,16 @@ function UploadDialog({
   close: () => void;
 }) {
   const [seriesId, setSeriesId] = useState(
-      parent?.type === "Series" ? parent.id : "",
-    ),
+    parent?.type === "Series" ? parent.id : "",
+  ),
     [newSeries, setNewSeries] = useState("");
   const [kind, setKind] = useState(
-      item?.type === "Episode" || !item ? initialKind : "image",
-    ),
+    item?.type === "Episode" || !item ? initialKind : "image",
+  ),
     [language, setLanguage] = useState("und");
   const [rows, setRows] = useState<
-      { file: File; name: string; index: string; itemId?: string }[]
-    >([]),
+    { file: File; name: string; index: string; itemId?: string; }[]
+  >([]),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = () => {
@@ -1174,52 +1146,44 @@ function UploadDialog({
               />
             </div>
             {!seriesId && (
-              <label>
+              <Label>
                 新文件夹名称
                 <Input
                   value={newSeries}
                   onChange={(e) => setNewSeries(e.target.value)}
                   required
                 />
-              </label>
+              </Label>
             )}
           </div>
         )}
         {item && (
-          <label>
+          <Label>
             文件用途
-            <NativeSelect
+            <SelectField
               value={kind}
-              onChange={(e) => {
-                setKind(e.target.value);
+              onValueChange={(value) => {
+                setKind(value);
                 setRows([]);
               }}
-            >
-              {item.type === "Episode" && (
-                <>
-                  <option value="video">视频（替换当前视频）</option>
-                  <option value="subtitle">新增字幕</option>
-                </>
-              )}
-              <option value="image">封面（替换当前封面）</option>
-            </NativeSelect>
-          </label>
+              options={[item.type === "Episode" && (
+                [({ value: "video", label: <> 视频（替换当前视频） </> }), ({ value: "subtitle", label: <> 新增字幕 </> })]
+              ), ({ value: "image", label: <> 封面（替换当前封面） </> })]} />
+          </Label>
         )}
         {kind === "subtitle" && (
-          <label>
+          <Label>
             字幕类型
-            <NativeSelect
+            <SelectField
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              <option value="und">未指定</option>
-              <option value="zh">中文</option>
-              <option value="en">英文</option>
-              <option value="zh-en">中英文</option>
-            </NativeSelect>
-          </label>
+              onValueChange={(value) => setLanguage(value)}
+              options={[({ value: "und", label: <> 未指定 </> }), ({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> })]} />
+          </Label>
         )}
-        <label className="file-drop">
+        <FileUpload className="file-drop" inputLabel="选择上传文件"
+          multiple={!item || kind === "subtitle"}
+          accept={kind === "video" ? ".mp4" : kind === "subtitle" ? ".srt,.vtt" : ".jpg,.jpeg,.png,.webp"}
+          onFilesSelect={(files) => setRows(files.map((file) => ({ file, name: file.name.replace(/\.[^.]+$/, ""), index: "" })))}>
           <UploadCloud className="size-8" />
           <strong>
             选择
@@ -1233,34 +1197,13 @@ function UploadDialog({
                 ? "UTF-8 编码的 SRT / VTT"
                 : "JPG / PNG / WebP"}
           </span>
-          <Button asChild variant="outline">
+          <Button asChild variant="bordered">
             <span>
               {rows.length ? `已选择 ${rows.length} 个文件` : "选择本地文件"}
             </span>
           </Button>
-          <Input
-            className="sr-only"
-            aria-label="选择上传文件"
-            type="file"
-            multiple={!item || kind === "subtitle"}
-            accept={
-              kind === "video"
-                ? ".mp4"
-                : kind === "subtitle"
-                  ? ".srt,.vtt"
-                  : ".jpg,.jpeg,.png,.webp"
-            }
-            onChange={(e) =>
-              setRows(
-                Array.from(e.target.files || []).map((file) => ({
-                  file,
-                  name: file.name.replace(/\.[^.]+$/, ""),
-                  index: "",
-                })),
-              )
-            }
-          />
-        </label>
+
+        </FileUpload>
         {rows.map((row, index) => (
           <div className="upload-plan" key={index}>
             <div>
@@ -1303,13 +1246,13 @@ function UploadDialog({
           上传后自动检查文件。新视频先保存为草稿，确认后再发布；替换已有视频会保留旧文件。
         </p>
         {error && (
-          <p className="error" role="alert">
+          <Alert variant="destructive" className="error" role="alert"><AlertDescription>
             {error}
-          </p>
+          </AlertDescription></Alert>
         )}
-        <div className="modal-actions">
+        <DialogFooter className="modal-actions">
           <Button
-            variant="outline"
+            variant="bordered"
             type="button"
             disabled={busy}
             onClick={close}
@@ -1325,13 +1268,13 @@ function UploadDialog({
               ? "正在建立上传任务…"
               : `开始上传${rows.length ? ` ${rows.length} 个文件` : ""}`}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Modal>
   );
 }
 
-function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
+function Uploads({ run, readonly }: { run: Run; readonly: boolean; }) {
   const [serial, refresh] = useState(0),
     [localSerial, localRefresh] = useState(0);
   const list = usePagedData<Upload>("/uploads", serial);
@@ -1360,10 +1303,10 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
       </div>
       <State loading={list.loading} />
       {!list.loading && !list.data.length && (
-        <div className="empty">
+        <Empty className="empty">
           <h3>还没有上传任务</h3>
           <p>到资源库选择视频，或给已有视频添加字幕和封面。</p>
-        </div>
+        </Empty>
       )}
       {list.data.map((row) => {
         const current = live.get(row.id),
@@ -1402,7 +1345,7 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
                 <div className="actions">
                   {row.status === "failed" && row.taskId && (
                     <Button
-                      variant="outline"
+                      variant="bordered"
                       onClick={() => {
                         void run(async () => {
                           await api(`/tasks/${row.taskId}/retry`, "POST");
@@ -1416,12 +1359,12 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
                   {row.status === "uploading" && (
                     <>
                       {hasFile(row.id) && !current?.paused ? (
-                        <Button variant="outline" onClick={() => pause(row.id)}>
+                        <Button variant="bordered" onClick={() => pause(row.id)}>
                           暂停
                         </Button>
                       ) : hasFile(row.id) ? (
                         <Button
-                          variant="outline"
+                          variant="bordered"
                           onClick={() => {
                             void run(() => resume(row));
                           }}
@@ -1429,16 +1372,8 @@ function Uploads({ run, readonly }: { run: Run; readonly: boolean }) {
                           继续上传
                         </Button>
                       ) : (
-                        <label className="file-resume">
-                          重新选择原文件
-                          <Input
-                            type="file"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) void run(() => resume(row, file));
-                            }}
-                          />
-                        </label>
+                        <FileUploadField className="file-resume" inputLabel="重新选择原文件" placeholder="重新选择原文件"
+                          onFileSelect={(file) => { void run(() => resume(row, file)); }} />
                       )}
                       <Button
                         variant="ghost"
@@ -1491,7 +1426,7 @@ function Reports() {
   const reportKey = `${start}|${end}|${child}`;
   const [position, setPosition] = useState({ key: reportKey, session: 1, content: 1 });
   const pages = position.key === reportKey ? position : { key: reportKey, session: 1, content: 1 };
-  const report = useData<(WatchReport & { sessionTotal: number; contentTotal: number; pageSize: number }) | undefined>(
+  const report = useData<(WatchReport & { sessionTotal: number; contentTotal: number; pageSize: number; }) | undefined>(
     `/reports/watch-time?start=${start}&end=${end}${child ? `&childId=${encodeURIComponent(child)}` : ""}&sessionPage=${pages.session}&contentPage=${pages.content}&pageSize=20`,
     undefined,
   );
@@ -1506,39 +1441,33 @@ function Reports() {
         </div>
       </div>
       <div className="toolbar report-filters">
-        <label>
+        <Label>
           儿童
-          <NativeSelect
+          <SelectField
             value={child}
-            onChange={(e) => setChild(e.target.value)}
-          >
-            {child && children.known[child] && !children.data.some((c) => c.id === child) && <option value={child}>{children.known[child].name}</option>}
-            <option value="">全家庭</option>
-            {children.data.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label>
+            onValueChange={(value) => setChild(value)}
+            options={[child && children.known[child] && !children.data.some((c) => c.id === child) && ({ value: child, label: <> {children.known[child].name} </> }), ({ value: "", label: <> 全家庭 </> }), children.data.map((c) => (
+              ({ value: c.id, label: <> {c.name} </> })
+            ))]} />
+        </Label>
+        <Label>
           开始日期
           <DatePicker
             aria-label="开始日期"
             data-testid="watch-start-date"
             value={parseDateKey(start)}
-            onValueChange={(date) => setStart(dateKey(date))}
+            onValueChange={(date) => { if (date) setStart(dateKey(date)); }}
           />
-        </label>
-        <label>
+        </Label>
+        <Label>
           结束日期
           <DatePicker
             aria-label="结束日期"
             data-testid="watch-end-date"
             value={parseDateKey(end)}
-            onValueChange={(date) => setEnd(dateKey(date))}
+            onValueChange={(date) => { if (date) setEnd(dateKey(date)); }}
           />
-        </label>
+        </Label>
         <Button
           variant="ghost"
           className="quiet"
@@ -1567,11 +1496,11 @@ function Reports() {
         !report.error &&
         data &&
         (!data.statisticsSince ? (
-          <div className="empty">
+          <Empty className="empty">
             <h3>等待第一条正式播放记录</h3>
             <p>已绑定的 TV 客户端播放视频后，记录会出现在这里；选择儿童后可按儿童统计。</p>
             <p>原有记录仅用于续播，无法还原历史观看时长。</p>
-          </div>
+          </Empty>
         ) : (
           <>
             <div className="watch-summary">
@@ -1623,47 +1552,43 @@ function Reports() {
                 data.contents.map((c) => (
                   <div className="content-duration" key={c.id}>
                     <span>{c.name}</span>
-                    <meter
-                      min={0}
-                      max={data.totalPlayedMs || 1}
-                      value={c.playedMs}
-                    />
+                    <Progress aria-label={`${c.name}播放时长占比`} value={c.playedMs / (data.totalPlayedMs || 1) * 100} className="w-1/4" />
                     <strong>{minutes(c.playedMs)}</strong>
                   </div>
                 ))
               ) : (
                 <p className="muted">所选日期内没有有效播放。</p>
               )}
-            <Pagination page={pages.content} pageSize={data.pageSize} total={data.contentTotal} setPage={(content) => setPosition({ ...pages, content })} label="内容分布分页" />
+              <Pagination page={pages.content} pageSize={data.pageSize} total={data.contentTotal} setPage={(content) => setPosition({ ...pages, content })} label="内容分布分页" />
             </Card>
             <Card className="report-section">
               <h2>播放明细</h2>
               <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>开始时间</th>
-                      <th>儿童 / 设备</th>
-                      <th>内容</th>
-                      <th>播放时长</th>
-                      <th>结束情况</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table className="watch-sessions-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>开始时间</TableHead>
+                      <TableHead>儿童 / 设备</TableHead>
+                      <TableHead>内容</TableHead>
+                      <TableHead>播放时长</TableHead>
+                      <TableHead>结束情况</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.sessions.map((s) => (
-                      <tr key={s.id}>
-                        <td>{dateTime(s.startedAt)}</td>
-                        <td>
+                      <TableRow key={s.id}>
+                        <TableCell>{dateTime(s.startedAt)}</TableCell>
+                        <TableCell>
                           {s.childName}
                           <small>{s.deviceName}</small>
-                        </td>
-                        <td>{s.name}</td>
-                        <td>{minutes(s.playedMs)}</td>
-                        <td>{s.ended ? "正常结束" : "播放中或未正常结束"}</td>
-                      </tr>
+                        </TableCell>
+                        <TableCell>{s.name}</TableCell>
+                        <TableCell>{minutes(s.playedMs)}</TableCell>
+                        <TableCell>{s.ended ? "正常结束" : "播放中或未正常结束"}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
               <p className="muted">
                 家长预览不计入。断网记录会补传；未能保存的崩溃尾段无法补算。
@@ -1695,21 +1620,21 @@ function Family({
     [newPassword, setNewPassword] = useState("");
   const children = usePagedData<Child>("/children", serial),
     devices = usePagedData<
-      { id: string; name: string; revoked: boolean; lastSeen: string }
+      { id: string; name: string; revoked: boolean; lastSeen: string; }
     >("/devices", serial);
   const settings = useData<
     | {
-        timezone: string;
-        defaultSubtitle: string;
-        storage: {
-          total: number;
-          free: number;
-          backend: string;
-          usedBytes: number;
-          reservedBytes: number;
-          limitBytes: number;
-        };
-      }
+      timezone: string;
+      defaultSubtitle: string;
+      storage: {
+        total: number;
+        free: number;
+        backend: string;
+        usedBytes: number;
+        reservedBytes: number;
+        limitBytes: number;
+      };
+    }
     | undefined
   >("/settings", undefined, serial);
   useEffect(() => {
@@ -1776,7 +1701,7 @@ function Family({
                   onChange={(e) => setChildName(e.target.value)}
                   required
                 />
-                <Button variant="outline">添加儿童</Button>
+                <Button variant="bordered">添加儿童</Button>
               </form>
             )}
           </Card>
@@ -1791,12 +1716,10 @@ function Family({
                 notify("默认字幕已更新，下一次播放生效。");
               });
             }}>
-              <label htmlFor="default-subtitle">默认字幕</label>
-              <NativeSelect id="default-subtitle" value={defaultSubtitle} onChange={(e) => setDefaultSubtitle(e.target.value)} disabled={readonly}>
-                <option value="zh">中文</option><option value="en">英文</option><option value="zh-en">中英文</option><option value="off">关闭字幕</option>
-              </NativeSelect>
+              <Label htmlFor="default-subtitle">默认字幕</Label>
+              <SelectField id="default-subtitle" value={defaultSubtitle} onValueChange={(value) => setDefaultSubtitle(value)} disabled={readonly} options={[({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> }), ({ value: "off", label: <> 关闭字幕 </> })]} />
               <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
-              {!readonly && <Button variant="outline">保存默认字幕</Button>}
+              {!readonly && <Button variant="bordered">保存默认字幕</Button>}
             </form>}
           </Card>
           <Card className="settings-card">
@@ -1824,15 +1747,15 @@ function Family({
                     });
                   }}
                 >
-                  <label>
+                  <Label>
                     报表时区
                     <Input
                       value={timezone}
                       onChange={(e) => setTimezone(e.target.value)}
                       disabled={readonly}
                     />
-                  </label>
-                  {!readonly && <Button variant="outline">保存时区</Button>}
+                  </Label>
+                  {!readonly && <Button variant="bordered">保存时区</Button>}
                 </form>
                 <p className="muted">
                   云端文件默认长期保留；保存到电视后重复观看优先读取本地副本。
@@ -1846,7 +1769,7 @@ function Family({
             <div className="section-heading">
               <h2>TV 设备</h2>
               {!readonly && (
-                <Button variant="outline" onClick={onPair}>
+                <Button variant="bordered" onClick={onPair}>
                   绑定电视
                 </Button>
               )}
@@ -1904,7 +1827,7 @@ function Family({
                 </div>
               ))
             ) : (
-              !devices.loading && <p className="empty">还没有绑定电视</p>
+              !devices.loading && <Empty className="empty">还没有绑定电视</Empty>
             )}
             <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
           </Card>
@@ -1926,7 +1849,7 @@ function Family({
                   });
                 }}
               >
-                <label>
+                <Label>
                   当前密码
                   <Input
                     type="password"
@@ -1935,8 +1858,8 @@ function Family({
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     required
                   />
-                </label>
-                <label>
+                </Label>
+                <Label>
                   新密码
                   <Input
                     type="password"
@@ -1946,8 +1869,8 @@ function Family({
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
                   />
-                </label>
-                <Button variant="outline">修改密码</Button>
+                </Label>
+                <Button variant="bordered">修改密码</Button>
               </form>
             </Card>
           )}
@@ -1979,5 +1902,6 @@ createRoot(document.getElementById("root")!).render(
   <>
     <HashRouter><App /></HashRouter>
     <FeedbackDialogs />
+    <Toaster />
   </>,
 );
