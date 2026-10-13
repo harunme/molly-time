@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/android-env.sh"
-bash "$MOLLYTIME_ROOT/tools/build-tv-web.sh"
+if [[ "${MOLLYTIME_TV_WEB_PREBUILT:-0}" == 1 ]]; then
+  test -f "$MOLLYTIME_ROOT/apps/tv/web/dist/index.html"
+  test -f "$MOLLYTIME_ROOT/apps/tv/web/dist/web-bundle.zip"
+  test -f "$MOLLYTIME_ROOT/apps/tv/web/dist/web-release.json"
+else
+  bash "$MOLLYTIME_ROOT/tools/build-tv-web.sh"
+fi
 BUILD_TYPE="${1:-debug}"
 case "$BUILD_TYPE" in
   debug) GRADLE_TASK=assembleDebug ;;

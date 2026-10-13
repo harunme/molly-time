@@ -4,7 +4,9 @@ Install outside the uploaded release so the SSH command entrypoint stays fixed.
 State and credentials remain in /opt/mollytime; only code/images are rolled back.
 """
 import datetime
+import base64
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,9 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.parse
+import urllib.request
+import zipfile
 
 ROOT = Path('/opt/mollytime')
 STATE = ROOT / 'deployment-state.json'
@@ -24,6 +29,66 @@ FILES = {
     'infra/compose.production.yaml', 'infra/compose.tls.yaml', 'infra/nginx-tls.conf',
 }
 OPTIONAL_FILES = {'artifacts/tv-client-plan.json', 'artifacts/mollytime-tv-release.apk'}
+
+
+class ArtifactDownloadError(Exception):
+    pass
+
+
+def fetch_apk(destination, encoded_url, expected_sha):
+    """Fetch the already uploaded CI artifact before changing the live application."""
+    try:
+        if len(encoded_url) > 5500 or not re.fullmatch('[A-Za-z0-9_-]+', encoded_url):
+            raise ValueError('Invalid artifact URL encoding')
+        url = base64.urlsafe_b64decode(encoded_url + '=' * (-len(encoded_url) % 4)).decode('ascii')
+        parsed = urllib.parse.urlsplit(url)
+        host = parsed.hostname or ''
+        if (parsed.scheme != 'https' or len(url) > 4096
+                or not (host.endswith('.blob.core.windows.net')
+                        or host.endswith('.actions.githubusercontent.com'))
+                or not re.fullmatch('[0-9a-f]{64}', expected_sha)):
+            raise ValueError('Invalid artifact URL or APK digest')
+        plan = read_json(destination / 'artifacts/tv-client-plan.json')
+        if plan.get('requiresApk') is not True:
+            raise ValueError('APK download requires a native release plan')
+        archive = destination / 'artifacts/ci-apk-artifact.zip'
+        request = urllib.request.Request(url, headers={'User-Agent': 'mollytime-deploy'})
+        with urllib.request.urlopen(request, timeout=30) as response, archive.open('wb') as output:
+            final = urllib.parse.urlsplit(response.geturl())
+            final_host = final.hostname or ''
+            if (final.scheme != 'https'
+                    or not (final_host.endswith('.blob.core.windows.net')
+                            or final_host.endswith('.actions.githubusercontent.com'))):
+                raise ValueError('Artifact download redirected to an untrusted host')
+            total = 0
+            while True:
+                chunk = response.read(128 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > 520 * 1024 ** 2:
+                    raise ValueError('Artifact archive is too large')
+                output.write(chunk)
+        with zipfile.ZipFile(str(archive)) as bundle:
+            matches = [member for member in bundle.infolist()
+                       if member.filename == 'mollytime-tv-release.apk']
+            if len(matches) != 1 or not 0 < matches[0].file_size <= 512 * 1024 ** 2:
+                raise ValueError('Artifact contains no valid release APK')
+            apk = destination / 'artifacts/mollytime-tv-release.apk'
+            digest = hashlib.sha256()
+            with bundle.open(matches[0]) as source, apk.open('wb') as output:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    output.write(chunk)
+            if digest.hexdigest() != expected_sha:
+                raise ValueError('Downloaded APK SHA-256 does not match CI build')
+        archive.unlink()
+    except Exception as error:
+        # Network exceptions can embed the short-lived signed URL.
+        raise ArtifactDownloadError(type(error).__name__)
 
 
 def read_json(path):
@@ -164,6 +229,8 @@ def main():
     if sys.argv[1:] == ['--apk-state']:
         print(json.dumps(release_state()))
         return
+    if len(sys.argv) not in (2, 4):
+        raise ValueError('Invalid deployment arguments')
     tag = sys.argv[1]
     if not re.fullmatch('[0-9a-f]{40}', tag):
         raise ValueError('Invalid release SHA')
@@ -191,6 +258,12 @@ def main():
                     raise ValueError('Release archive is too large')
                 output.write(chunk)
         unpack(archive, destination)
+        if len(sys.argv) == 4:
+            try:
+                fetch_apk(destination, sys.argv[2], sys.argv[3])
+            except ArtifactDownloadError as error:
+                print('ARTIFACT_DOWNLOAD_FAILED: ' + str(error), file=sys.stderr)
+                sys.exit(75)
         if shutil.disk_usage(str(ROOT)).free < 2 * 1024 ** 3 + archive.stat().st_size * 3:
             raise RuntimeError('Insufficient space to stage the APK release')
         plan = validate_plan(destination, tag)

@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: mollytime-production
@@ -99,6 +100,7 @@ jobs:
         run: |
           pnpm --dir apps/web build
           pnpm --dir apps/tv/web build
+          python tools/package-tv-web.py
           apps/server/.venv/bin/python -m pytest apps/server/tests -q
           apps/server/.venv/bin/python -m pytest tools/tests -q
           pnpm --dir apps/tv/web test
@@ -113,6 +115,7 @@ jobs:
           export MOLLYTIME_ANDROID_HOME="$ANDROID_HOME"
           export MOLLYTIME_JAVA_HOME="$JAVA_HOME"
           export MOLLYTIME_SIGNING_PROPERTIES="$RUNNER_TEMP/molly-tv-signing/release.properties"
+          export MOLLYTIME_TV_WEB_PREBUILT=1
           python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
           bash tools/build-tv-client.sh release \
             "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME" \
@@ -128,6 +131,7 @@ jobs:
             --plan artifacts/tv-client-plan.json \
             --state "$RUNNER_TEMP/tv-apk-state.json"
       - name: Save APK and publication plan
+        id: apk_artifact
         if: steps.native_plan.outputs.required == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -140,24 +144,52 @@ jobs:
       - name: Package release
         run: |
           set -euo pipefail
-          apk_files=(artifacts/tv-client-plan.json)
-          if [[ -f artifacts/mollytime-tv-release.apk ]]; then
-            apk_files+=(artifacts/mollytime-tv-release.apk)
-          fi
           tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
             apps/server/pyproject.toml apps/server/mollytime_server \
             apps/web/dist apps/tv/web/dist \
             infra/Dockerfile.prebuilt infra/compose.production.yaml \
-            infra/compose.tls.yaml infra/nginx-tls.conf "${apk_files[@]}"
+            infra/compose.tls.yaml infra/nginx-tls.conf artifacts/tv-client-plan.json
       - name: Deploy and verify
         env:
           RELEASE_SHA: ${{ github.sha }}
+          APK_ARTIFACT_ID: ${{ steps.apk_artifact.outputs.artifact-id }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
-            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            root@118.89.122.66 "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
+          ssh_options=(-i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20)
+          deploy_full_apk() {
+            echo 'Retrying with the APK over SSH'
+            tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
+              apps/server/pyproject.toml apps/server/mollytime_server \
+              apps/web/dist apps/tv/web/dist \
+              infra/Dockerfile.prebuilt infra/compose.production.yaml \
+              infra/compose.tls.yaml infra/nginx-tls.conf \
+              artifacts/tv-client-plan.json artifacts/mollytime-tv-release.apk
+            ssh "${ssh_options[@]}" root@118.89.122.66 \
+              "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
+          }
+          if [[ -n "$APK_ARTIFACT_ID" ]]; then
+            if apk_url=$(python tools/ci_artifact_url.py --repo "$GITHUB_REPOSITORY" --artifact-id "$APK_ARTIFACT_ID"); then
+              apk_sha=$(sha256sum artifacts/mollytime-tv-release.apk | cut -d ' ' -f 1)
+              set +e
+              ssh "${ssh_options[@]}" root@118.89.122.66 \
+                "deploy $RELEASE_SHA apk $apk_url $apk_sha" < /tmp/mollytime-release.tar.gz
+              result=$?
+              set -e
+              if [[ "$result" == 75 ]]; then
+                deploy_full_apk
+              elif [[ "$result" != 0 ]]; then
+                exit "$result"
+              fi
+            else
+              deploy_full_apk
+            fi
+          else
+            ssh "${ssh_options[@]}" root@118.89.122.66 \
+              "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
+          fi
           curl --fail --silent --show-error --retry 5 --retry-all-errors \
             --retry-delay 3 --connect-timeout 10 --max-time 30 \
             https://118.89.122.66:8096/healthz

@@ -1,9 +1,12 @@
 """Archive safety and application rollback without touching the live server."""
 import importlib.util
+import base64
+import hashlib
 import io
 import json
 from pathlib import Path
 import tarfile
+import zipfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -154,6 +157,32 @@ def test_deploy_receiver_remains_python36_compatible():
     import ast
     source = (Path(__file__).resolve().parents[2] / 'infra/github-deploy.py').read_text()
     ast.parse(source, feature_version=(3, 6))
+
+
+def test_fetches_ci_artifact_and_checks_apk_digest(tmp_path):
+    apk = b'signed-release-apk'
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, 'w') as bundle:
+        bundle.writestr('mollytime-tv-release.apk', apk)
+        bundle.writestr('tv-client-plan.json', '{}')
+    artifacts = tmp_path / 'artifacts'
+    artifacts.mkdir()
+    (artifacts / 'tv-client-plan.json').write_text('{"requiresApk": true}')
+    url = 'https://example.blob.core.windows.net/artifact?sig=short-lived'
+    encoded = base64.urlsafe_b64encode(url.encode()).decode().rstrip('=')
+
+    class Response(io.BytesIO):
+        def geturl(self):
+            return url
+
+    with patch.object(deploy.urllib.request, 'urlopen', return_value=Response(data.getvalue())):
+        deploy.fetch_apk(tmp_path, encoded, hashlib.sha256(apk).hexdigest())
+    assert (artifacts / 'mollytime-tv-release.apk').read_bytes() == apk
+    assert not (artifacts / 'ci-apk-artifact.zip').exists()
+
+    with patch.object(deploy.urllib.request, 'urlopen', return_value=Response(data.getvalue())):
+        with pytest.raises(deploy.ArtifactDownloadError):
+            deploy.fetch_apk(tmp_path, encoded, '0' * 64)
 
 
 @pytest.mark.parametrize('failure', [False, True])
