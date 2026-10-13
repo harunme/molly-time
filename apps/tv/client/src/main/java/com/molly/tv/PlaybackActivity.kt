@@ -11,6 +11,7 @@ import android.view.WindowManager
 import android.widget.*
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -39,6 +40,9 @@ class PlaybackActivity : AppCompatActivity() {
     private var watchId = ""
     private var sourceInfo: JSONObject? = null
     private var refreshAttempts = 0
+    private var selectedSubtitle: String? = null
+    private var playbackSpeed = 1f
+    private var playbackMenu: AlertDialog? = null
     private var clock: PlayingClock? = null
     private var sequence = 0
     private val handler = Handler(Looper.getMainLooper())
@@ -68,8 +72,10 @@ class PlaybackActivity : AppCompatActivity() {
         playOnResume = state?.getBoolean("play", true) ?: true
         awaitingNext = state?.getBoolean("awaitingNext", false) ?: false
         completed = awaitingNext
+        selectedSubtitle = state?.getString("selectedSubtitle")
+        playbackSpeed = state?.getFloat("playbackSpeed", 1f) ?: 1f
         resumeFromProgress = state?.getBoolean("resumeFromProgress", true) ?: true
-        playerView = PlayerView(this).apply { setShowSubtitleButton(true); setShowNextButton(false); setShowPreviousButton(false) }
+        playerView = PlayerView(this).apply { setShowSubtitleButton(false); setShowNextButton(false); setShowPreviousButton(false) }
         status = TextView(this).apply { textSize = 22f; setTextColor(android.graphics.Color.WHITE); setPadding(24, 24, 24, 24) }
         val frame = FrameLayout(this)
         frame.addView(playerView, FrameLayout.LayoutParams(-1, -1))
@@ -128,14 +134,22 @@ class PlaybackActivity : AppCompatActivity() {
         player = exo
         playerView.player = exo
         val subtitles = source.optJSONArray("subtitles")
+        if (selectedSubtitle == null) {
+            selectedSubtitle = (0 until (subtitles?.length() ?: 0)).firstOrNull {
+                subtitles!!.getJSONObject(it).optBoolean("isDefault")
+            }?.let { "subtitle-${subtitles!!.getJSONObject(it).getInt("index")}" } ?: "off"
+        }
         val configs = (0 until (subtitles?.length() ?: 0)).map { index ->
             val sub = subtitles!!.getJSONObject(index)
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(app.session.server + sub.getString("url")))
+                .setId("subtitle-${sub.getInt("index")}")
                 .setMimeType(if (sub.optString("codec") == "vtt") MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP)
                 .setLanguage(sub.optString("language", "und")).setLabel(sub.optString("label"))
                 .setSelectionFlags(if (sub.optBoolean("isDefault")) C.SELECTION_FLAG_DEFAULT else 0).build()
         }
         exo.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) { applySubtitle() }
+            override fun onPlaybackParametersChanged(parameters: PlaybackParameters) { playbackSpeed = parameters.speed }
             override fun onPlayerError(error: PlaybackException) {
                 if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && refreshAttempts < 2) {
                     refreshSource()
@@ -152,6 +166,9 @@ class PlaybackActivity : AppCompatActivity() {
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
         })
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, selectedSubtitle == "off").build()
+        exo.setPlaybackSpeed(playbackSpeed)
         exo.setMediaItem(MediaItem.Builder().setUri(app.media.uri(source))
             .setCustomCacheKey(app.media.key(source)).setMimeType(source.optString("mime", "video/mp4"))
             .setMediaId(episodeId).setSubtitleConfigurations(configs).build(), position)
@@ -189,6 +206,8 @@ class PlaybackActivity : AppCompatActivity() {
                         watchId = ""
                         clock = null
                         sourceInfo = null
+                        selectedSubtitle = null
+                        playbackSpeed = 1f
                         load()
                     }
                 } }.onFailure { error -> runOnUiThread {
@@ -248,6 +267,8 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun release() {
+        playbackMenu?.dismiss()
+        playbackMenu = null
         handler.removeCallbacks(heartbeat)
         if (::playerView.isInitialized) playerView.player = null
         player?.release()
@@ -273,10 +294,16 @@ class PlaybackActivity : AppCompatActivity() {
         outState.putBoolean("play", player?.playWhenReady ?: playOnResume)
         outState.putBoolean("awaitingNext", awaitingNext)
         outState.putBoolean("resumeFromProgress", resumeFromProgress)
+        outState.putString("selectedSubtitle", selectedSubtitle)
+        outState.putFloat("playbackSpeed", playbackSpeed)
         super.onSaveInstanceState(outState)
     }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val exo = player
+        if (exo != null && event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) showPlaybackMenu()
+            return true
+        }
         if (exo != null && event.keyCode in listOf(KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                 KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE)) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
@@ -297,6 +324,58 @@ class PlaybackActivity : AppCompatActivity() {
             return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private data class SubtitleChoice(val id: String, val label: String, val group: Tracks.Group, val index: Int)
+
+    private fun subtitleChoices(): List<SubtitleChoice> = player?.currentTracks?.groups?.flatMapIndexed { groupIndex, group ->
+        if (group.type != C.TRACK_TYPE_TEXT) emptyList() else (0 until group.length).mapNotNull { index ->
+            if (!group.isTrackSupported(index)) null else {
+                val format = group.getTrackFormat(index)
+                val language = when (format.language) { "zh" -> "中文"; "en" -> "英文"; "zh-en" -> "中英文"; else -> format.language ?: "字幕" }
+                SubtitleChoice(format.id ?: "embedded-$groupIndex-$index", "$language · ${format.label ?: "字幕 ${index + 1}"}", group, index)
+            }
+        }
+    } ?: emptyList()
+
+    private fun applySubtitle() {
+        val exo = player ?: return
+        val choice = subtitleChoices().firstOrNull { it.id == selectedSubtitle }
+        val builder = exo.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, choice == null)
+        if (choice != null) builder.setOverrideForType(TrackSelectionOverride(choice.group.mediaTrackGroup, choice.index))
+        val parameters = builder.build()
+        if (parameters != exo.trackSelectionParameters) exo.trackSelectionParameters = parameters
+    }
+
+    private fun showPlaybackMenu() {
+        if (playbackMenu?.isShowing == true) return
+        playbackMenu = AlertDialog.Builder(this).setTitle("播放设置 · 仅当前视频")
+            .setItems(arrayOf("选择字幕", "播放速度（${playbackSpeed}×）")) { _, which ->
+                if (which == 0) showSubtitleMenu() else showSpeedMenu()
+            }.setNegativeButton("返回播放", null).create().also { it.show() }
+    }
+
+    private fun showSubtitleMenu() {
+        val choices = subtitleChoices()
+        val labels = arrayOf("关闭字幕", *choices.map { it.label }.toTypedArray())
+        val selected = choices.indexOfFirst { it.id == selectedSubtitle }.let { if (it < 0) 0 else it + 1 }
+        playbackMenu = AlertDialog.Builder(this).setTitle(if (choices.isEmpty()) "此视频没有可用字幕" else "选择字幕")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                selectedSubtitle = if (which == 0) "off" else choices[which - 1].id
+                applySubtitle()
+                dialog.dismiss()
+            }.setNegativeButton("返回播放", null).create().also { it.show() }
+    }
+
+    private fun showSpeedMenu() {
+        val speeds = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        playbackMenu = AlertDialog.Builder(this).setTitle("播放速度")
+            .setSingleChoiceItems(speeds.map { "${it}×" }.toTypedArray(), speeds.indexOfFirst { it == playbackSpeed }) { dialog, which ->
+                playbackSpeed = speeds[which]
+                player?.setPlaybackSpeed(playbackSpeed)
+                dialog.dismiss()
+            }.setNegativeButton("返回播放", null).create().also { it.show() }
     }
     override fun onDestroy() { release(); super.onDestroy() }
 }

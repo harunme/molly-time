@@ -204,6 +204,7 @@ test('TV starts at home, pairs without a password, renews expired codes and open
     { status: 'authorized', auth: { accessToken: 'test', refreshToken: 'refresh', deviceId: 'device-1' } } }));
   await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/settings/playback', (route) => route.fulfill({ json: { defaultSubtitle: 'zh' } }));
   await page.goto('/tv/');
   await expect(page.getByRole('navigation', { name: '电视导航', includeHidden: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
@@ -234,6 +235,7 @@ test('re-pair confirmation retains binding on failure and opens a new code only 
   })));
   await page.route('**/api/home', (route) => route.fulfill({ json: { rows: [] } }));
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/settings/playback', (route) => route.fulfill({ json: { defaultSubtitle: 'zh' } }));
   let attempts = 0;
   await page.route('**/api/auth/pairing/reset', (route) => route.fulfill({ status: ++attempts === 1 ? 503 : 200, json: { ok: true } }));
   await page.route('**/api/auth/pairing/start', (route) => route.fulfill({ json: {

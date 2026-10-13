@@ -232,7 +232,7 @@ def test_real_resumable_upload_process_preview_publish(parent, mp4, monkeypatch,
     assert parent.get(f"/api/items/{ep}/image", headers=native_token()).status_code == 200
 
 
-def test_first_uploaded_subtitle_is_enabled_and_later_uploads_preserve_selection(parent):
+def test_uploaded_subtitles_use_shared_preference_and_ignore_legacy_file_default(parent):
     with Session(db.get_engine()) as session:
         session.delete(session.get(MediaFile, "s1"))
         session.commit()
@@ -256,7 +256,8 @@ def test_first_uploaded_subtitle_is_enabled_and_later_uploads_preserve_selection
 
     first = upload_subtitle("first.srt")
     tracks = parent.get("/api/episodes/e1/playback").json()["subtitles"]
-    assert len(tracks) == 1 and tracks[0]["isDefault"]
+    assert len(tracks) == 1 and not tracks[0]["isDefault"]
+    assert parent.put("/api/manage/settings", json={"defaultSubtitle": "en"}).status_code == 200
     response = parent.get(tracks[0]["url"])
     assert response.status_code == 200
     assert response.text == "WEBVTT\n\n1\n00:00:00.000 --> 00:00:02.000\nHello\n"
@@ -268,6 +269,9 @@ def test_first_uploaded_subtitle_is_enabled_and_later_uploads_preserve_selection
         "language": "en", "label": "first", "isDefault": False,
     }).status_code == 200
     upload_subtitle("third.srt")
+    tracks = parent.get("/api/episodes/e1/playback").json()["subtitles"]
+    assert [track["isDefault"] for track in tracks] == [True, False, False]
+    assert parent.put("/api/manage/settings", json={"defaultSubtitle": "off"}).status_code == 200
     tracks = parent.get("/api/episodes/e1/playback").json()["subtitles"]
     assert not any(track["isDefault"] for track in tracks)
 

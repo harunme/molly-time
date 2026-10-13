@@ -6,6 +6,7 @@ const themes = ['小鼠波波', '动物小课堂', '一起学英语', '奇妙太
 const colors = ['#567b92', '#857553', '#607d64', '#776485', '#487d83', '#976b76'];
 const children: Child[] = [{ id: 'demo-child-1', name: '小麦' }, { id: 'demo-child-2', name: '小米' }];
 let childId = children[0].id;
+let defaultSubtitle = 'zh';
 const folders: Series[] = Array.from({ length: 36 }, (_, index) => ({
   id: `demo-series-${index + 1}`, name: `${themes[index % 6]} · 第 ${Math.floor(index / 6) + 1} 季`,
   episodeCount: 80, overview: '一起发现新故事，探索有趣的世界。', image: { url: `/api/items/demo-series-${index + 1}/image` },
@@ -17,7 +18,11 @@ const episodes = (seriesId: string) => Array.from({ length: 80 }, (_, index) => 
   image: { url: `/api/items/${seriesId}-episode-${index + 1}/image` },
 }));
 
-export function demoRequest(path: string): unknown {
+export function demoRequest(path: string, method = 'GET', body?: Record<string, unknown>): unknown {
+  if (path === '/api/settings/playback') {
+    if (method === 'PUT') defaultSubtitle = String(body?.defaultSubtitle ?? defaultSubtitle);
+    return { defaultSubtitle };
+  }
   if (path === '/api/me') return { id: 'demo-family' };
   if (path === '/api/families/me/children') return children;
   const child = /^\/api\/children\/(demo-child-[12])\/select$/.exec(path);
@@ -41,7 +46,7 @@ export function demoRequest(path: string): unknown {
 export function demoCall(method: string, args: Record<string, unknown>): unknown {
   if (method === 'getCapabilities') return { bridgeVersion: 1, authenticated: true, childId, nativePlayback: false };
   if (method === 'ready') return { ok: true };
-  if (method === 'request') return demoRequest(String(args.path));
+  if (method === 'request') return demoRequest(String(args.path), String(args.method), args.body as Record<string, unknown> | undefined);
   if (method === 'playEpisode') { window.dispatchEvent(new CustomEvent('molly:browserPlay', { detail: args })); return { ok: true }; }
   throw new Error('假数据模式仅用于浏览预览，请移除网址中的 mock=1 使用真实媒体库。');
 }

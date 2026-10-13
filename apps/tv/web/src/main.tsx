@@ -2,6 +2,7 @@ import { BrowserPlaybackHost } from './playback';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
+import { PlaybackSettings } from './playback-settings';
 import { ApiError, call, request, type Capabilities, type Child, type Episode, type Home, type Series } from './api';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
 import { Cover, DetailHeader, HomeGreeting, Icon, Shelf, tone } from './content';
@@ -354,6 +355,7 @@ function App() {
           {window.MollyBridge && <FocusButton focusKey="connection" className="settings-item" onClick={() => { setError(''); setOverlay('connection'); }}><Icon name="settings" /><span><strong>连接设置</strong><small>{serverAddress || '设置家庭媒体库地址'}</small></span><span>›</span></FocusButton>}
           {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
           {window.MollyBridge && capabilities?.serverUrl && <FocusButton focusKey="check-web-update" className="settings-item" onClick={() => { setWebUpdateStatus('正在检查网页更新…'); void call('checkWebUpdate').catch(fail); }}><Icon name="settings" /><span><strong>检查网页更新</strong><small>{webUpdateStatus || `网页版本 ${capabilities?.webVersion ?? ''}`}</small></span><span>›</span></FocusButton>}
+          {authenticated && <PlaybackSettings />}
           {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { setError(''); setOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
         </div>}
         {selectingChild && <p role="status" className="state">正在打开片单…</p>}

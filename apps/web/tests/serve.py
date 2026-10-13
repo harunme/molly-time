@@ -38,6 +38,11 @@ with get_session_factory()() as db:
     db.add(MediaFile(id="media", family_id="family", item_id="episode", kind="video", storage="local", path="sample.mp4", mime="video/mp4"))
     db.add(Item(id="browser-episode", family_id="family", type="Episode", name="Browser fixture", parent_id="season", index_number=1, runtime_ticks=50_000_000))
     db.add(MediaFile(id="browser-media", family_id="family", item_id="browser-episode", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
+    for index, language in enumerate(["zh", "en", "zh-en"]):
+        path = f"browser-{language}.srt"
+        (root / path).write_text("1\n00:00:00,000 --> 00:02:00,000\nSubtitle fixture\n", encoding="utf-8")
+        db.add(MediaFile(id=f"browser-subtitle-{language}", family_id="family", item_id="browser-episode",
+                         kind="subtitle", storage="local", path=path, language=language, index=index))
     db.add(Item(id="browser-next", family_id="family", type="Episode", name="Browser next", parent_id="season", index_number=2, runtime_ticks=50_000_000))
     db.add(MediaFile(id="browser-next-media", family_id="family", item_id="browser-next", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
     db.commit()

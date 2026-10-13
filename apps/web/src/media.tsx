@@ -1,4 +1,4 @@
-import { Checkbox } from "@/components/ui/checkbox";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
@@ -204,7 +204,7 @@ export function SubtitleSettings({
     [busy, setBusy] = useState(false);
   return (
     <section>
-      <h3>字幕设置</h3>
+      <h3>字幕资源</h3>
       {files.map((file) => (
         <fieldset disabled={readonly || busy} key={file.id}>
           <legend>{file.name}</legend>
@@ -223,10 +223,10 @@ export function SubtitleSettings({
             />
           </label>
           <label>
-            语言
-            <Input
+            字幕类型
+            <NativeSelect
+              aria-label="字幕类型"
               value={file.language}
-              maxLength={16}
               onChange={(e) =>
                 setFiles(
                   files.map((f) =>
@@ -234,7 +234,13 @@ export function SubtitleSettings({
                   ),
                 )
               }
-            />
+            >
+              <option value="und">未指定</option>
+              <option value="zh">中文</option>
+              <option value="en">英文</option>
+              <option value="zh-en">中英文</option>
+              {!["und", "zh", "en", "zh-en"].includes(file.language) && <option value={file.language}>{file.language}</option>}
+            </NativeSelect>
           </label>
           <label>
             时间偏移（毫秒，正值延后）
@@ -254,25 +260,6 @@ export function SubtitleSettings({
               }
             />
           </label>
-          <label className="check-label">
-            <Checkbox
-              checked={file.isDefault}
-              onCheckedChange={(checked) =>
-                setFiles(
-                  files.map((f) => ({
-                    ...f,
-                    isDefault:
-                      f.id === file.id
-                        ? checked === true
-                        : checked === true
-                          ? false
-                          : f.isDefault,
-                  })),
-                )
-              }
-            />
-            默认字幕
-          </label>
           {!readonly && (
             <Button
               variant="outline"
@@ -287,14 +274,13 @@ export function SubtitleSettings({
                     language: file.language,
                     label: file.name,
                     offsetMs: file.offsetMs,
-                    isDefault: file.isDefault,
                   },
                 )
                   .catch((e) => setError(e.message))
                   .finally(() => setBusy(false));
               }}
             >
-              保存字幕设置
+              保存字幕信息
             </Button>
           )}
         </fieldset>

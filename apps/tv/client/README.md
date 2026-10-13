@@ -52,11 +52,13 @@ bash tools/build-tv-client.sh release
 - `PlaybackActivity`：Media3 视频、字幕轨列表、播放器控件、服务端续播、实际播放区间心跳和退出上报、后台暂停及资源释放。
 - `PlayingClock` / `WatchQueue`：单调时钟计时、暂停/缓冲不计时、区间序号和持久化重试队列。
 - `SessionStore` / `MollyTimeApi`：原生私有凭证存储、401 刷新重试、Authorization 请求头；备份禁用。网页不接收凭证。
-- `BridgePolicy`：有限 API 路径和方法白名单；只允许目录读取及儿童选择，播放与进度由原生控制。
+- `BridgePolicy`：有限 API 路径和方法白名单；允许目录读取、儿童选择及 `/api/settings/playback` 的 GET/PUT，播放与进度由原生控制。
 
 Bridge 版本为 1，消息格式 `{id, method, args}`，响应 `{id, result}` 或 `{id, error: {message, status}}`。接口包括 getCapabilities、ready、connect、checkWebUpdate、pairingStart、pairingPoll、pairingCancel、pairingReset、request、playEpisode、checkUpdate、downloadUpdate、installUpdate。网页运行在固定的 `https://appassets.androidplatform.net` 来源；仅该来源的主框架可调用。网页包声明 Bridge 兼容范围，不兼容时保留当前版本并提示更新 APK。不支持安全消息能力的旧 WebView显示明确错误，不退回不受限的 JavascriptInterface。
 
 网页封面经原生拦截请求附加 Authorization。视频与字幕也通过请求头认证，URL 不包含 token。退出原生播放器时发送 `molly:playbackClosed`，保留网页实例、路由与焦点。网页包从当前媒体库服务器 `/tv/web-release.json` 和 `/tv/web-bundle.zip` 获取，按服务器 origin 缓存；下载校验成功后下次启动生效。
+
+默认字幕在 TV 设置和管理后台家庭设置中共享，可选中文、英文、中英文或关闭。新家庭默认为中文；没有匹配类型时关闭字幕，中英文需要双语字幕文件。资源库仅维护字幕文件、类型、名称及时间偏移，旧文件默认标记不再决定播放选择。播放时按遥控器菜单键可选择字幕及 0.5×、0.75×、1×、1.25×、1.5×、2× 速度，临时选择只影响当前视频；刷新播放地址保留选择，下一集重新应用家庭默认字幕并恢复 1×。
 
 ## 验证与限制
 

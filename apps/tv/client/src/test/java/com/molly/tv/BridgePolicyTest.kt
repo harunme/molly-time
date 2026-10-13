@@ -11,7 +11,12 @@ class BridgePolicyTest {
             assertFalse(path, BridgePolicy.allows("GET", path))
         }
     }
-    @Test fun mutationIsLimitedToChildSelection() {
+    @Test fun mutationIsLimitedToChildSelectionAndPlaybackPreferences() {
+        assertTrue(BridgePolicy.allows("GET", "/api/settings/playback"))
+        assertTrue(BridgePolicy.allows("PUT", "/api/settings/playback"))
+        assertFalse(BridgePolicy.allows("POST", "/api/settings/playback"))
+        assertFalse(BridgePolicy.allows("PUT", "/api/manage/settings"))
+        assertFalse(BridgePolicy.allows("PUT", "/api/settings/playback?token=secret"))
         assertTrue(BridgePolicy.allows("POST", "/api/children/child-1/select"))
         assertEquals("child-1", BridgePolicy.selectedChild("/api/children/child-1/select"))
         assertFalse(BridgePolicy.allows("DELETE", "/api/children/child-1/select"))

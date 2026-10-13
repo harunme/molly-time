@@ -621,7 +621,6 @@ def part_url(upload_id: str, body: PartBody, user: Parent, db: DbSession):
 class SubtitleOptionsBody(BaseModel):
     language: str = Field(default="und", max_length=16)
     label: str = Field(default="", max_length=256)
-    isDefault: bool = False
     offsetMs: int = Field(default=0, ge=-600000, le=600000)
 
 
@@ -634,12 +633,7 @@ def subtitle_options(
     if media.item_id != item_id or media.kind != "subtitle":
         raise HTTPException(404)
     serialize_sqlite_write(db)
-    if body.isDefault:
-        for other in db.query(MediaFile).filter(
-            MediaFile.item_id == item_id, MediaFile.kind == "subtitle"
-        ):
-            other.is_default = False
-    media.language, media.is_default = body.language, body.isDefault
+    media.language = body.language
     options = db.get(MediaOptions, media_id) or MediaOptions(media_id=media_id)
     options.label, options.offset_ms = body.label.strip(), body.offsetMs
     db.add(options)

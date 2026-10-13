@@ -16,6 +16,7 @@ from ..images import image_url
 from ..management_models import WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile
 from ..resource_policy import published_episodes, require_visible, visible
+from ..playback_settings import default_subtitle, preferred_subtitle_index
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 
@@ -118,7 +119,7 @@ def _runtime_ms(ticks: int | None) -> int | None:
     return ticks // 10_000  # 100ns units → ms
 
 
-def _summarize_files(files: list[MediaFile]) -> list[MediaSource]:
+def _summarize_files(files: list[MediaFile], preference="zh") -> list[MediaSource]:
     # Pick the first video file. There is exactly one per episode in our scan.
     video = next((f for f in files if f.kind == "video"), None)
     if video is None:
@@ -127,6 +128,7 @@ def _summarize_files(files: list[MediaFile]) -> list[MediaSource]:
         (f for f in files if f.kind == "subtitle"),
         key=lambda f: f.index,
     )
+    selected = preferred_subtitle_index(subs, preference)
     return [
         MediaSource(
             container="mp4" if video.mime.endswith("mp4") else video.mime.split("/")[-1],
@@ -137,7 +139,7 @@ def _summarize_files(files: list[MediaFile]) -> list[MediaSource]:
                     index=s.index,
                     language=s.language or "und",
                     label=s.path.rsplit("/", 1)[-1],
-                    isDefault=s.is_default,
+                    isDefault=s.index == selected,
                     codec="srt" if s.path.endswith(".srt") else "vtt",
                 )
                 for s in subs
@@ -257,7 +259,7 @@ def episode_detail(episode_id: str, request: Request, user: CurrentUser, db: DbS
     ep = _get_item(db, episode_id, "Episode", user.family_id)
     require_visible(db, ep, request)
     files = db.query(MediaFile).filter(MediaFile.item_id == ep.id).all()
-    sources = _summarize_files(files)
+    sources = _summarize_files(files, default_subtitle(db, user.family_id))
     return EpisodeDetail(
         id=ep.id,
         seriesId=_series_id(db, ep),

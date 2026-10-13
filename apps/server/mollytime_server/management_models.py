@@ -47,6 +47,14 @@ class FamilySettings(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Shanghai")
 
 
+class PlaybackSettings(Base):
+    """Shared family playback preferences; additive for existing databases."""
+
+    __tablename__ = "playback_settings"
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), primary_key=True)
+    default_subtitle: Mapped[str] = mapped_column(String(16), default="zh")
+
+
 class ResourceState(Base):
     __tablename__ = "resource_states"
     item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), primary_key=True)

@@ -1154,14 +1154,15 @@ function UploadDialog({
         )}
         {kind === "subtitle" && (
           <label>
-            字幕语言
+            字幕类型
             <NativeSelect
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
             >
               <option value="und">未指定</option>
               <option value="zh">中文</option>
-              <option value="en">英语</option>
+              <option value="en">英文</option>
+              <option value="zh-en">中英文</option>
             </NativeSelect>
           </label>
         )}
@@ -1636,6 +1637,7 @@ function Family({
   const [serial, refresh] = useState(0),
     [childName, setChildName] = useState(""),
     [timezone, setTimezone] = useState("");
+  const [defaultSubtitle, setDefaultSubtitle] = useState("zh");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
   const children = usePagedData<Child>("/children", serial),
@@ -1645,6 +1647,7 @@ function Family({
   const settings = useData<
     | {
         timezone: string;
+        defaultSubtitle: string;
         storage: {
           total: number;
           free: number;
@@ -1657,14 +1660,17 @@ function Family({
     | undefined
   >("/settings", undefined, serial);
   useEffect(() => {
-    if (settings.data) setTimezone(settings.data.timezone);
+    if (settings.data) {
+      setTimezone(settings.data.timezone);
+      setDefaultSubtitle(settings.data.defaultSubtitle ?? "zh");
+    }
   }, [settings.data]);
   return (
     <>
       <div className="page-title">
         <div>
           <h1>家庭设置</h1>
-          <p>儿童档案、电视设备与存储空间。</p>
+          <p>儿童档案、电视设备、播放偏好与存储空间。</p>
         </div>
       </div>
       <div className="settings-grid">
@@ -1784,6 +1790,25 @@ function Family({
             !devices.loading && <p className="empty">还没有绑定电视</p>
           )}
           <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
+        </Card>
+        <Card className="settings-card">
+          <h2>播放偏好</h2>
+          <State loading={settings.loading} error={settings.error} />
+          {settings.data && <form onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await api("/settings", "PUT", { defaultSubtitle });
+              refresh((v) => v + 1);
+              notify("默认字幕已更新，下一次播放生效。");
+            });
+          }}>
+            <label htmlFor="default-subtitle">默认字幕</label>
+            <NativeSelect id="default-subtitle" value={defaultSubtitle} onChange={(e) => setDefaultSubtitle(e.target.value)} disabled={readonly}>
+              <option value="zh">中文</option><option value="en">英文</option><option value="zh-en">中英文</option><option value="off">关闭字幕</option>
+            </NativeSelect>
+            <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
+            {!readonly && <Button variant="outline">保存默认字幕</Button>}
+          </form>}
         </Card>
         <Card className="settings-card">
           <h2>时区与存储</h2>

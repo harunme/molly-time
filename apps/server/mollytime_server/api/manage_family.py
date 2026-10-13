@@ -13,6 +13,8 @@ from ..auth import hash_password, verify_password
 from ..config import get_settings
 from ..deps import DbSession
 from ..manage_auth import Parent, aware
+from ..transactions import serialize_sqlite_write
+from ..playback_settings import SubtitlePreference, default_subtitle, save_default_subtitle
 from ..management_models import Device, FamilySettings, UploadSession, WatchInterval, WatchSession
 from ..models import ChildProfile, Item, MediaFile
 from ..storage.settings import get_storage_settings
@@ -110,6 +112,7 @@ def settings(user: Parent, db: DbSession):
     disk = shutil.disk_usage(path)
     return {
         "timezone": row.timezone if row else "Asia/Shanghai",
+        "defaultSubtitle": default_subtitle(db, user.family_id),
         "storage": {
             "total": disk.total,
             "free": disk.free,
@@ -129,20 +132,26 @@ def settings(user: Parent, db: DbSession):
 
 
 class SettingsBody(BaseModel):
-    timezone: str = Field(max_length=64)
+    timezone: str | None = Field(default=None, max_length=64)
+    defaultSubtitle: SubtitlePreference | None = None
 
 
 @router.put("/settings")
 def edit_settings(body: SettingsBody, user: Parent, db: DbSession):
-    try:
-        ZoneInfo(body.timezone)
-    except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise HTTPException(422, "时区无效，例如 Asia/Shanghai") from exc
-    row = db.get(FamilySettings, user.family_id)
-    if row is None:
-        row = FamilySettings(family_id=user.family_id)
-        db.add(row)
-    row.timezone = body.timezone
+    if body.timezone is not None:
+        try:
+            ZoneInfo(body.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise HTTPException(422, "时区无效，例如 Asia/Shanghai") from exc
+    serialize_sqlite_write(db)
+    if body.timezone is not None:
+        row = db.get(FamilySettings, user.family_id)
+        if row is None:
+            row = FamilySettings(family_id=user.family_id)
+            db.add(row)
+        row.timezone = body.timezone
+    if body.defaultSubtitle is not None:
+        save_default_subtitle(db, user.family_id, body.defaultSubtitle)
     db.commit()
     return settings(user, db)
 

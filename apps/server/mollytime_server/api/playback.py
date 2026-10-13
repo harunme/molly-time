@@ -108,6 +108,7 @@ def resolve_playback(
 
 def playback_info(db, file, session_id=None):
     from urllib.parse import urlencode
+    from ..playback_settings import default_subtitle, preferred_subtitle_index
 
     storage = build_storage(file.storage)
     ttl = get_storage_settings().oss_signed_url_ttl
@@ -127,6 +128,8 @@ def playback_info(db, file, session_id=None):
         .all()
     )
     tracks = []
+    preference = default_subtitle(db, file.family_id)
+    selected = preferred_subtitle_index(subs, preference)
     for sub in subs:
         options = db.get(MediaOptions, sub.id)
         tracks.append(
@@ -136,7 +139,7 @@ def playback_info(db, file, session_id=None):
                 "label": options.label
                 if options and options.label
                 else sub.path.rsplit("/", 1)[-1],
-                "isDefault": sub.is_default,
+                "isDefault": sub.index == selected,
                 "codec": "vtt",
                 "offsetMs": options.offset_ms if options else 0,
                 "url": f"/api/episodes/{file.item_id}/subtitles/{sub.index}?format=vtt&v={sub.sha256 or sub.id}",
@@ -152,6 +155,7 @@ def playback_info(db, file, session_id=None):
         "url": url,
         "expiresAt": expires,
         "subtitles": tracks,
+        "defaultSubtitle": preference,
         "headers": {},
         "retention": "backup",
     }

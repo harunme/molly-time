@@ -7,6 +7,7 @@ object BridgePolicy {
     val image = Regex("/api/items/$ID/image")
     val id = Regex(ID)
     fun allows(method: String, path: String): Boolean =
-        (method == "GET" && reads.matches(path)) || (method == "POST" && select.matches(path))
+        (method == "GET" && reads.matches(path)) || (method == "POST" && select.matches(path)) ||
+            (method in listOf("GET", "PUT") && path == "/api/settings/playback")
     fun selectedChild(path: String): String? = select.matchEntire(path)?.groupValues?.get(1)
 }
