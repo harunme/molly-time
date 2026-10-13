@@ -40,11 +40,6 @@ try {
   }
   await page.evaluate(() => { for (let i = 0; i < 8 && window.mollyBack?.(); i++) {} });
   await expect(page.locator('.poster').first()).toBeVisible({ timeout: 20000 });
-  if (smoke('SMOKE_CHILD')) {
-    await page.locator('[data-focus="children"]').click();
-    await page.locator('[data-focus^="child-"]').filter({ hasText: smoke('SMOKE_CHILD') }).click();
-    await expect(page.locator('.poster').first()).toBeVisible({ timeout: 20000 });
-  }
   console.log('Native device pairing and real catalog: OK');
   await page.screenshot({ path: '../../../artifacts/tv-webview-home.png' });
   await page.getByRole('button', { name: /L1开口动画/ }).click();

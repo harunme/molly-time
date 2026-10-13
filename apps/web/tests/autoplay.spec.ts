@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 
 async function openBrowserVideo(page: import('@playwright/test').Page) {
+  // Each playback scenario starts fresh; family resume is covered by API tests.
+  await page.route('**/api/episodes/browser-episode/progress**', (route) => route.fulfill({ json: { positionMs: 0, completed: false } }));
   const auth = await (await page.request.post('http://127.0.0.1:8098/api/auth/login', {
     headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
   })).json();
@@ -31,7 +33,7 @@ test('normal ending starts the next folder video, reports separate sessions, and
       events.push({ episode: sessionEpisodes.get(match[1]) || '', completed: data.completed, stopped: data.stopped });
     }
   });
-  await page.route('**/api/episodes/browser-next/progress?*', (route) => route.fulfill({ json: { positionMs: 4000, completed: false } }));
+  await page.route('**/api/episodes/browser-next/progress**', (route) => route.fulfill({ json: { positionMs: 4000, completed: false } }));
   await openBrowserVideo(page);
   const next = page.waitForResponse((response) => response.url().includes('/api/episodes/browser-next/playback') && response.ok());
   await page.locator('video').evaluate((video) => { (video as HTMLVideoElement).currentTime = (video as HTMLVideoElement).duration - 0.15; });
@@ -59,7 +61,7 @@ test('return cancels a pending next lookup and a late response cannot reopen pla
   await openBrowserVideo(page);
   await page.locator('video').evaluate((video) => { (video as HTMLVideoElement).currentTime = (video as HTMLVideoElement).duration - 0.15; });
   await expect.poll(() => requested).toBe(true);
-  await page.getByRole('button', { name: '返回视频列表' }).click();
+  await page.keyboard.press('Escape');
   release!();
   await lookup;
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -84,5 +86,5 @@ test('a failed next lookup stays stopped and supports an explicit retry', async 
   await page.keyboard.press('Enter');
   await expect(page.locator('video')).toHaveAttribute('src', /mediaId=browser-next-media/);
   expect(lookups).toBe(2);
-  await page.getByRole('button', { name: '返回视频列表' }).click();
+  await page.keyboard.press('Escape');
 });

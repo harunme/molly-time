@@ -19,8 +19,11 @@ test("global Tailwind tokens update inputs, buttons, select fields and cards tog
   const action = page.getByRole("button", { name: "新建文件夹", exact: true });
   for (const control of [search, filter, action]) {
     await expect(control).toHaveCSS("height", "52px");
-    await expect(control).toHaveCSS("border-radius", "16px");
     await expect(control).toHaveCSS("background-color", "rgb(240, 245, 250)");
+  }
+  await expect(search).toHaveCSS("border-radius", "16px");
+  for (const control of [filter, action]) {
+    expect(await control.evaluate((element) => parseFloat(getComputedStyle(element).borderTopLeftRadius) >= element.clientHeight / 2)).toBe(true);
   }
   await action.click();
   const dialog = page.getByRole("dialog");

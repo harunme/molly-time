@@ -32,7 +32,6 @@ import {
   dateTime,
   minutes,
   setSession,
-  type Child,
   type Resource,
   type Session,
   type Upload,
@@ -86,7 +85,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import "./style.css";
-import brandIcon from "../../tv/client/src/main/res/drawable-nodpi/mollytime_icon.png";
 
 export type Run = (action: () => Promise<void>) => Promise<void>;
 function useData<T>(path: string, initial: T, serial = 0) {
@@ -299,16 +297,33 @@ function App() {
   const readonly = !["admin", "superadmin"].includes(session.user.role);
   return (
     <div className="workspace">
-      <header className="workspace-brandbar">
+      <aside className="manage-sidebar">
         <Link className="wordmark" to="/overview">
-          <span className="brand-symbol">
-            <img src={brandIcon} alt="" width={32} height={32} decoding="async" />
-          </span>
           <span className="brand-copy">
             MollyTime<small>家庭媒体管理</small>
           </span>
         </Link>
-        <span className="brandbar-area">家庭媒体管理</span>
+        <nav ref={navigation} aria-label="管理导航">
+          {[{ label: "媒体管理", items: names.slice(0, 3) }, { label: "家庭与设置", items: names.slice(3) }].map((group) => (
+            <div className="sidebar-nav-group" key={group.label}>
+              <span className="sidebar-nav-label">{group.label}</span>
+              {group.items.map(([id, name]) => (
+                <Button
+                  variant="ghost"
+                  asChild
+                  key={id}
+                  className={page === id ? "nav-link active" : "nav-link"}
+                >
+                  <NavLink to={`/${id}`}>
+                    <Icon name={id} />
+                    {name}
+                    {page === id && <ChevronRight className="ml-auto size-3.5" />}
+                  </NavLink>
+                </Button>
+              ))}
+            </div>
+          ))}
+        </nav>
         <div className="brandbar-identity">
           <a className="brandbar-tv-link" href="/tv/" target="_blank" rel="noreferrer" aria-label="打开 TV 网页">
             <ExternalLink className="size-3.5" />
@@ -316,8 +331,10 @@ function App() {
           </a>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="user-avatar" aria-label="账号菜单">
-                <Avatar className="size-7"><AvatarFallback className="bg-white text-foreground">{session.user.name[0].toUpperCase()}</AvatarFallback></Avatar>
+              <Button variant="ghost" className="sidebar-account-button" aria-label="账号菜单">
+                <Avatar className="size-7"><AvatarFallback className="bg-accent text-foreground">{session.user.name[0].toUpperCase()}</AvatarFallback></Avatar>
+                <strong>{session.user.name}</strong>
+                <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -327,7 +344,7 @@ function App() {
               <DropdownMenuLabel>{session.user.email}</DropdownMenuLabel>
               <DropdownMenuLabel>账号 ID：{session.user.accountId}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => {
+              <DropdownMenuItem variant="destructive" className="rounded-full" onSelect={() => {
                 void run(async () => {
                   await api("/auth/logout", "POST");
                   stopUploads();
@@ -339,29 +356,6 @@ function App() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <strong>{session.user.name}</strong>
-        </div>
-      </header>
-      <aside className="manage-sidebar">
-        <nav ref={navigation} aria-label="管理导航">
-          {names.map(([id, name]) => (
-            <Button
-              variant="ghost"
-              asChild
-              key={id}
-              className={page === id ? "nav-link active" : "nav-link"}
-            >
-              <NavLink to={`/${id}`}>
-                <Icon name={id} />
-                {name}
-                {page === id && <ChevronRight className="ml-auto size-3.5" />}
-              </NavLink>
-            </Button>
-          ))}
-        </nav>
-        <div className="sidebar-footnote">
-          <Film className="size-4" />
-          <span>好故事，一起看。</span>
         </div>
       </aside>
       <main className="manage-main">
@@ -1090,7 +1084,7 @@ function Preview({ item, close }: { item: Resource; close: () => void; }) {
   return (
     <Modal title={`家长预览 · ${item.name}`} close={close}>
       <MediaPreview id={item.id} />
-      <p className="muted">预览不计入儿童观看时长，也不修改儿童续播位置。</p>
+      <p className="muted">预览不计入家庭观看时长，也不修改电视续播位置。</p>
     </Modal>
   );
 }
@@ -1506,7 +1500,6 @@ function Family({
     }
   };
   const [serial, refresh] = useState(0),
-    [childName, setChildName] = useState(""),
     [timezone, setTimezone] = useState("");
   const previousPairingOpen = useRef(pairingOpen);
   useEffect(() => {
@@ -1516,8 +1509,7 @@ function Family({
   const [defaultSubtitle, setDefaultSubtitle] = useState("zh");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
-  const children = usePagedData<Child>("/children", serial),
-    devices = usePagedData<
+  const devices = usePagedData<
       { id: string; name: string; revoked: boolean; lastSeen: string; }
     >("/devices?activeOnly=true", serial);
   const settings = useData<
@@ -1546,63 +1538,12 @@ function Family({
       <div className="page-title">
         <div>
           <h1>家庭设置</h1>
-          <p>儿童档案、电视设备、播放偏好与家庭用量。</p>
+          <p>电视设备、播放偏好与家庭用量。</p>
         </div>
       </div>
       <div className="settings-grid">
         <div className="settings-column">
           <FamilyUsage />
-          <Card className="settings-card">
-            <h2>儿童档案</h2>
-            <State loading={children.loading} error={children.error} />
-            {children.data.map((c) => (
-              <div className="settings-row" key={c.id}>
-                <span className="child-avatar">{c.name[0]}</span>
-                <strong>{c.name}</strong>
-                {!readonly && (
-                  <Button
-                    variant="ghost"
-                    className="quiet"
-                    onClick={async () => {
-                      const name = await promptText("修改儿童名称", c.name);
-                      if (name)
-                        void run(async () => {
-                          await api(`/children/${c.id}`, "PATCH", { name });
-                          refresh((v) => v + 1);
-                        });
-                    }}
-                  >
-                    修改名称
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Pagination {...children} loading={children.refreshing} label="儿童档案分页" />
-            {!readonly && (
-              <form
-                className="inline-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    await api("/children", "POST", { name: childName });
-                    setChildName("");
-                    children.setPage(Math.max(1, Math.ceil((children.total + 1) / children.pageSize)));
-                    refresh((v) => v + 1);
-                  });
-                }}
-              >
-                <Input
-                  aria-label="儿童名称"
-                  placeholder="儿童名称"
-                  value={childName}
-                  maxLength={64}
-                  onChange={(e) => setChildName(e.target.value)}
-                  required
-                />
-                <Button variant="bordered">添加儿童</Button>
-              </form>
-            )}
-          </Card>
           <Card className="settings-card">
             <h2>播放偏好</h2>
             <State loading={settings.loading} error={settings.error} />

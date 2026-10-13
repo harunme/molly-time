@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import CurrentUser, DbSession
 from ..images import image_url
-from ..management_models import WatchProgress, WatchSession
+from ..management_models import WatchProgress
 from ..models import ChildProfile, Item, MediaFile
 from ..resource_policy import published_episodes, require_visible, visible
 from ..playback_settings import default_subtitle, preferred_subtitle_index
@@ -163,7 +163,7 @@ def home(
     """Render the effective published family/child configuration for this client."""
     from .manage_home import effective_content, render_home
 
-    child = request.headers.get("x-molly-child") or None
+    child = None if getattr(request.state, "device_id", None) else request.headers.get("x-molly-child") or None
     content, revision = effective_content(db, user.family_id, child)
     modern = request.headers.get("x-molly-home-schema") == "2"
     if modern:
@@ -377,25 +377,19 @@ def series_playlist(
         child = db.get(ChildProfile, child_id)
         if child is None or child.family_id != user.family_id:
             raise HTTPException(404)
+    if getattr(request.state, "device_id", None):
+        child_id = None
     if page is not None:
         from .catalog_pagination import paged_playlist
         return paged_playlist(db, user.family_id, user.id, child_id, series, page, pageSize)
     seasons, episodes = _folder_playlist(db, series_id, user.family_id)
     progress = None
     if episodes:
-        query = (
-            db.query(WatchProgress)
-            .join(WatchSession, WatchSession.id == WatchProgress.session_id)
-            .filter(
-                WatchProgress.family_id == user.family_id,
-                WatchProgress.item_id.in_([e.id for e in episodes]),
-                WatchProgress.child_id == child_id,
-            )
+        from .watch_progress import scoped_progress
+        query = scoped_progress(db, user.family_id, child_id).filter(
+            WatchProgress.item_id.in_([e.id for e in episodes]),
         )
-        if child_id is None:
-            query = query.filter(WatchSession.user_id == user.id)
         progress = query.order_by(
-            WatchSession.last_reported_at.desc(),
             WatchProgress.session_started_at.desc(),
             WatchProgress.session_id.desc(),
         ).first()

@@ -60,15 +60,8 @@ test('management lists filter on the server, turn pages and clear cross-page sel
   await expect(dialog.getByLabel('新文件夹名称')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  for (let index = 0; index < 25; index++) {
-    const response = await page.request.post('/api/manage/children', { headers, data: { name: `分页儿童${index}` } });
-    expect(response.ok()).toBeTruthy();
-  }
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置' }).click();
-  const children = page.locator('.settings-card').filter({ has: page.getByRole('heading', { name: '儿童档案', exact: true }) });
-  await expect(children.locator('.settings-row')).toHaveCount(20);
-  await children.getByRole('navigation', { name: '儿童档案分页', exact: true }).getByRole('button', { name: /下一页/ }).click();
-  await expect(children.locator('.settings-row')).toHaveCount(7);
+  await expect(page.getByRole('heading', { name: '儿童档案', exact: true })).toHaveCount(0);
   await expect(page.locator('input[value="Asia/Shanghai"]')).toBeVisible();
   await page.screenshot({ path: '../../artifacts/manage-paginated-settings.png', fullPage: true });
   expect(resourceRequests.length).toBeGreaterThan(0);

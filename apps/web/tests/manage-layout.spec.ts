@@ -17,9 +17,9 @@ for (const width of [390, 1280, 1920]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const main = await page.locator('.manage-main').boundingBox();
       const content = await page.locator('.page-content').boundingBox();
-      expect(content!.width).toBeCloseTo(main!.width, 0);
+      expect(content!.width).toBeCloseTo(Math.min(main!.width, 1520), 0);
       for (const heading of await page.locator('.page-content h2').all()) {
-        await expect(heading).toHaveCSS('font-size', '18px');
+        await expect(heading).toHaveCSS('font-size', await heading.evaluate((element) => element.classList.contains('text-sm')) ? '14px' : '18px');
       }
       await expect(page.locator('.page-title h1')).toBeInViewport();
       await page.screenshot({ path: `../../artifacts/design-audit/${name}-${width}.png`, fullPage: true, animations: 'disabled' });
@@ -90,7 +90,7 @@ test('long durations stay on one line and fields share the same typography', asy
   expect(size.content).toBeLessThanOrEqual(size.width);
   expect(size.height).toBe(36);
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-  for (const field of [page.getByLabel('儿童名称'), page.getByLabel('默认字幕', { exact: true }), page.getByLabel('用量月份')]) {
+  for (const field of [page.getByLabel('默认字幕', { exact: true }), page.getByLabel('用量月份')]) {
     await expect(field).toHaveCSS('font-size', '16px');
     await expect(field).toHaveCSS('height', '40px');
   }

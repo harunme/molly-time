@@ -278,7 +278,6 @@ class ShellActivity : AppCompatActivity() {
             require(BridgePolicy.allows(verb, path)) { "接口不允许访问" }
             if (path.substringBefore('?') == "/api/home") app.api.homeSchemaVersion = args.optInt("homeSchemaVersion", 1).coerceIn(1, 2)
             val result = org.json.JSONTokener(app.api.text(verb, path, args.optJSONObject("body"))).nextValue()
-            BridgePolicy.selectedChild(path)?.let { app.session.childId = it }
             result
         }
         "playEpisode" -> {

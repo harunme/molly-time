@@ -33,6 +33,11 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     const auth = await (await page.request.post(`${apiOrigin}/api/auth/login`, {
       headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
     })).json();
+    const session = await (await page.request.get('/api/manage/auth/session')).json();
+    const renamed = await page.request.patch(`/api/manage/devices/${auth.deviceId}`, {
+      headers: { 'X-CSRF-Token': session.csrfToken }, data: { name: '提醒测试电视' },
+    });
+    expect(renamed.ok()).toBe(true);
     const parentPage = await page.context().newPage();
     await parentPage.goto('/manage/');
     await parentPage.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
@@ -63,8 +68,10 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     const mainVideo = page.getByRole('dialog', { name: '视频播放', exact: true }).locator(':scope > video');
     await expect.poll(() => mainVideo.evaluate((video) => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
     await mainVideo.evaluate((video) => { (video as HTMLVideoElement).pause(); (video as HTMLVideoElement).currentTime = 1; });
+    const onlineCount = (await (await parentPage.request.get('/api/manage/reminders/devices')).json()).filter((device: { online: boolean }) => device.online).length;
     const issued = parentPage.waitForResponse((response) => response.url().endsWith('/api/manage/reminders/requests') && response.request().method() === 'POST');
     await parentPage.getByRole('button', { name: '发起提醒', exact: true }).click();
+    if (onlineCount > 1) await parentPage.getByRole('dialog', { name: '选择要提醒的电视' }).getByRole('button', { name: '提醒：提醒测试电视', exact: true }).click();
     const command = await issued;
     expect(command.ok()).toBe(true);
     const clip = page.getByRole('dialog', { name: '家长视频提醒', exact: true });
@@ -90,7 +97,7 @@ test('parent uploads clips and actively ends the TV after its current episode', 
       headers: { Authorization: `Bearer ${auth.accessToken}` }, data: { episodeId: 'browser-next' },
     })).status()).toBe(403);
     const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-    const report = await (await page.request.get(`${apiOrigin}/api/manage/reports/watch-time?childId=autoplay-child&start=${date}&end=${date}`)).json();
+    const report = await (await page.request.get(`${apiOrigin}/api/manage/reports/watch-time?start=${date}&end=${date}`)).json();
     expect(report.sessions.filter((session: { deviceName: string }) => session.deviceName === 'MollyTime TV').every(
       (session: { name: string }) => session.name === 'Browser fixture')).toBe(true);
     await parentPage.route('**/api/manage/reminders/devices', async (route) => {
@@ -104,7 +111,9 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     await parentPage.unroute('**/api/manage/reminders/devices');
     await expect(parentPage.getByRole('group', { name: '播放控制', exact: true })).toBeVisible({ timeout: 10000 });
     await expect(parentPage.getByRole('button', { name: '恢复播放', exact: true })).toBeEnabled();
+    const restoreOnlineCount = (await (await parentPage.request.get('/api/manage/reminders/devices')).json()).filter((device: { online: boolean }) => device.online).length;
     await parentPage.getByRole('button', { name: '恢复播放', exact: true }).click();
+    if (restoreOnlineCount > 1) await parentPage.getByRole('dialog', { name: '选择要恢复播放的电视' }).getByRole('button', { name: '恢复播放：提醒测试电视', exact: true }).click();
     await expect(parentPage.getByRole('button', { name: '发起提醒', exact: true })).toBeEnabled();
     expect(errors).toEqual([]);
   } finally { rmSync(folder, { recursive: true, force: true }); }

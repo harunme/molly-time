@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('overview is the default home, uses aggregates and paged widgets, and links to management pages', async ({ page }) => {
+test('overview is the default home, uses aggregates and compact widgets, and links to management pages', async ({ page }) => {
   const errors: string[] = [];
   const requests: URL[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -33,7 +33,7 @@ test('overview is the default home, uses aggregates and paged widgets, and links
   await expect(page.locator('.overview-heatmap-footer p')).toContainText(data.watch.days[357].date);
   await page.keyboard.press('End');
   await expect(latest).toBeFocused();
-  await expect(page.getByRole('navigation', { name: '概览上传分页', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '概览上传分页', exact: true })).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: '概览设备分页', exact: true })).toBeVisible();
   expect(requests.filter((url) => ['/api/manage/uploads', '/api/manage/devices'].includes(url.pathname)).every((url) => url.searchParams.get('pageSize') === '5' && url.searchParams.has('page'))).toBeTruthy();
   expect(requests.some((url) => url.pathname.includes('home-config') || url.pathname === '/api/manage/resources')).toBeFalsy();

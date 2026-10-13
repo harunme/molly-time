@@ -1,11 +1,9 @@
-import type { Child, Home, Series } from './api';
+import type { Home, Series } from './api';
 
 // Browser-only, opt-in development data. No backend or binding writes.
 export const demoEnabled = import.meta.env.DEV && !window.MollyBridge && new URLSearchParams(location.search).get('mock') === '1';
 const themes = ['小鼠波波', '动物小课堂', '一起学英语', '奇妙太空', '海底探险', '睡前故事'];
 const colors = ['#567b92', '#857553', '#607d64', '#776485', '#487d83', '#976b76'];
-const children: Child[] = [{ id: 'demo-child-1', name: '小麦' }, { id: 'demo-child-2', name: '小米' }];
-let childId = children[0].id;
 let defaultSubtitle = 'zh';
 const folders: Series[] = Array.from({ length: 36 }, (_, index) => ({
   id: `demo-series-${index + 1}`, name: `${themes[index % 6]} · 第 ${Math.floor(index / 6) + 1} 季`,
@@ -31,9 +29,6 @@ export function demoRequest(path: string, method = 'GET', body?: Record<string, 
     return { defaultSubtitle };
   }
   if (path === '/api/me') return { id: 'demo-family' };
-  if (path === '/api/families/me/children') return children;
-  const child = /^\/api\/children\/(demo-child-[12])\/select$/.exec(path);
-  if (child) { childId = child[1]; return { ok: true }; }
   if (path === '/api/home') {
     const home: Home = { rows: [
       { id: 'recently-played', title: '最近播放', items: episodes(folders[0].id).slice(0, 12).map((episode) => ({ ...episode, type: 'episode' })) },
@@ -57,7 +52,7 @@ export function demoRequest(path: string, method = 'GET', body?: Record<string, 
 }
 
 export function demoCall(method: string, args: Record<string, unknown>): unknown {
-  if (method === 'getCapabilities') return { bridgeVersion: 1, authenticated: true, childId, nativePlayback: false };
+  if (method === 'getCapabilities') return { bridgeVersion: 1, authenticated: true, childId: '', nativePlayback: false };
   if (method === 'ready') return { ok: true };
   if (method === 'request') return demoRequest(String(args.path), String(args.method), args.body as Record<string, unknown> | undefined);
   if (method === 'playEpisode') { window.dispatchEvent(new CustomEvent('molly:browserPlay', { detail: args })); return { ok: true }; }

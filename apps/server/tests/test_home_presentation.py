@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from mollytime_server.api.manage_home import render_home
 from mollytime_server.db import Base
 from mollytime_server.images import image_url
-from mollytime_server.management_models import ResourceState, WatchProgress
+from mollytime_server.management_models import ResourceState, WatchProgress, WatchSession
 from mollytime_server.models import ChildProfile, Family, Item, MediaFile
 
 
@@ -53,7 +53,7 @@ def test_continue_row_exposes_real_position_for_selected_child(catalog):
     result = render_home(content, catalog, "f", "child")
     assert result["rows"][0]["items"][0]["positionMs"] == 30000
     assert result["rows"][0]["items"][0]["runtimeMs"] == 120000
-    assert render_home(content, catalog, "f")["rows"] == []
+    assert render_home(content, catalog, "f")["rows"][0]["items"][0]["positionMs"] == 30000
     assert render_home(content, catalog, "f", "child", modern=False)["rows"] == []
 
 
@@ -74,6 +74,31 @@ def test_recently_played_includes_completed_and_isolates_profiles(catalog):
     items = render_home(content, catalog, "f", "child")["rows"][0]["items"]
     assert [item["id"] for item in items] == ["episode"]
     assert items[0]["completed"] is True
-    assert render_home(content, catalog, "f")["rows"][0]["items"][0]["completed"] is False
+    assert render_home(content, catalog, "f")["rows"][0]["items"][0]["completed"] is True
     assert render_home(content, catalog, "other")["rows"] == []
     assert render_home(content, catalog, "f", "child", modern=False)["rows"] == []
+
+
+def test_family_resume_uses_latest_viewing_across_profiles_and_excludes_preview(catalog):
+    now = dt.datetime.now(dt.UTC)
+    for key, family, child, purpose, position, age in [
+        ("child-history", "f", "child", "child_watch", 10000, 3),
+        ("family-history", "f", None, "family_watch", 20000, 2),
+        ("parent-preview", "f", None, "parent_preview", 99000, 1),
+        ("other-family", "other", None, "family_watch", 90000, 0),
+    ]:
+        started = now - dt.timedelta(minutes=age)
+        catalog.add(WatchSession(id=key, family_id=family, user_id=key,
+            child_id=child, item_id="episode", item_name="Episode", purpose=purpose,
+            started_at=started))
+        catalog.add(WatchProgress(id=key, session_id=key, seq=1, family_id=family,
+            child_id=child, item_id="episode", position_ms=position,
+            completed=False, session_started_at=started))
+    catalog.commit()
+    content = {"rows": [{"enabled": True, "source": "recently-played", "title": "最近播放", "limit": 24}]}
+    items = render_home(content, catalog, "f")["rows"][0]["items"]
+    assert len(items) == 1 and items[0]["positionMs"] == 20000
+    catalog.get(WatchProgress, "family-history").completed = True
+    catalog.commit()
+    content["rows"][0]["source"] = "continue"
+    assert render_home(content, catalog, "f")["rows"] == []

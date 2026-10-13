@@ -1,6 +1,5 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; serverUrl?: string; suggestedServerUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string };
-export type Child = { id: string; name: string };
 export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; overview?: string; image?: { url: string } };
 export type Season = { id: string; name: string; image?: { url: string }; indexNumber?: number; episodeCount?: number };
 export type Episode = { id: string; name: string; runtimeMs?: number; image?: { url: string } };
@@ -44,18 +43,17 @@ export const request = <T>(path: string, method = 'GET', body?: Record<string, u
 
 // Browser TV bindings persist for this origin. Native TV credentials never enter JS.
 let access = '', refresh = '', deviceId = '';
-let selectedChild = '';
 let pairingCode = '';
 let pairingAttempt = 0;
 let refreshInFlight: Promise<void> | undefined;
 let bindingVersion = 0;
 const bindingKey = 'mollytime.tv.binding.v1';
 function saveBinding() {
-  localStorage.setItem(bindingKey, JSON.stringify({ accessToken: access, refreshToken: refresh, deviceId, childId: selectedChild }));
+  localStorage.setItem(bindingKey, JSON.stringify({ accessToken: access, refreshToken: refresh, deviceId }));
 }
 function clearBinding() {
   bindingVersion++;
-  access = ''; refresh = ''; deviceId = ''; selectedChild = '';
+  access = ''; refresh = ''; deviceId = '';
   try { localStorage.removeItem(bindingKey); } catch { /* Storage can be unavailable in a restricted browser. */ }
 }
 if (!port && !demoEnabled) {
@@ -63,7 +61,6 @@ if (!port && !demoEnabled) {
     const saved = JSON.parse(localStorage.getItem(bindingKey) || 'null');
     if (saved && typeof saved.refreshToken === 'string' && typeof saved.accessToken === 'string' && typeof saved.deviceId === 'string') {
       access = saved.accessToken; refresh = saved.refreshToken; deviceId = saved.deviceId;
-      selectedChild = typeof saved.childId === 'string' ? saved.childId : '';
     }
   } catch { clearBinding(); }
 }
@@ -71,7 +68,7 @@ if (!port && !demoEnabled) {
 async function fetchApi(path: string, method = 'GET', body?: unknown, retry = true): Promise<unknown> {
   const version = bindingVersion;
   const response = await fetch(path, {
-    method, headers: { 'Content-Type': 'application/json', 'X-Molly-Home-Schema': '2', ...(selectedChild ? { 'X-Molly-Child': selectedChild } : {}), ...(access ? { Authorization: `Bearer ${access}` } : {}) },
+    method, headers: { 'Content-Type': 'application/json', 'X-Molly-Home-Schema': '2', ...(access ? { Authorization: `Bearer ${access}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (version !== bindingVersion) throw new ApiError('请求已取消');
@@ -90,7 +87,7 @@ async function fetchApi(path: string, method = 'GET', body?: unknown, retry = tr
 }
 async function browserCall(method: string, args: Record<string, unknown>): Promise<unknown> {
   switch (method) {
-    case 'getCapabilities': return { bridgeVersion: 1, serverUrl: location.origin, authenticated: !!refresh, childId: selectedChild, nativePlayback: false, devicePairing: true, devicePairingReset: true };
+    case 'getCapabilities': return { bridgeVersion: 1, serverUrl: location.origin, authenticated: !!refresh, childId: '', nativePlayback: false, devicePairing: true, devicePairingReset: true };
     case 'ready': return { ok: true };
     case 'pairingStart': {
       const attempt = ++pairingAttempt;
@@ -130,8 +127,6 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
     }
     case 'request': {
       const result = await fetchApi(String(args.path), String(args.method), args.body);
-      const match = /^\/api\/children\/([A-Za-z0-9-]+)\/select$/.exec(String(args.path));
-      if (match) { selectedChild = match[1]; saveBinding(); }
       return result;
     }
     case 'playEpisode': window.dispatchEvent(new CustomEvent('molly:browserPlay', { detail: args })); return { ok: true };
@@ -156,10 +151,6 @@ export async function imageSource(path: string, width = 480): Promise<string> {
 export const browserRequest = <T>(path: string, method = 'GET', body?: unknown) => {
   if (demoEnabled) return Promise.resolve().then(() => demoRequest(path) as T);
   if (port) return Promise.reject(new ApiError('请使用原生播放器')) as Promise<T>;
-  if (method === 'POST' && path === '/api/playback/sessions' && selectedChild) {
-    body = { ...(body as Record<string, unknown>), childId: selectedChild };
-  }
-  if (method === 'GET' && /\/progress$/.test(path) && selectedChild) path += `?childId=${encodeURIComponent(selectedChild)}`;
   return fetchApi(path, method, body) as Promise<T>;
 };
 export function browserMediaUrl(path: string): string {

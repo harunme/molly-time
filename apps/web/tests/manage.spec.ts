@@ -71,7 +71,7 @@ test("real upload, parent preview and resource publication", async ({
     await page.getByRole("button", { name: "自然与发现", exact: true }).click();
     await page.getByRole("button", { name: "自然小故事", exact: true }).click();
     await expect(
-      page.getByText("预览不计入儿童观看时长，也不修改儿童续播位置。"),
+      page.getByText("预览不计入家庭观看时长，也不修改电视续播位置。"),
     ).toBeVisible();
     await expect(page.locator("video")).toHaveAttribute("src", /mediaId=/);
     await page.getByRole("button", { name: "关闭", exact: true }).click();

@@ -38,11 +38,11 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
     row = WatchSession(
         family_id=user.family_id,
         user_id=user.id,
-        child_id=body.childId,
+        child_id=None if device_id else body.childId,
         device_id=getattr(request.state, "device_id", None),
         item_id=episode.id,
         item_name=episode.name,
-        purpose="child_watch" if body.childId else (
+        purpose="child_watch" if body.childId and not device_id else (
             "family_watch" if getattr(request.state, "device_id", None) else "parent_preview"
         ),
     )
@@ -139,7 +139,8 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
             reminder = db.get(DeviceReminder, row.device_id)
             if reminder and reminder.session_id == row.id and body.completed and body.stopped:
                 reminder.phase = "done"
-        key = f"{user.family_id}:{row.child_id or user.id}:{row.item_id}"
+        scope = row.child_id or ("family" if row.device_id else user.id)
+        key = f"{user.family_id}:{scope}:{row.item_id}"
         progress = db.get(WatchProgress, key)
         # Newer session wins. Late events from old sessions cannot roll progress back.
         if progress is None:

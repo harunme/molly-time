@@ -1,12 +1,12 @@
 import { BrowserPlaybackHost } from './playback';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { PlaybackSettings } from './playback-settings';
-import { ApiError, call, request, type Capabilities, type Child, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
+import { ApiError, call, request, type Capabilities, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
 import { appendItems, appendRow, catalogRequest, loadHome, loadPlaylist } from './catalog';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
-import { Cover, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf, tone } from './content';
+import { Cover, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf } from './content';
 import { PairingPanel } from './pairing';
 import './style.css';
 
@@ -14,7 +14,7 @@ init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true
   domNodeFocusOptions: { preventScroll: true }, shouldUseNativeEvents: true });
 
 type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, number> };
-type Overlay = 'children' | 'settings' | 'pairing' | 're-pair' | 'connection' | 'client-update' | null;
+type Overlay = 'settings' | 'pairing' | 're-pair' | 'connection' | 'client-update' | null;
 const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
 const emptyVideos: PlaylistEpisode[] = [];
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
@@ -43,10 +43,7 @@ function App() {
   const displayedVideos = resume && !videos.some((item) => item.id === resume.id) ? [resume, ...videos] : videos;
   const homeSnapshot = useRef<ViewSnapshot | undefined>(undefined);
   const [home, setHome] = useState<Home>({ rows: [] });
-  const [children, setChildren] = useState<Child[]>([]);
-  const [child, setChild] = useState('');
   const [overlay, setOverlay] = useState<Overlay>(null);
-  const [selectingChild, setSelectingChild] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
@@ -84,9 +81,9 @@ function App() {
     setBusy(true); setError('');
     try {
       const result = await call<{ serverUrl: string; authenticated: boolean; childId: string }>('connect', { serverUrl: serverAddress });
-      setServerAddress(result.serverUrl); setAuthenticated(result.authenticated); setChild(result.childId);
+      setServerAddress(result.serverUrl); setAuthenticated(result.authenticated);
       setCapabilities((current) => current ? { ...current, serverUrl: result.serverUrl, authenticated: result.authenticated, childId: result.childId } : current);
-      setHome({ rows: [] }); setChildren([]); setFolder(undefined); setOverlay(null); setBusy(false); setServerEpoch((value) => value + 1);
+      setHome({ rows: [] }); setFolder(undefined); setOverlay(null); setBusy(false); setServerEpoch((value) => value + 1);
       void call('checkWebUpdate').catch(() => {});
     } catch (failure) { setError(failure instanceof Error ? failure.message : '无法连接媒体库'); setBusy(false); }
   };
@@ -96,7 +93,7 @@ function App() {
       .map((node) => [node.dataset.rail!, node.scrollLeft])) }; };
   const fail = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) {
-      setAuthenticated(false); setFolder(undefined); setHome({ rows: [] }); setChildren([]);
+      setAuthenticated(false); setFolder(undefined); setHome({ rows: [] });
       setOverlay((current) => current === 'pairing' ? 'pairing' : null);
     }
     setError(error instanceof Error ? error.message : '连接失败，请检查网络后重试');
@@ -104,7 +101,7 @@ function App() {
   useEffect(() => {
     call<Capabilities>('getCapabilities').then((caps) => {
       setBridgeCompatible(caps.bridgeVersion === 1);
-      setCapabilities(caps); setAuthenticated(caps.authenticated); setChild(caps.childId); setServerAddress(caps.serverUrl || caps.suggestedServerUrl || '');
+      setCapabilities(caps); setAuthenticated(caps.authenticated); setServerAddress(caps.serverUrl || caps.suggestedServerUrl || '');
       return call('ready', { webVersion: caps.webVersion ?? '' });
     }).catch(fail).finally(() => setBusy(false));
   }, [fail]);
@@ -140,18 +137,12 @@ function App() {
     return () => window.removeEventListener('molly:clientUpdateAvailable', available);
   }, []);
   useEffect(() => {
-    if (!authenticated) return;
-    let canceled = false;
-    request<Child[]>('/api/families/me/children').then((data) => { if (!canceled) setChildren(data); }).catch((failure) => { if (!canceled) fail(failure); });
-    return () => { canceled = true; };
-  }, [authenticated, fail, serverEpoch]);
-  useEffect(() => {
     const serial = ++loadSerial.current;
     appended.current = false;
     setReadyToAppend(false);
     setPageStates({});
     if (!authenticated) { homeCache.current = undefined; playlistCache.current = undefined; return; }
-    const scope = `${serverEpoch}:${child}`;
+    const scope = `${serverEpoch}`;
     setBusy(true); setError('');
     const cachedHome = homeCache.current?.scope === scope ? homeCache.current : undefined;
     const cachedPlaylist = playlistCache.current?.scope === scope && playlistCache.current.folder === folder?.id ? playlistCache.current : undefined;
@@ -170,7 +161,7 @@ function App() {
     task.catch((error) => { if (serial === loadSerial.current) fail(error); })
       .finally(() => { if (serial === loadSerial.current) setBusy(false); });
     return () => { loadSerial.current++; };
-  }, [authenticated, folder, reload, fail, serverEpoch, child]);
+  }, [authenticated, folder, reload, fail, serverEpoch]);
 
   const loadMore = (rowId = 'playlist', retry = false) => {
     if (busy || !readyToAppend || overlay || playing || (!retry && pageStates[rowId]?.error)) return;
@@ -226,7 +217,7 @@ function App() {
     }
     const timer = setTimeout(() => {
       const saved = restore.current;
-      const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' : overlay === 'children' ? `child-${child || children[0]?.id}` :
+      const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' :
         overlay === 'settings' ? (window.MollyBridge ? 'connection' : authenticated ? 're-pair' : 'connect-account') : overlay === 'connection' ? 'server-address' : overlay === 'client-update' ? 'check-client-update' : !authenticated ? (capabilities?.serverUrl ? 'connect-account' : 'connect-home') : error ? 'retry' :
         (folder ? (videos.length ? `episode-${resumeId || videos[0].id}` : 'settings') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'settings');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
@@ -243,7 +234,7 @@ function App() {
       setReadyToAppend(true);
     }, 60);
     return () => clearTimeout(timer);
-  }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, children, child, serverAddress, capabilities?.serverUrl]);
+  }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, serverAddress, capabilities?.serverUrl]);
   useEffect(() => {
     if (overlay !== 'connection') return;
     const timer = window.setTimeout(() => document.querySelector<HTMLInputElement>('#server-address')?.focus(), 80);
@@ -271,13 +262,13 @@ function App() {
     overlayOrigin.current = getCurrentFocusKey() || 'settings'; setError(''); setOverlay(next);
   }, []);
   const closeOverlay = useCallback(() => {
-    if (selectingChild || (overlay === 're-pair' && busy)) return;
+    if (overlay === 're-pair' && busy) return;
     finishScrolls(viewport.current);
     restore.current = { focus: overlay === 're-pair' ? 're-pair' : overlayOrigin.current, scroll: viewport.current?.scrollTop ?? 0, rails: {} };
     // Closing a dialog must not reset the independently scrolled content rows.
     viewport.current?.querySelectorAll<HTMLElement>('[data-rail]').forEach((node) => { restore.current!.rails[node.dataset.rail!] = node.scrollLeft; });
     setError(''); setOverlay(overlay === 're-pair' ? 'settings' : null);
-  }, [selectingChild, overlay, busy]);
+  }, [overlay, busy]);
   const back = useCallback(() => {
     if (overlay) { closeOverlay(); return true; }
     if (folder) { restore.current = homeSnapshot.current; setFolder(undefined); return true; }
@@ -325,20 +316,12 @@ function App() {
     try {
       await call('pairingReset');
       loadSerial.current++;
-      setAuthenticated(false); setFolder(undefined); setChild(''); setChildren([]); setHome({ rows: [] });
+      setAuthenticated(false); setFolder(undefined); setHome({ rows: [] });
       restore.current = undefined; contentFocus.current = '';
       setOverlay('pairing');
     } catch (failure) { setError(failure instanceof Error ? failure.message : '无法断开，请检查网络后重试'); }
     finally { setBusy(false); }
   };
-  const selectChild = (id: string) => {
-    setSelectingChild(true); setError('');
-    void request(`/api/children/${id}/select`, 'POST').then(() => {
-      setChild(id); setFolder(undefined); setOverlay(null); restore.current = undefined;
-      setReload((value) => value + 1);
-    }).catch(fail).finally(() => setSelectingChild(false));
-  };
-  const selectedChild = children.find((c) => c.id === child);
   const remember = (key: string) => {
     contentFocus.current = key;
   };
@@ -367,12 +350,10 @@ function App() {
         {folder && <FocusButton focusKey="folder-back" className="route-back" ariaLabel="返回" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /></FocusButton>}
         <span className="topbar-brand">MollyTime</span>
         <div className="topbar-actions">
-          {children.length > 0 && <FocusButton focusKey="children" className="profile-trigger" ariaLabel={selectedChild?.name ?? '选择儿童'} disabled={!!overlay}
-            onArrow={topbarArrow} onClick={() => openOverlay('children')}><Icon name="people" /><span>{selectedChild?.name ?? '谁在看'}</span></FocusButton>}
           <FocusButton focusKey="settings" className="settings-trigger" ariaLabel="设置" disabled={!!overlay} onArrow={topbarArrow} onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>
         </div>
       </div>
-        {authenticated && (folder ? <DetailHeader series={folder} total={playlist?.total ?? videos.length} loading={busy} /> : <HomeGreeting name={selectedChild?.name} />)}
+        {authenticated && (folder ? <DetailHeader series={folder} total={playlist?.total ?? videos.length} loading={busy} /> : <HomeGreeting />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1>{capabilities?.serverUrl ? <><p>已连接媒体库，请绑定家庭电视。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></> : <><p>输入家庭媒体库地址开始使用。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('connection')}>设置媒体库地址</FocusButton></>}</div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
             {displayedVideos.map((item, index) => <FocusButton key={item.id} focusKey={`episode-${item.id}`} className="poster" disabled={!!overlay}
@@ -403,8 +384,8 @@ function App() {
       {playing && <footer><span role="status" className="player-status">正在打开播放器…</span></footer>}
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
-      <FocusRegion focusKey="overlay" className={`overlay-panel ${overlay === 'children' ? 'profiles-panel' : overlay === 'pairing' ? 'account-panel' : 'settings-panel'}`} boundary>
-        <h1 id="overlay-title">{overlay === 'children' ? '谁在看？' : overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : overlay === 'connection' ? '媒体库连接' : overlay === 'client-update' ? '客户端更新' : '电视设置'}</h1>
+      <FocusRegion focusKey="overlay" className={`overlay-panel ${overlay === 'pairing' ? 'account-panel' : 'settings-panel'}`} boundary>
+        <h1 id="overlay-title">{overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : overlay === 'connection' ? '媒体库连接' : overlay === 'client-update' ? '客户端更新' : '电视设置'}</h1>
         {overlay === 're-pair' ? <div className="re-pair-confirm">
           <p>重新配对会断开当前家庭媒体库，需要家长再次输入配对码确认。</p>
           {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
@@ -424,20 +405,15 @@ function App() {
             {clientUpdate.state === '下载完成，可以安装' && <FocusButton focusKey="install-client-update" className="primary" onClick={() => { void call('installUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>安装更新</FocusButton>}
           </>}
           <FocusButton focusKey="check-client-update" className="text-button" onClick={() => { void checkClientUpdate(); }}>重新检查</FocusButton>
-        </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : overlay === 'children' ? <div className="children-list">{children.map((profile) => <FocusButton key={profile.id} focusKey={`child-${profile.id}`} className="child"
-          ariaLabel={profile.name} selected={profile.id === child} disabled={selectingChild} onClick={() => selectChild(profile.id)}>
-          <span className="avatar" style={{ '--avatar-tone': tone(profile.id) } as CSSProperties}>{profile.name.slice(0, 1)}</span>
-          <strong>{profile.name}</strong><span className="profile-status">{profile.id === child ? <><Icon name="check" />正在观看</> : '选择这个片单'}</span>
-        </FocusButton>)}</div> : <div className="settings-list">
+        </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
           {window.MollyBridge && <FocusButton focusKey="connection" className="settings-item" onClick={() => { setError(''); setOverlay('connection'); }}><Icon name="settings" /><span><strong>连接设置</strong><small>{serverAddress || '设置家庭媒体库地址'}</small></span><span>›</span></FocusButton>}
           {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
           {window.MollyBridge && capabilities?.serverUrl && <FocusButton focusKey="check-web-update" className="settings-item" onClick={() => { setWebUpdateStatus('正在检查网页更新…'); void call('checkWebUpdate').catch(fail); }}><Icon name="settings" /><span><strong>检查网页更新</strong><small>{webUpdateStatus || `网页版本 ${capabilities?.webVersion ?? ''}`}</small></span><span>›</span></FocusButton>}
           {authenticated && <PlaybackSettings />}
           {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { setError(''); setOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
         </div>}
-        {selectingChild && <p role="status" className="state">正在打开片单…</p>}
         {error && <p role="alert" className="error">{error}</p>}
-        {overlay !== 're-pair' && <FocusButton focusKey="close-overlay" className="text-button" disabled={selectingChild} onClick={closeOverlay}>返回媒体库</FocusButton>}
+        {overlay !== 're-pair' && <FocusButton focusKey="close-overlay" className="text-button" onClick={closeOverlay}>返回媒体库</FocusButton>}
       </FocusRegion>
     </div>}
   </FocusRegion>;

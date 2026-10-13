@@ -44,10 +44,10 @@ def test_home_recent_playback_precedes_library(parent):  # noqa: F811
     assert [row["title"] for row in rows] == ["最近播放", "我的媒体库"]
     assert rows[0]["items"][0]["id"] == "e1"
     assert rows[0]["items"][0]["completed"] is True
-    assert [row["title"] for row in parent.get("/api/home", headers={**native_token(), "X-Molly-Home-Schema": "2"}).json()["rows"]] == ["我的媒体库"]
+    assert [row["title"] for row in parent.get("/api/home", headers={**native_token(), "X-Molly-Home-Schema": "2"}).json()["rows"]] == ["最近播放", "我的媒体库"]
 
 
-def test_folder_resume_child_isolation_and_completed_next(parent):  # noqa: F811
+def test_folder_resume_family_history_and_completed_next(parent):  # noqa: F811
     seed_videos()
     path = "/api/series/series/playlist"
     headers = {**native_token(), "X-Molly-Child": "c1"}
@@ -65,7 +65,7 @@ def test_folder_resume_child_isolation_and_completed_next(parent):  # noqa: F811
     )
     resumed = parent.get(path, headers=headers).json()
     assert resumed["episodeId"] == "e1" and resumed["positionMs"] == 42000
-    assert parent.get(path, headers=native_token()).json()["positionMs"] == 0
+    assert parent.get(path, headers=native_token()).json()["positionMs"] == 42000
     assert parent.get(path + "?childId=c2", headers=native_token()).status_code == 404
     assert (
         parent.post(

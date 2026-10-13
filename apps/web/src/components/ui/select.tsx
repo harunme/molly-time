@@ -15,7 +15,7 @@ function SelectTrigger({ className, size = "default", children, ...props }: Reac
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "group/select flex min-w-0 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-[20px] border border-border bg-card px-3 text-left text-foreground outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-placeholder [&>span]:min-w-0 [&>span]:flex-1 [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+        "group/select flex min-w-0 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-[20px] border border-border bg-card px-4 text-left text-foreground outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-placeholder [&>span]:min-w-0 [&>span]:flex-1 [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
         controlMotionClassName,
         fieldErrorMotionClassName,
         size === "default" && "h-control text-base",

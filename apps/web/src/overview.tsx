@@ -188,7 +188,6 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
           <div className="table-scroll"><Table className="overview-upload-table"><TableHeader><TableRow><TableHead scope="col">文件</TableHead><TableHead scope="col">状态</TableHead><TableHead scope="col">大小</TableHead></TableRow></TableHeader><TableBody>
             {uploads.data.map((item) => <TableRow key={item.id}><TableCell><strong title={item.filename}>{item.filename}</strong><small>{item.kind === "video" ? "视频" : item.kind === "subtitle" ? "字幕" : "封面"}</small></TableCell><TableCell><Badge variant="secondary" className={`badge ${item.status}`}>{uploadNames[item.status] ?? item.status}</Badge></TableCell><TableCell>{bytes(item.size)}</TableCell></TableRow>)}
           </TableBody></Table></div> : <Empty className="empty"><UploadCloud className="size-7" /><h3>还没有上传记录</h3><p>进入资源库，上传视频并整理到文件夹中。</p><Button variant="bordered" onClick={() => navigate("library")}>打开资源库</Button></Empty>}
-        <Pagination {...uploads} loading={uploads.refreshing} label="概览上传分页" />
       </Card>
       <div className="overview-side">
         <Card className="overview-panel">

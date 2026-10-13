@@ -15,6 +15,7 @@ from ..models import ChildProfile, Item
 from ..resource_policy import published_episodes, published_series, visible
 from .manage_resources import owned
 from .pagination import paginate
+from .watch_progress import scoped_progress
 
 router = APIRouter(prefix="/api/manage/home-config", tags=["manage-home"])
 DEFAULT = {
@@ -215,19 +216,9 @@ def render_home(content, db, family, child=None, modern=True):
             continue
         if row["source"] in ("continue", "recently-played"):
             recently_played = row["source"] == "recently-played"
-            if not modern or (not recently_played and not child):
+            if not modern:
                 continue
-            query = (
-                db.query(WatchProgress)
-                .filter(
-                    WatchProgress.family_id == family,
-                    WatchProgress.child_id == child,
-                )
-            )
-            if not recently_played:
-                query = query.filter(
-                    WatchProgress.completed.is_(False), WatchProgress.position_ms > 0
-                )
+            query = scoped_progress(db, family, child)
             progresses = (
                 query.order_by(WatchProgress.session_started_at.desc(), WatchProgress.id.desc())
                 .limit(100)
@@ -236,6 +227,9 @@ def render_home(content, db, family, child=None, modern=True):
             latest = {}
             for progress in progresses:
                 latest.setdefault(progress.item_id, progress)
+            if not recently_played:
+                latest = {key: progress for key, progress in latest.items()
+                          if not progress.completed and progress.position_ms > 0}
             episodes = [db.get(Item, key) for key in latest]
             episodes = [e for e in episodes if e and e.family_id == family and visible(db, e)][: row["limit"]]
             items = [

@@ -70,7 +70,7 @@ def test_playlist_pages_are_bounded_ordered_and_keep_late_resume(parent):  # noq
     assert not pages[-1]["hasMore"] and len(pages[-1]["episodes"]) == 12
     assert parent.get(path + "?page=4", headers=headers).json()["episodes"] == []
     assert parent.get(path + "?page=1&childId=c2", headers=headers).status_code == 404
-    assert not parent.get(path + "?page=1", headers=native_token()).json()["hasProgress"]
+    assert parent.get(path + "?page=1", headers=native_token()).json()["hasProgress"]
     # Completion finds the next visible episode even when outside the current page.
     assert parent.post(f"/api/playback/sessions/{sid}/events", headers=headers,
                        json=event(seq=1, start=1000, end=2000, completed=True)).status_code == 200

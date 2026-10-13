@@ -83,7 +83,7 @@ test('recent playback precedes library and supports remote playback and return',
   });
   await page.goto('/tv/');
   await expect(page.locator('.shelf-heading h2')).toHaveText(['最近播放', '我的媒体库']);
-  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)，小朋友$/);
+  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)$/);
   await expect(page.getByRole('region', { name: '文件夹详情' })).toHaveCount(0);
   const recent = page.locator('[data-focus="series-recent"]');
   await expect(recent).toBeFocused();
@@ -180,9 +180,7 @@ test('remote navigation, playback return, folder restoration and durable binding
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await expect(page.locator('.home-greeting')).toBeVisible();
-  await page.getByRole('button', { name: '选择儿童' }).click();
-  await page.getByRole('button', { name: '小朋友' }).click();
-  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)，小朋友$/);
+  await expect(page.locator('.profile-trigger')).toHaveCount(0);
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.getByRole('button', { name: '退出账号' })).toHaveCount(0);
   await page.getByRole('button', { name: '重新配对', exact: true }).click();
@@ -331,16 +329,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await page.keyboard.press('ArrowDown');
   await expect(page.locator(`[data-focus="${returnFocus}"]`)).toBeFocused();
   await page.screenshot({ path: 'test-results/tv-rails.png' });
-  await page.getByRole('button', { name: '小米', exact: true }).click();
-  await expect(page.locator('[data-focus="child-c1"]')).toBeFocused();
-  await page.keyboard.press('ArrowLeft');
-  await expect(page.locator('[data-focus="child-c1"]')).toBeFocused();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.locator('[data-focus="child-c2"]')).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.locator('.profile-trigger span')).toHaveText('小麦');
-  await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
+  await expect(page.locator('[data-focus="children"]')).toHaveCount(0);
   await page.setViewportSize({ width: 960, height: 540 });
   await page.screenshot({ path: 'test-results/tv-960.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -11,9 +11,8 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
     val access: String get() = prefs.getString("access", "")!!
     val refresh: String get() = prefs.getString("refresh", "")!!
     val deviceId: String get() = prefs.getString("device", "")!!
-    var childId: String
-        get() = prefs.getString("child", "")!!
-        set(value) { prefs.edit().putString("child", value).commit() }
+    // Retain bridge compatibility while ignoring previously selected profiles.
+    val childId: String get() = ""
 
     fun connect(value: String) {
         val url = value.trim().toHttpUrl()

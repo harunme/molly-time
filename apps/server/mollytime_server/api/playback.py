@@ -21,6 +21,7 @@ from ..storage.settings import get_storage_settings
 from ..utils.image import resize_to_file
 from ..utils.subtitles import webvtt
 from ..usage_meter import meter_media
+from .watch_progress import scoped_progress
 
 router = APIRouter(prefix="/api", tags=["playback"])
 
@@ -245,7 +246,14 @@ def read_progress(
 ):
     require_visible(db, _episode(db, episode_id, user.family_id), request)
     _child(db, childId, user.family_id)
-    progress = db.get(WatchProgress, f"{user.family_id}:{childId or user.id}:{episode_id}")
+    if getattr(request.state, "device_id", None):
+        childId = None
+    if childId is None and not getattr(request.state, "parent_preview", False):
+        progress = scoped_progress(db, user.family_id).filter(
+            WatchProgress.item_id == episode_id,
+        ).order_by(WatchProgress.session_started_at.desc(), WatchProgress.session_id.desc()).first()
+    else:
+        progress = db.get(WatchProgress, f"{user.family_id}:{childId or user.id}:{episode_id}")
     if progress:
         return {"positionMs": progress.position_ms, "completed": progress.completed}
     query = db.query(PlaybackEvent).filter(

@@ -7,9 +7,10 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import aliased
 
 from ..images import image_url
-from ..management_models import ResourceState, WatchProgress, WatchSession
+from ..management_models import ResourceState, WatchProgress
 from ..models import Item, MediaFile
 from ..resource_policy import visible_item_ids
+from .watch_progress import scoped_progress
 
 
 def episode_query(db, family):
@@ -58,16 +59,11 @@ def following_episode_id(query, order, episode_id):
 def paged_playlist(db, family, user_id, child_id, series, page, page_size):
     query, order = ordered_playlist(db, family, series.id)
     total = query.order_by(None).count()
-    progress_query = db.query(WatchProgress).join(
-        WatchSession, WatchSession.id == WatchProgress.session_id,
-    ).filter(
-        WatchProgress.family_id == family, WatchProgress.child_id == child_id,
+    progress_query = scoped_progress(db, family, child_id).filter(
         WatchProgress.item_id.in_(query.order_by(None).with_entities(Item.id)),
     )
-    if child_id is None:
-        progress_query = progress_query.filter(WatchSession.user_id == user_id)
     progress = progress_query.order_by(
-        WatchSession.last_reported_at.desc(), WatchProgress.session_started_at.desc(),
+        WatchProgress.session_started_at.desc(),
         WatchProgress.session_id.desc(),
     ).first()
     selected = query.first()
