@@ -327,7 +327,7 @@ function App() {
               <DropdownMenuLabel>{session.user.email}</DropdownMenuLabel>
               <DropdownMenuLabel>账号 ID：{session.user.accountId}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => {
+              <DropdownMenuItem variant="destructive" onSelect={() => {
                 void run(async () => {
                   await api("/auth/logout", "POST");
                   stopUploads();
