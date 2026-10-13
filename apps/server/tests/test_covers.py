@@ -30,6 +30,19 @@ def test_black_detection_preserves_dark_and_bright_scenes():
     assert not is_black_cover(picture("white"))
 
 
+def test_cover_process_cannot_read_the_controlling_terminal(tmp_path, monkeypatch):
+    def run(command, **kwargs):
+        assert "-nostdin" in command
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        # An extraction result lets the worker finish without an interactive process.
+        from pathlib import Path
+
+        Path(command[-1]).write_bytes(picture("blue"))
+
+    monkeypatch.setattr("mollytime_server.covers.subprocess.run", run)
+    assert extract_cover(tmp_path / "sample.mp4", 10_000_000) == picture("blue")
+
+
 @pytest.mark.parametrize("ending, expected", [("blue", True), ("black", False)])
 def test_real_extraction_skips_black_intro(tmp_path, ending, expected):
     if not shutil.which("ffmpeg"):

@@ -53,7 +53,12 @@ export function MediaPreview({ id }: { id: string }) {
           autoPlay
           crossOrigin="anonymous"
           className="video-preview"
-          onError={() => setError("播放地址可能已过期，请重试播放")}
+          onError={(event) => {
+            const code = event.currentTarget.error?.code;
+            setError(code === 3 || code === 4
+              ? "浏览器无法解码或不支持此视频，请在电视客户端尝试播放"
+              : "播放地址可能已过期或网络异常，请重试播放");
+          }}
         >
           {source.subtitles.map((sub) => (
             <track

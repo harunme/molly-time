@@ -29,6 +29,7 @@ def extract_cover(source: Path, runtime_ticks: int) -> bytes | None:
             subprocess.run(
                 [
                     "ffmpeg",
+                    "-nostdin",
                     "-v",
                     "error",
                     "-protocol_whitelist",
@@ -44,6 +45,7 @@ def extract_cover(source: Path, runtime_ticks: int) -> bytes | None:
                     "scale=640:-2",
                     str(target),
                 ],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=60,
                 check=True,

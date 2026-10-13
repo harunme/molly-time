@@ -25,10 +25,10 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     await page.getByLabel('上传剩 1 集提醒视频').setInputFiles(file);
     await expect.poll(async () => (await (await page.request.get('/api/manage/reminders')).json()).warning.ready,
       { timeout: 20000 }).toBe(true);
-    await page.getByLabel('上传结束告别视频').setInputFiles(file);
+    await page.getByLabel('上传休息提醒视频').setInputFiles(file);
     await expect.poll(async () => (await (await page.request.get('/api/manage/reminders')).json()).farewell.ready,
       { timeout: 20000 }).toBe(true);
-    await expect(page.getByRole('button', { name: '预览告别', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: '预览休息提醒', exact: true })).toBeVisible({ timeout: 10000 });
 
     const auth = await (await page.request.post(`${apiOrigin}/api/auth/login`, {
       headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
@@ -77,7 +77,7 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     await expect.poll(() => mainVideo.evaluate((video) => (video as HTMLVideoElement).paused)).toBe(false);
     expect(await mainVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(3);
     await mainVideo.evaluate((video) => { (video as HTMLVideoElement).currentTime = (video as HTMLVideoElement).duration - 0.1; });
-    await expect(clip).toHaveAttribute('data-parent-clip', '茉莉看完咯，拜拜');
+    await expect(clip).toHaveAttribute('data-parent-clip', '休息提醒');
     await expect.poll(() => clip.locator('video').evaluate((video) => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
     await expect.poll(() => clip.locator('video').evaluate((video) => (video as HTMLVideoElement).paused)).toBe(false);
     await clip.locator('video').evaluate((video) => { (video as HTMLVideoElement).currentTime = (video as HTMLVideoElement).duration - 0.1; });

@@ -1228,7 +1228,7 @@ function UploadDialog({
           </strong>
           <span>
             {kind === "video"
-              ? "MP4 · H.264 / AAC；可批量选择"
+              ? "MP4；可批量选择，播放兼容性取决于电视设备"
               : kind === "subtitle"
                 ? "UTF-8 编码的 SRT / VTT"
                 : "JPG / PNG / WebP"}

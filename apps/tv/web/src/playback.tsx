@@ -146,7 +146,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       if (closed.current) return;
       if (state.requestId && state.episodeId === episode && state.phase !== 'idle') {
         activeClip.current = true;
-        setClip({ path: state.farewellPath!, label: '茉莉看完咯，拜拜', after: true, requestId: state.requestId });
+        setClip({ path: state.farewellPath!, label: '休息提醒', after: true, requestId: state.requestId });
         return;
       }
       const next = await browserRequest<{ episodeId: string | null }>(`/api/episodes/${episode}/next`);

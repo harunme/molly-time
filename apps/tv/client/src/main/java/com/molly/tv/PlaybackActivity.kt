@@ -288,7 +288,7 @@ class PlaybackActivity : AppCompatActivity() {
 
     private fun loadParentClip() {
         val generation = ++loadGeneration
-        status.text = if (parentClipAfter) "茉莉看完咯，拜拜" else "茉莉，还剩 1 集哦"
+        status.text = if (parentClipAfter) "休息提醒" else "茉莉，还剩 1 集哦"
         app.io.execute {
             runCatching { app.api.json("GET", parentClipPath) }.onSuccess { info -> runOnUiThread {
                 if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread

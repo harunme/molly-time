@@ -26,40 +26,48 @@ from .utils.image import atomic_write
 logger = logging.getLogger(__name__)
 
 
-def inspect_video(path):
+def inspect_video(path: Path) -> int:
+    """Validate an MP4 video; codec compatibility belongs to the playback device."""
     if not shutil.which("ffprobe") or not shutil.which("ffmpeg"):
         raise ValueError("未安装 FFmpeg/FFprobe，请安装后重试处理")
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-protocol_whitelist",
-            "file",
-            "-show_format",
-            "-show_streams",
-            "-of",
-            "json",
-            str(path),
-        ],
-        capture_output=True,
-        timeout=45,
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-protocol_whitelist",
+                "file",
+                "-show_format",
+                "-show_streams",
+                "-of",
+                "json",
+                str(path),
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=45,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        raise ValueError("无法读取视频信息，文件可能损坏或不完整，请检查原文件") from error
+    except subprocess.TimeoutExpired as error:
+        raise ValueError("视频信息检查超时，请重试处理") from error
     data = json.loads(result.stdout)
     streams = data.get("streams", [])
-    video = next((s for s in streams if s.get("codec_type") == "video"), {})
-    audio = [s for s in streams if s.get("codec_type") == "audio"]
-    duration = float(data.get("format", {}).get("duration", 0))
-    if (
-        not math.isfinite(duration)
-        or duration <= 0
-        or video.get("codec_name") != "h264"
-        or any(s.get("codec_name") != "aac" for s in audio)
-    ):
-        raise ValueError("首版支持 H.264 / AAC 的 MP4 视频；请转换格式后重新上传")
     if "mp4" not in data.get("format", {}).get("format_name", "").split(","):
         raise ValueError("文件不是 MP4 容器")
+    if not any(
+        s.get("codec_type") == "video" and not s.get("disposition", {}).get("attached_pic")
+        for s in streams
+    ):
+        raise ValueError("文件中没有视频轨道，请上传包含画面的视频")
+    try:
+        duration = float(data.get("format", {}).get("duration", 0))
+    except (TypeError, ValueError) as error:
+        raise ValueError("无法读取有效视频时长，请检查文件是否完整") from error
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("无法读取有效视频时长，请检查文件是否完整")
     return round(duration * 10_000_000)
 
 
@@ -95,7 +103,12 @@ def process(task_id):
             cover = folder / f"{upload.id}-cover.jpg"
             if upload.kind == "video":
                 runtime = inspect_video(source)
-                cover_data = extract_cover(source, runtime)
+                try:
+                    cover_data = extract_cover(source, runtime)
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    # The TV may support a codec that this FFmpeg build cannot decode.
+                    # An optional automatic cover must not block a valid video upload.
+                    logger.warning("Automatic cover extraction failed for %s", upload.id, exc_info=True)
                 if cover_data is not None:
                     atomic_write(cover, cover_data)
                 mime = "video/mp4"
@@ -229,6 +242,10 @@ def _run_once():
         result = db.execute(
             update(MediaTask)
             .where(MediaTask.id == key, eligible)
+            # SQLite returns naive timestamps; evaluate the lease predicate in SQL,
+            # not against ORM objects using an aware UTC `now`. This session closes
+            # immediately after claiming the task, so in-memory synchronization is unnecessary.
+            .execution_options(synchronize_session=False)
             .values(
                 status="running",
                 lease_until=now + dt.timedelta(minutes=10),

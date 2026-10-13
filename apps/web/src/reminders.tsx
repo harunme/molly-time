@@ -78,15 +78,15 @@ export function ParentReminderActions({ data, readonly, run, notify }: {
     {online.length === 1 && <p className="overview-playback-status" role="status">{online[0].name} · {phases[online[0].phase] ?? phases.idle}</p>}
     {error && <p role="alert" className="error">{error}</p>}
     {!readonly && <div className="overview-playback-actions">
-      <Button type="button" size="sm" title="提醒后只看完当前这一集，结束时播放告别视频并停止" disabled={busy || !!error || !online.some((device) => eligible(device, 'remind'))} onClick={() => start('remind')}>发起提醒</Button>
+      <Button type="button" size="sm" title="提醒后只看完当前这一集，结束时播放休息提醒视频并停止" disabled={busy || !!error || !online.some((device) => eligible(device, 'remind'))} onClick={() => start('remind')}>发起提醒</Button>
       <Button type="button" size="sm" variant="outline" disabled={busy || !!error || !online.some((device) => eligible(device, 'restore'))} onClick={() => start('restore')}>恢复播放</Button>
     </div>}
-    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family">家庭设置</Link>上传提醒和告别视频。</p>}
+    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family">家庭设置</Link>上传剩余集数提醒和休息提醒视频。</p>}
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(undefined); }}>
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>{action === 'restore' ? '选择要恢复播放的电视' : '选择要提醒的电视'}</DialogTitle>
-          <DialogDescription>{action === 'restore' ? '选择电视后解除播放限制，可以重新选择视频。' : '选择电视后立即发起提醒，只看完当前这一集，结束时播放告别视频并停止。没有正在播放时，接下来的一集就是最后一集。'}</DialogDescription>
+          <DialogDescription>{action === 'restore' ? '选择电视后解除播放限制，可以重新选择视频。' : '选择电视后立即发起提醒，只看完当前这一集，结束时播放休息提醒视频并停止。没有正在播放时，接下来的一集就是最后一集。'}</DialogDescription>
         </DialogHeader>
         <div className="overview-playback-devices">
           {online.map((device) => <Button key={device.id} type="button" variant="outline" className="overview-playback-device" disabled={busy || !!error || readonly || !action || !eligible(device, action)}
@@ -119,18 +119,18 @@ export function ParentReminders({ readonly, run, notify }: {
   };
   return <Card className="settings-card parent-reminders">
     <h2>家长视频提醒</h2>
-    <p className="muted">上传提醒与告别视频，可在这里预览。需要发起提醒或恢复播放时，请前往<Link to="/overview">概览</Link>。</p>
+    <p className="muted">上传剩余集数提醒与休息提醒视频，可在这里预览。需要发起提醒或恢复播放时，请前往<Link to="/overview">概览</Link>。</p>
     {error && <p role="alert" className="error">{error}</p>}
     {!settings && !error && <p role="status">正在加载…</p>}
     {settings && <>
       {(['warning', 'farewell'] as const).map((kind) => <div className="reminder-clip" key={kind}>
-        <label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '结束告别视频'}</label>
+        <label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '休息提醒视频'}</label>
         <p className="muted">{settings[kind].ready ? '视频已就绪' : '请上传视频，等待处理完成'} · {kind === 'warning' ? '后台发起后主动出现' : '最后一集看完后出现，随后停止播放'}</p>
         {!readonly && <Input id={`reminder-${kind}`} type="file" accept="video/mp4,.mp4" disabled={busy}
-          aria-label={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传结束告别视频'}
+          aria-label={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传休息提醒视频'}
           onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(kind, file); }} />}
         {settings[kind].ready && <Button type="button" variant="outline" onClick={() => setPreview(preview === kind ? undefined : kind)}>
-          {preview === kind ? '关闭预览' : `预览${kind === 'warning' ? '提醒' : '告别'}`}
+          {preview === kind ? '关闭预览' : `预览${kind === 'warning' ? '提醒' : '休息提醒'}`}
         </Button>}
         {preview === kind && settings[kind].previewUrl && <video key={settings[kind].previewUrl} src={settings[kind].previewUrl!} controls autoPlay aria-label="家长提醒预览" />}
       </div>)}

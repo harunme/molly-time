@@ -23,7 +23,7 @@ from .playback import playback_info, stream_file
 
 router = APIRouter(tags=["parent-reminders"])
 ClipKind = Literal["warning", "farewell"]
-LABELS = {"warning": "还剩最后一集", "farewell": "茉莉看完咯，拜拜"}
+LABELS = {"warning": "还剩最后一集", "farewell": "休息提醒"}
 
 
 def clip_file(db, row, kind):

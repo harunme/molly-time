@@ -75,7 +75,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-bash tools/run-server.sh & pids+=("$!")
+# Background services must not read the controlling terminal (SIGTTIN stops their group).
+bash tools/run-server.sh </dev/null & pids+=("$!")
 bash tools/run-tv-web.sh --port 5173 --strictPort & pids+=("$!")
 pnpm --dir apps/web dev --strictPort & pids+=("$!")
 
