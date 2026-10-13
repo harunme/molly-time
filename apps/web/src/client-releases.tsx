@@ -89,7 +89,7 @@ export function ClientReleases() {
       <Empty className="empty">{data.total ? "本页没有安装包，请返回上一页。" : "暂无安装包。发布客户端版本后，安装包会显示在这里。"}</Empty> : data &&
       <div className="table-scroll"><Table className="client-releases-table"><TableHeader><TableRow>
         <TableHead scope="col">版本</TableHead><TableHead scope="col">渠道</TableHead><TableHead scope="col">发布状态</TableHead><TableHead scope="col">发布时间</TableHead><TableHead scope="col">大小</TableHead><TableHead scope="col">存储位置</TableHead><TableHead scope="col">操作</TableHead>
-      </TableRow></TableHeader><TableBody>{data.items.map((release) => <TableRow key={`${release.packageName}-${release.versionCode}-${release.sha256}`}>
+      </TableRow></TableHeader><TableBody>{data.items.map((release) => <TableRow className="hover:bg-transparent" key={`${release.packageName}-${release.versionCode}-${release.sha256}`}>
         <TableCell><strong>{release.versionName}</strong><small className="muted">构建号 {release.versionCode}</small>
           <details><summary>更新说明与校验信息</summary><p>{release.notes || "未填写更新说明"}</p><dl>
             <dt>包名</dt><dd>{release.packageName}</dd><dt>最低系统 API</dt><dd>{release.minSdk}</dd>
