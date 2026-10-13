@@ -48,7 +48,7 @@ Docker 镜像同时构建两个网页，运行时只有 Python 服务与媒体�
 
 首次升级使用附加表保存资源状态、上传任务、首页版本、设备与统计，不删除或改写旧事件；已有 SQLite 自动备份到同目录 `server.pre-management-v1.sqlite`，并记录 `management-v1` 修订。生产引擎启用外键、WAL 和写锁等待；读后校验再写的关键操作在 SQLite 中串行化。
 
-默认在服务内运行一个媒体任务线程。需要独立进程时，API 设置 `MOLLYTIME_MEDIA_WORKER_ENABLED=false`，同环境启动 `python -m mollytime_server.media_worker`；不需要 Redis 或消息队列。管理静态目录可通过 `MOLLYTIME_PARENT_WEB_DIR` 覆盖，单个视频上限可通过 `MOLLYTIME_MAX_UPLOAD_BYTES` 覆盖（默认 10 GiB）。
+默认在服务内运行一个媒体任务线程。需要独立进程时，API 设置 `MOLLYTIME_MEDIA_WORKER_ENABLED=false`，同环境启动 `python -m mollytime_server.media_worker`；不需要 Redis 或消息队列。管理静态目录可通过 `MOLLYTIME_PARENT_WEB_DIR` 覆盖。单个视频默认上限 500 MiB（界面显示 500 MB），普通上传和家长提醒视频共用限制；前端选择时检查，后端在创建上传会话前拒绝超限文件。`MOLLYTIME_MAX_UPLOAD_BYTES` 和 `MOLLYTIME_MEDIA_PROCESSING_MAX_BYTES` 可覆盖上限，有效上限取两者较小值。
 
 当前支持本地/OSS 存储、平台超管、家庭管理员和成员三种角色、过期未完成上传清理、字幕设置及保存到电视任务。永久删除已入库素材、旧版本自动清理、自动转码、儿童内容限制、观看限额、CDN、支付和离线网页包尚未实现。OSS 配置与下载限制见 [部署说明](../../docs/oss-storage.md)。预览展示栏目比例和可见内容，完整遥控器交互仍在 TV 页面验收。
 

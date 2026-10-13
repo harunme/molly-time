@@ -355,6 +355,20 @@ def upload_dto(db, row):
     }
 
 
+def upload_limits():
+    settings = get_settings()
+    return {
+        "video": min(settings.max_upload_bytes, settings.media_processing_max_bytes),
+        "subtitle": 5 * 1024**2,
+        "image": 20 * 1024**2,
+    }
+
+
+@router.get("/uploads/options")
+def upload_options(user: Parent):
+    return upload_limits()
+
+
 @router.get("/uploads")
 def uploads(
     user: Parent, db: DbSession,
@@ -385,14 +399,12 @@ def start_upload(body: UploadBody, user: Parent, db: DbSession):
         "subtitle": {".srt", ".vtt"},
         "image": {".jpg", ".jpeg", ".png", ".webp"},
     }
-    limits = {
-        "video": get_settings().max_upload_bytes,
-        "subtitle": 5 * 1024**2,
-        "image": 20 * 1024**2,
-    }
+    limit = upload_limits()[body.kind]
+    if body.size > limit:
+        label = {"video": "视频", "subtitle": "字幕", "image": "封面"}[body.kind]
+        raise HTTPException(413, f"单个{label}不能超过 {limit / 1024**2:g} MB")
     if (
         ext not in extensions[body.kind]
-        or body.size > limits[body.kind]
         or (body.kind != "image" and item.type != "Episode")
     ):
         raise HTTPException(422, "请上传 MP4 视频、SRT/VTT 字幕或图片，并检查文件大小")

@@ -1,6 +1,7 @@
 import SparkMD5 from 'spark-md5';
 import { api, type Upload } from './api';
 import { sha256Blob as sha } from './file-hash';
+import { getUploadLimits, validateUploadSize } from './upload-limits';
 
 const files = new Map<string, File>();
 const paused = new Set<string>();
@@ -13,6 +14,7 @@ async function fingerprint(file: File) {
   return `${file.size}:${await sha(new Blob([file.slice(0, 1024**2), file.slice(Math.max(0, file.size - 1024**2))]))}`;
 }
 export async function enqueue(file: File, itemId: string, kind: string, language = 'und') {
+  validateUploadSize(file, kind, await getUploadLimits());
   const row = await api<Upload>('/uploads', 'POST', { itemId, filename: file.name, size: file.size, fingerprint: await fingerprint(file), kind, language });
   files.set(row.id, file); waiting.add(row.id);
   live.set(row.id, { offset: 0, error: '', paused: false }); changed(); pump();

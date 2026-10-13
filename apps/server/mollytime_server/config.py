@@ -11,7 +11,6 @@ from pathlib import Path
 from pydantic import AliasChoices, AliasGenerator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 # Source checkouts use apps/server/mollytime_server; images use /app/mollytime_server.
 _config_parents = Path(__file__).resolve().parents
 _project_root = _config_parents[3] if len(_config_parents) > 3 else _config_parents[1]
@@ -44,7 +43,7 @@ class Settings(BaseSettings):
     tv_web_dir: Path = Path(__file__).resolve().parents[2] / "tv" / "web" / "dist"
     parent_web_dir: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
     media_worker_enabled: bool = True
-    max_upload_bytes: int = 10 * 1024**3
+    max_upload_bytes: int = Field(default=500 * 1024**2, gt=0)
     public_base_url: str = ""  # Phone-accessible server origin for pairing QR links.
     android_build_tools_dir: Path = (
         _project_root / ".local/android-sdk/build-tools/36.0.0"
@@ -77,7 +76,7 @@ class Settings(BaseSettings):
     oss_upload_ttl: int = Field(default=900, ge=60, le=3600)
     upload_expiry_hours: int = Field(default=72, ge=1)
     family_storage_limit_bytes: int = Field(default=0, ge=0)  # 0 = unlimited
-    media_processing_max_bytes: int = Field(default=10 * 1024**3, gt=0)
+    media_processing_max_bytes: int = Field(default=500 * 1024**2, gt=0)
     oss_signed_url_ttl: int = Field(default=3600, ge=60, le=14400)
 
     # ---- Helpers ---------------------------------------------------------------

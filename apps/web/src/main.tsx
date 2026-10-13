@@ -39,6 +39,7 @@ import {
   type WatchReport,
 } from "./api";
 import { enqueue, hasFile, live, pause, resume, stopUploads } from "./uploads";
+import { getUploadLimits, useUploadLimits, validateUploadSize } from "./upload-limits";
 import {
   FolderOpen,
   UploadCloud,
@@ -1079,11 +1080,14 @@ function UploadDialog({
   >([]),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const uploadPolicy = useUploadLimits();
   const submit = () => {
     setBusy(true);
     setError("");
     void (async () => {
       if (!rows.length) throw new Error("请先选择文件");
+      const limits = await getUploadLimits();
+      for (const row of rows) validateUploadSize(row.file, kind, limits);
       let target = parent?.id || "";
       if (!item && !target) {
         let sid = seriesId;
@@ -1182,8 +1186,19 @@ function UploadDialog({
         )}
         <FileUpload className="file-drop" inputLabel="选择上传文件"
           multiple={!item || kind === "subtitle"}
+          disabled={busy || !uploadPolicy.limits}
           accept={kind === "video" ? ".mp4" : kind === "subtitle" ? ".srt,.vtt" : ".jpg,.jpeg,.png,.webp"}
-          onFilesSelect={(files) => setRows(files.map((file) => ({ file, name: file.name.replace(/\.[^.]+$/, ""), index: "" })))}>
+          onFilesSelect={(files) => {
+            try {
+              if (!uploadPolicy.limits) return;
+              for (const file of files) validateUploadSize(file, kind, uploadPolicy.limits);
+              setError("");
+              setRows(files.map((file) => ({ file, name: file.name.replace(/\.[^.]+$/, ""), index: "" })));
+            } catch (failure) {
+              setRows([]);
+              setError((failure as Error).message);
+            }
+          }}>
           <UploadCloud className="size-8" />
           <strong>
             选择
@@ -1204,6 +1219,11 @@ function UploadDialog({
           </Button>
 
         </FileUpload>
+        {uploadPolicy.limits && <p className="muted">
+          单个文件上限：{bytes(uploadPolicy.limits[kind as keyof typeof uploadPolicy.limits])}
+        </p>}
+        {!uploadPolicy.limits && !uploadPolicy.error && <p role="status">正在加载上传限制…</p>}
+        {uploadPolicy.error && <Alert variant="destructive" role="alert"><AlertDescription>{uploadPolicy.error}</AlertDescription></Alert>}
         {rows.map((row, index) => (
           <div className="upload-plan" key={index}>
             <div>
@@ -1262,7 +1282,7 @@ function UploadDialog({
           <Button
             variant="default"
             className="primary"
-            disabled={busy || !rows.length}
+            disabled={busy || !rows.length || !uploadPolicy.limits}
           >
             {busy
               ? "正在建立上传任务…"

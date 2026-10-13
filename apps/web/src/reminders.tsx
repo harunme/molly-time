@@ -2,8 +2,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { api } from './api';
+import { api, bytes } from './api';
 import { enqueue } from './uploads';
+import { getUploadLimits, useUploadLimits, validateUploadSize } from './upload-limits';
 import type { Run } from './main';
 import { Card } from './components/ui/card';
 import { Button } from './components/ui/button';
@@ -106,12 +107,14 @@ export function ParentReminders({ readonly, run, notify }: {
   readonly: boolean; run: Run; notify: (value: string) => void;
 }) {
   const { settings, error, reload } = useReminderData();
+  const uploadPolicy = useUploadLimits();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Kind>();
   const upload = async (kind: Kind, file: File) => {
     setBusy(true);
     try {
       await run(async () => {
+        validateUploadSize(file, 'video', await getUploadLimits());
         const target = await api<{ itemId: string; }>(`/reminders/${kind}/upload-target`, 'POST');
         await enqueue(file, target.itemId, 'video');
         notify('已加入上传任务，处理完成后可预览和发起提醒。');
@@ -122,13 +125,15 @@ export function ParentReminders({ readonly, run, notify }: {
   return <Card className="settings-card parent-reminders">
     <h2>家长视频提醒</h2>
     <p className="muted">上传剩余集数提醒与休息提醒视频，可在这里预览。需要发起提醒或恢复播放时，请前往<Link to="/overview">概览</Link>。</p>
+    {uploadPolicy.limits && <p className="muted">单个视频上限：{bytes(uploadPolicy.limits.video)}</p>}
+    {uploadPolicy.error && <Alert variant="destructive" role="alert"><AlertDescription>{uploadPolicy.error}</AlertDescription></Alert>}
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
     {!settings && !error && <p role="status">正在加载…</p>}
     {settings && <>
       {(['warning', 'farewell'] as const).map((kind) => <div className="reminder-clip" key={kind}>
         <Label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '休息提醒视频'}</Label>
         <p className="muted">{settings[kind].ready ? '视频已就绪' : '请上传视频，等待处理完成'} · {kind === 'warning' ? '后台发起后主动出现' : '最后一集看完后出现，随后停止播放'}</p>
-        {!readonly && <FileUploadField inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={busy}
+        {!readonly && <FileUploadField inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={busy || !uploadPolicy.limits}
           inputLabel={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传休息提醒视频'} placeholder="选择 MP4 视频"
           onFileSelect={(file) => { void upload(kind, file); }} />}
         {settings[kind].ready && <Button type="button" variant="bordered" onClick={() => setPreview(preview === kind ? undefined : kind)}>
