@@ -842,6 +842,23 @@ td small {
 .pairing-card form > .primary {
   @apply mb-3 w-full;
 }
+.account-card fieldset, .invitations-card fieldset { border: 0; padding: 0; min-width: 0; }
+.account-card fieldset > label { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.account-card fieldset > .primary { width: 100%; margin-top: 1rem; }
+.account-card > .account-secondary-action { margin-top: 1rem; }
+.account-card .muted, .invitations-card .muted { font-size: .75rem; line-height: 1.7; }
+.account-summary { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: .75rem; padding: 1rem; margin: 1.25rem 0; background: var(--accent); border-radius: var(--radius); font-size: .75rem; }
+.account-summary strong { overflow-wrap: anywhere; }
+.account-summary span { color: var(--muted-foreground); }
+.account-number { font-family: var(--font-mono); font-size: 1.4rem; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.invitations-card form { margin-bottom: 1.5rem; }
+.invitations-card .form-grid { margin-bottom: .75rem; }
+.invitations-card .form-grid label, .invitation-link label { display: grid; gap: .5rem; }
+.invitations-card h3 { margin: 1rem 0; font-size: .875rem; }
+.invitation-link { display: grid; gap: .75rem; padding: 1rem; margin-bottom: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.invitation-link button { justify-self: start; }
+.invitations-card td { overflow-wrap: anywhere; }
+.invitation-pagination { justify-content: flex-end; margin-top: 1rem; }
 .invitation-link { border: 0; background: var(--accent); }
 .pairing-summary {
   @apply my-5 grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-ui bg-accent/50 p-4 text-xs;

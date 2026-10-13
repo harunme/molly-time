@@ -6,8 +6,9 @@ import datetime as dt
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import status as http_status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from ..accounts import ensure_identity, find_login_user
 from ..auth import (
     hash_password,
     hash_refresh_token,
@@ -29,9 +30,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class LoginBody(BaseModel):
-    username: str
-    password: str
-    familyId: str | None = None
+    username: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
     deviceId: str | None = None
 
 
@@ -44,6 +44,8 @@ class UserDto(BaseModel):
     name: str
     role: str
     familyId: str
+    accountId: str
+    email: str | None
 
 
 class FamilyDto(BaseModel):
@@ -67,14 +69,11 @@ class AuthResult(BaseModel):
 
 @router.post("/login", response_model=AuthResult)
 def login(body: LoginBody, request: Request, db: DbSession):
-    query = db.query(User).filter(User.name == body.username)
-    if body.familyId:
-        query = query.filter(User.family_id == body.familyId)
-    matches = query.limit(2).all()
-    user = matches[0] if len(matches) == 1 else None
+    user = find_login_user(db, body.username)
     if user is None or user.is_disabled or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED)
 
+    identity = ensure_identity(db, user)
     device = None
     if request.headers.get("x-molly-client", "").startswith("tv-shell/"):
         device = db.get(Device, body.deviceId) if body.deviceId else None
@@ -108,9 +107,11 @@ def login(body: LoginBody, request: Request, db: DbSession):
         expiresAt=exp.isoformat(),
         user=UserDto(
             id=user.id,
-            name=user.name,
+            name=identity.email.split("@")[0] if identity.email else user.name,
             role="device" if device else user.role,
             familyId=user.family_id,
+            accountId=identity.account_id,
+            email=identity.email,
         ),
         family=FamilyDto(id=user.family_id, name=""),
         deviceId=device.id if device else None,
@@ -135,6 +136,7 @@ def refresh(body: RefreshBody, request: Request, db: DbSession):
     user = db.get(User, row.user_id)
     if user is None or user.is_disabled:
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED)
+    identity = ensure_identity(db, user)
     link = db.get(DeviceRefresh, hashed)
     device = db.get(Device, link.device_id) if link else None
     if link and (device is None or device.revoked or device.user_id != user.id
@@ -148,7 +150,9 @@ def refresh(body: RefreshBody, request: Request, db: DbSession):
                                          role="device", device_id=device.id)
         return AuthResult(accessToken=access, refreshToken=body.refreshToken,
                           expiresAt=exp.isoformat(), deviceId=device.id,
-                          user=UserDto(id=user.id, name=user.name, role="device", familyId=user.family_id),
+                          user=UserDto(id=user.id, name=identity.email.split("@")[0] if identity.email else user.name,
+                                       role="device", familyId=user.family_id,
+                                       accountId=identity.account_id, email=identity.email),
                           family=FamilyDto(id=user.family_id, name=""))
     if _aware(row.expires_at) < dt.datetime.now(dt.UTC):
         raise HTTPException(status_code=401)
@@ -180,9 +184,11 @@ def refresh(body: RefreshBody, request: Request, db: DbSession):
         expiresAt=exp.isoformat(),
         user=UserDto(
             id=user.id,
-            name=user.name,
+            name=identity.email.split("@")[0] if identity.email else user.name,
             role="device" if device else user.role,
             familyId=user.family_id,
+            accountId=identity.account_id,
+            email=identity.email,
         ),
         family=FamilyDto(id=user.family_id, name=""),
         deviceId=device.id if device else None,

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
+from ..accounts import account_dto
 from ..deps import CurrentUser, DbSession
 from ..models import Family
 
@@ -27,7 +27,7 @@ class MeResponse(BaseModel):
 def me(user: CurrentUser, db: DbSession):
     fam = db.get(Family, user.family_id)
     return MeResponse(
-        user={"id": user.id, "name": user.name, "role": user.role},
+        user=account_dto(db, user),
         family=FamilyDto(id=user.family_id, name=fam.name if fam else ""),
         role=user.role,
     )

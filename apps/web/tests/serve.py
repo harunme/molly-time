@@ -14,6 +14,7 @@ os.environ["MOLLYTIME_DATA_DIR"] = str(root)
 os.environ["MOLLYTIME_MEDIA_DIR"] = str(root)
 
 from mollytime_server.auth import hash_password
+from mollytime_server.accounts import ensure_identity
 from mollytime_server.db import get_session_factory, init_db
 from mollytime_server.main import create_app
 from mollytime_server.models import ChildProfile, Family, Item, MediaFile, User
@@ -30,6 +31,7 @@ with get_session_factory()() as db:
     db.add(Family(id="family", name="我们的家庭"))
     db.add(User(id="parent", family_id="family", name="parent", password_hash=hash_password("parent-e2e")))
     db.add(User(id="operator", family_id="family", name="operator", role="superadmin", password_hash=hash_password("operator-e2e")))
+    db.add(User(id="legacy-parent", family_id="family", name="legacy-parent", password_hash=hash_password("legacy-e2e")))
     db.add(ChildProfile(id="child", family_id="family", name="小米"))
     db.add(ChildProfile(id="autoplay-child", family_id="family", name="连播测试"))
     db.add_all([Item(id="series", family_id="family", type="Series", name="英语启蒙"),
@@ -45,6 +47,10 @@ with get_session_factory()() as db:
                          kind="subtitle", storage="local", path=path, language=language, index=index))
     db.add(Item(id="browser-next", family_id="family", type="Episode", name="Browser next", parent_id="season", index_number=2, runtime_ticks=50_000_000))
     db.add(MediaFile(id="browser-next-media", family_id="family", item_id="browser-next", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
+    db.commit()
+    for user_id in ("parent", "operator"):
+        identity = ensure_identity(db, db.get(User, user_id))
+        identity.email = f"{user_id}@example.test"
     db.commit()
 
 for package, versions in [("com.molly.tv", [(2, "0.3.0"), (3, "0.4.0")]), ("com.molly.tv.debug", [(1, "0.2.0")])]:

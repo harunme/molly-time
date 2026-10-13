@@ -1,4 +1,4 @@
-export type Session = { user: { id: string; name: string; role: string }; family: { id: string; name: string }; csrfToken: string };
+export type Session = { user: { id: string; name: string; role: string; email: string | null; accountId: string }; family: { id: string; name: string }; csrfToken: string };
 export type Resource = { id: string; name: string; type: 'Series' | 'Season' | 'Episode'; parentId: string | null; overview: string; indexNumber: number | null; status: string; ready: boolean; legacy: boolean; runtimeMs: number; imageUrl: string; files: { id: string; name: string; kind: string; size: number; language: string; storage: string; version: string; isDefault: boolean; offsetMs: number }[] };
 export type Child = { id: string; name: string };
 export type Page<T> = { items: T[]; page: number; pageSize: number; total: number };

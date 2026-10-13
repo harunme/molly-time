@@ -69,7 +69,7 @@ class User(Base):
     family: Mapped[Family] = relationship(back_populates="users")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
 
-    __table_args__ = (UniqueConstraint("family_id", "name", name="uq_user_family_name"),)
+    __table_args__ = (Index("uq_user_name", "name", unique=True),)
 
 
 class ChildProfile(Base):

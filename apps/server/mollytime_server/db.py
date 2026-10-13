@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event, func, inspect, select
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -48,8 +48,9 @@ def init_db() -> None:
     """Create tables. Idempotent."""
     # Import models so they register with Base.metadata.
     from . import (
+        accounts,
         management_models,
-        models,  # noqa: F401
+        models,
     )
 
     engine = get_engine()
@@ -65,14 +66,50 @@ def init_db() -> None:
                 with sqlite3.connect(database) as source, sqlite3.connect(backup) as target:
                     source.backup(target)
     Base.metadata.create_all(bind=engine)
+    # create_all does not add indexes to existing tables. Enforce the same global
+    # username invariant on legacy databases without rewriting users or their IDs.
+    with engine.begin() as connection:
+        username_index = next(
+            index for index in models.User.__table__.indexes if index.name == "uq_user_name"
+        )
+        existing = next(
+            (index for index in inspect(connection).get_indexes("users")
+             if index["name"] == username_index.name),
+            None,
+        )
+        if existing is not None:
+            if not existing["unique"] or existing["column_names"] != ["name"]:
+                raise RuntimeError("users.uq_user_name must be a unique index on name")
+        else:
+            duplicates = connection.execute(
+                select(models.User.name, func.count())
+                .group_by(models.User.name)
+                .having(func.count() > 1)
+                .order_by(models.User.name)
+            ).all()
+            if duplicates:
+                names = ", ".join(f"{name!r} ({count} accounts)" for name, count in duplicates)
+                raise RuntimeError(
+                    "Cannot enforce globally unique usernames: " + names
+                    + ". Rename the conflicting users before restarting; "
+                    "no accounts have been renamed or merged."
+                )
+            username_index.create(bind=connection, checkfirst=True)
     # Storage tables are additive: existing uploads/files need no ALTER or backfill.
     # Existing scan resources remain available; explicit state rows govern new uploads.
     with get_session_factory()() as session:
+        accounts.backfill_identities(session)
         if session.get(management_models.SchemaRevision, "management-v1") is None:
             session.add(management_models.SchemaRevision(id="management-v1"))
             session.commit()
         if session.get(management_models.SchemaRevision, "storage-v2") is None:
             session.add(management_models.SchemaRevision(id="storage-v2"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "global-usernames-v1") is None:
+            session.add(management_models.SchemaRevision(id="global-usernames-v1"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "email-accounts-v1") is None:
+            session.add(management_models.SchemaRevision(id="email-accounts-v1"))
             session.commit()
 
 

@@ -61,6 +61,7 @@ class Settings(BaseSettings):
 
     # ---- Admin bootstrap -------------------------------------------------------
     initial_admin_username: str = "admin"
+    initial_admin_email: str | None = None
     initial_admin_password: str = "molly"
     initial_admin_family_name: str = "Default Family"
 

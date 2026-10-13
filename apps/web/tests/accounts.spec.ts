@@ -1,0 +1,81 @@
+import { test, expect, type Page } from "@playwright/test";
+
+async function login(page: Page, account: string, password: string) {
+  await page.goto("/manage/");
+  await page.getByLabel("账号", { exact: true }).fill(account);
+  await page.getByLabel("密码", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+}
+
+test("superadmin invites a new family; activation generates an ID and both login methods work", async ({ page, context }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await login(page, "operator@example.test", "operator-e2e");
+  await page.getByRole("navigation").getByRole("button", { name: "运营设置" }).click();
+  await page.getByRole("tab", { name: "用户邀请" }).click();
+  await page.getByLabel("受邀邮箱", { exact: true }).fill("new-family@example.test");
+  await page.getByLabel("家庭名称", { exact: true }).fill("新家庭");
+  await page.getByRole("button", { name: "生成邀请链接", exact: true }).click();
+  const url = await page.getByLabel("邀请链接", { exact: true }).inputValue();
+  expect(new URL(url).hash).toMatch(/^#invite=/);
+  await expect(page.getByRole("row", { name: /new-family@example.test/ })).toContainText("待激活");
+  await page.screenshot({ path: "../../artifacts/account-invitations.png", fullPage: true });
+  const invited = await context.newPage();
+  await invited.goto(url);
+  await expect(invited.getByRole("heading", { name: "加入家庭放映室" })).toBeVisible();
+  await expect(invited.getByLabel("受邀邮箱")).toHaveValue("new-family@example.test");
+  await expect(invited.getByLabel("受邀邮箱")).toHaveAttribute("readonly", "");
+  await invited.getByLabel("设置密码", { exact: true }).fill("new-family-password");
+  await invited.getByLabel("确认密码", { exact: true }).fill("new-family-password");
+  await invited.getByRole("button", { name: "激活账号", exact: true }).click();
+  await expect(invited.getByRole("heading", { name: "账号已激活" })).toBeVisible();
+  const number = await invited.locator(".account-number").innerText();
+  expect(number).toMatch(/^[1-9][0-9]{9}$/);
+  await invited.setViewportSize({ width: 390, height: 844 });
+  expect(await invited.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await invited.screenshot({ path: "../../artifacts/account-activation-mobile.png", fullPage: true });
+  await invited.getByRole("button", { name: "前往登录", exact: true }).click();
+  await expect(invited.getByLabel("账号", { exact: true })).toHaveValue("new-family@example.test");
+  await invited.getByLabel("密码", { exact: true }).fill("new-family-password");
+  await invited.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(invited.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
+  await expect(invited.getByRole("button", { name: "运营设置", exact: true })).toHaveCount(0);
+  await invited.getByRole("button", { name: "账号菜单" }).click();
+  await expect(invited.getByText(`账号 ID：${number}`, { exact: true })).toBeVisible();
+  await invited.getByRole("menuitem", { name: "退出账号", exact: true }).click();
+  await invited.getByLabel("账号", { exact: true }).fill(number);
+  await invited.getByLabel("密码", { exact: true }).fill("new-family-password");
+  await invited.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(invited.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
+  const reused = await context.newPage();
+  await reused.goto(url);
+  await expect(reused.getByRole("alert")).toContainText("邀请无效");
+  expect(errors).toEqual([]);
+});
+
+test("old account binds email once and loses legacy username login", async ({ page }) => {
+  await login(page, "legacy-parent", "legacy-e2e");
+  await expect(page.getByRole("heading", { name: "为账号绑定邮箱" })).toBeVisible();
+  const number = await page.locator(".account-number").innerText();
+  await page.getByLabel("邮箱", { exact: true }).fill("legacy-bound@example.test");
+  await page.getByLabel("当前密码", { exact: true }).fill("legacy-e2e");
+  await page.getByRole("button", { name: "绑定邮箱并进入后台", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "账号菜单" }).click();
+  await page.getByRole("menuitem", { name: "退出账号", exact: true }).click();
+  await page.getByLabel("账号", { exact: true }).fill("legacy-parent");
+  await page.getByLabel("密码", { exact: true }).fill("legacy-e2e");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("账号密码错误");
+  await page.getByLabel("账号", { exact: true }).fill(number);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
+});
+
+test("ordinary login has no public registration entry", async ({ page }) => {
+  await page.goto("/manage/");
+  await expect(page.getByPlaceholder("邮箱或数字 ID")).toBeVisible();
+  await expect(page.getByRole("link", { name: /注册/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /注册|激活/ })).toHaveCount(0);
+  await expect(page.getByText(/当前仅通过邀请加入/)).toBeVisible();
+});

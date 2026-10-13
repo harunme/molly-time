@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('family viewing loads when reports are reopened and does not belong to a child', async ({ page }) => {
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('parent');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
@@ -14,7 +14,7 @@ test('family viewing loads when reports are reopened and does not belong to a ch
   const initialFamilyRows = await familyRows.count();
   const authResponse = await page.request.post('/api/auth/login', {
     headers: { 'X-Molly-Client': 'tv-shell/2' },
-    data: { username: 'parent', password: 'parent-e2e' },
+    data: { username: 'parent@example.test', password: 'parent-e2e' },
   });
   const auth = await authResponse.json();
   const headers = { Authorization: `Bearer ${auth.accessToken}` };

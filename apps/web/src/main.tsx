@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
 import { PairingPage } from "./pairing";
+import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
 import { Pagination, ResourcePicker, useDebounced, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
@@ -172,6 +173,10 @@ function Badge({ value }: { value: string }) {
 
 function App() {
   const navigation = useRef<HTMLElement>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(() =>
+    new URLSearchParams(location.hash.slice(1)).get("invite"),
+  );
+  const [loginAccount, setLoginAccount] = useState("");
   const [pairCode, setPairCode] = useState<string | null>(() =>
     new URLSearchParams(location.search).get("pair"),
   );
@@ -222,9 +227,20 @@ function App() {
     }
   };
   if (checking) return <div className="boot">正在打开家庭媒体库…</div>;
+  if (inviteToken !== null)
+    return <InviteActivation token={inviteToken} login={(email) => {
+      void run(async () => {
+        if (session) await api("/auth/logout", "POST");
+        stopUploads(); setSession(undefined); updateSession(undefined);
+        setLoginAccount(email); setInviteToken(null);
+        const url = new URL(location.href); url.hash = "";
+        history.replaceState(null, "", url.pathname + url.search);
+      });
+    }} />;
   if (!session)
     return (
       <Login
+        initialAccount={loginAccount}
         done={(value) => {
           setSession(value);
           updateSession(value);
@@ -233,6 +249,12 @@ function App() {
         }}
       />
     );
+  if (!session.user.email)
+    return <BindEmail session={session} bound={(user) => {
+      const value = { ...session, user }; setSession(value); updateSession(value);
+    }} logout={() => { void run(async () => {
+      await api("/auth/logout", "POST"); stopUploads(); setSession(undefined); updateSession(undefined);
+    }); }} />;
   if (pairCode !== null)
     return (
       <PairingPage
@@ -282,7 +304,8 @@ function App() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{session.user.name}</DropdownMenuLabel>
+              <DropdownMenuLabel>{session.user.email}</DropdownMenuLabel>
+              <DropdownMenuLabel>账号 ID：{session.user.accountId}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => {
                 void run(async () => {
@@ -413,10 +436,9 @@ function App() {
   );
 }
 
-function Login({ done }: { done: (session: Session) => void }) {
-  const [username, setUsername] = useState(""),
+function Login({ done, initialAccount }: { done: (session: Session) => void; initialAccount: string }) {
+  const [username, setUsername] = useState(initialAccount),
     [password, setPassword] = useState(""),
-    [family, setFamily] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   return (
@@ -460,7 +482,6 @@ function Login({ done }: { done: (session: Session) => void }) {
               void api<Session>("/auth/login", "POST", {
                 username,
                 password,
-                ...(family ? { familyId: family } : {}),
               })
                 .then(done)
                 .catch((e) => setError(e.message))
@@ -473,7 +494,8 @@ function Login({ done }: { done: (session: Session) => void }) {
                 <UserRound aria-hidden="true" />
                 <Input
                   autoComplete="username"
-                  placeholder="请输入账号"
+                  placeholder="邮箱或数字 ID"
+                  maxLength={254}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -494,16 +516,6 @@ function Login({ done }: { done: (session: Session) => void }) {
                 />
               </span>
             </label>
-            <details>
-              <summary>指定家庭（可选）</summary>
-              <label>
-                家庭 ID
-                <Input
-                  value={family}
-                  onChange={(e) => setFamily(e.target.value)}
-                />
-              </label>
-            </details>
             {error && (
               <p role="alert" className="error">
                 {error}
@@ -521,7 +533,7 @@ function Login({ done }: { done: (session: Session) => void }) {
           </form>
           <div className="login-help">
             <ShieldCheck aria-hidden="true" />
-            <p>使用超管、家庭管理员或成员账号。</p>
+            <p>使用邮箱或数字 ID 登录。当前仅通过邀请加入；已有旧账号可继续登录并绑定邮箱。</p>
           </div>
         </div>
       </section>

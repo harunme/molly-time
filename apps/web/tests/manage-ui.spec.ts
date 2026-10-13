@@ -6,9 +6,14 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/manage/");
-  await page.getByLabel("账号", { exact: true }).fill("parent");
+  await expect(page.getByLabel("家庭 ID", { exact: true })).toHaveCount(0);
+  await page.getByLabel("账号", { exact: true }).fill("parent@example.test");
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
+  const loginRequest = page.waitForRequest((request) =>
+    request.url().endsWith("/api/manage/auth/login") && request.method() === "POST",
+  );
   await page.getByRole("button", { name: "登录", exact: true }).click();
+  expect((await loginRequest).postDataJSON()).toEqual({ username: "parent@example.test", password: "parent-e2e" });
   await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("button", { name: "资源库", exact: true }).click();
   await expect(

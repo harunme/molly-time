@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 async function openBrowserVideo(page: import('@playwright/test').Page) {
   const auth = await (await page.request.post('http://127.0.0.1:8098/api/auth/login', {
-    headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent', password: 'parent-e2e' },
+    headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
   })).json();
   await page.addInitScript((binding) => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), {
     accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId, childId: 'autoplay-child',

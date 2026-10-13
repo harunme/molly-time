@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 test('family admin has no operations access; superadmin saves and reloads storage settings', async ({ page }) => {
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('parent');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
@@ -12,7 +12,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
   expect((await page.request.get('/api/manage/operations/storage')).status()).toBe(403);
   expect((await page.request.get('/api/manage/operations/client-releases')).status()).toBe(403);
   await page.getByRole('button', { name: '退出账号' }).click();
-  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
@@ -39,7 +39,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
 
 test('superadmin browses release history, filters channels and downloads an old APK', async ({ page }) => {
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
@@ -76,7 +76,7 @@ test('client releases render empty and failed inventory states and recover when 
     body: JSON.stringify(failed ? { detail: '安装包记录不可用' } : { items: [], total: 0, invalidRecords: 0 }),
   }));
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();
@@ -95,7 +95,7 @@ test('superadmin uploads a signed APK and sees its published version without ent
   const apk = resolve('../../artifacts/mollytime-tv-debug.apk');
   test.skip(!existsSync(apk), 'Build a debug APK before running the real APK upload test');
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('operator');
+  await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
   await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('navigation').getByRole('button', { name: '运营设置' }).click();

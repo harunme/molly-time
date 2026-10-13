@@ -12,7 +12,7 @@
 apps/server/.venv/bin/python -m mollytime_server.scripts.create_admin --superadmin
 ```
 
-命令使用 `MOLLYTIME_INITIAL_ADMIN_USERNAME` 等初始账号配置；已有账号保留密码。数据目录必须与 API 一致（默认 `.local/molly-server`）。已有其他超管时拒绝再创建第二个；普通执行 `create_admin` 不会自动提升权限。
+命令使用 `MOLLYTIME_INITIAL_ADMIN_USERNAME` 等初始账号配置；创建新账号必须提供 `MOLLYTIME_INITIAL_ADMIN_EMAIL`，脚本输出数字登录 ID。已有账号保留密码，已绑定邮箱不会被替换；旧账号可在首次进入后台时绑定邮箱。邮箱与数字 ID 全系统唯一；若初始化标识或邮箱已属于其他家庭，命令拒绝创建或提升。数据目录必须与 API 一致（默认 `.local/molly-server`）。已有其他超管时拒绝再创建第二个；普通执行 `create_admin` 不会自动提升权限。
 
 在运营设置中选择本地或 OSS，填写公共 Endpoint、私有 Bucket、AccessKey ID/Secret，可选同地域内网 Endpoint，设置上传与播放签名有效期。测试连接会在 `families/.operations-check/` 创建、读取并删除临时对象；启用 OSS 保存时也必须通过测试。此测试不验证浏览器 CORS 或全部分片权限，需要按下文配置并实际上传验收。
 

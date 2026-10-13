@@ -44,11 +44,21 @@ token 通过 `Authorization: Bearer <token>` 或 `?token=` 查询串传入。新
 
 ### 登录
 
+后台和 TV 支持邮箱或十位数字账号 ID 加密码登录，JSON 字段仍为 `username`，兼容客户端协议。邮箱去除首尾空格并统一小写，全系统唯一；数字 ID 由服务端分配并由数据库保证唯一，创建后保持不变。`user.id` 保留内部 UUID，`user.accountId` 是用户可见的数字登录 ID。家庭归属由服务端账号记录决定；旧客户端提交的 `familyId` 会被忽略，不参与登录查询。
+
+服务启动和初始化时自动为旧数据库补充 `users.name` 的唯一索引。若存在同名账号，初始化会列出重名并停止；需先备份数据库、为冲突账号确定不同用户名后重试。迁移不会自动改名、合并账号或更改家庭归属。
+
+账号升级使用新增 `account_identities` 和 `account_invitations` 表，服务启动自动为旧账号补充数字 ID，保留用户 UUID、密码、家庭和设备关联。旧账号在未绑定邮箱时仍可用旧用户名登录；首次进入网页后台须填写实际邮箱并确认当前密码，绑定后只接受邮箱或数字 ID 登录。已配对电视的访问与刷新凭证继续有效。
+
+本版没有公开注册入口或 `/api/auth/register`。仅超管可在“运营设置 → 用户邀请”指定邮箱和家庭名称，生成七天有效的一次性链接，手动交给邮箱使用者；链接仅生成时显示，数据库只存令牌哈希。重新邀请同一邮箱会撤销旧链接，亦可主动撤销。受邀用户凭链接设置密码，激活后创建独立家庭并成为家庭管理员。邀请人被禁用或失去超管权限时，其待激活邀请失效。邀请不允许指定角色、其他邮箱或现有家庭 ID。
+
+本版未接入 SMTP 和邮箱验证码，不声称已验证邮箱所有权。超管应将链接交给指定邮箱的实际使用者；旧账号绑定也需填写本人实际邮箱。本版暂不提供修改邮箱、找回密码和开放注册。
+
 ```http
 POST /api/auth/login
 Content-Type: application/json
 
-{"username": "admin", "password": "molly"}
+{"username": "parent@example.com", "password": "your-password"}
 ```
 
 ```json
@@ -56,7 +66,7 @@ Content-Type: application/json
   "accessToken": "eyJhbGciOi...snZQLiye6Hub0Iro",
   "refreshToken": "stUzUdMF611CykU1RYKRuOdYsKATtP2Pg4c8B-OKqvw",
   "expiresAt": "2026-10-11T11:20:15.876301+00:00",
-  "user": {"id": "b23e00c4-...", "name": "admin", "role": "admin", "familyId": "13176a75-..."},
+  "user": {"id": "b23e00c4-...", "name": "parent", "role": "admin", "familyId": "13176a75-...", "email": "parent@example.com", "accountId": "1234567890"},
   "family": {"id": "13176a75-...", "name": "Default Family"}
 }
 ```
@@ -159,11 +169,11 @@ playback_events    (id, family_id, user_id, child_id, item_id, position_ms, dura
 
 ```bash
 bash tools/build-server.sh           # 创建 .venv
-bash tools/init-server.sh            # 建库 + 建 family + 建 admin
+MOLLYTIME_INITIAL_ADMIN_EMAIL=you@example.com bash tools/init-server.sh # 首次创建超管
 bash tools/run-server.sh             # 监听 127.0.0.1:8096
 ```
 
-默认账号 `admin` / `molly`，家庭名 `Default Family`。
+新建初始账号必须配置 `MOLLYTIME_INITIAL_ADMIN_EMAIL`，通过该邮箱或脚本输出的数字 ID 登录。默认初始密码为 `molly`，家庭名 `Default Family`；生产必须设置独立密码。已有未绑定邮箱的 `admin` 账号可过渡登录并绑定邮箱，重复初始化保留密码。
 
 ### 配置（环境变量）
 
@@ -176,7 +186,8 @@ bash tools/run-server.sh             # 监听 127.0.0.1:8096
 | `MOLLYTIME_AUTH_SECRET` | `dev-secret-do-not-use-in-prod` | HMAC 密钥；生产必改 |
 | `MOLLYTIME_ACCESS_TOKEN_TTL_SECONDS` | `3600` | |
 | `MOLLYTIME_REFRESH_TOKEN_TTL_SECONDS` | `2592000` | |
-| `MOLLYTIME_INITIAL_ADMIN_USERNAME` | `admin` | |
+| `MOLLYTIME_INITIAL_ADMIN_USERNAME` | `admin` | 内部初始化标识、旧账号定位；已绑定后不作为登录方式 |
+| `MOLLYTIME_INITIAL_ADMIN_EMAIL` | – | 创建新初始账号必填；已有账号邮箱不会被替换 |
 | `MOLLYTIME_INITIAL_ADMIN_PASSWORD` | `molly` | |
 | `MOLLYTIME_INITIAL_ADMIN_FAMILY_NAME` | `Default Family` | |
 | `MOLLYTIME_STORAGE_BACKEND` | `local` | `local` \| `oss` |

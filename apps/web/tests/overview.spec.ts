@@ -8,7 +8,7 @@ test('overview is the default home, uses aggregates and paged widgets, and links
     if (request.method() === 'GET' && request.url().includes('/api/manage/')) requests.push(new URL(request.url()));
   });
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('parent');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/manage/overview' && result.ok());
   await page.getByRole('button', { name: '登录', exact: true }).click();

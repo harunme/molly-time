@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from .accounts import account_dto, ensure_identity, find_login_user
 from .auth import hash_refresh_token, verify_password
 from .deps import DbSession
 from .management_models import ParentSession
@@ -86,6 +87,7 @@ def get_parent(request: Request, db: DbSession):
         if user.role not in ("superadmin", "admin") and request.url.path not in (
             "/api/manage/auth/logout",
             "/api/manage/home-config/preview",
+            "/api/manage/account/email",
         ):
             raise HTTPException(403, "此操作需要家庭管理员")
     return user
@@ -95,15 +97,14 @@ Parent = Annotated[User, Depends(get_parent)]
 
 
 class Login(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
+    username: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=128)
-    familyId: str | None = None
 
 
 def session_dto(row, user, db):
     family = db.get(Family, user.family_id)
     return {
-        "user": {"id": user.id, "name": user.name, "role": user.role},
+        "user": account_dto(db, user),
         "family": {"id": user.family_id, "name": family.name if family else "我的家庭"},
         "csrfToken": row.csrf,
     }
@@ -112,15 +113,10 @@ def session_dto(row, user, db):
 @router.post("/login")
 def login(body: Login, request: Request, response: Response, db: DbSession):
     check_origin(request)
-    query = db.query(User).filter(User.name == body.username)
-    if body.familyId:
-        query = query.filter(User.family_id == body.familyId)
-    users = query.limit(2).all()
-    if len(users) != 1:
-        raise HTTPException(401, "账号密码错误，或需要指定家庭 ID")
-    user = users[0]
+    user = find_login_user(db, body.username)
     if (
-        user.is_disabled
+        user is None
+        or user.is_disabled
         or user.role not in ("superadmin", "admin", "member")
         or not verify_password(body.password, user.password_hash)
     ):
@@ -138,6 +134,7 @@ def login(body: Login, request: Request, response: Response, db: DbSession):
         expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=7),
     )
     db.add(row)
+    ensure_identity(db, user)
     db.commit()
     response.set_cookie(
         COOKIE,

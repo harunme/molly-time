@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import manage_auth
 from .api import auth as api_auth
 from .api import (
+    account_invitations,
     catalog,
     children,
     client_release_uploads,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(api_auth.router)
+    app.include_router(account_invitations.router)
     app.include_router(client_updates.router)
     app.include_router(pairing.router)
     app.include_router(users.router)

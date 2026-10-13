@@ -4,7 +4,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/manage/');
-  await page.getByLabel('账号', { exact: true }).fill('parent');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: /^(概览|资源库)$/ })).toBeVisible();
@@ -16,7 +16,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
   await page.screenshot({ path: 'test-results/subtitle-admin-settings.png', fullPage: true });
 
   const auth = await (await page.request.post('/api/auth/login', {
-    headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent', password: 'parent-e2e' },
+    headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
   })).json();
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const tv = await context.newPage();

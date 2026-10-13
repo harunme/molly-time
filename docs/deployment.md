@@ -13,7 +13,7 @@
 - 初始管理员凭据：`/opt/mollytime/admin-credentials.txt`（权限 600）
 - 自动部署状态：`/opt/mollytime/deployment-state.json`（记录当前发布目录和镜像标签）
 
-首次部署创建独立数据库和随机密码的 `admin` 超管账号。本地数据库、视频和 OSS 凭据不自动迁移。当前使用 Let’s Encrypt 公网 IP 证书，业务入口为 HTTPS 8096；旧 HTTP 链接在同端口跳转至 HTTPS。
+原始部署创建了独立数据库和随机密码的 `admin` 超管账号。账号版本升级后，该账号仍可用原密码过渡登录，首次进入后台绑定实际邮箱；后续使用邮箱或生成的数字 ID 登录。新部署初始化须配置 `MOLLYTIME_INITIAL_ADMIN_EMAIL` 和独立密码。本地数据库、视频和 OSS 凭据不自动迁移。当前使用 Let’s Encrypt 公网 IP 证书，业务入口为 HTTPS 8096；旧 HTTP 链接在同端口跳转至 HTTPS。
 
 服务器使用 `MOLLYTIME_HTTP_BIND=0.0.0.0:8096`，并配置腾讯云依赖镜像源：`MOLLYTIME_APT_MIRROR=mirrors.cloud.tencent.com`、`MOLLYTIME_PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple`。
 
@@ -46,6 +46,8 @@ GitHub 仓库 Secrets 已配置 `MOLLYTIME_DEPLOY_KEY` 和 `MOLLYTIME_DEPLOY_KNO
 服务器的固定接收入口为 `/usr/local/sbin/mollytime-github-deploy` 和 `/usr/local/lib/mollytime-deploy.py`，源码见 `infra/github-deploy-gate.sh` 和 `infra/github-deploy.py`。这些入口脚本变更需通过现有管理 SSH 连接单独安装，不由上传发布包覆盖。
 
 每次发布解压到 `/opt/mollytime/releases/<SHA>-<随机后缀>/`。接收器拒绝越界路径、链接、未知文件和过大的发布包；共享 `.env`、`data/` 与 `tls/` 保留在服务器根部署目录。镜像使用提交 SHA 标记。启动前将 SQLite 在线备份到 `data/backups/`；启动后检查容器健康、可信 HTTPS、管理端和 TV 页面。失败时恢复上一版本的镜像和代理配置，成功后才更新部署状态。
+
+邮箱账号与邀请表在 API 启动时自动创建，旧账号数字 ID 自动补齐且不会重复分配。用户 UUID、密码、家庭、配对设备和观看记录不变。邮箱不会编造或从部署配置强制覆盖，旧账号由用户首次登录后绑定。后台和 API 必须一起更新。发布失败只回退应用，数据库备份不自动还原。
 
 回退恢复应用代码，不自动恢复数据库；涉及不兼容数据库迁移时，需要根据发布前备份人工处理。发布目录、旧镜像和备份默认保留，可按磁盘容量定期清理。首次需要把工作流文件推送到 main 才会触发，未提交的本地改动不会自动部署。
 

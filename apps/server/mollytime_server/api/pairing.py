@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from ..accounts import account_dto
 from ..auth import hash_refresh_token, issue_access_token, refresh_token_expiry
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
@@ -178,10 +179,11 @@ def poll(body: Poll, request: Request, response: Response, db: DbSession):
     access, expires = issue_access_token(user_id=user.id, family_id=user.family_id,
                                          role="device", device_id=device.id)
     family = db.get(Family, user.family_id)
+    identity = account_dto(db, user, role="device")
     db.commit()
     return {"status": "authorized", "auth": {"accessToken": access, "refreshToken": raw,
             "expiresAt": expires.isoformat(), "deviceId": device.id,
-            "user": {"id": user.id, "name": user.name, "role": "device", "familyId": user.family_id},
+            "user": {**identity, "familyId": user.family_id},
             "family": {"id": user.family_id, "name": family.name if family else ""}}}
 
 

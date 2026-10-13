@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/manage/");
-  await page.getByLabel("账号", { exact: true }).fill("parent");
+  await page.getByLabel("账号", { exact: true }).fill("parent@example.test");
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
@@ -124,7 +124,7 @@ test("real device telemetry, reports, child management and mobile layout", async
   const auth = await (
     await page.request.post("/api/auth/login", {
       headers: { "X-Molly-Client": "tv-shell/2" },
-      data: { username: "parent", password: "parent-e2e" },
+      data: { username: "parent@example.test", password: "parent-e2e" },
     })
   ).json();
   const parentSession = await (await page.request.get("/api/manage/auth/session")).json();
@@ -220,7 +220,7 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
     await expect(tv.getByLabel("密码")).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/manage/?pair=");
-    await page.getByLabel("账号", { exact: true }).fill("parent");
+    await page.getByLabel("账号", { exact: true }).fill("parent@example.test");
     await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await expect(
@@ -422,7 +422,7 @@ test("browser TV resolves an authenticated video and reports playback without th
   const auth = await (
     await page.request.post("/api/auth/login", {
       headers: { "X-Molly-Client": "tv-shell/2" },
-      data: { username: "parent", password: "parent-e2e" },
+      data: { username: "parent@example.test", password: "parent-e2e" },
     })
   ).json();
   const context = await browser.newContext();
