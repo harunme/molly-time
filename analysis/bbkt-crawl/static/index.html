@@ -54,6 +54,15 @@
   .row.active { background: var(--bg-elev2); }
   .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .count { color: var(--text-dim); font-size: 11px; margin-left: 8px; font-variant-numeric: tabular-nums; }
+  .series-row { gap: 8px; }
+  .series-row .name { min-width: 0; }
+  .series-progress {
+    display: flex; flex-direction: column; align-items: flex-end;
+    flex: 0 0 auto; margin-left: auto; font-size: 10px; line-height: 1.3;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .series-progress .main { color: var(--text); font-weight: 600; }
+  .series-progress .detail { color: var(--text-dim); }
   .badge {
     display: inline-block; padding: 1px 6px; border-radius: 10px;
     font-size: 10px; background: var(--bg-elev2); color: var(--text-dim);
@@ -203,6 +212,44 @@ function stateBadge(state) {
   return `<span class="badge ${state === 'done' ? 'ok' : state === 'running' ? 'run' : state === 'failed' ? 'err' : 'pend'}">${label}</span>`;
 }
 
+function seriesProgress(s, episodes = []) {
+  const total = Number(s.episodes) || 0;
+  const video = { done: 0, running: 0, pending: 0, failed: 0, known: 0 };
+  const other = {};
+  for (const ep of episodes) {
+    for (const [field, rawStates] of Object.entries(ep.states || {})) {
+      const states = Array.isArray(rawStates) ? rawStates : [rawStates];
+      const state = ['done', 'running', 'pending', 'failed'].find(candidate => states.includes(candidate));
+      if (!state) continue;
+      if (field === 'videoUrl') {
+        video.known++;
+        video[state]++;
+      } else {
+        const group = other[field] ||= { done: 0, running: 0, pending: 0, failed: 0 };
+        group[state]++;
+      }
+    }
+  }
+  const { done, running, pending, failed } = video;
+  const missing = Math.max(0, total - video.known);
+  const detail = [];
+  const fields = { videoUrl: '视频', srtEnUrl: '英文字幕', srtCnEnUrl: '中英字幕' };
+  for (const [field, counts] of Object.entries(other)) {
+    for (const state of ['running', 'pending', 'failed']) {
+      if (counts[state]) detail.push(`${fields[field] || field}${STATE_LABEL[state]} ${counts[state]}`);
+    }
+  }
+  if (running) detail.unshift(`视频下载中 ${running}`);
+  if (pending) detail.unshift(`视频待下 ${pending}`);
+  if (failed) detail.unshift(`视频失败 ${failed}`);
+  if (missing) detail.push(`未抓取 ${missing}`);
+  if (!detail.length) detail.push('全部完成');
+  return `<span class="series-progress" title="视频：${done}/${total} 已下载；${detail.join('，')}">
+    <span class="main">${done}/${total} 视频已下载</span>
+    <span class="detail">${detail.join(' · ')}</span>
+  </span>`;
+}
+
 async function loadCategories() {
   const cats = await get('/api/categories');
   const pane = document.getElementById('catPane');
@@ -226,13 +273,36 @@ async function selectCategory(id) {
   pane.innerHTML = '<div class="pane-header">节目</div>';
   for (const s of list) {
     const row = document.createElement('div');
-    row.className = 'row';
+    row.className = 'row series-row';
+    row.dataset.seriesId = s.id;
     row.innerHTML = `<span class="name">${s.name}</span>` +
-      `<span class="count">${s.episodes}${stateBadge(s.cover_state)}</span>`;
+      seriesProgress(s);
     row.onclick = () => selectSeries(s.id, row);
     pane.appendChild(row);
   }
   document.getElementById('epPane').innerHTML = '<div class="pane-header">剧集</div><div class="empty">选一个节目</div>';
+}
+
+async function refreshSeriesProgress() {
+  if (selectedCategory === null) return;
+  try {
+    const list = await get('/api/series?category_id=' + selectedCategory);
+    const progress = await Promise.all(list.map(async s => {
+      const episodes = await get('/api/episodes?series_id=' + s.id);
+      return [String(s.id), seriesProgress(s, episodes)];
+    }));
+    const byId = new Map(progress);
+    document.querySelectorAll('#seriesPane .series-row').forEach(row => {
+      const markup = byId.get(row.dataset.seriesId);
+      const current = row.querySelector('.series-progress');
+      if (!markup || !current) return;
+      const wrapper = document.createElement('span');
+      wrapper.innerHTML = markup;
+      current.replaceWith(wrapper.firstElementChild);
+    });
+  } catch (e) {
+    console.error('refreshSeriesProgress:', e);
+  }
 }
 
 async function selectSeries(id, rowEl) {
@@ -480,6 +550,7 @@ function connectSSE() {
 loadCategories().catch(e => console.error(e));
 refreshStats();
 setInterval(refreshStats, 5000);
+setInterval(refreshSeriesProgress, 5000);
 setInterval(refreshCurrentEpisodes, 10000);
 connectSSE();
 </script>
