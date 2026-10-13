@@ -11,7 +11,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="input-group"
       className={cn(
-        "group relative flex h-control w-full items-center rounded-ui border border-border bg-card focus-within:border-primary focus-within:ring-2 focus-within:ring-focus-ring",
+        "group relative flex h-control w-full items-center rounded-[20px] border border-border bg-card focus-within:border-primary focus-within:ring-2 focus-within:ring-focus-ring",
         className,
       )}
       {...props}
