@@ -152,7 +152,10 @@ def invitations(
 ):
     query = (
         db.query(AccountInvitation)
-        .filter(AccountInvitation.created_by == user.id)
+        .filter(
+            AccountInvitation.created_by == user.id,
+            AccountInvitation.revoked_at.is_(None),
+        )
         .order_by(AccountInvitation.created_at.desc(), AccountInvitation.id)
     )
     codes = {}

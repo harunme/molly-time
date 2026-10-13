@@ -28,7 +28,12 @@ export function Invitations() {
   useEffect(() => {
     let alive = true; setLoading(true);
     api<Page<Invitation>>(`/operations/invitations?page=${page}&pageSize=20`)
-      .then((value) => { if (alive) setData(value); })
+      .then((value) => {
+        if (!alive) return;
+        const lastPage = Math.max(1, Math.ceil(value.total / value.pageSize));
+        if (page > lastPage) { setPage(lastPage); return; }
+        setData(value);
+      })
       .catch((failure) => { if (alive) setError(failure.message); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };

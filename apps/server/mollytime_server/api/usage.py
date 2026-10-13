@@ -1,18 +1,17 @@
-"""Family usage: own-family reads, superadmin cross-family reports/import/export."""
+"""Family usage: own-family reads and superadmin reports/export."""
 
 import csv
 import io
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-from starlette.concurrency import run_in_threadpool
 
 from ..accounts import AccountIdentity
 from ..db import get_session_factory
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..models import Family, User
-from ..usage import MAX_LOG_BYTES, family_usage, import_oss_logs, month_bounds
+from ..usage import family_usage, month_bounds
 from .operations import Operator
 
 router = APIRouter(prefix="/api/manage", tags=["family-usage"])
@@ -92,13 +91,3 @@ def export_usage(user: Operator, db: DbSession, month: str | None = None,
     return StreamingResponse(rows(), media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": f'attachment; filename="family-usage-{month}.csv"',
     })
-
-
-@router.post("/operations/usage/oss-logs")
-async def import_logs(request: Request, user: Operator, db: DbSession):
-    data = bytearray()
-    async for block in request.stream():
-        data.extend(block)
-        if len(data) > MAX_LOG_BYTES:
-            raise HTTPException(413, "每次最多导入 10 MiB 日志")
-    return await run_in_threadpool(import_oss_logs, db, bytes(data))

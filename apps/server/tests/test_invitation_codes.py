@@ -175,6 +175,19 @@ def test_codes_are_encrypted_in_storage_and_retrievable_in_authorized_history(op
     assert operator.get(INVITES).json()["items"][0]["code"] == invitation["code"]
 
 
+def test_revoked_invitation_disappears_from_history_and_pagination(operator):  # noqa: F811
+    revoked = code(operator)
+    active = code(operator)
+    assert operator.get(INVITES, params={"page": 1, "pageSize": 1}).json()["total"] == 2
+
+    assert operator.post(f"{INVITES}/{revoked['id']}/revoke").status_code == 200
+
+    listing = operator.get(INVITES, params={"page": 1, "pageSize": 1})
+    assert listing.status_code == 200
+    assert listing.json()["total"] == 1
+    assert [item["id"] for item in listing.json()["items"]] == [active["id"]]
+
+
 @pytest.mark.parametrize("role", ["admin", "member"])
 def test_saved_code_is_not_disclosed_to_non_operators(operator, role):  # noqa: F811
     invitation = code(operator)

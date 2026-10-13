@@ -5,8 +5,8 @@
 ## 页面与权限
 
 - 家长后台 **家庭设置 → 家庭用量**：查看本家庭当前文件占用与指定月份流量。
-- 超管后台 **运营设置 → 家庭用量**：按家庭、邮箱或账号 ID 搜索、分页查看所有家庭，导出指定月份的 CSV，导入 OSS 访问日志。
-- 普通家庭账号不能查看其他家庭的报表、导出平台用量或写入流量记录。导入需要超管家长会话、同源请求与 CSRF 校验；设备令牌不能使用运营接口。
+- 超管后台 **运营设置 → 家庭用量**：按家庭、邮箱或账号 ID 搜索、分页查看所有家庭，导出指定月份的 CSV。
+- 普通家庭账号不能查看其他家庭的报表或导出平台用量；设备令牌不能使用运营接口。
 
 ## 统计口径
 
@@ -21,34 +21,17 @@
 流量包括：
 
 - `traffic.localBytes`：家庭媒体响应体成功交给 ASGI 发送接口的字节，包括 Range 视频、下载、家长提醒视频、字幕和实际返回的缩放封面。断开时只累计发送成功的块；HEAD、416、拒绝访问、302 跳转及播放解析不计。它不是客户端确认收讫或运营商网络账单；代理缓存/重传应在部署层核对。
-- `traffic.ossBytes`：导入 OSS Bucket 访问日志中，已配置 Bucket 公网域名的成功 `GetObject`、200/206、普通请求的 `SentBytes`。上传、HEAD、错误、内网请求与 CDN 回源不计。若 worker 未配置内网 Endpoint，处理读取会产生真实公网下行费用，也会进入对应家庭统计。
+- `traffic.ossBytes`：历史已入账的 OSS 公网下行字节。OSS 日志导入已移除，新增 OSS 请求不会自动计入此项。
 - `traffic.totalBytes`：以上两项之和。TV 本地缓存重复播放不发起媒体请求，因此不重复计网络流量。
 
-新表 `family_traffic_events` 为追加式台账，保留家庭、来源、字节数、请求时间和入账时间。OSS 请求 ID 与 Bucket 的 SHA-256 为唯一键，同文件重复行、重叠文件和重复导入都不会重计；同 ID 内容冲突会原子拒绝整批。签名 URL、访问密钥、Cookie、IP、客户端信息不入库。
+`family_traffic_events` 为追加式台账，保留家庭、来源、字节数、请求时间和入账时间。历史 OSS 记录保留，用量报表仍可查询。
 
-服务启动自动建表并记录 `family-usage-v1`。本地流量从启用后开始统计；原先未记录的流量不能追溯。OSS 旧日志可以按原请求时间补录。
-
-## OSS 日志导入
-
-在 OSS 控制台为媒体 Bucket 启用访问日志，下载日志后在运营页面上传 UTF-8 文本。支持官方 Bucket 日志格式，单文件最多 10 MiB / 20000 行，大文件先拆分。
-
-解析按阿里云 [日志转存格式](https://www.alibabacloud.com/help/zh/oss/user-guide/logging) 的 `SentBytes` 和 `RequestID` 统计，按服务端生成的 `families/{family_id}/...` 对象前缀归属。旧路径仅在数据库存在唯一家庭归属时计入；未知或共享归属记录返回 `unresolved`，运营人员应检查后处理。
-
-也可在服务器用相同数据库、数据目录和存储配置定期执行：
-
-```bash
-apps/server/.venv/bin/python -m mollytime_server.scripts.import_usage_logs /path/to/access.log
-```
-
-每个文件返回 `imported`、`duplicates`、`ignored`、`unresolved`；格式错误或同请求 ID 冲突会拒绝该文件全部新增记录。CLI 和网页采用相同去重和归属策略。
-
-日志需要持续收集与导入，本功能不自动启用云端日志或拉取日志。界面显示的是已导入流量，`lastOssImportAt` 是该月份记录最近入库时间，不是日志完整性凭证。阿里云文档说明 Bucket 日志不记录中断请求，因此结算前仍应与云端计量核对；漏日志或未识别记录不能按零消费结算。CDN 终端流量需未来接入 CDN 日志。
+服务启动自动建表并记录 `family-usage-v1`。本地流量从启用后开始统计；原先未记录的流量不能追溯。OSS 访问日志导入已移除，界面上的历史 OSS 数值不代表当前月份的完整 OSS 流量。
 
 ## API
 
 - `GET /api/manage/usage?month=YYYY-MM`：当前会话所属家庭。
 - `GET /api/manage/operations/usage?month=YYYY-MM&q=...&page=1&pageSize=20`：超管分页报表。
 - `GET /api/manage/operations/usage/export?month=YYYY-MM&q=...`：导出所有匹配家庭，CSV 中存储列明确为当前占用。
-- `POST /api/manage/operations/usage/oss-logs`：超管上传原始 UTF-8 日志内容，`application/octet-stream`。
 
-默认月份为北京时间当前月。查询错误月份返回 422；过大的日志返回 413；冲突记录返回 409。历史月份的存储列仍为当前占用，流量列按所选月份取台账。
+默认月份为北京时间当前月。查询错误月份返回 422。历史月份的存储列仍为当前占用，流量列按所选月份取台账。

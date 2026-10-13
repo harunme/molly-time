@@ -118,7 +118,6 @@
 .selection-bar .paged-picker [data-slot="select-field"] { @apply w-full; }
 .selection-bar .pagination button { @apply text-foreground; }
 .toolbar > .pagination { @apply my-0; }
-.settings-card > .pagination { @apply border-t pt-3; }
 .report-section > .pagination { @apply mb-0; }
 .overview-metrics { @apply mb-6 grid gap-card-gap sm:grid-cols-2 xl:grid-cols-4; }
 .overview-metric { @apply gap-0 p-card-padding; }
@@ -132,7 +131,7 @@
 .overview-panels { @apply grid items-start gap-card-gap xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]; }
 .overview-panel { @apply gap-0 min-w-0 p-card-padding; }
 .overview-panel > .section-heading { @apply mb-4; }
-.overview-panel > .pagination { @apply mt-4 mb-0 border-t pt-4; }
+.overview-panel > .pagination { @apply mt-4 mb-0; }
 .overview-uploads .empty { @apply min-h-40 border-0 py-6; }
 .overview-upload-table { @apply table-fixed; }
 .overview-upload-table th { @apply text-foreground; }
@@ -642,7 +641,6 @@ td small {
 .family-usage-table { min-width: 760px; }
 .family-usage-table td { vertical-align: top; }
 .family-usage-table small { display: block; margin-top: .35rem; overflow-wrap: anywhere; }
-.usage-import { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
 .client-releases-table { min-width: 900px; }
 .client-releases-table td { vertical-align: top; }
 .client-releases-table td:nth-child(n+2) { @apply whitespace-nowrap; }
@@ -677,7 +675,9 @@ td small {
 }
 .operations-tabs [data-slot="tabs-trigger"]:focus-visible {
   @apply outline-none ring-0;
-  box-shadow: inset 0 0 0 2px var(--foreground);
+}
+.operations-tabs [data-slot="tabs-trigger"]:focus-visible::after {
+  opacity: 1;
 }
 .operations-card {
   @apply w-full;
@@ -686,7 +686,7 @@ td small {
   @apply border-0 p-0;
 }
 .operations-card .actions {
-  @apply mt-5 border-t pt-5;
+  @apply mt-5;
 }
 .operations-card .muted {
   @apply mb-4;

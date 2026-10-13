@@ -59,25 +59,9 @@ test("operator filters usage, exports exact bytes and opens the route directly o
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(page.getByRole("button", { name: "用量月份", exact: true })).toBeFocused();
-  await expect(page.getByLabel("OSS 访问日志", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "导入 OSS 访问日志" })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: "../../artifacts/family-usage-mobile.png", fullPage: true, animations: "disabled" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "../../artifacts/family-usage-desktop.png", fullPage: true, animations: "disabled" });
-});
-
-test("OSS import reports deduplication and unresolved owners, and recovers from an invalid log", async ({ page }) => {
-  let valid = false;
-  await page.route("**/api/manage/operations/usage/oss-logs", (route) => route.fulfill({
-    status: valid ? 200 : 422, contentType: "application/json",
-    body: JSON.stringify(valid ? { imported: 2, duplicates: 1, ignored: 3, unresolved: 1 } : { detail: "第 1 行日志格式无效" }),
-  }));
-  await login(page, true);
-  await page.goto("/manage/#/operations/usage");
-  await page.getByLabel("OSS 访问日志", { exact: true }).setInputFiles({ name: "invalid.log", mimeType: "text/plain", buffer: Buffer.from("invalid") });
-  await expect(page.getByRole("alert")).toContainText("第 1 行日志格式无效");
-  valid = true;
-  await page.getByLabel("OSS 访问日志", { exact: true }).setInputFiles({ name: "access.log", mimeType: "text/plain", buffer: Buffer.from("log fixture") });
-  await expect(page.getByText("已导入 2 条，重复 1 条，忽略 3 条，未识别家庭 1 条。")).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
 });
