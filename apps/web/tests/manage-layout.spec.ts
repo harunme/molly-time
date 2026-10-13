@@ -24,7 +24,7 @@ for (const width of [390, 1280, 1920]) {
       await expect(page.locator('.page-title h1')).toBeInViewport();
       await page.screenshot({ path: `../../artifacts/design-audit/${name}-${width}.png`, fullPage: true, animations: 'disabled' });
     };
-    for (const [route, name] of [['overview', '概览'], ['watch', '观看记录'], ['library', '资源库'], ['family', '家庭设置'], ['operations', '运营设置']]) {
+    for (const [route, name] of [['overview', '概览'], ['library', '资源库'], ['family', '家庭设置'], ['operations', '运营设置']]) {
       await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name, exact: true }).click();
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
       await checkLayout(route);
@@ -112,9 +112,9 @@ test('populated watch reports keep durations and dates readable on mobile', asyn
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '播放明细', exact: true })).toBeVisible();
+  await expect(page.getByText('播放明细', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const duration = page.locator('.watch-summary > div').first().locator('strong');
+  const duration = page.locator('.watch-history-stats > div').first().locator('strong');
   const size = await duration.evaluate((element) => ({ width: element.parentElement!.clientWidth, content: element.scrollWidth }));
   expect(size.content).toBeLessThanOrEqual(size.width);
   await page.screenshot({ path: '../../artifacts/design-audit/watch-populated-390.png', fullPage: true, animations: 'disabled' });

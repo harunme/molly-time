@@ -11,8 +11,6 @@ import { FeedbackDialogs, confirmAction, promptText } from "./feedback";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DatePicker } from "@/components/ui/date-picker";
-import { dateKey, parseDateKey } from "@/lib/date-only";
 import { SelectField } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
@@ -38,7 +36,6 @@ import {
   type Resource,
   type Session,
   type Upload,
-  type WatchReport,
 } from "./api";
 import { enqueue, hasFile, live, pause, resume, stopUploads } from "./uploads";
 import { getUploadLimits, useUploadLimits, validateUploadSize } from "./upload-limits";
@@ -47,7 +44,6 @@ import {
   UploadCloud,
   ListTodo,
   LayoutDashboard,
-  ChartNoAxesCombined,
   Users,
   Settings2,
   Film,
@@ -124,7 +120,6 @@ function Icon({ name }: { name: string; }) {
     library: FolderOpen,
     trash: Trash2,
     overview: LayoutDashboard,
-    watch: ChartNoAxesCombined,
     family: Users,
     operations: Settings2,
   };
@@ -295,7 +290,6 @@ function App() {
     }} />;
   const names = [
     ["overview", "概览"],
-    ["watch", "观看记录"],
     ["library", "资源库"],
     ["trash", "回收站"],
     ["family", "家庭设置"],
@@ -401,7 +395,7 @@ function App() {
             <Route path="trash" element={<Trash readonly={readonly} />} />
             <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
             <Route path="upload" element={<Navigate to="/library?uploads=1" replace />} />
-            <Route path="watch" element={<Reports />} />
+            <Route path="watch" element={<Navigate to="/overview?watch=1" replace />} />
             <Route path="operations/*" element={session.user.role === "superadmin"
               ? <Operations notify={setNotice} />
               : <Navigate to="/overview" replace />} />
@@ -1480,191 +1474,6 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
   );
 }
 
-function Reports() {
-  const children = usePagedData<Child>("/children", 0, 20, true, true),
-    [child, setChild] = useState("");
-  const today = new Date();
-  const week = new Date(today);
-  week.setDate(week.getDate() - 6);
-  const [start, setStart] = useState(dateKey(week)),
-    [end, setEnd] = useState(dateKey(today));
-  const reportKey = `${start}|${end}|${child}`;
-  const [position, setPosition] = useState({ key: reportKey, session: 1, content: 1 });
-  const pages = position.key === reportKey ? position : { key: reportKey, session: 1, content: 1 };
-  const report = useData<(WatchReport & { sessionTotal: number; contentTotal: number; pageSize: number; }) | undefined>(
-    `/reports/watch-time?start=${start}&end=${end}${child ? `&childId=${encodeURIComponent(child)}` : ""}&sessionPage=${pages.session}&contentPage=${pages.content}&pageSize=20`,
-    undefined,
-  );
-  const data = report.data,
-    max = Math.max(...(data?.days.map((d) => d.playedMs) || [0]), 60000);
-  return (
-    <>
-      <div className="page-title">
-        <div>
-          <h1>观看记录</h1>
-          <p>统计真实播放时间，暂停、缓冲和拖动不计入。</p>
-        </div>
-      </div>
-      <div className="toolbar report-filters">
-        <Label>
-          儿童
-          <SelectField
-            value={child}
-            onValueChange={(value) => setChild(value)}
-            options={[child && children.known[child] && !children.data.some((c) => c.id === child) && ({ value: child, label: <> {children.known[child].name} </> }), ({ value: "", label: <> 全家庭 </> }), children.data.map((c) => (
-              ({ value: c.id, label: <> {c.name} </> })
-            ))]} />
-        </Label>
-        <Label>
-          开始日期
-          <DatePicker
-            aria-label="开始日期"
-            data-testid="watch-start-date"
-            value={parseDateKey(start)}
-            onValueChange={(date) => { if (date) setStart(dateKey(date)); }}
-          />
-        </Label>
-        <Label>
-          结束日期
-          <DatePicker
-            aria-label="结束日期"
-            data-testid="watch-end-date"
-            value={parseDateKey(end)}
-            onValueChange={(date) => { if (date) setEnd(dateKey(date)); }}
-          />
-        </Label>
-        <Button
-          variant="ghost"
-          className="quiet"
-          onClick={() => {
-            setStart(dateKey(today));
-            setEnd(dateKey(today));
-          }}
-        >
-          今天
-        </Button>
-        <Button
-          variant="ghost"
-          className="quiet"
-          onClick={() => {
-            setStart(dateKey(week));
-            setEnd(dateKey(today));
-          }}
-        >
-          近 7 天
-        </Button>
-      </div>
-      {children.total > children.pageSize && <Pagination {...children} loading={children.refreshing} label="儿童筛选分页" />}
-      <State error={children.error} />
-      <State loading={report.loading} error={report.error} />
-      {!report.loading &&
-        !report.error &&
-        data &&
-        (!data.statisticsSince ? (
-          <Empty className="empty">
-            <h3>等待第一条正式播放记录</h3>
-            <p>已绑定的 TV 客户端播放视频后，记录会出现在这里；选择儿童后可按儿童统计。</p>
-            <p>原有记录仅用于续播，无法还原历史观看时长。</p>
-          </Empty>
-        ) : (
-          <>
-            <div className="watch-summary">
-              <div>
-                <span>实际播放时长</span>
-                <strong>{minutes(data.totalPlayedMs)}</strong>
-              </div>
-              <div>
-                <span>播放过的视频</span>
-                <strong>
-                  {data.episodeCount}
-                  <small> 个</small>
-                </strong>
-              </div>
-              <div className="sync">
-                <span>最后同步</span>
-                <strong>{dateTime(data.lastSync)}</strong>
-              </div>
-            </div>
-            <Card className="report-section">
-              <h2>每日播放时间</h2>
-              <div className="chart" role="img" aria-label="每日播放时长柱状图">
-                {data.days.map((d) => (
-                  <div
-                    key={d.date}
-                    title={`${d.date} · ${minutes(d.playedMs)}`}
-                  >
-                    <span className="bar-value">
-                      {d.playedMs ? minutes(d.playedMs) : ""}
-                    </span>
-                    <div className="bar-track">
-                      <span
-                        style={{ height: `${(d.playedMs / max) * 100}%` }}
-                      />
-                    </div>
-                    <small>{d.date.slice(5)}</small>
-                  </div>
-                ))}
-              </div>
-              <p className="muted">
-                时区：{data.timezone} · 统计开始于{" "}
-                {dateTime(data.statisticsSince)}
-                。按设备播放时间累计，可能包含同时播放。
-              </p>
-            </Card>
-            <Card className="report-section">
-              <h2>内容分布</h2>
-              {data.contents.length ? (
-                data.contents.map((c) => (
-                  <div className="content-duration" key={c.id}>
-                    <span>{c.name}</span>
-                    <Progress aria-label={`${c.name}播放时长占比`} value={c.playedMs / (data.totalPlayedMs || 1) * 100} className="w-1/4" />
-                    <strong>{minutes(c.playedMs)}</strong>
-                  </div>
-                ))
-              ) : (
-                <p className="muted">所选日期内没有有效播放。</p>
-              )}
-              <Pagination page={pages.content} pageSize={data.pageSize} total={data.contentTotal} setPage={(content) => setPosition({ ...pages, content })} label="内容分布分页" />
-            </Card>
-            <Card className="report-section">
-              <h2>播放明细</h2>
-              <div className="table-scroll">
-                <Table className="watch-sessions-table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>开始时间</TableHead>
-                      <TableHead>儿童 / 设备</TableHead>
-                      <TableHead>内容</TableHead>
-                      <TableHead>播放时长</TableHead>
-                      <TableHead>结束情况</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.sessions.map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell>{dateTime(s.startedAt)}</TableCell>
-                        <TableCell>
-                          {s.childName}
-                          <small>{s.deviceName}</small>
-                        </TableCell>
-                        <TableCell>{s.name}</TableCell>
-                        <TableCell>{minutes(s.playedMs)}</TableCell>
-                        <TableCell>{s.ended ? "正常结束" : "播放中或未正常结束"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <p className="muted">
-                家长预览不计入。断网记录会补传；未能保存的崩溃尾段无法补算。
-              </p>
-              <Pagination page={pages.session} pageSize={data.pageSize} total={data.sessionTotal} setPage={(session) => setPosition({ ...pages, session })} label="播放明细分页" />
-            </Card>
-          </>
-        ))}
-    </>
-  );
-}
 
 function Family({
   run,

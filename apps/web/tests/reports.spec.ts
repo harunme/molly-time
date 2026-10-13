@@ -1,4 +1,3 @@
-import { chooseSelect } from "./select";
 import { test, expect } from '@playwright/test';
 
 test('family viewing loads when reports are reopened and does not belong to a child', async ({ page }) => {
@@ -8,10 +7,11 @@ test('family viewing loads when reports are reopened and does not belong to a ch
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
   const firstReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.ok());
-  await page.getByRole('navigation').getByRole('link', { name: '观看记录' }).click();
+  await page.getByRole('button', { name: '查看明细', exact: true }).click();
   const baseline = await (await firstReport).json();
+  await page.getByText('播放明细', { exact: true }).click();
   await expect(page.getByText('加载中…', { exact: true })).toHaveCount(0);
-  const familyRows = page.getByRole('cell', { name: '家庭观看', exact: false });
+  const familyRows = page.locator('.watch-history-detail').first().locator('li');
   const initialFamilyRows = await familyRows.count();
   const authResponse = await page.request.post('/api/auth/login', {
     headers: { 'X-Molly-Client': 'tv-shell/2' },
@@ -29,17 +29,12 @@ test('family viewing loads when reports are reopened and does not belong to a ch
   });
   expect(synced.ok()).toBe(true);
   await expect(familyRows).toHaveCount(initialFamilyRows);
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
+  await page.getByRole('dialog', { name: '观看记录' }).getByRole('button', { name: '关闭', exact: true }).click();
   const updatedReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.ok());
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '观看记录', exact: true }).click();
+  await page.getByRole('button', { name: '查看明细', exact: true }).click();
   const updated = await (await updatedReport).json();
+  await page.getByText('播放明细', { exact: true }).click();
   expect(updated.totalPlayedMs).toBe(baseline.totalPlayedMs + 1000);
   expect(updated.sessions.find((s: { id: string }) => s.id === session.sessionId).childName).toBe('家庭观看');
-  await expect(familyRows).toHaveCount(initialFamilyRows + 1);
-  const childReport = page.waitForResponse((r) => r.url().includes('/reports/watch-time?') && r.url().includes('childId=child') && r.ok());
-  await chooseSelect(page.getByRole('combobox', { name: '儿童', exact: true }), 'child');
-  expect((await (await childReport).json()).sessions.some((s: { id: string }) => s.id === session.sessionId)).toBe(false);
-  await expect(familyRows).toHaveCount(0);
-  await chooseSelect(page.getByRole('combobox', { name: '儿童', exact: true }), '');
   await expect(familyRows).toHaveCount(initialFamilyRows + 1);
 });

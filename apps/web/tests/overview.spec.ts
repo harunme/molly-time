@@ -46,7 +46,7 @@ test('overview is the default home, uses aggregates and paged widgets, and links
   await expect(page.getByRole('heading', { name: '播放控制', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: '观看记录', exact: true })).toBeVisible();
-  await navigation.getByRole('link', { name: '概览', exact: true }).click();
+  await page.getByRole('dialog', { name: '观看记录', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '全部任务', exact: true }).click();
   const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
@@ -92,7 +92,7 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
   await expect(page.locator('.overview-favorite-value')).toContainText('一起认识世界和新的朋友');
   const cells = page.locator('.overview-heatmap-day');
   for (let level = 0; level < 5; level++) await expect(cells.nth(360 + level)).toHaveAttribute('data-level', String(level));
-  await cells.nth(363).click();
+  await cells.nth(363).focus();
   await expect(page.locator('.overview-heatmap-footer p')).toContainText('观看 30 分钟');
   await page.screenshot({ path: testInfo.outputPath('overview-watch-desktop.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });

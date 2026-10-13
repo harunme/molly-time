@@ -163,21 +163,17 @@ test("real device telemetry, reports, child management and mobile layout", async
       )
     ).ok(),
   ).toBe(true);
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "观看记录" })
-    .click();
-  await chooseSelect(page.getByRole("combobox", { name: "儿童", exact: true }), "child");
+  await page.getByRole("navigation").getByRole("link", { name: "概览", exact: true }).click();
+  await page.getByRole("button", { name: "查看明细", exact: true }).click();
+  await page.getByRole("dialog", { name: "观看记录" }).getByText("播放明细", { exact: true }).click();
   await expect(
-    page.locator(".watch-summary").getByText("1 秒", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("cell", { name: "Hello", exact: true }),
+    page.getByRole("dialog", { name: "观看记录" }).getByText("Hello", { exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: "../../artifacts/parent-watch-report.png",
     fullPage: true,
   });
+  await page.getByRole("dialog", { name: "观看记录" }).getByRole("button", { name: "关闭", exact: true }).click();
   await page
     .getByRole("navigation")
     .getByRole("link", { name: "家庭设置" })

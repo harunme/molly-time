@@ -25,7 +25,7 @@ bash tools/run-server.sh                   # 加载新版 API 和两个静态网
 - 上传：多个 MP4、追加 SRT/VTT 字幕、替换封面或视频；8 MiB 上传块、最多 2 个并发文件；偏移续传、重复块校验、暂停、继续、取消。离开页面继续上传，关闭浏览器后需重新选择原文件。
 - 处理：持久化任务、执行租约与失败重试；检查 MP4 容器、视频轨与有效时长，生成剧集封面，检查图片和 UTF-8 字幕。视频不限制为 H.264/AAC，原文件保留且不默认转码；能否播放取决于浏览器或电视的解码能力。自动封面提取失败时使用默认封面，不阻止视频就绪。上传完整、检查就绪、内容发布分别显示。
 - 概览：登录后的默认首页；视频总量与发布状态、进行中和失败上传、已绑定电视、近 7 天观看次数、媒体用量；最近上传和设备每页 5 条，可跳转对应管理页。观看次数按家庭时区计算开始且有有效播放的会话，多个播放区间计为一次观看。
-- 观看记录：儿童/日期筛选、实际播放时长、每日趋势、系列分布和会话明细。按家庭时区拆分跨日区间；家长预览和旧进度事件不计入。
+- 观看记录：融入概览的观看热力图，点击日期打开当天明细，或点击「查看明细」查看近 31 天。弹窗以今天、近 31 天、单日最多及近一年累计统计为主，配合紧凑趋势图；内容分布和播放明细可展开查看，无日期查询表单。按家庭时区拆分跨日区间；家长预览和旧进度事件不计入。
 - 家庭设置：儿童新增/改名、TV 设备改名/撤销、时区、磁盘余量和管理员密码修改。成员可查看，写操作需要管理员；退出自己的会话不需要管理员。
 
 新增上传剧集保持草稿；系列和季是目录容器，默认可见，但 TV 只显示有已发布且可播放剧集的内容。下架整个系列/季会一并阻止其子内容的新播放。
@@ -79,7 +79,7 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。基础组件迁移自 `smart-afs-platform/frontend/smartafs/src/components/ui`，组件源码统一在 `src/components/ui`。Tailwind v4 的 CSS-first 全局配置在 `src/styles/theme.css`，集中维护颜色、字号、圆角、控件尺寸、阴影、层级及动效变量；`src/styles/ui-motion.css` 提供配套动画，`src/style.css` 只保留应用基础规则和页面布局。组件不再各自写固定颜色或重复定义变量。Geist 字体随应用自托管，图标使用 Lucide。
 
-页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看记录 `/manage/#/watch`、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
+页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看明细弹窗 `/manage/#/overview?watch=1`（旧 `/manage/#/watch` 自动跳转）、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
 
 上传任务合并到资源库，通过页面顶部“上传任务”打开弹窗。上传开始后自动显示进度，关闭弹窗继续管理资源，后台传输不会停止；暂停、续传、重新选文件、重试及分页保留。弹窗状态使用资源库或文件夹 URL 的 `?uploads=1`，关闭和浏览器后退保留当前目录、搜索、页码与选择；直接访问、刷新及概览“全部任务”均支持打开弹窗。旧 `/manage/#/upload` 链接重定向到 `/manage/#/library?uploads=1`。弹窗内部滚动，任务错误显示在弹窗内。
 

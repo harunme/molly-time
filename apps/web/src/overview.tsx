@@ -10,8 +10,11 @@ import { api, bytes, dateTime, type Upload } from "./api";
 import { Pagination, usePagedData } from "./pagination";
 import { ParentReminderActions, useReminderData } from "./reminders";
 import type { Run } from "./main";
+import { useLocation, useNavigate } from "react-router";
+import { dateKey, parseDateKey } from "@/lib/date-only";
+import { WatchHistoryDialog } from "./watch-history";
 
-type OverviewData = {
+export type OverviewData = {
   media: { folders: number; videos: number; published: number; draft: number; archived: number; };
   uploads: { active: number; failed: number; ready: number; };
   devices: { active: number; revoked: number; online: number; };
@@ -41,7 +44,7 @@ function heatLevel(playedMs: number) {
   return playedMs === 0 ? 0 : playedMs < 15 * 60000 ? 1 : playedMs < 30 * 60000 ? 2 : playedMs < 60 * 60000 ? 3 : 4;
 }
 
-function WatchHeatmap({ watch }: { watch: OverviewData["watch"]; }) {
+function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen: (date: string) => void; }) {
   const [selectedDate, setSelectedDate] = useState<string>();
   const scroll = useRef<HTMLDivElement>(null);
   const days = watch.days;
@@ -70,7 +73,7 @@ function WatchHeatmap({ watch }: { watch: OverviewData["watch"]; }) {
     </div>
     <div className="overview-heatmap-visual">
     <div className="overview-heatmap-scroll" ref={scroll}>
-      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击或用方向键查看，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, var(--spacing-heatmap-cell))` }}>
+      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击查看当天记录，用方向键选择日期，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, var(--spacing-heatmap-cell))` }}>
         {months.map((month) => <span className="overview-heatmap-month" key={month.key} style={{ gridColumn: `${month.column} / span ${Math.min(4, columns + 2 - month.column)}`, gridRow: 1 }}>{month.label}</span>)}
         {["一", "二", "三", "四", "五", "六", "日"].map((day, index) => <span className="overview-heatmap-weekday" key={day} style={{ gridRow: index + 2, gridColumn: 1 }}>{index % 2 === 0 ? day : ""}</span>)}
         {days.map((day, index) => {
@@ -78,7 +81,7 @@ function WatchHeatmap({ watch }: { watch: OverviewData["watch"]; }) {
           return <Button variant="ghost" size="icon" type="button" key={day.date} className="overview-heatmap-day" data-level={heatLevel(day.playedMs)}
             style={{ gridColumn: Math.floor((index + offset) / 7) + 2, gridRow: (index + offset) % 7 + 2 }}
             aria-label={label} title={label} aria-pressed={selected.date === day.date} tabIndex={selected.date === day.date ? 0 : -1}
-            onClick={() => setSelectedDate(day.date)} onFocus={() => setSelectedDate(day.date)}
+            onClick={() => { setSelectedDate(day.date); onOpen(day.date); }} onFocus={() => setSelectedDate(day.date)}
             onKeyDown={(event) => {
               const change = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[event.key];
               if (change === undefined && event.key !== "Home" && event.key !== "End") return;
@@ -102,6 +105,12 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
   familyName: string; navigate: (page: Destination) => void;
   run: Run; readonly: boolean; notify: (value: string) => void;
 }) {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const watchOpen = params.get("watch") === "1";
+  const opener = useRef<HTMLElement | null>(null);
+  const heatmap = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<OverviewData>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
@@ -122,6 +131,22 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 30000);
     return () => { controller.abort(); clearInterval(timer); };
   }, []);
+  const today = data?.watch.days[data.watch.days.length - 1]?.date ?? dateKey(new Date());
+  const openWatch = (start?: string, end = today) => {
+    opener.current = document.activeElement as HTMLElement;
+    const next = new URLSearchParams(location.search);
+    next.set("watch", "1");
+    if (start) { next.set("start", start); next.set("end", end); }
+    else { next.delete("start"); next.delete("end"); }
+    routerNavigate(`${location.pathname}?${next}`, { state: { watchReturnTo: location.pathname + location.search } });
+  };
+  const closeWatch = () => {
+    const next = new URLSearchParams(location.search);
+    ["watch", "start", "end"].forEach((key) => next.delete(key));
+    const background = `${location.pathname}${next.size ? `?${next}` : ""}`;
+    if (location.state?.watchReturnTo === background) routerNavigate(-1);
+    else routerNavigate(background, { replace: true });
+  };
   const metrics = [
     { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "family" },
     { label: "今日观看时长", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
@@ -129,6 +154,10 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
     { label: "最喜欢的视频", value: data ? data.watch.favoriteVideo?.name ?? "暂无观看记录" : "—", detail: data?.watch.favoriteVideo ? `累计观看 ${duration(data.watch.favoriteVideo.playedMs)}` : "按累计观看时长排名", icon: Heart, page: "watch" },
   ] as const;
   return <>
+    <WatchHistoryDialog open={watchOpen} onClose={closeWatch} today={today} watch={data?.watch}
+      start={parseDateKey(params.get("start") ?? "") ? params.get("start")! : undefined}
+      end={parseDateKey(params.get("end") ?? "") ? params.get("end")! : undefined}
+      restoreFocus={() => { const target = opener.current?.isConnected ? opener.current : heatmap.current?.querySelector<HTMLButtonElement>(".section-heading button"); target?.focus(); }} />
     <div className="page-title">
       <div><h1>概览</h1><p>{familyName}的设备在线状态与观看习惯。</p></div>
       <div className="actions">
@@ -143,13 +172,13 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
         <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : ""}`} title={metric.value}>
           {metric.label === "最喜欢的视频" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
         </strong>
-        <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
+        <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => metric.page === "watch" ? openWatch(metric.label === "今日观看时长" ? today : undefined) : navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
         {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
       </Card>)}
     </div>
-    <Card className="overview-panel overview-heatmap">
-      <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" onClick={() => navigate("watch")}>观看记录<ArrowRight className="size-3.5" /></Button></div>
-      {data ? <WatchHeatmap watch={data.watch} /> : <p className="overview-empty-note">{busy ? "正在加载观看热力图…" : "观看热力图加载失败，请重新进入概览。"}</p>}
+    <Card className="overview-panel overview-heatmap" ref={heatmap}>
+      <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
+      {data ? <WatchHeatmap watch={data.watch} onOpen={(date) => openWatch(date, date)} /> : <p className="overview-empty-note">{busy ? "正在加载观看热力图…" : "观看热力图加载失败，请重新进入概览。"}</p>}
       {data && <p className="overview-watch-note">时区 {data.watch.timezone} · 每格一天 · 不含家长预览</p>}
     </Card>
     <div className="overview-panels">
