@@ -135,7 +135,6 @@
 .overview-panel > .pagination { @apply mt-4 mb-0 border-t pt-4; }
 .overview-uploads .empty { @apply min-h-40 border-0 py-6; }
 .overview-upload-table { @apply table-fixed; }
-.overview-upload-table thead { @apply bg-muted; }
 .overview-upload-table th { @apply text-foreground; }
 .overview-upload-table th:first-child { @apply w-[50%]; }
 .overview-upload-table th:nth-child(2) { @apply w-[30%]; }
@@ -283,7 +282,7 @@
   @apply mb-5 rounded-none border-0 bg-transparent p-0;
 }
 .resource-list-heading {
-  @apply hidden h-control items-center bg-muted px-3 text-footnote font-semibold text-foreground sm:flex;
+  @apply hidden h-control items-center rounded-full bg-muted px-3 text-footnote font-semibold text-foreground sm:flex;
 }
 .resource-list-heading span:first-child {
   @apply flex-1 pl-9;
