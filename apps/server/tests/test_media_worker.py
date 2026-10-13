@@ -23,10 +23,12 @@ def probe_result(monkeypatch, *, streams=None, duration="1.25", container="mov,m
         "format": {"format_name": container, "duration": duration},
     }
     monkeypatch.setattr(media_worker.shutil, "which", lambda tool: tool)
-    monkeypatch.setattr(
-        media_worker.subprocess, "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, json.dumps(data).encode()),
-    )
+    def run(command, **kwargs):
+        payload = ({"streams": [{"codec_type": "video", "nb_read_packets": "1"}]}
+                   if "-count_packets" in command else data)
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload).encode(), b"")
+
+    monkeypatch.setattr(media_worker.subprocess, "run", run)
 
 
 @pytest.mark.parametrize("video,audio", [
@@ -76,6 +78,21 @@ def test_probe_failures_have_actionable_errors(monkeypatch, error, message):
     monkeypatch.setattr(media_worker.subprocess, "run", fail)
     with pytest.raises(ValueError, match=message):
         media_worker.inspect_video(Path("sample.part"))
+
+
+def test_truncated_mp4_is_rejected_after_metadata_probe(tmp_path):
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("FFmpeg/FFprobe required for truncated media verification")
+    path = tmp_path / "truncated.mp4"
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+        "testsrc2=size=64x64:rate=10:duration=4", "-c:v", "mpeg4",
+        "-movflags", "+faststart", str(path),
+    ], check=True, capture_output=True, timeout=20)
+    data = path.read_bytes()
+    path.write_bytes(data[:len(data) // 2])
+    with pytest.raises(ValueError, match="视频数据损坏或不完整"):
+        media_worker.inspect_video(path)
 
 
 @pytest.fixture(scope="session", params=[("libx265", "aac"), ("mpeg4", "aac"), ("libx264", "libmp3lame")])

@@ -68,6 +68,30 @@ def inspect_video(path: Path) -> int:
         raise ValueError("无法读取有效视频时长，请检查文件是否完整") from error
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError("无法读取有效视频时长，请检查文件是否完整")
+    # Container metadata can advertise the full duration even when the media data
+    # ends early. Count packets across the file and reject ffprobe read errors;
+    # ffprobe may still exit successfully after reporting a truncated MP4.
+    try:
+        packets = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-protocol_whitelist", "file",
+                "-count_packets", "-show_entries", "stream=codec_type,nb_read_packets",
+                "-of", "json", str(path),
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=180,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        raise ValueError("视频数据损坏或不完整，请检查原文件") from error
+    except subprocess.TimeoutExpired as error:
+        raise ValueError("视频数据检查超时，请重试处理") from error
+    if packets.stderr.strip() or not any(
+        stream.get("codec_type") == "video" and int(stream.get("nb_read_packets", 0)) > 0
+        for stream in json.loads(packets.stdout).get("streams", [])
+    ):
+        raise ValueError("视频数据损坏或不完整，请检查原文件")
     return round(duration * 10_000_000)
 
 
