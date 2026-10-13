@@ -41,26 +41,24 @@ docs/             架构、设计与验证文档
 
 ## 日常开发
 
-日常 TV 界面开发只启动网页服务，在浏览器中调试，不启动 Docker、Android 模拟器或客户端。需要 Node.js 和 pnpm。
+本地开发入口由根目录 `Makefile` 管理。`make dev` 并行启动 API、TV 网页和家长网页；需要 Node.js、pnpm 和 Python。首次使用时先运行 `make init` 初始化本地数据库和管理员账号。日常不启动 Docker、Android 模拟器或客户端。
 
 ```bash
-bash tools/run-tv-web.sh
+make dev
 ```
 
-打开 `http://127.0.0.1:5173/tv/`，修改代码后由 Vite 热更新。方向键、回车和返回交互可在浏览器中验证。
+TV 网页位于 `http://127.0.0.1:5173/tv/`，家长网页开发服务位于 `http://127.0.0.1:5174/manage/`，API 位于 `http://127.0.0.1:8096`。修改前端代码后由 Vite 热更新。方向键、回车和返回交互可在浏览器中验证。按 Ctrl+C 会停止三个服务。
 
-登录和真实媒体目录需要可用的 MollyTime API，默认代理 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 指定已有后台。启动网页的脚本只运行 Vite；需要本地 API 时另行运行 `bash tools/run-server.sh`。浏览器可验证登录和目录，原生视频播放及观看统计在发版前用 Android 客户端验证。
-
-家长网页按需运行 `pnpm --dir apps/web dev`，地址 `http://127.0.0.1:5174/manage/`。
+如果已有 API，可分别用 `make tv` 和 `make web` 启动网页，避免启动本地 API。登录和真实媒体目录需要可用的 MollyTime API；TV 网页默认代理 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 指定已有后台。浏览器可验证登录和目录，原生视频播放及观看统计在发版前用 Android 客户端验证。运行 `make` 查看全部命令。
 
 ## 发版前客户端验证
 
 发版前构建网页并用 Android 客户端检查 WebView、遥控器、原生播放、字幕、返回、续播与观看统计。Android 工具要求：JDK 21、Android SDK 36、Build Tools 35.0.0/36.0.0、platform-tools；使用模拟器时需要 ARM64 Android TV API 34 镜像。上传处理需要 FFmpeg（ffprobe）。
 
 ```bash
-bash tools/build-tv-web.sh
-bash tools/build-web.sh
-bash tools/run-server.sh             # 单独的终端；或使用已部署后台
+make build-tv
+make build-web
+make server                          # 单独的终端；或使用已部署后台
 bash tools/build-tv-client.sh
 # 使用模拟器验收时再启动；连接真实电视时跳过
 bash tools/start-tv-emulator.sh
