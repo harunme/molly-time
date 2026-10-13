@@ -247,6 +247,7 @@ function App() {
     return (
       <Login
         initialAccount={location.state?.account || ""}
+        invite={() => navigate("/invite")}
         done={(value) => {
           setSession(value);
           updateSession(value);
@@ -441,7 +442,7 @@ function App() {
   );
 }
 
-function Login({ done, initialAccount }: { done: (session: Session) => void; initialAccount: string }) {
+function Login({ done, initialAccount, invite }: { done: (session: Session) => void; initialAccount: string; invite: () => void }) {
   const [username, setUsername] = useState(initialAccount),
     [password, setPassword] = useState(""),
     [busy, setBusy] = useState(false),
@@ -536,9 +537,10 @@ function Login({ done, initialAccount }: { done: (session: Session) => void; ini
               {busy ? "正在登录…" : "登录"}
             </Button>
           </form>
+          <Button variant="ghost" className="login-invite-action" onClick={invite}>使用邀请码</Button>
           <div className="login-help">
             <ShieldCheck aria-hidden="true" />
-            <p>使用邮箱或数字 ID 登录。当前仅通过邀请加入；已有旧账号可继续登录并绑定邮箱。</p>
+            <p>使用邮箱或数字 ID 登录。新用户需邀请码；已有旧账号可继续登录并绑定邮箱。</p>
           </div>
         </div>
       </section>

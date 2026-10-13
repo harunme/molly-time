@@ -43,6 +43,16 @@ class AccountInvitation(Base):
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
+class InvitationCode(Base):
+    """Retrievable invitation codes; registration still verifies the original hash."""
+
+    __tablename__ = "invitation_codes"
+    invitation_id: Mapped[str] = mapped_column(
+        ForeignKey("account_invitations.id", ondelete="CASCADE"), primary_key=True
+    )
+    ciphertext: Mapped[str] = mapped_column(String(256))
+
+
 def normalize_email(value: str) -> str:
     value = value.strip().lower()
     if len(value) > 254 or value.count("@") != 1:

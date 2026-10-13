@@ -458,6 +458,16 @@
 .manage-dialog form > section h3 {
   @apply mb-3;
 }
+.feedback-dialog-overlay { background: rgb(25 26 34 / .28); backdrop-filter: blur(2px); }
+.feedback-dialog { width: calc(100% - 2rem); max-width: 420px; max-height: 88dvh; overflow-y: auto; gap: 1.25rem; padding: 1.5rem; border: 0; background: white; box-shadow: 0 16px 56px rgb(25 26 34 / .14); }
+.feedback-dialog [data-slot="dialog-header"] { gap: .625rem; padding-right: 1.5rem; text-align: left; }
+.feedback-dialog [data-slot="dialog-title"] { font-size: 1.125rem; line-height: 1.4; }
+.feedback-dialog [data-slot="dialog-description"] { font-size: .8125rem; line-height: 1.7; }
+.feedback-dialog-detail { display: grid; gap: .375rem; }
+.feedback-dialog-detail span { color: var(--muted-foreground); font-size: .75rem; }
+.feedback-dialog-detail strong { font-family: var(--font-mono); font-size: 1.125rem; line-height: 1.5; overflow-wrap: anywhere; }
+.feedback-dialog [data-slot="dialog-footer"] { flex-direction: row; justify-content: flex-end; gap: .75rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.feedback-dialog [data-slot="dialog-footer"] button { min-width: 5rem; }
 .modal-actions {
   @apply mt-6 flex justify-end gap-2 border-t pt-4;
 }
@@ -864,8 +874,10 @@ td small {
 .account-card fieldset > label { display: grid; gap: .5rem; margin-bottom: 1rem; }
 .account-card fieldset > .primary { width: 100%; margin-top: 1rem; }
 .account-card > .account-secondary-action { margin-top: 1rem; }
+.account-card fieldset > .account-secondary-action { width: 100%; margin-top: 1rem; }
+.login-invite-action { width: 100%; margin-top: 1rem; }
 .account-card .muted, .invitations-card .muted { font-size: .75rem; line-height: 1.7; }
-.account-summary { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: .75rem; padding: 1rem; margin: 1.25rem 0; background: var(--accent); border-radius: var(--radius); font-size: .75rem; }
+.account-summary { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: .75rem; margin: 1.25rem 0; font-size: .75rem; }
 .account-summary strong { overflow-wrap: anywhere; }
 .account-summary span { color: var(--muted-foreground); }
 .account-number { font-family: var(--font-mono); font-size: 1.4rem; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
@@ -877,6 +889,13 @@ td small {
 .invitation-link button { justify-self: start; }
 .invitations-card td { overflow-wrap: anywhere; }
 .invitation-pagination { justify-content: flex-end; margin-top: 1rem; }
+.invitation-generate { margin-top: .75rem; }
+.invitation-code { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin: 1.5rem 0; }
+.invitation-code .muted { flex-basis: 100%; }
+.invitation-table-code { font-family: var(--font-mono); white-space: nowrap; font-weight: 600; letter-spacing: .02em; }
+.invitation-row-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.invitation-copy-action { width: 6.5rem; flex-shrink: 0; }
+.invitation-copy-notice { position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 100; max-width: calc(100vw - 2.5rem); padding: .75rem 1rem; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: .875rem; pointer-events: none; }
 .invitation-link { border: 0; background: var(--accent); }
 .pairing-summary {
   @apply my-5 grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-ui bg-accent/50 p-4 text-xs;

@@ -1,6 +1,6 @@
 import datetime as dt
+import secrets
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import text
@@ -11,7 +11,12 @@ from test_management import parent  # noqa: F401
 from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import accounts, config, db
-from mollytime_server.accounts import AccountIdentity, AccountInvitation, ensure_identity
+from mollytime_server.accounts import (
+    AccountIdentity,
+    AccountInvitation,
+    ensure_identity,
+    normalize_email,
+)
 from mollytime_server.auth import hash_password, hash_refresh_token
 from mollytime_server.models import Family, User
 from mollytime_server.scripts.create_admin import main as create_admin
@@ -30,10 +35,20 @@ def operator(parent):  # noqa: F811
 
 
 def invite(operator, email="guest@example.com", **extra):
-    response = operator.post(INVITES, json={"email": email, "familyName": "Guest family", **extra})
-    assert response.status_code == 200, response.text
-    row = response.json()
-    token = parse_qs(urlsplit(row["activationUrl"]).fragment)["invite"][0]
+    # Already-issued email-bound links must keep working after switching to codes.
+    token = secrets.token_urlsafe(32)
+    row = {"id": hash_refresh_token(token), "email": normalize_email(email)}
+    with Session(db.get_engine()) as session:
+        session.add(
+            AccountInvitation(
+                id=row["id"],
+                email=row["email"],
+                family_name="Guest family",
+                created_by="u1",
+                expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=7),
+            )
+        )
+        session.commit()
     return row, token
 
 
@@ -152,7 +167,7 @@ def test_invitations_require_superadmin_even_for_reading(parent, role):  # noqa:
 
 
 def test_invitation_secrets_are_hashed_and_creation_requires_csrf_origin(operator):
-    body = {"email": "guest@example.com", "familyName": "Other"}
+    body = {}
     assert operator.post(INVITES, headers={"X-CSRF-Token": ""}, json=body).status_code == 403
     assert (
         operator.post(
@@ -172,15 +187,11 @@ def test_invitation_secrets_are_hashed_and_creation_requires_csrf_origin(operato
     assert operator.post(INVITES, json=body).status_code == 401
 
 
-@pytest.mark.parametrize(
-    "reason", ["revoke", "expire", "disabled-inviter", "demoted-inviter", "reissue"]
-)
+@pytest.mark.parametrize("reason", ["revoke", "expire", "disabled-inviter", "demoted-inviter"])
 def test_unusable_invites_cannot_preview_or_activate(operator, reason):
     row, token = invite(operator)
     if reason == "revoke":
         assert operator.post(f"{INVITES}/{row['id']}/revoke").status_code == 200
-    elif reason == "reissue":
-        invite(operator)
     else:
         with Session(db.get_engine()) as session:
             if reason == "expire":
@@ -236,7 +247,19 @@ def test_invite_activation_rejects_client_selected_identity_or_permissions(opera
     ],
 )
 def test_invitation_rejects_invalid_emails(operator, email):
-    assert operator.post(INVITES, json={"email": email, "familyName": "Other"}).status_code == 422
+    code = operator.post(INVITES, json={}).json()["code"]
+    assert (
+        operator.post(
+            ACTIVATE,
+            json={
+                "code": code,
+                "email": email,
+                "familyName": "Other",
+                "password": "guest-password",
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_existing_email_cannot_be_reinvited_or_bound_by_another_user(operator):
@@ -245,9 +268,16 @@ def test_existing_email_cannot_be_reinvited_or_bound_by_another_user(operator):
         operator.post(ACTIVATE, json={"token": token, "password": "guest-password"}).status_code
         == 200
     )
+    code = operator.post(INVITES, json={}).json()["code"]
     assert (
         operator.post(
-            INVITES, json={"email": "GUEST@EXAMPLE.COM", "familyName": "Other"}
+            ACTIVATE,
+            json={
+                "code": code,
+                "email": "GUEST@EXAMPLE.COM",
+                "familyName": "Other",
+                "password": "guest-password",
+            },
         ).status_code
         == 409
     )

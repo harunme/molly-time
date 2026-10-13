@@ -10,8 +10,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+type ConfirmOptions = {
+  title?: string;
+  description: string;
+  confirmText?: string;
+  detail?: { label: string; value: string };
+};
 type Decision =
-  | { kind: "confirm"; description: string; resolve: (value: boolean) => void }
+  | (ConfirmOptions & { kind: "confirm"; resolve: (value: boolean) => void })
   | {
       kind: "text";
       description: string;
@@ -20,9 +26,9 @@ type Decision =
     };
 const pending: Decision[] = [];
 let updated = () => {};
-export function confirmAction(description: string) {
+export function confirmAction(options: string | ConfirmOptions) {
   return new Promise<boolean>((resolve) => {
-    pending.push({ kind: "confirm", description, resolve });
+    pending.push({ kind: "confirm", ...(typeof options === "string" ? { description: options } : options), resolve });
     updated();
   });
 }
@@ -60,10 +66,10 @@ export function FeedbackDialogs() {
         if (!open) finish(false);
       }}
     >
-      <DialogContent className="manage-dialog sm:max-w-[420px]">
+      <DialogContent className="feedback-dialog" overlayClassName="feedback-dialog-overlay">
         <DialogHeader>
           <DialogTitle>
-            {decision?.kind === "text" ? decision.description : "确认操作"}
+            {decision?.kind === "text" ? decision.description : decision?.title || "确认操作"}
           </DialogTitle>
           <DialogDescription>
             {decision?.kind === "confirm"
@@ -71,6 +77,12 @@ export function FeedbackDialogs() {
               : "输入新的名称，保存后立即生效。"}
           </DialogDescription>
         </DialogHeader>
+        {decision?.kind === "confirm" && decision.detail && (
+          <div className="feedback-dialog-detail">
+            <span>{decision.detail.label}</span>
+            <strong>{decision.detail.value}</strong>
+          </div>
+        )}
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -96,7 +108,7 @@ export function FeedbackDialogs() {
             >
               取消
             </Button>
-            <Button type="submit">确认</Button>
+            <Button type="submit">{decision?.kind === "confirm" && decision.confirmText ? decision.confirmText : "确认"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
