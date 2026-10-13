@@ -401,8 +401,8 @@ function App() {
           {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
           <p role="status">{clientUpdate?.state ?? '尚未检查'}</p>
           {clientUpdate?.release && <><p>当前版本 {capabilities?.shellVersion} · 更新包 {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p>
-            <FocusButton focusKey="download-client-update" className="primary" onClick={() => { setClientUpdate({ ...clientUpdate, state: '正在下载客户端更新…' }); void call('downloadUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>下载更新</FocusButton>
-            {clientUpdate.state === '下载完成，可以安装' && <FocusButton focusKey="install-client-update" className="primary" onClick={() => { void call('installUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>安装更新</FocusButton>}
+            <FocusButton focusKey="download-client-update" className="text-button" onClick={() => { setClientUpdate({ ...clientUpdate, state: '正在下载客户端更新…' }); void call('downloadUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>下载更新</FocusButton>
+            {clientUpdate.state === '下载完成，可以安装' && <FocusButton focusKey="install-client-update" className="text-button" onClick={() => { void call('installUpdate').catch((failure) => setClientUpdate({ state: failure.message })); }}>安装更新</FocusButton>}
           </>}
           <FocusButton focusKey="check-client-update" className="text-button" onClick={() => { void checkClientUpdate(); }}>重新检查</FocusButton>
         </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
