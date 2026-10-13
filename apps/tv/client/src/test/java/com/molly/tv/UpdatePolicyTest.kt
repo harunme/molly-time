@@ -20,9 +20,11 @@ class UpdatePolicyTest {
         assertThrows(IllegalArgumentException::class.java) { validate(size = UpdatePolicy.MAX_APK_BYTES + 1) }
         assertThrows(IllegalArgumentException::class.java) { validate(hash = "bad") }
     }
-    @Test fun requiresSameNonEmptySigningIdentity() {
-        UpdatePolicy.verifySigners(setOf("production"), setOf("production"))
-        assertThrows(IllegalArgumentException::class.java) { UpdatePolicy.verifySigners(setOf("production"), setOf("debug")) }
-        assertThrows(IllegalArgumentException::class.java) { UpdatePolicy.verifySigners(emptySet(), emptySet()) }
+    @Test fun requiresDownloadedSignerToMatchPublishedFingerprint() {
+        val signer = "a".repeat(64)
+        UpdatePolicy.verifyPublishedSigners(setOf(signer), setOf(signer))
+        assertThrows(IllegalArgumentException::class.java) { UpdatePolicy.verifyPublishedSigners(setOf(signer), setOf("b".repeat(64))) }
+        assertThrows(IllegalArgumentException::class.java) { UpdatePolicy.verifyPublishedSigners(emptySet(), emptySet()) }
+        assertThrows(IllegalArgumentException::class.java) { UpdatePolicy.verifyPublishedSigners(setOf("bad"), setOf("bad")) }
     }
 }

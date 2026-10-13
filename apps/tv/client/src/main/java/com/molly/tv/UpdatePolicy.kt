@@ -10,7 +10,9 @@ object UpdatePolicy {
         require(size in 1..MAX_APK_BYTES) { "更新包大小无效" }
         require(Regex("[a-f0-9]{64}").matches(sha256)) { "更新包校验信息无效" }
     }
-    fun verifySigners(installed: Set<String>, downloaded: Set<String>) {
-        require(installed.isNotEmpty() && installed == downloaded) { "更新包签名与已安装客户端不一致" }
+    fun verifyPublishedSigners(published: Set<String>, downloaded: Set<String>) {
+        require(published.isNotEmpty() && published.all { Regex("[a-f0-9]{64}").matches(it) } && published == downloaded) {
+            "更新包签名与服务端发布记录不一致，请联系管理员"
+        }
     }
 }
