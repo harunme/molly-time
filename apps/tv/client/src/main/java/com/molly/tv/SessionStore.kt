@@ -15,8 +15,13 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
     init {
         // The server moved with its database and signing secret. Preserve the
         // existing device credentials while changing only the saved origin.
-        if (prefs.getString("server", "")?.trimEnd('/') == LEGACY_SERVER) {
+        val savedServer = prefs.getString("server", "").orEmpty().trimEnd('/')
+        if (savedServer.isEmpty() || savedServer == LEGACY_SERVER) {
             prefs.edit().putString("server", DEFAULT_SERVER).commit()
+        } else if (!BuildConfig.DEBUG && savedServer != DEFAULT_SERVER) {
+            // Credentials for a custom origin must not be sent to production.
+            prefs.edit().putString("server", DEFAULT_SERVER).remove("access")
+                .remove("refresh").remove("device").remove("child").commit()
         }
     }
     val server: String get() = prefs.getString("server", "")!!
@@ -35,6 +40,7 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
         require(url.encodedPath == "/") { "请输入媒体库根地址，不包含路径" }
         require(BuildConfig.DEBUG || url.isHttps) { "正式版连接需要 HTTPS" }
         val normalized = url.toString().trimEnd('/')
+        require(BuildConfig.DEBUG || normalized == DEFAULT_SERVER) { "正式版使用 MollyTime 官方媒体库" }
         if (normalized != server) {
             val edit = prefs.edit()
             if (server.isNotEmpty() && refresh.isNotEmpty()) {

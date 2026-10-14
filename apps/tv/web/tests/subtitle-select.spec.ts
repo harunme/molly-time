@@ -19,7 +19,8 @@ test('subtitle dropdown supports remote selection, cancellation and save failure
     return route.fulfill({ json: { defaultSubtitle: saved } });
   });
   await page.goto('/tv/');
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.getByText('媒体库还没有内容')).toBeVisible();
+  await page.keyboard.press('ContextMenu');
   const select = page.getByRole('combobox', { name: '默认字幕' });
   await expect(select).toHaveText('英文⌄');
   await expect(select).toHaveAttribute('aria-expanded', 'false');

@@ -243,7 +243,6 @@ class ShellActivity : AppCompatActivity() {
         "getCapabilities" -> JSONObject().put("bridgeVersion", 1).put("shellVersion", BuildConfig.VERSION_NAME)
             .put("catalogSync", true).put("offlinePlayback", true)
             .put("serverUrl", app.session.server).put("webVersion", app.webBundles.selectedVersion()).put("authenticated", app.session.refresh.isNotEmpty())
-            .put("suggestedServerUrl", if (app.session.server.isEmpty()) SessionStore.DEFAULT_SERVER else "")
             .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
             .put("clientUpdates", true)
         "catalogRead" -> app.catalog.read(args).also { result ->

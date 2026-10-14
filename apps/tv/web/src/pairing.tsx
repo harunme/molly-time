@@ -53,6 +53,5 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
     </> : expired ? <p role="status">配对码已过期，请重新生成</p> : !error ? <p role="status">正在生成配对码…</p> : null}
     {error && <p role="alert" className="error">{error}</p>}
     {(!window.MollyBridge || capabilities?.devicePairing) && <FocusButton focusKey="pairing-refresh" className="text-button" onClick={() => retry((value) => value + 1)}>{expired || !pairing ? '重新生成配对码' : '刷新配对码'}</FocusButton>}
-    {window.MollyBridge && <FocusButton focusKey="connection-login" className="text-button" onClick={() => { void call('connection'); }}>连接设置</FocusButton>}
   </div>;
 }

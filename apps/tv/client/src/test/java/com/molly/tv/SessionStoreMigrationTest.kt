@@ -11,6 +11,20 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class SessionStoreMigrationTest {
+    @Test fun freshInstallConnectsToOfficialServiceWithoutBinding() {
+        val context = RuntimeEnvironment.getApplication()
+        val prefs = context.getSharedPreferences("molly.shell.v1", 0)
+        prefs.edit().clear().commit()
+        try {
+            val session = SessionStore(context)
+            assertEquals("https://mollytime.app", session.server)
+            assertEquals("", session.refresh)
+            assertEquals("https://mollytime.app", prefs.getString("server", ""))
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
     @Test fun oldIpBindingMovesToDomainWithoutLosingDeviceCredentials() {
         val context = RuntimeEnvironment.getApplication()
         val prefs = context.getSharedPreferences("molly.shell.v1", 0)

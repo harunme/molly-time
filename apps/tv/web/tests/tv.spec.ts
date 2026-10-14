@@ -21,7 +21,9 @@ test('web update distinguishes a pending version from the running version on old
     } };
   });
   await page.goto('/tv/');
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.locator('[data-focus-region="screen"]')).toBeVisible();
+  await expect(page.getByText('正在加载内容…', { exact: true })).toHaveCount(0);
+  await page.keyboard.press('ContextMenu');
   const update = page.locator('[data-focus="check-web-update"]');
   await expect(update).toContainText('当前网页版本 running-web');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:webUpdateProgress', {
@@ -33,7 +35,8 @@ test('web update distinguishes a pending version from the running version on old
   await expect(update).toContainText('当前已是最新网页');
   await expect(update).not.toContainText('下次启动生效');
   await page.reload();
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.locator('[data-focus="connect-home"]')).toBeFocused();
+  await page.keyboard.press('ContextMenu');
   await update.click();
   await expect(update).toContainText('当前网页版本 running-web · 当前已是最新网页');
 });
@@ -58,11 +61,10 @@ for (const supported of [true, false]) {
     }, supported);
     await page.goto('/tv/');
     await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
-    await page.getByRole('button', { name: '设置', exact: true }).click();
-    await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+    await page.keyboard.press('ContextMenu');
+    await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
     if (supported) {
       await expect(page.locator('[data-focus="check-update"]')).toContainText('当前版本 0.4.0');
-      await page.keyboard.press('ArrowDown');
       await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
       await page.keyboard.press('Enter');
       await expect.poll(() => page.evaluate(() => (window as unknown as { updateChecks: number }).updateChecks)).toBe(1);
@@ -73,24 +75,30 @@ for (const supported of [true, false]) {
   });
 }
 
-test('native connection screen is web UI and stores the server through the bridge', async ({ page }) => {
+test('fresh older shell connects to the official service without an address form', async ({ page }) => {
   await page.addInitScript(() => {
-    const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
-    let serverUrl = '';
+    const w = window as unknown as {
+      connectedServer: string;
+      MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void };
+    };
+    w.connectedServer = '';
     w.MollyBridge = { postMessage(raw) {
       const { id, method, args } = JSON.parse(raw);
       let result: unknown = { ok: true };
-      if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl, authenticated: false, childId: '', nativePlayback: true, clientUpdates: true };
-      if (method === 'connect') { serverUrl = args.serverUrl; result = { serverUrl, authenticated: false, childId: '' }; }
+      if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl: '', authenticated: false, childId: '', nativePlayback: true, devicePairing: true };
+      if (method === 'connect') { w.connectedServer = args.serverUrl; result = { serverUrl: args.serverUrl, authenticated: false, childId: '' }; }
+      if (method === 'pairingStart') result = { userCode: '0123', expiresAt: new Date(Date.now() + 600000).toISOString(), interval: 3 };
       setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 1);
     } };
   });
   await page.goto('/tv/');
-  await expect(page.getByText('输入家庭媒体库地址开始使用。')).toBeVisible();
-  await page.getByRole('button', { name: '设置媒体库地址' }).click();
-  await page.locator('#server-address').fill('https://media.example.test');
-  await page.getByRole('button', { name: '连接', exact: true }).click();
-  await expect(page.getByText('已连接媒体库，请绑定家庭电视。')).toBeVisible();
+  await expect(page.locator('[data-focus="connect-home"]')).toBeFocused();
+  expect(await page.evaluate(() => (window as unknown as { connectedServer: string }).connectedServer)).toBe('https://mollytime.app');
+  await expect(page.getByRole('button', { name: '设置媒体库地址' })).toHaveCount(0);
+  await expect(page.locator('#server-address')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.pairing-code')).toHaveText('0123');
+  await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
 });
 
 test('recent playback precedes library and supports remote playback and return', async ({ page }) => {
@@ -166,24 +174,16 @@ test('remote navigation, playback return, folder restoration and durable binding
   await expect(page.locator('.sidebar')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '打开菜单' })).toHaveCount(0);
   expect(await page.locator('.content-shell').evaluate((node) => node.getBoundingClientRect().left)).toBe(0);
-  const settings = page.getByRole('button', { name: '设置', exact: true });
-  const bounds = await settings.boundingBox();
-  expect(bounds!.x).toBeGreaterThan(1920 / 2);
-  expect(bounds!.y).toBeLessThan(100);
+  await expect(page.getByRole('button', { name: '设置', exact: true })).toHaveCount(0);
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
   await page.keyboard.press('ArrowUp');
-  await expect(settings).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(settings).toBeFocused();
-  await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
 
   await page.keyboard.press('ContextMenu');
   await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
-  await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
   await page.keyboard.press('ContextMenu');
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
@@ -199,7 +199,8 @@ test('remote navigation, playback return, folder restoration and durable binding
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:menu')));
-  await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:menu')));
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="episode-e2"]')).toBeFocused();
@@ -215,7 +216,7 @@ test('remote navigation, playback return, folder restoration and durable binding
   await expect(page.locator('[data-focus="series-s2"]')).toBeFocused();
   await expect(page.locator('.home-greeting')).toBeVisible();
   await expect(page.locator('.profile-trigger')).toHaveCount(0);
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.keyboard.press('ContextMenu');
   await expect(page.getByRole('button', { name: '退出账号' })).toHaveCount(0);
   await page.getByRole('button', { name: '重新配对', exact: true }).click();
   await expect(page.getByRole('heading', { name: '重新配对？' })).toBeVisible();
@@ -243,7 +244,7 @@ test('TV starts at home, pairs without a password, renews expired codes and open
   await page.route('**/api/settings/playback', (route) => route.fulfill({ json: { defaultSubtitle: 'zh' } }));
   await page.goto('/tv/');
   await expect(page.getByRole('navigation', { name: '电视导航', includeHidden: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '设置', exact: true })).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '绑定家庭媒体库' }).click();
   await expect(page.locator('.pairing-code')).toHaveText('0123');
@@ -280,7 +281,9 @@ test('re-pair confirmation retains binding on failure and opens a new code only 
     verificationUriManual: '/manage/',
   } }));
   await page.goto('/tv/');
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.locator('[data-focus-region="screen"]')).toBeVisible();
+  await expect(page.getByText('正在加载内容…', { exact: true })).toHaveCount(0);
+  await page.keyboard.press('ContextMenu');
   await page.getByRole('button', { name: '重新配对', exact: true }).click();
   expect(attempts).toBe(0);
   await page.getByRole('button', { name: '确认重新配对' }).click();
@@ -357,14 +360,13 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   await page.screenshot({ path: 'test-results/tv-page-scroll.png' });
   expect(await page.evaluate(() => document.documentElement.scrollTop)).toBe(0);
   const returnFocus = await page.locator('[data-rail="home-row-2"] .focused').getAttribute('data-focus');
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.keyboard.press('ContextMenu');
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.locator('[data-focus="connection"]')).toBeFocused();
+  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
   await page.keyboard.press('ArrowLeft');
   await expect.poll(() => page.locator('[role="dialog"] .focused').count()).toBe(1);
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-focus="settings"]')).toBeFocused();
-  await page.keyboard.press('ArrowDown');
   await expect(page.locator(`[data-focus="${returnFocus}"]`)).toBeFocused();
   await page.screenshot({ path: 'test-results/tv-rails.png' });
   await expect(page.locator('[data-focus="children"]')).toHaveCount(0);
