@@ -1,6 +1,7 @@
 """Native build decisions are independent of web changes, CI run numbers and secrets."""
 
 import base64
+import datetime as dt
 import importlib.util
 import json
 from pathlib import Path
@@ -19,7 +20,7 @@ def repository(tmp_path):
         "apps/tv/client/src/main/AndroidManifest.xml": "manifest",
         "apps/tv/client/src/main/java/Player.kt": "native-player",
         "apps/tv/client/src/main/res/raw/icon.xml": "icon",
-        "apps/tv/client/version.properties": "versionCode=3\nversionName=0.4.0\n",
+        "apps/tv/client/version.properties": "versionCode=3\nversionName=0.1.1\nversionEpoch=2026-10\n",
         "apps/tv/client/build.gradle.kts": "android-build",
         "apps/tv/gradle/libs.versions.toml": "dependency-versions",
         "apps/tv/gradle/wrapper/gradle-wrapper.jar": "gradle-wrapper",
@@ -37,14 +38,15 @@ def repository(tmp_path):
 
 
 def state(digest, code=8, highest=8):
-    return {"current": {"versionCode": code, "sha256": "a" * 64, "sourceFingerprint": digest}, "highestVersionCode": highest}
+    return {"current": {"versionCode": code, "versionName": "0.4.0+8", "sha256": "a" * 64, "sourceFingerprint": digest}, "highestVersionCode": highest, "versionNames": ["0.4.0+8"]}
 
 
 def test_first_build_unknown_baseline_and_failed_build_retry(repository):
-    initial = {"current": None, "highestVersionCode": 0}
-    first = ci.plan(repository, initial, "a" * 40)
+    initial = {"current": None, "highestVersionCode": 0, "versionNames": []}
+    first = ci.plan(repository, initial, "a" * 40, release_date=dt.date(2026, 10, 14))
     assert first["requiresApk"] and first["versionCode"] == 4
-    assert first["versionName"] == "0.4.0+4"
+    assert first["versionName"] == "0.1.1"
+    assert ci.plan(repository, initial, "a" * 40, release_date=dt.date(2026, 10, 14)) == first
     assert ci.plan(repository, initial, "b" * 40)["versionCode"] == 4
     legacy = ci.plan(repository, state(None, 8, 11), "a" * 40)
     assert legacy["requiresApk"] and legacy["versionCode"] == 12
@@ -58,6 +60,7 @@ def test_web_api_docs_tests_and_build_outputs_do_not_require_apk(repository):
         path.write_text("changed")
     result = ci.plan(repository, state(digest), "b" * 40)
     assert not result["requiresApk"] and result["versionCode"] == 8
+    assert result["versionName"] == "0.4.0+8"
     assert result["sourceFingerprint"] == digest
 
 
@@ -111,3 +114,45 @@ def test_signing_material_is_private_and_not_overwritten(tmp_path, monkeypatch):
 def test_source_recipe_is_a_real_json_file():
     recipe = json.loads((Path(__file__).resolve().parents[1] / "tv-apk-build.json").read_text())
     assert recipe["javaVersion"] == "21" and recipe["buildTools"] == "36.0.0"
+
+
+@pytest.mark.parametrize("date, expected", [
+    (dt.date(2026, 10, 31), "0.1.4"),
+    (dt.date(2026, 11, 1), "0.2.1"),
+    (dt.date(2027, 1, 1), "0.4.1"),
+])
+def test_monthly_versions_use_history_after_rollback(repository, date, expected):
+    published = state(None, code=8, highest=12)
+    published["current"]["versionName"] = "0.1.1"
+    published["versionNames"] = ["0.4.0+7", "0.1.1", "0.1.3", "0.1.3"]
+    result = ci.plan(repository, published, "a" * 40, release_date=date)
+    assert result["versionName"] == expected
+    assert result["versionCode"] == 13
+
+
+def test_major_upgrade_starts_new_sequence(repository):
+    properties = repository / "apps/tv/client/version.properties"
+    properties.write_text("versionCode=3\nversionName=1.1.1\nversionEpoch=2026-10\n")
+    published = state(None)
+    published["versionNames"] = ["0.1.9"]
+    result = ci.plan(repository, published, "a" * 40, release_date=dt.date(2026, 10, 14))
+    assert result["versionName"] == "1.1.1"
+
+
+@pytest.mark.parametrize("names, date", [
+    (["1.1.1"], dt.date(2026, 10, 14)),
+    (["0.2.1"], dt.date(2026, 10, 14)),
+    ([], dt.date(2026, 9, 30)),
+])
+def test_rejects_major_or_calendar_regression(repository, names, date):
+    published = state(None)
+    published["versionNames"] = names
+    with pytest.raises(ValueError):
+        ci.plan(repository, published, "a" * 40, release_date=date)
+
+
+def test_old_receiver_fails_with_actionable_error(repository):
+    published = state(None)
+    del published["versionNames"]
+    with pytest.raises(ValueError, match="update the deployment receiver"):
+        ci.plan(repository, published, "a" * 40)

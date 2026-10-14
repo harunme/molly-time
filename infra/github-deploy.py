@@ -105,10 +105,11 @@ def read_json(path):
 def release_state():
     directory = ROOT / 'data/client-releases'
     if not directory.exists():
-        return {'current': None, 'highestVersionCode': 0}
+        return {'current': None, 'highestVersionCode': 0, 'versionNames': []}
     with (directory / '.publish.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_SH)
         highest = 0
+        names = set()
         current = None
         latest = directory / 'com.molly.tv.json'
         paths = list((directory / 'history/com.molly.tv').glob('*/*.json'))
@@ -124,10 +125,14 @@ def release_state():
                     or (fingerprint is not None and not re.fullmatch('[0-9a-f]{64}', fingerprint))):
                 raise ValueError('Invalid published TV release metadata')
             highest = max(highest, code)
+            name = record.get('versionName')
+            if not isinstance(name, str) or not 0 < len(name) <= 100:
+                raise ValueError('Invalid published TV version name')
+            names.add(name)
             if path == latest:
                 current = {'versionCode': code, 'sha256': sha, 'sourceFingerprint': fingerprint,
-                           'sourceCommit': record.get('sourceCommit')}
-        return {'current': current, 'highestVersionCode': highest}
+                           'sourceCommit': record.get('sourceCommit'), 'versionName': name}
+        return {'current': current, 'highestVersionCode': highest, 'versionNames': sorted(names)}
 
 
 def validate_plan(destination, tag):

@@ -27,7 +27,9 @@
 
 流水线通过受限 SSH 命令 `apk-state` 读取服务器当前正式包的原生输入指纹与历史最高构建号。对本次 checkout 的原生构建输入计算 SHA-256：只改网页、API、文档或测试时跳过 APK；活跃 Gradle 模块的源码/资源、Gradle 配置和 wrapper、依赖版本、构建辅助代码或 APK 打包脚本变化时构建新包。首次自动发布或当前包没有指纹时保守地出新包。定制 `projectDir` 等无法识别的模块映射会报错，需同步修改指纹规则。
 
-比较基线是当前成功发布的 APK，失败的构建和 API-only 部署不推进原生基线。CI 构建号为 `max(仓库默认构建号, 服务器历史最高构建号) + 1`；显示版本为 `versionName+构建号`。默认版本维护在 `apps/tv/client/version.properties`，CI 不需要为了每次出包写回 Git。SDK/JDK 构建版本维护在 `tools/tv-apk-build.json`。
+比较基线是当前成功发布的 APK，失败的构建和 API-only 部署不推进原生基线。CI 构建号为 `max(仓库默认构建号, 服务器历史最高构建号) + 1`；显示版本为 `主版本.月份序号.当月发布序号`，不再拼接构建号。`apps/tv/client/version.properties` 的 `versionName` 第一段控制主版本，`versionEpoch=2026-10` 固定月份起点：北京时间 2026 年 10 月为第 1 个月，11 月为第 2 个月，2027 年 1 月为第 4 个月，跨年不重置。CI 使用全部发布历史中同主版本、同月份的最高序号加 1；换月或升级主版本从 1 开始。失败未发布不消耗序号，同月重试沿用序号；跨月重新规划按新月份分配。仅网页/API 更新沿用当前 APK 的完整版本名。旧版 `0.4.0+11` 不计入新规则的发布序号，回滚后的历史新版本仍计入，防止重复。CI 不需要为了每次出包写回 Git；本地直接 Gradle 构建使用配置中的完整默认版本名。SDK/JDK 构建版本维护在 `tools/tv-apk-build.json`。
+
+启用新版本规则前需更新服务器 `/usr/local/lib/mollytime-deploy.py`（源码 `infra/github-deploy.py`），让受限 `apk-state` 同时返回当前 `versionName` 和全部历史 `versionNames`；首尔接收器共用此模块。旧接收器缺少这些字段时 CI 会明确报错，避免重复分配发布序号。固定入口不由普通部署包自动更新。
 
 需要出包时安装 Android SDK/JDK，运行 Android 单元测试、lint 和 release 签名构建，并在构建前后确认原生输入未变化。Actions 保留 APK 与发布计划 30 天。服务端先通过网页/API 健康检查，再核验 APK 签名、版本及 CI 发布计划并更新安装包历史和当前版本；沿用当前正式包的存储方式，首次按运营设置选择服务器或私有 OSS。OSS 密钥保留在服务器，CI 只持有签名密钥。
 

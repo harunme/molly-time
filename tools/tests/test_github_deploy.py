@@ -101,7 +101,7 @@ def test_deployment_preserves_state_and_rolls_back_on_failure(tmp_path, failure)
 def seed_release(root, version=5, fingerprint='b' * 64):
     directory = root / 'data/client-releases'
     directory.mkdir(parents=True, exist_ok=True)
-    value = {'packageName': 'com.molly.tv', 'versionCode': version,
+    value = {'packageName': 'com.molly.tv', 'versionCode': version, 'versionName': '0.4.0+5',
              'sha256': 'c' * 64, 'sourceFingerprint': fingerprint}
     (directory / 'com.molly.tv.json').write_text(json.dumps(value))
     return value
@@ -113,13 +113,15 @@ def test_state_uses_published_fingerprint_and_all_historical_versions(tmp_path):
     (tmp_path / 'data/client-releases/com.molly.tv.json').write_text(json.dumps(current))
     history = tmp_path / 'data/client-releases/history/com.molly.tv/9'
     history.mkdir(parents=True)
-    (history / ('d' * 64 + '.json')).write_text(json.dumps(dict(current, versionCode=9, sha256='d' * 64)))
+    (history / ('d' * 64 + '.json')).write_text(json.dumps(dict(current, versionCode=9, versionName='0.1.3', sha256='d' * 64)))
     with patch.object(deploy, 'ROOT', tmp_path):
         result = deploy.release_state()
     assert result['current']['versionCode'] == 5
     assert result['current']['sourceFingerprint'] == 'b' * 64
     assert result['current']['sourceCommit'] == 'a' * 40
     assert result['highestVersionCode'] == 9
+    assert result['current']['versionName'] == '0.4.0+5'
+    assert result['versionNames'] == ['0.1.3', '0.4.0+5']
 
 
 @pytest.mark.parametrize('changed', [False, True])

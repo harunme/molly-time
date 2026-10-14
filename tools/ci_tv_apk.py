@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import datetime as dt
 import hashlib
 import json
 import os
@@ -107,10 +108,38 @@ def version_defaults(root):
         r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}", name
     ):
         raise ValueError("Invalid Android version defaults")
-    return code, name
+    epoch = values.get("versionEpoch", "")
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", epoch):
+        raise ValueError("versionEpoch must be YYYY-MM")
+    if not re.fullmatch(r"(0|[1-9]\d*)\.[1-9]\d*\.[1-9]\d*", name):
+        raise ValueError("versionName must be major.month.release")
+    return code, name, epoch
 
 
-def plan(root, state, commit, force=False):
+def release_version(state, default_name, epoch, release_date):
+    """Allocate from published history, including releases preceding a rollback."""
+    names = state.get("versionNames")
+    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        raise ValueError("APK state needs versionNames; update the deployment receiver")
+    major = int(default_name.split(".")[0])
+    year, month = map(int, epoch.split("-"))
+    month_index = (release_date.year - year) * 12 + release_date.month - month + 1
+    if month_index < 1:
+        raise ValueError("Release date precedes versionEpoch")
+    sequence = 0
+    for name in names:
+        match = re.fullmatch(r"(0|[1-9]\d*)\.([1-9]\d*)\.([1-9]\d*)", name)
+        if not match:
+            continue  # Legacy versions such as 0.4.0+11 do not use the new scheme.
+        previous_major, previous_month, previous_sequence = map(int, match.groups())
+        if previous_major > major or (previous_major == major and previous_month > month_index):
+            raise ValueError("Release version would go backwards; check major and release date")
+        if previous_major == major and previous_month == month_index:
+            sequence = max(sequence, previous_sequence)
+    return f"{major}.{month_index}.{sequence + 1}"
+
+
+def plan(root, state, commit, force=False, release_date=None):
     if not re.fullmatch(r"[a-f0-9]{40}", commit):
         raise ValueError("CI source commit must be a full SHA")
     current = state.get("current")
@@ -129,7 +158,12 @@ def plan(root, state, commit, force=False):
             raise ValueError("Invalid native fingerprint baseline")
     digest, inputs = fingerprint(root)
     required = force or current is None or current.get("sourceFingerprint") != digest
-    minimum, name = version_defaults(root)
+    minimum, name, epoch = version_defaults(root)
+    if release_date is None:
+        release_date = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
+    name = release_version(state, name, epoch, release_date) if required else current.get("versionName")
+    if not isinstance(name, str) or not name:
+        raise ValueError("APK state needs current versionName; update the deployment receiver")
     code = max(minimum, highest) + 1 if required else current["versionCode"]
     if code > MAX_VERSION:
         raise ValueError("Android versionCode range is exhausted")
@@ -139,7 +173,7 @@ def plan(root, state, commit, force=False):
         "sourceCommit": commit,
         "sourceFingerprint": digest,
         "versionCode": code,
-        "versionName": f"{name}+{code}",
+        "versionName": name,
         "expectedRelease": None
         if current is None
         else {"versionCode": current["versionCode"], "sha256": current["sha256"]},
