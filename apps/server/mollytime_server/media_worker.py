@@ -307,6 +307,12 @@ def loop(stop):
                     cleanup_expired(now)
                 except Exception:
                     logger.exception("Recycle bin cleanup failed")
+                try:
+                    from .shares import cleanup_shares
+
+                    cleanup_shares(now)
+                except Exception:
+                    logger.exception("Share expiry cleanup failed")
             worked = run_once()
         except Exception:
             logger.exception("Media worker iteration failed")

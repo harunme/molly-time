@@ -29,6 +29,7 @@ from .api import (
     playback,
     playback_settings,
     reminders,
+    shares,
     tv_sync,
     usage,
     users,
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_auth.router)
     app.include_router(downloads.router)
     app.include_router(manage_resources.router)
+    app.include_router(shares.router)
     app.include_router(manage_trash.router)
     app.include_router(manage_home.router)
     app.include_router(manage_overview.router)

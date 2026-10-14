@@ -17,7 +17,8 @@ from ..management_models import (
     WatchInterval,
     WatchSession,
 )
-from ..models import ChildProfile, Item, MediaFile
+from ..models import ChildProfile, Item
+from ..usage import storage_totals
 from .watch_filters import family_watch_clause
 
 router = APIRouter(prefix="/api/manage", tags=["manage-overview"])
@@ -132,9 +133,7 @@ def overview(user: Parent, db: DbSession):
             "online": online,
         },
         "children": db.query(func.count(ChildProfile.id)).filter(ChildProfile.family_id == family).scalar(),
-        "storageBytes": db.query(func.coalesce(func.sum(MediaFile.size_bytes), 0)).filter(
-            MediaFile.family_id == family
-        ).scalar(),
+        "storageBytes": storage_totals(db, [family])[family]["usedBytes"],
         "watch": {
             "last7DaysSessions": sessions, "timezone": str(zone),
             **watch_summary(db, family, zone, now),

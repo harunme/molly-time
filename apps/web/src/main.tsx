@@ -18,6 +18,7 @@ import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
 import { ResourceSummary } from "./resource-summary";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
+import { ShareDialog, ShareReceive } from "./shares";
 import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
@@ -389,6 +390,7 @@ function App() {
             <Route index element={<Navigate to="/overview" replace />} />
             <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<Library run={run} readonly={readonly} />} />
+            <Route path="share" element={<ShareReceive readonly={readonly} />} />
             <Route path="trash" element={<Trash readonly={readonly} />} />
             <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
             <Route path="upload" element={<Navigate to="/library?uploads=1" replace />} />
@@ -547,6 +549,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   const [edit, setEdit] = useState<Resource | "new">(),
     [upload, setUpload] = useState<Resource | "new">(),
     [preview, setPreview] = useState<Resource>();
+  const [share, setShare] = useState<Resource>();
   const [selected, setSelected] = useState<string[]>([]);
   const [uploadKind, setUploadKind] = useState("video");
   const previousTasksOpen = useRef(tasksOpen);
@@ -615,6 +618,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           </DialogTrigger>
           {!readonly && (
             <>
+              <Button variant="bordered" asChild><Link to="/share">领取分享</Link></Button>
               <Button variant="bordered" onClick={() => setEdit("new")}>
                 新建{kind === "Series" ? "文件夹" : "视频"}
               </Button>
@@ -791,6 +795,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {item.status === "published" && !item.shared && <DropdownMenuItem onSelect={() => setShare(item)}>分享内容</DropdownMenuItem>}
                           {item.type === "Episode" && (
                             <>
                               <DropdownMenuItem
@@ -930,6 +935,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           }}
         />
       )}
+      {share && <ShareDialog resource={share} close={() => setShare(undefined)} />}
       {preview && (
         <Preview item={preview} close={() => setPreview(undefined)} />
       )}

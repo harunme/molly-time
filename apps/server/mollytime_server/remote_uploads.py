@@ -10,7 +10,6 @@ from sqlalchemy import func
 from .config import get_settings
 from .manage_auth import aware
 from .management_models import UploadSession, UploadTarget
-from .models import MediaFile
 from .storage import build_storage
 
 PART_SIZE = 8 * 1024**2
@@ -60,11 +59,9 @@ def ensure_capacity(db, family, size):
     limit = get_settings().family_storage_limit_bytes
     if not limit:
         return
-    used = (
-        db.query(func.coalesce(func.sum(MediaFile.size_bytes), 0))
-        .filter(MediaFile.family_id == family, MediaFile.kind != "deleted")
-        .scalar()
-    )
+    from .usage import family_objects
+
+    used = sum(obj["size"] for obj in family_objects(db, family).values())
     reserved = (
         db.query(func.coalesce(func.sum(UploadSession.size), 0))
         .filter(

@@ -33,6 +33,7 @@ from ..remote_uploads import (
     upload_lock,
     verified_parts,
 )
+from ..share_models import SharedOrigin
 from ..storage import build_storage
 from ..storage.settings import get_storage_settings
 from ..transactions import serialize_sqlite_write
@@ -100,6 +101,7 @@ def dto(db, item, include_files=True):
         "indexNumber": item.index_number,
         "status": state.status if state else "published",
         "legacy": state is None,
+        "shared": db.get(SharedOrigin, item.id) is not None,
         "ready": state.ready if state else True,
         "runtimeMs": (item.runtime_ticks or 0) // 10000,
         "imageUrl": cover + ("&" if "?" in cover else "?") + "w=320",

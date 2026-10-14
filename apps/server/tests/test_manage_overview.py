@@ -82,7 +82,7 @@ def test_overview_aggregates_only_the_current_family_and_real_watch_sessions(par
     assert data["media"] == {"folders": 1, "videos": 3, "published": 1, "draft": 1, "archived": 1}
     assert data["uploads"] == {"active": 2, "failed": 1, "ready": 1}
     assert data["devices"] == {"active": 1, "revoked": 1, "online": 1}
-    assert data["children"] == 1 and data["storageBytes"] == 14
+    assert data["children"] == 1 and data["storageBytes"] == 18
     watch = data["watch"]
     assert watch["last7DaysSessions"] == 3 and watch["timezone"] == str(zone)
     assert watch["todayPlayedMs"] == 3000 and watch["weekPlayedMs"] == 3000

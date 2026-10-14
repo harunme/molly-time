@@ -29,6 +29,9 @@ subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=0x237a70:
                 "-c:v", "libvpx", "-y", str(root / "browser.webm")], check=True)
 with get_session_factory()() as db:
     db.add(Family(id="family", name="我们的家庭"))
+    db.add(Family(id="receiver-family", name="接收家庭"))
+    db.add(User(id="receiver", family_id="receiver-family", name="receiver", password_hash=hash_password("receiver-e2e")))
+    db.add(Item(id="receiver-folder", family_id="receiver-family", type="Series", name="我的收藏"))
     db.add(User(id="parent", family_id="family", name="parent", password_hash=hash_password("parent-e2e")))
     db.add(User(id="operator", family_id="family", name="operator", role="superadmin", password_hash=hash_password("operator-e2e")))
     db.add(User(id="legacy-parent", family_id="family", name="legacy-parent", password_hash=hash_password("legacy-e2e")))
@@ -48,7 +51,7 @@ with get_session_factory()() as db:
     db.add(Item(id="browser-next", family_id="family", type="Episode", name="Browser next", parent_id="season", index_number=2, runtime_ticks=50_000_000))
     db.add(MediaFile(id="browser-next-media", family_id="family", item_id="browser-next", kind="video", storage="local", path="browser.webm", mime="video/webm", size_bytes=(root / "browser.webm").stat().st_size))
     db.commit()
-    for user_id in ("parent", "operator"):
+    for user_id in ("parent", "operator", "receiver"):
         identity = ensure_identity(db, db.get(User, user_id))
         identity.email = f"{user_id}@example.test"
     db.commit()

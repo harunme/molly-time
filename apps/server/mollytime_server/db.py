@@ -96,6 +96,7 @@ def init_db() -> None:
         catalog_versions,  # noqa: F401 -- register transactional catalog clocks
         management_models,
         models,
+        share_models,  # noqa: F401 -- register additive sharing tables
         usage_models,  # noqa: F401 -- register usage tables with Base.metadata
     )
 
@@ -162,6 +163,9 @@ def init_db() -> None:
             session.commit()
         if session.get(management_models.SchemaRevision, "email-accounts-v1") is None:
             session.add(management_models.SchemaRevision(id="email-accounts-v1"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "content-sharing-v1") is None:
+            session.add(management_models.SchemaRevision(id="content-sharing-v1"))
             session.commit()
         if session.get(management_models.SchemaRevision, "family-usage-v1") is None:
             session.add(management_models.SchemaRevision(id="family-usage-v1"))

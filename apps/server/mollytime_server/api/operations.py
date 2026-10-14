@@ -11,12 +11,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
+from ..backup_settings import BackupConfig
+from ..backup_settings import get_config as get_backup_config
+from ..backup_settings import get_status as get_backup_status
+from ..backup_settings import save_config as save_backup_config
 from ..client_releases import inventory, publication_lock
-from ..backup_settings import BackupConfig, get_config as get_backup_config, get_status as get_backup_status, save_config as save_backup_config
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..management_models import OperationsStorage, UploadSession, UploadTarget
 from ..models import MediaFile
+from ..share_models import ObjectCleanup, ShareFile
 from ..storage.oss import OssStorage
 from ..storage.settings import FIELDS, encode, get_storage_settings
 from ..transactions import serialize_sqlite_write
@@ -186,7 +190,10 @@ def check_destination(db, values, current):
     releases, _, invalid = inventory()
     if invalid:
         raise HTTPException(409, "客户端版本记录损坏，请先修复后修改存储配置")
-    referenced = bool(has_files or pending or any(record.storage == "oss" for record in releases))
+    share_files = db.query(ShareFile.id).filter(ShareFile.storage == "oss").first()
+    cleanup_files = db.query(ObjectCleanup.id).filter(ObjectCleanup.storage == "oss").first()
+    referenced = bool(has_files or pending or share_files or cleanup_files
+                      or any(record.storage == "oss" for record in releases))
     changed = any(
         values[field] != (getattr(current, field) or "") for field in ("oss_endpoint", "oss_bucket")
     )

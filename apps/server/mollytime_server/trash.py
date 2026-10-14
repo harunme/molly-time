@@ -12,8 +12,16 @@ from .config import get_settings
 from .db import get_session_factory
 from .manage_auth import aware
 from .management_models import (
-    DeviceDownload, DeviceReminder, FamilyReminders, MediaOptions, MediaTask,
-    ResourceState, TrashEntry, TrashSettings, UploadSession, UploadTarget,
+    DeviceDownload,
+    DeviceReminder,
+    FamilyReminders,
+    MediaOptions,
+    MediaTask,
+    ResourceState,
+    TrashEntry,
+    TrashSettings,
+    UploadSession,
+    UploadTarget,
 )
 from .models import Item, MediaFile
 from .storage import build_storage
@@ -125,7 +133,7 @@ def owned_entry(db, item_id, family_id):
 
 def restore(db, item_id, family_id):
     serialize_sqlite_write(db)
-    item, entry = owned_entry(db, item_id, family_id)
+    _item, entry = owned_entry(db, item_id, family_id)
     if entry.deleting:
         raise HTTPException(409, "内容已开始彻底删除，无法恢复；删除失败时请重试")
     state = db.get(ResourceState, item_id)
@@ -187,6 +195,9 @@ def outside_references(db, keys):
     for target in db.query(UploadTarget).join(UploadSession).filter(~UploadSession.item_id.in_(keys)):
         if target.object_key:
             refs.add(object_identity(target.backend, target.object_key))
+    from .shares import retained_identities
+
+    refs.update(retained_identities(db))
     return refs
 
 

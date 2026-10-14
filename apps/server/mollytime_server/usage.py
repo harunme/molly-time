@@ -28,39 +28,51 @@ def month_bounds(month: str | None):
     return month, lower.astimezone(dt.UTC), upper.astimezone(dt.UTC)
 
 
-def storage_totals(db, family_ids):
-    """Catalog objects, including retained old versions, counted once per path.
+def family_objects(db, family):
+    """Physical identities retained by a household, including live share snapshots."""
+    from .share_models import ContentShare, ShareFile
+    from .trash import object_identity
 
-    Temporary uploads are separate from catalog storage; OSS multipart fragments
-    and derived application caches are not falsely presented as known usage.
+    objects = {}
+    files = db.query(MediaFile.storage, MediaFile.path, MediaFile.size_bytes).filter(
+        MediaFile.family_id == family, MediaFile.kind != "deleted",
+    ).all()
+    files += db.query(ShareFile.storage, ShareFile.path, ShareFile.size_bytes).join(ContentShare).filter(
+        ContentShare.family_id == family, ContentShare.expires_at > dt.datetime.now(dt.UTC),
+    ).all()
+    for backend, path, size in files:
+        unknown = backend not in ("local", "oss") or size <= 0
+        if backend == "local":
+            try:
+                size = LocalStorage(get_settings().resolved_media_dir()).size(path)
+                unknown = False
+            except FileNotFoundError:
+                size, unknown = 0, False
+            except (OSError, ValueError):
+                unknown = True
+        identity = object_identity(backend, path)
+        previous = objects.get(identity)
+        if previous is None or size > previous["size"]:
+            objects[identity] = {"backend": backend, "path": path, "size": max(0, size), "unknown": unknown}
+    return objects
+
+
+def storage_totals(db, family_ids):
+    """Retained catalog/share objects counted once per household and physical path.
+
+    Household totals represent referenced content, not platform-wide physical bytes.
     """
     result = {key: {"usedBytes": 0, "localBytes": 0, "ossBytes": 0,
                     "objectCount": 0, "unknownSizeCount": 0, "reservedBytes": 0,
                     "pendingBytes": 0} for key in family_ids}
-    local = LocalStorage(get_settings().resolved_media_dir())
-    objects = db.query(
-        MediaFile.family_id, MediaFile.storage, MediaFile.path,
-        func.max(MediaFile.size_bytes),
-    ).filter(MediaFile.family_id.in_(family_ids), MediaFile.kind != "deleted").group_by(
-        MediaFile.family_id, MediaFile.storage, MediaFile.path,
-    )
-    for family, backend, path, size in objects.yield_per(256):
-        row = result[family]
-        row["objectCount"] += 1
-        if backend == "local":
-            try:
-                size = local.size(path)
-            except FileNotFoundError:
-                size = 0
-            except (OSError, ValueError):
-                row["unknownSizeCount"] += 1
-                size = max(0, size)
-        elif backend != "oss" or size <= 0:
-            row["unknownSizeCount"] += 1
-        size = max(0, size)
-        row["usedBytes"] += size
-        if backend in ("local", "oss"):
-            row[f"{backend}Bytes"] += size
+    for family in family_ids:
+        for obj in family_objects(db, family).values():
+            row = result[family]
+            row["objectCount"] += 1
+            row["unknownSizeCount"] += obj["unknown"]
+            row["usedBytes"] += obj["size"]
+            if obj["backend"] in ("local", "oss"):
+                row[f"{obj['backend']}Bytes"] += obj["size"]
     uploads = db.query(UploadSession, UploadTarget).outerjoin(
         UploadTarget, UploadTarget.upload_id == UploadSession.id,
     ).filter(UploadSession.family_id.in_(family_ids),
