@@ -283,7 +283,7 @@ function App() {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' :
         overlay === 'settings' ? (window.MollyBridge && capabilities?.serverUrl ? capabilities.clientUpdates ? 'check-update' : 'check-web-update' : authenticated ? 're-pair' : 'connect-account') : overlay === 'client-update' ? 'check-client-update' : !authenticated ? 'connect-home' : error ? 'retry' :
-        (folder ? (videos.length ? `episode-${videos[0].id}` : 'folder-back') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'content');
+        (folder ? (videos.length ? `episode-${videos[0].id}` : 'content') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'content');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
       const target = canRestore ? saved.focus : fallback;
@@ -412,7 +412,6 @@ function App() {
       const current = document.querySelector<HTMLElement>(`[data-focus="${getCurrentFocusKey()}"]`);
       const first = current?.closest('.episode-grid')?.querySelector<HTMLElement>('.poster');
       if (first && current!.offsetTop !== first.offsetTop) return true;
-      if (folder) setFocus('folder-back');
       return false;
     }
     return true;
@@ -431,7 +430,6 @@ function App() {
     <main className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
       <FocusRegion focusKey="content" className="content-panels shelves-scroll" scrollRef={viewport}>
       <div className="topbar">
-        {folder && <FocusButton focusKey="folder-back" className="route-back" ariaLabel="返回" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /></FocusButton>}
         <span className="topbar-brand">MollyTime</span>
         {authenticated && syncStatus?.supported !== false && syncStatus && <span className="sync-status" role="status">{syncStatus.message || (!syncStatus.online ? '离线浏览' : syncStatus.catalogComplete ? '内容已同步' : syncStatus.paused ? '同步已暂停' : '正在同步内容')}{!syncStatus.online && syncStatus.lastSync ? ` · 上次同步 ${new Date(syncStatus.lastSync).toLocaleDateString('zh-CN')}` : ''}</span>}
       </div>
