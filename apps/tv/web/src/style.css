@@ -21,6 +21,8 @@ body { margin: 0; overflow: hidden; }
 button, input { font: inherit; }
 button { color: inherit; cursor: pointer; background: transparent; border: .15rem solid transparent; border-radius: var(--control-radius); text-align: left; }
 button:focus { outline: none; }
+/* Containers delegate focus to controls; only controls draw selection cues. */
+.app:focus, .app [data-focus-region]:focus, .app .shelf:focus, .app .rail-track:focus, .app .rail-content:focus, .app .episode-grid:focus { outline: none; }
 button.focused, button:focus-visible { border-color: var(--focus); box-shadow: 0 .3rem 1rem #0004; }
 button:disabled { opacity: .55; cursor: wait; }
 .load-more { min-width: 12rem; align-self: center; padding: 1rem; }

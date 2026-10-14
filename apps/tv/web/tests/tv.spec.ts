@@ -475,6 +475,37 @@ test('folder videos form a vertical grid with remote row navigation', async ({ p
   await page.screenshot({ path: 'test-results/tv-video-grid.png' });
 });
 
+test('native container focus restores a control without row or page outlines', async ({ page }) => {
+  await page.goto('/tv/?mock=1');
+  const first = page.locator('[data-focus="series-demo-series-1-episode-1"]');
+  const second = page.locator('[data-focus="series-demo-series-1-episode-2"]');
+  await expect(first).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(second).toBeFocused();
+  for (const selector of ['[data-rail="home-row-0"]', '[data-focus-region="content"]', '[data-focus-region="screen"]']) {
+    const container = page.locator(selector);
+    // tabindex also covers older WebViews that don't implicitly focus scrollers.
+    await container.evaluate((node: HTMLElement) => { node.tabIndex = -1; node.focus({ preventScroll: true }); });
+    await expect(second).toBeFocused();
+    await expect(container).toHaveCSS('outline-style', 'none');
+    await expect(page.locator('.poster.focused')).toHaveCount(1);
+  }
+  await expect(second.locator('.cover')).not.toHaveCSS('box-shadow', 'none');
+  // A disabled/stale selection must fall back to a usable control in that row.
+  await second.evaluate((node: HTMLButtonElement) => { node.disabled = true; });
+  await page.locator('[data-rail="home-row-0"]').evaluate((node: HTMLElement) => node.focus());
+  await expect(first).toBeFocused();
+  await page.keyboard.press('ContextMenu');
+  const dialogControl = page.locator('[role="dialog"] [data-focused="true"]');
+  await expect(dialogControl).toBeFocused();
+  await page.locator('[data-focus-region="content"]').evaluate((node: HTMLElement) => node.focus());
+  await expect(dialogControl).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(first).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(() => page.locator('[data-rail="home-row-1"] .focused').count()).toBe(1);
+});
+
 test('rail scrolling keeps arrow geometry out of animation frames', async ({ page }) => {
   await page.goto('/tv/?mock=1');
   const rail = page.locator('[data-rail="home-row-0"]');
@@ -495,7 +526,7 @@ test('rail scrolling keeps arrow geometry out of animation frames', async ({ pag
   await expect(page.locator('[data-focus="series-demo-series-1-episode-2"]')).toBeFocused();
   expect(await rail.evaluate((node) => node.scrollLeft)).toBe(0);
   const initiallyVisible = await rail.evaluate((node) => Array.from(node.querySelectorAll<HTMLElement>('button[data-focus]'))
-    .filter((card) => card.offsetLeft + card.offsetWidth <= node.clientWidth - 20).length);
+    .filter((card) => card.offsetLeft + card.offsetWidth * 1.055 <= node.clientWidth - 20).length);
   const totalCards = await rail.locator('button[data-focus]').count();
   for (let index = 2; index < initiallyVisible; index++) await page.keyboard.press('ArrowRight');
   expect(await rail.evaluate((node) => node.scrollLeft)).toBe(0);
@@ -533,13 +564,10 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   await expect(page.locator('.shelf-heading h2')).toHaveText(['最近播放', '发现新故事', '我的媒体库']);
   const recentRail = page.locator('.shelf').first();
   const arrowCenterError = () => recentRail.evaluate((node) => {
-    const cover = node.querySelector<HTMLElement>('.cover')!;
-    let center = cover.offsetHeight / 2;
-    for (let element: HTMLElement | null = cover; element && element !== node.querySelector('.rail-shell'); element = element.offsetParent as HTMLElement | null) center += element.offsetTop;
-    const shell = node.querySelector('.rail-shell')!.getBoundingClientRect();
+    const cover = node.querySelector('.poster:not(.focused) .cover')!.getBoundingClientRect();
     return Math.max(...Array.from(node.querySelectorAll('.rail-direction')).map((arrow) => {
       const bounds = arrow.getBoundingClientRect();
-      return Math.abs(bounds.top + bounds.height / 2 - shell.top - center);
+      return Math.abs(bounds.top + bounds.height / 2 - cover.top - cover.height / 2);
     }));
   });
   await expect.poll(arrowCenterError).toBeLessThan(1);

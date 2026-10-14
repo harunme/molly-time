@@ -131,6 +131,9 @@ class ShellActivity : AppCompatActivity() {
         val assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/tv/", app.webBundles.pathHandler()).build()
         val view = WebView(this)
+        // The web UI draws card focus. Avoid an additional native frame around
+        // the entire WebView when a remote switches out of touch mode.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) view.defaultFocusHighlightEnabled = false
         web = view
         val frame = FrameLayout(this)
         frame.addView(view, FrameLayout.LayoutParams(-1, -1))

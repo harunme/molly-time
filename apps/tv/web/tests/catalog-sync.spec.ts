@@ -45,6 +45,20 @@ test('long horizontal shelves mount only visible neighbors and navigate beyond t
   await expect(page.locator('[data-focus="home-curated-folder-30"]')).toBeFocused();
   await expect(page.locator('[data-focus="home-curated-folder-30"]')).toBeInViewport();
   expect(await page.locator('.poster').count()).toBeLessThan(24);
+  await expect(page.locator('[data-focus="home-curated-folder-0"]')).toHaveCount(0);
+  const arrowCenterError = () => page.locator('.rail-shell').evaluate((shell) => {
+    const cover = shell.querySelector('.poster:not(.focused) .cover')!.getBoundingClientRect();
+    return Math.max(...Array.from(shell.querySelectorAll('.rail-direction')).map((arrow) => {
+      const bounds = arrow.getBoundingClientRect();
+      return Math.abs(bounds.top + bounds.height / 2 - cover.top - cover.height / 2);
+    }));
+  });
+  await expect.poll(arrowCenterError).toBeLessThan(1);
+  await page.setViewportSize({ width: 960, height: 540 });
+  await expect.poll(arrowCenterError).toBeLessThan(1);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect.poll(arrowCenterError).toBeLessThan(1);
+  await page.screenshot({ path: 'test-results/tv-virtual-rail-directions.png' });
 });
 
 test('background catalog growth preserves focused DOM when crossing the old virtualization threshold', async ({ page }) => {

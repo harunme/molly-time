@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode, type RefObject } from 'react';
+import { useEffect, type FocusEvent, type ReactNode, type RefObject } from 'react';
 import { FocusContext, getCurrentFocusKey, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 
 type Navigation = { cards: HTMLButtonElement[]; indices: WeakMap<HTMLButtonElement, number>; columns: number };
@@ -33,6 +33,19 @@ function getNavigation(root: HTMLElement): Navigation {
   return value;
 }
 
+function restoreContainerFocus(event: FocusEvent<HTMLDivElement>) {
+  const target = event.target as HTMLElement;
+  if (document.activeElement !== target || !target.matches('[data-focus-region], .shelf, .rail-track, .rail-content, .episode-grid')) return;
+  // Native scroll-container focus can bypass spatial navigation. Restore a
+  // usable control, keeping an open dialog's focus boundary intact.
+  const scope = document.querySelector<HTMLElement>('.overlay-panel') ?? target.closest<HTMLElement>('.shelf') ?? event.currentTarget;
+  const buttons = Array.from(scope.querySelectorAll<HTMLButtonElement>('button[data-focus]:not(:disabled)'))
+    .filter((button) => !button.closest('[inert], [aria-hidden="true"]') && button.getClientRects().length > 0);
+  const current = getCurrentFocusKey();
+  const button = buttons.find((item) => item.dataset.focus === current) ?? buttons[0];
+  if (button?.dataset.focus) setFocus(button.dataset.focus);
+}
+
 export function FocusRegion({ focusKey, children, className = '', boundary = false, scrollRef, hidden = false }: {
   focusKey: string; children: ReactNode; className?: string; boundary?: boolean; hidden?: boolean;
   scrollRef?: RefObject<HTMLDivElement | null>;
@@ -44,7 +57,7 @@ export function FocusRegion({ focusKey, children, className = '', boundary = fal
     return () => { if (scrollRef) scrollRef.current = null; };
   }, [ref, scrollRef]);
   return <FocusContext.Provider value={focusKey}>
-    <div ref={ref} className={`${className} ${hasFocusedChild ? 'has-focus' : ''}`} data-focus-region={focusKey} aria-hidden={hidden || undefined} inert={hidden || undefined}>{children}</div>
+    <div ref={ref} className={`${className} ${hasFocusedChild ? 'has-focus' : ''}`} data-focus-region={focusKey} aria-hidden={hidden || undefined} inert={hidden || undefined} onFocusCapture={restoreContainerFocus}>{children}</div>
   </FocusContext.Provider>;
 }
 
