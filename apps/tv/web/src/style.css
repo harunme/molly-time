@@ -92,10 +92,14 @@ h2 { font-size: 1.25rem; line-height: 1.4; margin: 0; font-weight: 600; }
 .rail-content { position: relative; display: flex; gap: 1.35rem; width: max-content; }
 .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.4rem, 1fr)); gap: 1.35rem; padding: 1.1rem 3.4rem 1.5rem; }
 .episode-grid .poster { width: 100%; min-width: 0; }
-.poster { position: relative; width: 17.4rem; flex: 0 0 17.4rem; padding: .3rem; border-radius: calc(var(--card-radius) + .3rem); transform-origin: center; transition: transform .14s var(--ease); }
-.poster.focused, .poster:focus-visible { border-color: transparent; box-shadow: none; background: transparent; transform: translateY(-.18rem) scale(1.055); z-index: 1; }
-.poster.focused .cover, .poster:focus-visible .cover { box-shadow: 0 .7rem 1.6rem #0006; content-visibility: visible; }
-.poster.focused strong { color: #fff; }
+.poster { position: relative; width: 17.4rem; flex: 0 0 17.4rem; padding: .3rem; border-width: .2rem; border-radius: calc(var(--card-radius) + .5rem); transform-origin: center; transition: transform .14s var(--ease); }
+/* A solid frame and light title plate remain legible on any cover, including
+   when reduced motion disables the lift. Keep the border width fixed to avoid
+   changing grid/rail geometry as the remote focus moves. */
+.poster.focused, .poster:focus-visible { border-color: var(--focus); box-shadow: 0 0 0 .15rem var(--canvas), 0 .7rem 1.6rem #0008; background: var(--focus); transform: translateY(-.18rem) scale(1.04); z-index: 3; }
+.poster.focused .cover, .poster:focus-visible .cover { content-visibility: visible; }
+.poster.focused .card-copy, .poster:focus-visible .card-copy { color: var(--canvas); }
+.poster.focused .card-copy > span, .poster:focus-visible .card-copy > span { color: #414751; }
 .card-copy { padding: .75rem .15rem .25rem; }
 .poster strong { display: block; font-size: 1.05rem; font-weight: 600; line-height: 1.3; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .card-copy > span { display: flex; justify-content: space-between; align-items: center; font-size: .75rem; color: var(--muted); margin-top: .4rem; }
