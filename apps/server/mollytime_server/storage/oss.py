@@ -1,8 +1,13 @@
 """Official OSS transport. Public signing and internal processing are separate."""
 
+import logging
+import tempfile
+import time
 from pathlib import Path
 
 from .base import StoredObject
+
+logger = logging.getLogger(__name__)
 
 
 class OssStorage:
@@ -95,7 +100,38 @@ class OssStorage:
             response.close()
 
     def put_file(self, key, path, mime):
-        self._client(True).put_object_from_file(key, str(path), headers={"Content-Type": mime})
+        """Retry transient failures, resuming completed parts of large uploads."""
+        import oss2
+
+        client = self._client(True)
+        # Keep the checkpoint across retries without requiring a writable HOME.
+        with tempfile.TemporaryDirectory(prefix="mollytime-oss-upload-") as checkpoint:
+            store = oss2.ResumableStore(root=checkpoint)
+            for attempt in range(1, 4):
+                try:
+                    oss2.resumable_upload(
+                        client,
+                        key,
+                        str(path),
+                        store=store,
+                        headers={"Content-Type": mime},
+                        multipart_threshold=8 * 1024 * 1024,
+                        part_size=1024 * 1024,
+                        num_threads=2,
+                    )
+                    return
+                except (oss2.exceptions.RequestError, oss2.exceptions.ServerError) as error:
+                    transient = isinstance(error, oss2.exceptions.RequestError) or (
+                        error.status in (408, 429) or 500 <= error.status < 600
+                    )
+                    if not transient or attempt == 3:
+                        raise
+                    logger.warning(
+                        "OSS upload interrupted; retrying attempt %s/3 (%s)",
+                        attempt + 1,
+                        type(error).__name__,
+                    )
+                    time.sleep(2**attempt)
 
     def signed_url(self, key, ttl_seconds):
         return self._client().sign_url("GET", key, ttl_seconds, slash_safe=True)
