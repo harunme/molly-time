@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import { api, ApiError, bytes, dateTime, setSession, type Resource, type Session } from "./api";
 import { ResourcePicker } from "./pagination";
@@ -51,7 +51,7 @@ function ShareArtwork({ imageId, code, name, hero = false }: { imageId?: string 
   </div>;
 }
 
-function SummaryDetails({ share, code }: { share: Summary; code: string }) {
+function SummaryDetails({ share, code, children }: { share: Summary; code: string; children?: ReactNode }) {
   const videos = share.items.filter((item) => item.type === "Episode");
   return <>
     <div className="share-hero">
@@ -62,6 +62,7 @@ function SummaryDetails({ share, code }: { share: Summary; code: string }) {
         <div className="share-facts"><span>{share.videoCount} 个视频</span><span>{bytes(share.sizeBytes)}</span>{!!share.durationMs && <span><Clock3 aria-hidden="true" />{durationLabel(share.durationMs)}</span>}</div>
       </div>
     </div>
+    {children}
     {share.type === "Series" && <section className="share-catalog" aria-label="分享内容">
       <div className="share-section-title"><h3>包含的视频 <span className="ml-2 tabular-nums">共 {share.videoCount} 个</span></h3></div>
       <ul className="share-video-grid">
@@ -265,6 +266,19 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
     if (!session) { setLoginOpen(true); return; }
     await performClaim(session);
   };
+  const claimPanel = share && (
+    <div className={modal ? "space-y-4" : "share-claim-panel"}>
+      <p className="share-expiry">领取截止：{dateTime(share.expiresAt)}</p>
+      {share.ownShare ? <p className="text-sm text-muted-foreground">这是你家庭分享的内容，无需重复领取。</p> : share.claimedResourceId ? <>
+        <p>{share.claimedDeleted ? "你的家庭已领取过此分享，内容已删除，无法重复领取。" : claimed ? "已加入我的内容库，发布后可在电视上观看。" : "你的家庭已领取此分享，无需重复加入。"}</p>
+        {!standalone && !share.claimedDeleted && <Button asChild><Link to={share.type === "Series" ? `/library/${share.claimedResourceId}` : share.claimedFolderId ? `/library/${share.claimedFolderId}` : "/library"}>查看我的内容</Link></Button>}
+      </> : <>
+        {session && !readonly && share.type === "Episode" && <ResourcePicker initial={initialFolder} value={folder} onChange={setFolder} label="接收合集" placeholder="选择接收合集" />}
+        <p className="text-sm text-muted-foreground">{readonly ? "请使用家庭管理员账号领取分享。" : "领取后由你决定是否发布。"}</p>
+        <Button className="w-full" disabled={busy || readonly || (!!session && share.type === "Episode" && !folder)} onClick={() => void accept()}>{busy ? "正在加入…" : "加入我的内容库"}</Button>
+      </>}
+    </div>
+  );
   const content = <>
     {!modal && <div className={share && code ? "sr-only" : "share-page-heading"}><h1 className="text-2xl font-semibold">{code ? "分享给你的内容" : "领取分享"}</h1><p className="mt-2 text-sm text-muted-foreground">加入自己的内容库，再决定给孩子看什么。</p></div>}
     <Card className={modal ? "border-0 bg-transparent p-0 shadow-none space-y-4" : share ? "share-content" : "p-6 space-y-5"}>
@@ -281,18 +295,8 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
       </form>}
       {code && !share && <Button variant="bordered" disabled={busy} onClick={() => void load({ code })}>{busy ? "正在加载…" : "重新加载分享"}</Button>}
       {share && <>
-        {modal ? <div className="space-y-2"><h3>{share.name}</h3><p className="text-sm text-muted-foreground">{share.videoCount} 个视频 · {bytes(share.sizeBytes)}</p><ul className="max-h-40 overflow-auto space-y-1 text-sm">{share.items.filter((item) => item.type === "Episode").map((item) => <li key={item.id}>{item.name}</li>)}</ul></div> : <SummaryDetails share={share} code={credential?.code || code} />}
-        <div className={modal ? "space-y-4" : "share-claim-panel"}>
-        <p className="share-expiry">领取截止：{dateTime(share.expiresAt)}</p>
-        {share.ownShare ? <p className="text-sm text-muted-foreground">这是你家庭分享的内容，无需重复领取。</p> : share.claimedResourceId ? <>
-          <p>{share.claimedDeleted ? "你的家庭已领取过此分享，内容已删除，无法重复领取。" : claimed ? "已加入我的内容库，发布后可在电视上观看。" : "你的家庭已领取此分享，无需重复加入。"}</p>
-          {!standalone && !share.claimedDeleted && <Button asChild><Link to={share.type === "Series" ? `/library/${share.claimedResourceId}` : share.claimedFolderId ? `/library/${share.claimedFolderId}` : "/library"}>查看我的内容</Link></Button>}
-        </> : <>
-          {session && !readonly && share.type === "Episode" && <ResourcePicker initial={initialFolder} value={folder} onChange={setFolder} label="接收合集" placeholder="选择接收合集" />}
-          <p className="text-sm text-muted-foreground">{readonly ? "请使用家庭管理员账号领取分享。" : "领取后由你决定是否发布。"}</p>
-          <Button className="w-full" disabled={busy || readonly || (!!session && share.type === "Episode" && !folder)} onClick={() => void accept()}>{busy ? "正在加入…" : "加入我的内容库"}</Button>
-        </>}
-        </div>
+        {modal ? <div className="space-y-2"><h3>{share.name}</h3><p className="text-sm text-muted-foreground">{share.videoCount} 个视频 · {bytes(share.sizeBytes)}</p><ul className="max-h-40 overflow-auto space-y-1 text-sm">{share.items.filter((item) => item.type === "Episode").map((item) => <li key={item.id}>{item.name}</li>)}</ul></div> : <SummaryDetails share={share} code={credential?.code || code}>{claimPanel}</SummaryDetails>}
+        {modal && claimPanel}
       </>}
       {error && <Alert variant="destructive" role="alert" className={share && !modal ? "share-error" : ""}><AlertDescription>{error}</AlertDescription></Alert>}
     </Card>
