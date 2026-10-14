@@ -119,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(downloads.router)
     app.include_router(manage_resources.router)
     app.include_router(shares.router)
+    app.include_router(shares.public_router)
     app.include_router(manage_trash.router)
     app.include_router(manage_home.router)
     app.include_router(manage_overview.router)

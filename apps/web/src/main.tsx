@@ -18,7 +18,7 @@ import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
 import { ResourceSummary } from "./resource-summary";
 import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
-import { ShareDialog, ShareReceive } from "./shares";
+import { ShareClaimDialog, ShareDialog, ShareReceive } from "./shares";
 import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
@@ -253,6 +253,8 @@ function App() {
     }
   };
   if (checking) return <Loading className="min-h-dvh" label="正在打开家庭媒体库…" />;
+  if (location.pathname === "/share" || /^\/share\/[^/]+$/.test(location.pathname))
+    return <ShareReceive session={session} onSession={(value) => { setSession(value); updateSession(value); }} readonly={!!session && !["admin", "superadmin"].includes(session.user.role)} standalone />;
   if (location.pathname === "/invite")
     return <InviteActivation key={inviteToken || ""} token={inviteToken || ""} login={(email) => {
       void run(async () => {
@@ -389,10 +391,10 @@ function App() {
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
             <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
-            <Route path="library" element={<Library run={run} readonly={readonly} />} />
-            <Route path="share" element={<ShareReceive readonly={readonly} />} />
+            <Route path="library" element={<Library run={run} readonly={readonly} session={session} />} />
+            <Route path="share" element={<ShareReceive session={session} readonly={readonly} />} />
             <Route path="trash" element={<Trash readonly={readonly} />} />
-            <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
+            <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} session={session} />} />
             <Route path="upload" element={<Navigate to="/library?uploads=1" replace />} />
             <Route path="watch" element={<Navigate to="/overview?watch=1" replace />} />
             <Route path="operations/*" element={session.user.role === "superadmin"
@@ -529,17 +531,17 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
   );
 }
 
-function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
+function FolderLibrary({ run, readonly, session }: { run: Run; readonly: boolean; session: Session; }) {
   const { folderId = "" } = useParams();
   const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined);
   if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
   if (folder.loading || folder.data?.id !== folderId) return <State loading />;
   if (folder.data.status === "archived") return <Navigate to="/trash" replace />;
   if (folder.data.type !== "Series") return <Navigate to="/library" replace />;
-  return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} />;
+  return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} session={session} />;
 }
 
-function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource; }) {
+function Library({ run, readonly, parent, session }: { run: Run; readonly: boolean; parent?: Resource; session: Session; }) {
   const navigate = useNavigate();
   const location = useLocation();
   const tasksOpen = new URLSearchParams(location.search).get("uploads") === "1";
@@ -550,6 +552,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
     [upload, setUpload] = useState<Resource | "new">(),
     [preview, setPreview] = useState<Resource>();
   const [share, setShare] = useState<Resource>();
+  const [claimOpen, setClaimOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [uploadKind, setUploadKind] = useState("video");
   const previousTasksOpen = useRef(tasksOpen);
@@ -613,9 +616,6 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           <h1>{parent?.name || "资源库"}</h1>
           <p>先整理和预览，发布后在电视上观看。</p>
         </div>
-        <div className="actions">
-          {!readonly && <Button variant="bordered" asChild><Link to="/share">领取分享</Link></Button>}
-        </div>
       </div>
       <div className="breadcrumbs">
         <Button
@@ -671,6 +671,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
             onValueChange={(value) => setStatus(value)}
             options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> })]} />
           {!readonly && <div className="actions library-create-actions">
+              <Button variant="bordered" onClick={() => setClaimOpen(true)}>领取分享</Button>
               <Button variant="bordered" onClick={() => setEdit("new")}>
                 新建{kind === "Series" ? "文件夹" : "视频"}
               </Button>
@@ -937,6 +938,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           }}
         />
       )}
+      {claimOpen && <ShareClaimDialog session={session} initialFolder={parent} close={() => setClaimOpen(false)} received={() => { setClaimOpen(false); changed(); }} />}
       {share && <ShareDialog resource={share} close={() => setShare(undefined)} />}
       {preview && (
         <Preview item={preview} close={() => setPreview(undefined)} />

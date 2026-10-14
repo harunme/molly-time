@@ -50,7 +50,8 @@ def create(parent, resource="series"):
     result = parent.post("/api/manage/shares", json={"resourceId": resource})
     assert result.status_code == 200, result.text
     assert len(result.json()["code"]) == 12
-    assert "/manage/#/share?token=" in result.json()["url"]
+    assert result.json()["url"].endswith("/manage/#/share/" + result.json()["code"])
+    assert "token" not in result.json()
     return result.json()
 
 
@@ -77,7 +78,7 @@ def expire(share):
 def test_snapshot_claim_preserves_structure_metadata_and_family_isolation(parent, recipient):
     share = create(parent)
     assert share["videoCount"] == 1 and share["sizeBytes"] == 18
-    preview = recipient.post("/api/manage/shares/preview", json={"token": share["token"]})
+    preview = recipient.post("/api/manage/shares/preview", json={"code": share["code"]})
     assert preview.status_code == 200
     assert "path" not in preview.text and "video.mp4" not in preview.text
     root = accept(recipient, share)
@@ -218,9 +219,7 @@ def test_permissions_expiry_drafts_reminders_and_no_file_copy(parent, recipient,
     accept(recipient, share)
     put.assert_not_called()
     download.assert_not_called()
-    assert (
-        parent.post("/api/manage/shares/accept", json={"token": share["token"]}).status_code == 409
-    )
+    assert parent.post("/api/manage/shares/accept", json={"code": share["code"]}).status_code == 409
     assert recipient.post("/api/manage/shares/preview", json={"code": "A" * 12}).status_code == 404
     assert (
         recipient.post(
@@ -380,3 +379,122 @@ def test_snapshot_retention_blocks_bucket_change_after_source_purge(parent, reci
             check_destination(
                 session, {"oss_endpoint": "", "oss_bucket": "other-bucket"}, get_storage_settings()
             )
+
+
+def test_public_overview_without_login_requires_authenticated_claim(parent, recipient):
+    share = create(parent)
+    with TestClient(create_app()) as guest:
+        preview = guest.post("/api/shares/preview", json={"code": share["code"]})
+        assert preview.status_code == 200
+        assert preview.json()["name"] == "Stories"
+        assert preview.json()["claimedResourceId"] is None
+        assert preview.json()["ownShare"] is False
+        assert all(
+            value not in preview.text
+            for value in ("video.mp4", "subtitle.srt", "storage", '"url"', '"sha256"')
+        )
+        assert (
+            guest.post("/api/manage/shares/accept", json={"code": share["code"]}).status_code == 401
+        )
+        assert guest.post("/api/shares/preview", json={"token": "A" * 32}).status_code == 422
+        assert guest.post("/api/shares/preview", json={"code": "A" * 12}).status_code == 404
+        expire(share)
+        assert guest.post("/api/shares/preview", json={"code": share["code"]}).status_code == 410
+
+
+def test_public_overview_claim_state_is_scoped_to_logged_in_family(parent, recipient):
+    share = create(parent)
+    root = accept(recipient, share)
+    assert (
+        parent.post("/api/shares/preview", json={"code": share["code"]}).json()["ownShare"] is True
+    )
+    preview = recipient.post("/api/shares/preview", json={"code": share["code"]}).json()
+    assert preview["claimedResourceId"] == root
+    assert preview["ownShare"] is False
+    with TestClient(create_app()) as guest:
+        assert (
+            guest.post("/api/shares/preview", json={"code": share["code"]}).json()[
+                "claimedResourceId"
+            ]
+            is None
+        )
+    expire(share)
+    assert (
+        recipient.post("/api/shares/preview", json={"code": share["code"]}).json()[
+            "claimedResourceId"
+        ]
+        == root
+    )
+
+
+def test_migration_removes_token_column_and_preserves_claims_and_foreign_keys(parent, recipient):
+    from sqlalchemy import inspect
+
+    share = create(parent)
+    root = accept(recipient, share)
+    engine = db.get_engine()
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "ALTER TABLE content_shares ADD COLUMN token_hash VARCHAR(64) NOT NULL DEFAULT 'obsolete-token'"
+        )
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX old_token_hash ON content_shares(token_hash)"
+        )
+    barrier = threading.Barrier(2)
+
+    def initialize():
+        barrier.wait(timeout=5)
+        db.init_db()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(initialize) for _ in range(2)]
+        for future in futures:
+            future.result(timeout=10)
+    db.init_db()
+    assert "token_hash" not in {
+        column["name"] for column in inspect(engine).get_columns("content_shares")
+    }
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+    assert accept(recipient, share) == root
+    create(parent)
+
+
+def test_share_artwork_uses_snapshot_and_never_grants_video_access(parent, recipient):
+    root = config.get_settings().resolved_media_dir()
+    (root / "share-cover.jpg").write_bytes(b"snapshot-cover")
+    with Session(db.get_engine()) as session:
+        session.add(MediaFile(id="share-cover", family_id="f1", item_id="series", kind="image",
+            storage="local", path="share-cover.jpg", mime="image/jpeg", size_bytes=14))
+        session.get(Item, "series").overview = "Stories to enjoy together"
+        session.get(Item, "e1").runtime_ticks = 600_000_000
+        session.commit()
+    share = create(parent)
+    with TestClient(create_app()) as guest:
+        data = guest.post("/api/shares/preview", json={"code": share["code"]}).json()
+        assert data["overview"] == "Stories to enjoy together"
+        assert data["durationMs"] == 60000
+        assert next(row for row in data["items"] if row["type"] == "Episode")["imageId"] == data["imageId"]
+        route = f'/api/shares/images/{data["imageId"]}'
+        barrier = threading.Barrier(4)
+        def fetch_cover():
+            barrier.wait(timeout=5)
+            return guest.post(route, json={"code": share["code"]})
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = [task.result(timeout=10) for task in [pool.submit(fetch_cover) for _ in range(4)]]
+        assert all(result.status_code == 200 and result.content == b"snapshot-cover" for result in results)
+        image = guest.post(route, json={"code": share["code"]})
+        assert image.status_code == 200 and image.content == b"snapshot-cover"
+        assert image.headers["content-type"] == "image/jpeg"
+        assert image.headers["cache-control"] == "no-store"
+        with Session(db.get_engine()) as session:
+            video = next(file for file in session.query(ShareFile).filter_by(share_id=share["id"]).all() if file.metadata_["kind"] == "video")
+            video_id = video.id
+        assert guest.post(f"/api/shares/images/{video_id}", json={"code": share["code"]}).status_code == 404
+        assert guest.post(route, json={"code": "A" * 12}).status_code == 404
+        assert guest.post(route, json={"code": "invalid"}).status_code == 422
+        archive_purge(parent, "series")
+        assert guest.post(route, json={"code": share["code"]}).content == b"snapshot-cover"
+        expire(share)
+        assert guest.post(route, json={"code": share["code"]}).status_code == 410

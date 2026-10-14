@@ -7,11 +7,11 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..auth import hash_refresh_token
 from ..deps import DbSession
-from ..manage_auth import Parent, aware
+from ..manage_auth import Parent, aware, check_origin, parent_session
 from ..management_models import MediaOptions, ResourceState
 from ..models import Item, MediaFile
 from ..remote_uploads import ensure_capacity
@@ -23,9 +23,10 @@ from ..trash import deletion_lock, ensure_active, ensure_idle, family_tree, subt
 from ..usage import family_objects
 from .account_invitations import CODE_ALPHABET
 from .manage_resources import owned, reminder_resource_ids
-from .pairing import limit, public_origin
+from .pairing import digest, limit, public_origin
 
 router = APIRouter(prefix="/api/manage/shares", tags=["content-shares"])
+public_router = APIRouter(prefix="/api/shares", tags=["content-shares"])
 ITEM_FIELDS = (
     "type",
     "name",
@@ -47,17 +48,13 @@ class CreateShare(BaseModel):
 
 class Credential(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    token: str | None = Field(default=None, min_length=32, max_length=128)
-    code: str | None = Field(default=None, min_length=1, max_length=32)
+    code: str = Field(min_length=1, max_length=32)
 
     @model_validator(mode="after")
     def valid_credential(self):
-        if (self.token is None) == (self.code is None):
-            raise ValueError("请提供分享链接或口令")
-        if self.code is not None:
-            self.code = re.sub(r"[\s-]", "", self.code).upper()
-            if len(self.code) != 12 or any(c not in CODE_ALPHABET for c in self.code):
-                raise ValueError("请输入十二位分享口令")
+        self.code = re.sub(r"[\s-]", "", self.code).upper()
+        if len(self.code) != 12 or any(c not in CODE_ALPHABET for c in self.code):
+            raise ValueError("请输入十二位分享口令")
         return self
 
 
@@ -72,9 +69,10 @@ def require_admin(user):
 
 
 def find_share(db, body):
-    column = ContentShare.token_hash if body.token else ContentShare.code_hash
     share = (
-        db.query(ContentShare).filter(column == hash_refresh_token(body.token or body.code)).first()
+        db.query(ContentShare)
+        .filter(ContentShare.code_hash == digest(body.code))
+        .first()
     )
     if share is None:
         raise HTTPException(404, "分享不存在，请检查链接或口令")
@@ -92,8 +90,23 @@ def usable(share, family):
         raise HTTPException(410, "分享已过期，请联系分享者重新生成")
 
 
-def summary(share):
+def summary(db, share):
     snap = share.snapshot
+    images = {file.source_item_id: file.id for file in db.query(ShareFile).filter_by(share_id=share.id).all()
+              if file.metadata_.get("kind") == "image"}
+    items = {row["id"]: row for row in snap["items"]}
+
+    def cover(row):
+        seen = set()
+        while row and row["id"] not in seen:
+            seen.add(row["id"])
+            if row["id"] in images:
+                return images[row["id"]]
+            row = items.get(row.get("parent_id"))
+        return None
+
+    root = items[snap["rootId"]]
+    cover_id = cover(root) or next((cover(row) for row in snap["items"] if cover(row)), None)
     return {
         "id": share.id,
         "name": snap["name"],
@@ -101,12 +114,18 @@ def summary(share):
         "videoCount": snap["videoCount"],
         "sizeBytes": snap["sizeBytes"],
         "expiresAt": aware(share.expires_at).isoformat(),
+        "imageId": cover_id,
+        "overview": root.get("overview") or "",
+        "durationMs": sum((row.get("runtime_ticks") or 0) // 10000 for row in snap["items"] if row["type"] == "Episode"),
         "items": [
             {
                 "id": row["id"],
                 "parentId": row["parent_id"],
                 "name": row["name"],
                 "type": row["type"],
+                "imageId": cover(row) or cover_id,
+                "overview": row.get("overview") or "",
+                "runtimeMs": (row.get("runtime_ticks") or 0) // 10000,
             }
             for row in snap["items"]
         ],
@@ -240,15 +259,13 @@ def create_share(body: CreateShare, request: Request, user: Parent, db: DbSessio
     with deletion_lock():
         serialize_sqlite_write(db)
         snapshot, descriptors = build_snapshot(db, user, body.resourceId, str(uuid.uuid4()))
-        token = secrets.token_urlsafe(32)
         code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(12))
         now = dt.datetime.now(dt.UTC)
         share = ContentShare(
             id=descriptors[0].share_id,
             family_id=user.family_id,
             created_by=user.id,
-            token_hash=hash_refresh_token(token),
-            code_hash=hash_refresh_token(code),
+            code_hash=digest(code),
             expires_at=now + dt.timedelta(days=7),
             snapshot=snapshot,
         )
@@ -257,11 +274,59 @@ def create_share(body: CreateShare, request: Request, user: Parent, db: DbSessio
         db.add_all(descriptors)
         db.commit()
         return {
-            **summary(share),
-            "token": token,
+            **summary(db, share),
             "code": code,
-            "url": f"{origin}/manage/#/share?token={token}",
+            "url": f"{origin}/manage/#/share/{code}",
         }
+
+
+@public_router.post("/images/{image_id}")
+def shared_image(image_id: str, credential: Credential, request: Request, db: DbSession):
+    check_origin(request)
+    serialize_sqlite_write(db)
+    limit(db, request, "share-image", 240, 600)
+    share = find_share(db, credential)
+    if aware(share.expires_at) <= dt.datetime.now(dt.UTC):
+        raise HTTPException(410, "分享已过期")
+    file = db.query(ShareFile).filter_by(id=image_id, share_id=share.id).first()
+    if not file or file.metadata_.get("kind") != "image":
+        raise HTTPException(404, "封面不存在")
+    mime = file.metadata_.get("mime")
+    if mime not in ("image/jpeg", "image/png", "image/webp"):
+        mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(Path(file.path).suffix.lower())
+    if mime not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(404, "封面不存在")
+    try:
+        content = build_storage(file.storage).open(file.path)
+    except (OSError, ValueError):
+        raise HTTPException(404, "封面不存在")
+    return Response(content, media_type=mime, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@public_router.post("/preview")
+def public_preview(body: Credential, request: Request, db: DbSession):
+    # The share credential grants metadata and artwork previews, never video access.
+    check_origin(request)
+    serialize_sqlite_write(db)
+    limit(db, request, "share-public-lookup", 60, 600)
+    share = find_share(db, body)
+    user = None
+    try:
+        _session, user = parent_session(request, db)
+    except HTTPException as error:
+        if error.status_code != 401:
+            raise
+    claim = claim_for(db, share, user.family_id) if user else None
+    if not claim and aware(share.expires_at) <= dt.datetime.now(dt.UTC):
+        raise HTTPException(410, "分享已过期，请联系分享者重新生成")
+    resource = db.get(Item, claim.resource_id) if claim else None
+    return {
+        **summary(db, share),
+        "claimedResourceId": claim.resource_id if claim else None,
+        "claimedDeleted": bool(resource and resource.type == "Deleted"),
+        "claimedFolderId": resource.parent_id if resource and resource.type == "Episode" else None,
+        "ownShare": bool(user and user.family_id == share.family_id),
+    }
 
 
 @router.post("/preview")
@@ -274,7 +339,7 @@ def preview_share(body: Credential, request: Request, user: Parent, db: DbSessio
     if not claim:
         usable(share, user.family_id)
     return {
-        **summary(share),
+        **summary(db, share),
         "claimedResourceId": claim.resource_id if claim else None,
         "claimedDeleted": bool(claim and db.get(Item, claim.resource_id).type == "Deleted"),
     }

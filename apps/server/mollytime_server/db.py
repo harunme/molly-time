@@ -83,9 +83,70 @@ def upgrade_trash_entries(engine) -> None:
         if "deleted_objects" in {column["name"] for column in columns}:
             return
         connection.exec_driver_sql(
-            "ALTER TABLE trash_entries ADD COLUMN "
-            "deleted_objects JSON NOT NULL DEFAULT '[]'"
+            "ALTER TABLE trash_entries ADD COLUMN deleted_objects JSON NOT NULL DEFAULT '[]'"
         )
+
+
+def upgrade_share_credentials(engine) -> None:
+    """Remove the separate token credential while preserving snapshots and claims."""
+    from sqlalchemy import MetaData
+    from sqlalchemy.schema import CreateTable
+
+    from .models import Family, User
+    from .share_models import ContentShare
+
+    with engine.connect() as connection:
+        sqlite = engine.dialect.name == "sqlite"
+        mysql = engine.dialect.name == "mysql"
+        if mysql:
+            acquired = connection.exec_driver_sql(
+                "SELECT GET_LOCK('mollytime_share_code_schema', 30)"
+            ).scalar()
+            connection.commit()
+            if acquired != 1:
+                raise RuntimeError("Cannot acquire content sharing schema migration lock")
+        if sqlite:
+            # Rebuilding a UNIQUE column requires temporarily disabling FK enforcement
+            # on this connection. The write lock excludes concurrent initializers.
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            inspector = inspect(connection)
+            if "content_shares" in inspector.get_table_names() and "token_hash" in {
+                column["name"] for column in inspector.get_columns("content_shares")
+            }:
+                if sqlite:
+                    metadata = MetaData()
+                    Family.__table__.to_metadata(metadata)
+                    User.__table__.to_metadata(metadata)
+                    replacement = ContentShare.__table__.to_metadata(
+                        metadata, name="content_shares_code_migration"
+                    )
+                    connection.execute(CreateTable(replacement))
+                    names = ", ".join(column.name for column in ContentShare.__table__.columns)
+                    connection.exec_driver_sql(
+                        f"INSERT INTO content_shares_code_migration ({names}) SELECT {names} FROM content_shares"
+                    )
+                    connection.exec_driver_sql("DROP TABLE content_shares")
+                    connection.exec_driver_sql(
+                        "ALTER TABLE content_shares_code_migration RENAME TO content_shares"
+                    )
+                    for index in ContentShare.__table__.indexes:
+                        index.create(connection, checkfirst=True)
+                else:
+                    connection.exec_driver_sql("ALTER TABLE content_shares DROP COLUMN token_hash")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            if sqlite:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
+            if mysql:
+                connection.exec_driver_sql("SELECT RELEASE_LOCK('mollytime_share_code_schema')")
+                connection.commit()
 
 
 def init_db() -> None:
@@ -112,6 +173,7 @@ def init_db() -> None:
             if not backup.exists():
                 with sqlite3.connect(database) as source, sqlite3.connect(backup) as target:
                     source.backup(target)
+    upgrade_share_credentials(engine)
     Base.metadata.create_all(bind=engine)
     # create_all creates new tables but does not upgrade columns in existing ones.
     upgrade_reminder_sessions(engine)
@@ -123,8 +185,11 @@ def init_db() -> None:
             index for index in models.User.__table__.indexes if index.name == "uq_user_name"
         )
         existing = next(
-            (index for index in inspect(connection).get_indexes("users")
-             if index["name"] == username_index.name),
+            (
+                index
+                for index in inspect(connection).get_indexes("users")
+                if index["name"] == username_index.name
+            ),
             None,
         )
         if existing is not None:
@@ -140,7 +205,8 @@ def init_db() -> None:
             if duplicates:
                 names = ", ".join(f"{name!r} ({count} accounts)" for name, count in duplicates)
                 raise RuntimeError(
-                    "Cannot enforce globally unique usernames: " + names
+                    "Cannot enforce globally unique usernames: "
+                    + names
                     + ". Rename the conflicting users before restarting; "
                     "no accounts have been renamed or merged."
                 )
@@ -166,6 +232,9 @@ def init_db() -> None:
             session.commit()
         if session.get(management_models.SchemaRevision, "content-sharing-v1") is None:
             session.add(management_models.SchemaRevision(id="content-sharing-v1"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "content-sharing-code-v2") is None:
+            session.add(management_models.SchemaRevision(id="content-sharing-code-v2"))
             session.commit()
         if session.get(management_models.SchemaRevision, "family-usage-v1") is None:
             session.add(management_models.SchemaRevision(id="family-usage-v1"))

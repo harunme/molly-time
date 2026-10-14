@@ -277,6 +277,90 @@
 .library-upload-status {
   @apply sm:absolute sm:right-6 sm:top-1/2 sm:-translate-y-1/2;
 }
+.share-landing {
+  @apply min-h-dvh bg-background px-5 py-8 sm:py-12;
+}
+.share-page {
+  @apply mx-auto w-full max-w-[680px] space-y-6;
+}
+.share-brand {
+  @apply flex items-center justify-between gap-3;
+}
+.share-brand > span, .share-expiry {
+  @apply text-xs text-muted-foreground;
+}
+.share-content {
+  @apply gap-0 overflow-hidden p-0;
+}
+.share-hero-art {
+  @apply aspect-[16/7] overflow-hidden bg-muted;
+}
+.share-hero-art img {
+  @apply size-full object-cover;
+}
+.share-hero-copy {
+  @apply space-y-3 p-6 sm:p-8;
+}
+.share-hero-copy h2 {
+  @apply break-words text-2xl font-semibold leading-tight sm:text-3xl;
+}
+.share-overview {
+  @apply whitespace-pre-line text-sm leading-6 text-muted-foreground;
+}
+.share-facts {
+  @apply flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground;
+}
+.share-facts > span {
+  @apply flex items-center gap-1.5;
+}
+.share-facts svg {
+  @apply size-3.5;
+}
+.share-catalog {
+  @apply mx-6 border-t border-border py-5 sm:mx-8;
+}
+.share-section-title h3 {
+  @apply mb-3 text-xs font-medium text-muted-foreground;
+}
+.share-video-grid {
+  @apply space-y-3;
+}
+.share-video {
+  @apply grid min-w-0 grid-cols-[80px_1fr] items-center gap-x-3;
+}
+.share-video-image {
+  @apply relative row-span-2 overflow-hidden rounded-lg;
+}
+.share-video-art {
+  @apply aspect-video overflow-hidden bg-muted;
+}
+.share-video-art img {
+  @apply size-full object-cover;
+}
+.share-art-placeholder {
+  @apply flex size-full items-center justify-center text-muted-foreground;
+}
+.share-art-placeholder > svg {
+  @apply size-5 stroke-1;
+}
+.share-runtime {
+  @apply absolute bottom-1 right-1 rounded bg-black/65 px-1 text-[9px] leading-4 text-white;
+}
+.share-video h4 {
+  @apply break-words text-sm font-medium leading-5;
+}
+.share-video > p {
+  @apply line-clamp-1 text-xs leading-5 text-muted-foreground;
+}
+.share-claim-panel {
+  @apply space-y-3 border-t border-border p-6 sm:p-8;
+}
+.share-claim-panel > button {
+  @apply min-h-11;
+}
+.share-error {
+  @apply mx-6 mb-6 w-auto sm:mx-8;
+}
 .resource-list-heading {
   @apply hidden h-control items-center rounded-full bg-muted px-3 text-footnote font-semibold text-foreground sm:flex;
 }
@@ -968,4 +1052,8 @@ td small {
 .watch-history-footer { @apply border-t border-border pt-3 text-[11px] text-muted-foreground; }
 @media (prefers-reduced-transparency: reduce) {
   .watch-history-dialog { background: #f8f8fa; backdrop-filter: none; }
+}
+
+.share-code-form {
+  @apply p-6 sm:p-9;
 }

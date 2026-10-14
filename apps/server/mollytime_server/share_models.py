@@ -15,7 +15,6 @@ class ContentShare(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     code_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)

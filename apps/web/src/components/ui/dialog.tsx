@@ -1,6 +1,7 @@
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { X } from "lucide-react";
 import * as React from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { dialogMotionClassName, overlayMotionClassName } from "@/components/ui/motion";
 
@@ -23,9 +24,11 @@ function DialogContent({ className, children, showCloseButton = true, closeButto
       >
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close data-slot="button" data-testid={closeButtonTestId} className={cn("absolute top-4.5 right-4.5 grid h-7 w-7 place-items-center rounded-full text-icon-muted hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring", closeButtonClassName)}>
-            <X className="h-4 w-4" />
-            <span className="sr-only">关闭</span>
+          <DialogPrimitive.Close asChild>
+            <Button type="button" variant="ghost" size="icon" data-testid={closeButtonTestId} className={cn("absolute top-4.5 right-4.5 h-7 w-7 text-icon-muted hover:bg-surface-hover hover:text-foreground", closeButtonClassName)}>
+              <X className="h-4 w-4" />
+              <span className="sr-only">关闭</span>
+            </Button>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
