@@ -19,7 +19,7 @@ async function localCatalog(page: Page, rail = false) {
   await expect(page.locator(`[data-focus="home-${rail ? 'curated' : 'library'}-folder-0"]`)).toBeFocused();
 }
 
-test('offline native catalog renders a bounded grid, navigates logical rows and returns from deep resume', async ({ page }) => {
+test('offline native catalog renders a bounded grid, navigates logical rows and starts at the first video despite deep resume', async ({ page }) => {
   await localCatalog(page);
   await expect(page.locator('.sync-status')).toContainText('离线');
   expect(await page.locator('.poster').count()).toBeLessThan(80);
@@ -27,11 +27,11 @@ test('offline native catalog renders a bounded grid, navigates logical rows and 
   await expect(page.locator('[data-focused="true"].poster')).toHaveAttribute('data-focus', /home-library-folder-[1-9][0-9]+/);
   expect(await page.locator('.poster').count()).toBeLessThan(80);
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-focus="episode-e-800"]')).toBeFocused();
-  await expect(page.locator('[data-focus="episode-e-800"]')).toBeInViewport();
+  await expect(page.locator('[data-focus="episode-e-0"]')).toBeFocused();
+  await expect(page.locator('[data-focus="episode-e-0"]')).toBeInViewport();
   await page.screenshot({ path: '/tmp/molly-tv-offline-catalog.png' });
   await page.keyboard.press('ArrowDown');
-  await expect(page.locator('[data-focused="true"].poster')).toHaveAttribute('data-focus', /episode-e-80[1-9]/);
+  await expect(page.locator('[data-focused="true"].poster')).toHaveAttribute('data-focus', /episode-e-[1-9][0-9]*/);
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focused="true"].poster')).toHaveAttribute('data-focus', /home-library-folder-[1-9][0-9]+/);
   const requests = await page.evaluate(() => (window as any).calls.filter((c: any) => c.method === 'request'));

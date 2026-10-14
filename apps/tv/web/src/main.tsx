@@ -46,8 +46,6 @@ function App() {
   const [playlist, setPlaylist] = useState<Playlist>();
   const videos = playlist?.episodes ?? emptyVideos;
   const resumeId = playlist?.hasProgress ? playlist.episodeId ?? '' : '';
-  const resume = playlist?.resumeEpisode;
-  const displayedVideos = resume && !videos.some((item) => item.id === resume.id) ? [resume, ...videos] : videos;
   const homeSnapshot = useRef<ViewSnapshot | undefined>(undefined);
   const [home, setHome] = useState<Home>({ rows: [] });
   const homeFocus = (row: number, item: Series, rows = home.rows) => capabilities?.catalogSync && rows[row]?.id
@@ -285,7 +283,7 @@ function App() {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' :
         overlay === 'settings' ? (window.MollyBridge && capabilities?.serverUrl ? capabilities.clientUpdates ? 'check-update' : 'check-web-update' : authenticated ? 're-pair' : 'connect-account') : overlay === 'client-update' ? 'check-client-update' : !authenticated ? 'connect-home' : error ? 'retry' :
-        (folder ? (videos.length ? `episode-${resumeId || videos[0].id}` : 'folder-back') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'content');
+        (folder ? (videos.length ? `episode-${videos[0].id}` : 'folder-back') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'content');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
       const target = canRestore ? saved.focus : fallback;
@@ -440,9 +438,9 @@ function App() {
         {authenticated && (folder ? <DetailHeader series={folder} total={playlist?.total ?? videos.length} loading={busy} /> : <HomeGreeting />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {refreshError && <div className="catalog-notice"><span role="status">{refreshError}</span><FocusButton focusKey="refresh-retry" onClick={() => setReload((value) => value + 1)} className="text-button">重试更新</FocusButton></div>}
-          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>请绑定家庭电视，开始观看。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? `episode-${resumeId || videos[0]?.id}`} virtualize={!!capabilities?.catalogSync}>
-            {displayedVideos.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={`episode-${item.id}`} disabled={!!overlay}
-              firstRow nearEnd={index >= displayedVideos.length - 8} rowId="playlist" playable
+          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>请绑定家庭电视，开始观看。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? `episode-${videos[0]?.id}`} virtualize={!!capabilities?.catalogSync}>
+            {videos.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={`episode-${item.id}`} disabled={!!overlay}
+              firstRow nearEnd={index >= videos.length - 8} rowId="playlist" playable
               subtitle={`${item.id === resumeId ? '继续观看 · ' : ''}${watchedPosition(item) || duration(item.runtimeMs)}`}
               onActivate={activateCard} onRemember={rememberCard} onLoad={loadCardPage} onArrow={navigateCard} />)}
             {playlist?.hasMore && <LoadMore focusKey="more-playlist" loading={pageStates.playlist?.loading} error={pageStates.playlist?.error}

@@ -147,7 +147,7 @@ test('completed native return keeps exit focus and updates the next resume episo
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="series-folder-0"]')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-focus="episode-e-1"]')).toBeFocused();
+  await expect(page.locator('[data-focus="episode-e-0"]')).toBeFocused();
 });
 
 for (const detail of [

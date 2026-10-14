@@ -40,7 +40,7 @@ async function catalog(page: Page, options: { fail?: boolean; delay?: number; ol
   await expect(page.locator('[data-focus="series-folder-0"]')).toBeFocused();
 }
 
-test('catalog batches preserve focus, late resume and return position', async ({ page }) => {
+test('catalog batches start at the first video and preserve focus and return position', async ({ page }) => {
   await catalog(page);
   const cards = page.locator('.library-shelf .poster');
   await expect(cards).toHaveCount(24);
@@ -52,10 +52,12 @@ test('catalog batches preserve focus, late resume and return position', async ({
   const scroll = await page.locator('.shelves-scroll').evaluate((node) => node.scrollTop);
   await page.keyboard.press('Enter');
   await expect(page.locator('.detail-count')).toHaveText('60 个视频');
-  await expect(page.locator('.episode-grid .poster')).toHaveCount(25);
-  await expect(page.locator('[data-focus="episode-video-50"]')).toBeFocused();
+  await expect(page.locator('.episode-grid .poster')).toHaveCount(24);
+  await expect(page.locator('.episode-grid .poster').first()).toHaveAttribute('data-focus', 'episode-video-0');
+  await expect(page.locator('[data-focus="episode-video-50"]')).toHaveCount(0);
+  await expect(page.locator('[data-focus="episode-video-0"]')).toBeFocused();
   await page.locator('[data-focus="episode-video-18"]').focus();
-  await expect(page.locator('.episode-grid .poster')).toHaveCount(49);
+  await expect(page.locator('.episode-grid .poster')).toHaveCount(48);
   await expect(page.locator('[data-focus="episode-video-18"]')).toBeFocused();
   await page.locator('[data-focus="episode-video-44"]').focus();
   await expect(page.locator('.episode-grid .poster')).toHaveCount(60);
@@ -87,7 +89,7 @@ test('failed next batch leaves cards usable and supports explicit retry', async 
 test('a late batch from a closed folder does not replace the home view', async ({ page }) => {
   await catalog(page, { delay: 500 });
   await page.keyboard.press('Enter');
-  await expect(page.locator('[data-focus="episode-video-50"]')).toBeFocused();
+  await expect(page.locator('[data-focus="episode-video-0"]')).toBeFocused();
   await page.locator('[data-focus="episode-video-18"]').focus();
   await expect.poll(() => page.evaluate(() => (window as unknown as { pageAttempts: number }).pageAttempts)).toBe(1);
   await page.keyboard.press('Escape');

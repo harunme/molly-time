@@ -561,10 +561,10 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   await page.keyboard.press('Enter');
   const cards = page.locator('.episode-grid .poster');
   await expect(cards).toHaveCount(24);
-  await expect(page.locator('[data-focus="episode-demo-series-1-episode-16"]')).toBeFocused();
+  await expect(page.locator('[data-focus="episode-demo-series-1-episode-1"]')).toBeFocused();
   await expect(cards.first().locator('img')).toHaveAttribute('src', /^data:image\/svg\+xml/);
   const columns = await cards.evaluateAll((nodes) => nodes.filter((node) => (node as HTMLElement).offsetTop === (nodes[0] as HTMLElement).offsetTop).length);
-  let index = 15;
+  let index = 0;
   while ((Math.floor(index / columns) + 1) * columns < 80) {
     index = Math.min(index + columns, 79);
     await page.keyboard.press('ArrowDown');
