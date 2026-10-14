@@ -107,6 +107,31 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
     fun text(method: String, path: String, body: JSONObject? = null): String =
         response(method, path, body).use { it.body!!.string() }
 
+    /** Covers must not hold the API/refresh lock while waiting on the network.
+     * A 401 still goes through the existing serialized refresh path. */
+    fun imageResponse(path: String): Response {
+        val server = session.server
+        val device = session.deviceId
+        val access = session.access
+        val result = http.newCall(Request.Builder().url(server + path)
+            .header("Authorization", "Bearer $access")
+            .header("X-Molly-Client", "tv-shell/2").build()).execute()
+        if (server != session.server || device != session.deviceId) {
+            result.close()
+            throw IllegalStateException("电视绑定已变化")
+        }
+        if (result.code == 401) {
+            result.close()
+            return response("GET", path)
+        }
+        if (!result.isSuccessful) {
+            val code = result.code
+            result.close()
+            throw ApiFailure(code)
+        }
+        return result
+    }
+
     fun json(method: String, path: String, body: JSONObject? = null,
              authenticated: Boolean = true): JSONObject =
         response(method, path, body, authenticated).use { JSONObject(it.body!!.string()) }

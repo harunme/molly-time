@@ -196,7 +196,7 @@ class ShellActivity : AppCompatActivity() {
                 return try {
                     // Width is the only supported image parameter; never forward credentials from the page.
                     val width = req.url.getQueryParameter("w")?.toIntOrNull()?.coerceIn(64, 1280) ?: 480
-                    val res = app.api.response("GET", req.url.path + "?w=$width")
+                    val res = app.api.imageResponse(req.url.path + "?w=$width")
                     val body = res.body!!
                     WebResourceResponse(body.contentType()?.toString()?.substringBefore(';') ?: "image/jpeg",
                         null, res.code, "OK", mapOf("Cache-Control" to "no-store"), body.byteStream())

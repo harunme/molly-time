@@ -1,5 +1,37 @@
 import { useEffect, type ReactNode, type RefObject } from 'react';
-import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+import { FocusContext, getCurrentFocusKey, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
+
+type Navigation = { cards: HTMLButtonElement[]; indices: WeakMap<HTMLButtonElement, number>; columns: number };
+const navigation = new WeakMap<HTMLElement, Navigation>();
+
+// Geometry changes on resize, and membership changes on append/disable. Neither
+// belongs in the remote-key hot path. Cover loading must not invalidate this cache.
+export function observeNavigation(root: HTMLElement) {
+  const invalidate = () => navigation.delete(root);
+  const resize = new ResizeObserver(invalidate);
+  resize.observe(root);
+  const mutation = new MutationObserver((records) => {
+    if (records.some((record) => record.type === 'attributes' ||
+      [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element &&
+        (node.matches('button[data-focus]') || node.querySelector('button[data-focus]'))))) invalidate();
+  });
+  mutation.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  return () => { resize.disconnect(); mutation.disconnect(); invalidate(); };
+}
+
+function getNavigation(root: HTMLElement): Navigation {
+  const cached = navigation.get(root);
+  if (cached) return cached;
+  const cards = Array.from(root.querySelectorAll<HTMLButtonElement>('button[data-focus]:not(:disabled)'));
+  const indices = new WeakMap<HTMLButtonElement, number>();
+  cards.forEach((card, index) => indices.set(card, index));
+  // CSS grid provides the column count without measuring every card's position.
+  const columns = root.classList.contains('episode-grid')
+    ? Math.max(1, getComputedStyle(root).gridTemplateColumns.split(' ').filter(Boolean).length) : cards.length;
+  const value = { cards, indices, columns };
+  navigation.set(root, value);
+  return value;
+}
 
 export function FocusRegion({ focusKey, children, className = '', boundary = false, scrollRef, hidden = false }: {
   focusKey: string; children: ReactNode; className?: string; boundary?: boolean; hidden?: boolean;
@@ -31,8 +63,10 @@ function glide(node: HTMLElement, left: number, top: number) {
   const started = performance.now();
   const state = { frame: 0, left: endLeft, top: endTop };
   scrolling.set(node, state);
+  // Native smooth scrolling is cancelled by DOM focus on TV/Chromium. Keep a
+  // short, retargetable animation with no geometry measurements in its frames.
   const tick = (now: number) => {
-    const progress = Math.min(1, (now - started) / 220);
+    const progress = Math.min(1, (now - started) / 160);
     const eased = 1 - (1 - progress) ** 3;
     node.scrollLeft = startLeft + (endLeft - startLeft) * eased;
     node.scrollTop = startTop + (endTop - startTop) * eased;
@@ -101,9 +135,9 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
       const node = ref.current as HTMLButtonElement | null;
       const grid = node?.closest<HTMLElement>('.episode-grid');
       if (grid) {
-        const cards = Array.from(grid.querySelectorAll<HTMLButtonElement>('button[data-focus]:not(:disabled)'));
-        const index = cards.indexOf(node!);
-        const columns = cards.filter((card) => card.offsetTop === cards[0].offsetTop).length;
+        const { cards, indices, columns } = getNavigation(grid);
+        const index = indices.get(node!);
+        if (index === undefined) return true;
         const row = Math.floor(index / columns);
         let next = index;
         if (direction === 'left' && index % columns > 0) next--;
@@ -116,8 +150,9 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
       }
       const rail = node?.closest<HTMLElement>('.rail-track');
       if (rail && (direction === 'left' || direction === 'right')) {
-        const cards = Array.from(rail.querySelectorAll<HTMLButtonElement>('button[data-focus]:not(:disabled)'));
-        const index = cards.indexOf(node!);
+        const { cards, indices } = getNavigation(rail);
+        const index = indices.get(node!);
+        if (index === undefined) return true;
         const next = cards[index + (direction === 'right' ? 1 : -1)];
         if (next?.dataset.focus) setFocus(next.dataset.focus);
         return false; // Fast keys never use temporarily scaled/scrolling geometry.
@@ -127,5 +162,5 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
     onFocus: () => { if (ref.current) revealCard(ref.current); onFocus?.(); } });
   return <button type="button" ref={ref} data-focus={focusKey} aria-label={ariaLabel} aria-pressed={selected}
     className={`${className} ${focused ? 'focused' : ''}`} disabled={disabled}
-    onFocus={() => focusSelf()} onClick={onClick}>{children}</button>;
+    onFocus={() => { if (getCurrentFocusKey() !== focusKey) focusSelf(); }} onClick={onClick}>{children}</button>;
 }

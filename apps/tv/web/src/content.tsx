@@ -1,7 +1,23 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import { imageSource, type Episode, type Series } from './api';
-import { FocusButton } from './focus';
+import { FocusButton, observeNavigation } from './focus';
+
+// One observer for the entire catalog, rather than one observer per cover.
+const visibleCovers = new Map<Element, () => void>();
+let coverObserver: IntersectionObserver | undefined;
+function observeCover(node: Element, reveal: () => void) {
+  coverObserver ??= new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting) {
+      visibleCovers.get(entry.target)?.();
+      visibleCovers.delete(entry.target);
+      coverObserver!.unobserve(entry.target);
+    }
+  }, { rootMargin: '160px' });
+  visibleCovers.set(node, reveal);
+  coverObserver.observe(node);
+  return () => { visibleCovers.delete(node); coverObserver!.unobserve(node); };
+}
 
 export function LoadMore({ focusKey, loading, error, disabled, onLoad, onRetry, onFocus }: {
   focusKey: string; loading?: boolean; error?: string; disabled: boolean;
@@ -39,7 +55,7 @@ export function Icon({ name }: { name: 'home' | 'people' | 'settings' | 'back' |
 const tones = ['#526b80', '#85735e', '#5b7772', '#756782', '#7e6269'];
 export function tone(id: string) { return tones[Array.from(id).reduce((sum, c) => sum + c.charCodeAt(0), 0) % tones.length]; }
 
-export function Cover({ item, large = false, children }: { item: Series | Episode; large?: boolean; children?: ReactNode }) {
+export const Cover = memo(function Cover({ item, large = false, children }: { item: Series | Episode; large?: boolean; children?: ReactNode }) {
   const imagePath = item.image?.url ?? '';
   const directUrl = item.image?.directUrl;
   const [loaded, setLoaded] = useState({ path: '', src: '' });
@@ -50,9 +66,7 @@ export function Cover({ item, large = false, children }: { item: Series | Episod
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (visible || !ref.current) return;
-    const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } }, { rootMargin: '160px' });
-    observer.observe(ref.current);
-    return () => observer.disconnect();
+    return observeCover(ref.current, () => setVisible(true));
   }, [visible]);
   useEffect(() => {
     let canceled = false, pendingUrl = '';
@@ -98,7 +112,24 @@ export function Cover({ item, large = false, children }: { item: Series | Episod
       <span style={{ width: `${progress}%` }} />
     </div>}
   </div>;
-}
+});
+
+// Keep catalog-wide loading/update state from re-rendering every cover and
+// re-registering every focus callback. Only changed cards need React work.
+export const CatalogCard = memo(function CatalogCard({ item, focusKey, disabled, firstRow, nearEnd, rowId,
+  playable, subtitle, onActivate, onRemember, onLoad, onArrow }: {
+  item: Series; focusKey: string; disabled: boolean; firstRow: boolean; nearEnd: boolean; rowId: string;
+  playable: boolean; subtitle: string;
+  onActivate: (item: Series) => void; onRemember: (key: string) => void;
+  onLoad: (rowId: string) => void; onArrow: (direction: string, firstRow: boolean) => boolean;
+}) {
+  return <FocusButton focusKey={focusKey} className="poster" disabled={disabled}
+    onArrow={(direction) => onArrow(direction, firstRow)}
+    onFocus={() => { onRemember(focusKey); if (nearEnd) onLoad(rowId); }} onClick={() => onActivate(item)}>
+    <Cover item={item}>{playable && <><span>{subtitle}</span><Icon name="play" /></>}</Cover>
+    <div className="card-copy"><strong>{item.name}</strong>{!playable && <span>{item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}</span>}</div>
+  </FocusButton>;
+});
 
 export function Shelf({ focusKey, title, children, kind = '' }: {
   focusKey: string; title: string; children: ReactNode; kind?: string;
@@ -106,6 +137,11 @@ export function Shelf({ focusKey, title, children, kind = '' }: {
   const { ref, hasFocusedChild } = useFocusable({ focusKey, saveLastFocusedChild: true, trackChildren: true });
   const grid = kind === 'episode-shelf' || kind === 'library-shelf';
   const rail = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = grid ? gridRef.current : rail.current;
+    if (node) return observeNavigation(node);
+  }, [grid]);
   const [directions, setDirections] = useState({ left: false, right: false, center: 0 });
   useEffect(() => {
     const node = rail.current;
@@ -137,7 +173,7 @@ export function Shelf({ focusKey, title, children, kind = '' }: {
   }, [children, grid]);
   return <FocusContext.Provider value={focusKey}><section ref={ref} className={`shelf ${hasFocusedChild ? 'active-shelf' : ''} ${kind}`}>
     <div className="shelf-heading"><h2>{title}</h2></div>
-    {grid ? <div className="episode-grid" data-grid={focusKey}>{children}</div> :
+    {grid ? <div ref={gridRef} className="episode-grid" data-grid={focusKey}>{children}</div> :
       <div className={`rail-shell ${directions.left ? 'fade-left' : ''} ${directions.right ? 'fade-right' : ''}`} style={{ '--rail-arrow-top': `${directions.center}px` } as CSSProperties}>
         <div ref={rail} className="rail-track" data-rail={focusKey}><div className="rail-content">{children}</div></div>
         <span aria-hidden="true" className={`rail-direction rail-direction-left ${directions.left ? 'available' : ''}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6" /></svg></span>
