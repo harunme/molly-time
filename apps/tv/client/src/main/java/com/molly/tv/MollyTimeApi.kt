@@ -92,7 +92,12 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
                 .header("X-Molly-Client", "tv-shell/2").header("X-Molly-Home-Schema", homeSchemaVersion.toString())
             if (session.childId.isNotEmpty()) builder.header("X-Molly-Child", session.childId)
             if (authenticated) builder.header("Authorization", "Bearer $access")
-            if (method == "POST") builder.post((body ?: JSONObject()).toString().toRequestBody(jsonType))
+            when (method) {
+                "GET" -> builder.get()
+                "POST" -> builder.post((body ?: JSONObject()).toString().toRequestBody(jsonType))
+                "PUT" -> builder.put((body ?: JSONObject()).toString().toRequestBody(jsonType))
+                else -> throw IllegalArgumentException("不支持的请求方法：$method")
+            }
             val call = client.newCall(builder.build())
             register(call)
             return call.execute()
