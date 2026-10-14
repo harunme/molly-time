@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import re
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -18,9 +19,9 @@ from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..storage.local import LocalStorage
 from ..storage.settings import get_storage_settings
+from ..usage_meter import meter_media
 from ..utils.image import resize_to_file
 from ..utils.subtitles import webvtt
-from ..usage_meter import meter_media
 from .watch_progress import scoped_progress
 
 router = APIRouter(prefix="/api", tags=["playback"])
@@ -402,6 +403,7 @@ def image(
         resize_to_file(storage.open(file.path), cache_path, target_w)
     data = cache_path.read_bytes()
     meter_media(request, user.family_id)
-    return Response(
-        content=data, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"}
-    )
+    tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}".encode()).hexdigest()
+    return Response(content=data, media_type="image/jpeg", headers={
+        "Cache-Control": "private, no-cache", "X-Molly-Image-Version": tag,
+    })

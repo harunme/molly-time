@@ -73,34 +73,45 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
     }
 
     // Every response is closed, including errors and a retried 401.
-    @Synchronized fun response(method: String, path: String, body: JSONObject? = null,
-                               authenticated: Boolean = true): Response {
-        fun execute(): Response {
-            val builder = Request.Builder().url(session.server + path)
-                .header("X-Molly-Client", "tv-shell/2")
-                .header("X-Molly-Home-Schema", homeSchemaVersion.toString())
+    fun response(method: String, path: String, body: JSONObject? = null,
+                 authenticated: Boolean = true): Response = perform(catalogHttp, method, path, body, authenticated)
+
+    private val catalogHttp by lazy { http.newBuilder().callTimeout(10, TimeUnit.SECONDS).build() }
+    fun catalogResponse(path: String, register: (okhttp3.Call) -> Unit = {}): Response =
+        perform(catalogHttp, "GET", path, null, true, register)
+
+    private fun perform(client: OkHttpClient, method: String, path: String, body: JSONObject?,
+                        authenticated: Boolean, register: (okhttp3.Call) -> Unit = {}): Response {
+        val credentials = session.credentials()
+        val server = credentials.server
+        val device = credentials.device
+        val token = credentials.access
+        fun execute(access: String): Response {
+            check(server == session.server && device == session.deviceId) { "电视绑定已变化" }
+            val builder = Request.Builder().url(server + path)
+                .header("X-Molly-Client", "tv-shell/2").header("X-Molly-Home-Schema", homeSchemaVersion.toString())
             if (session.childId.isNotEmpty()) builder.header("X-Molly-Child", session.childId)
-            if (authenticated) builder.header("Authorization", "Bearer ${session.access}")
+            if (authenticated) builder.header("Authorization", "Bearer $access")
             if (method == "POST") builder.post((body ?: JSONObject()).toString().toRequestBody(jsonType))
-            return http.newCall(builder.build()).execute()
+            val call = client.newCall(builder.build())
+            register(call)
+            return call.execute()
         }
-        var res = execute()
+        var res = execute(token)
         if (authenticated && res.code == 401 && session.refresh.isNotEmpty()) {
             res.close()
-            try {
-                session.save(json("POST", "/api/auth/refresh",
-                    JSONObject().put("refreshToken", session.refresh), false))
-            } catch (error: ApiFailure) {
-                if (error.status == 401) session.clear()
-                throw error
+            // Only rotation is serialized; ordinary reads never hold this lock.
+            synchronized(session) {
+                check(server == session.server && device == session.deviceId) { "电视绑定已变化" }
+                if (session.access == token) {
+                    try { session.save(json("POST", "/api/auth/refresh", JSONObject().put("refreshToken", session.refresh), false)) }
+                    catch (error: ApiFailure) { if (error.status == 401) session.clear(); throw error }
+                }
             }
-            res = execute()
+            res = execute(session.access)
         }
-        if (!res.isSuccessful) {
-            val code = res.code
-            res.close()
-            throw ApiFailure(code)
-        }
+        if (server != session.server || device != session.deviceId) { res.close(); throw IllegalStateException("电视绑定已变化") }
+        if (!res.isSuccessful) { val code = res.code; res.close(); throw ApiFailure(code) }
         return res
     }
 
@@ -110,9 +121,10 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
     /** Covers must not hold the API/refresh lock while waiting on the network.
      * A 401 still goes through the existing serialized refresh path. */
     fun imageResponse(path: String): Response {
-        val server = session.server
-        val device = session.deviceId
-        val access = session.access
+        val credentials = session.credentials()
+        val server = credentials.server
+        val device = credentials.device
+        val access = credentials.access
         val result = http.newCall(Request.Builder().url(server + path)
             .header("Authorization", "Bearer $access")
             .header("X-Molly-Client", "tv-shell/2").build()).execute()

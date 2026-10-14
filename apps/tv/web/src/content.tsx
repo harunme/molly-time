@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties,
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
 import { imageSource, type Episode, type Series } from './api';
 import { FocusButton, observeNavigation } from './focus';
+import { VirtualGrid, VirtualRail } from './virtual-grid';
 
 // One observer for the entire catalog, rather than one observer per cover.
 const visibleCovers = new Map<Element, () => void>();
@@ -107,6 +108,7 @@ export const Cover = memo(function Cover({ item, large = false, children }: { it
     {src ? <img src={src} alt="" decoding="async" onError={() => setLoaded({ path: imagePath, src: '' })} /> : <div className="cover-fallback" aria-hidden="true">
       <span className="cover-letter">{item.name.slice(0, 2)}</span><span className="cover-name">{item.name}</span>
     </div>}
+    {item.offlineAvailable && <span className="offline-badge">可离线播放</span>}
     {children && <div className="cover-action">{children}</div>}
     {progress !== undefined && <div className="watch-progress" role="progressbar" aria-label="观看进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
       <span style={{ width: `${progress}%` }} />
@@ -131,8 +133,8 @@ export const CatalogCard = memo(function CatalogCard({ item, focusKey, disabled,
   </FocusButton>;
 });
 
-export function Shelf({ focusKey, title, children, kind = '' }: {
-  focusKey: string; title: string; children: ReactNode; kind?: string;
+export function Shelf({ focusKey, title, children, kind = '', virtualize = false, initialFocusKey }: {
+  focusKey: string; title: string; children: ReactNode; kind?: string; virtualize?: boolean; initialFocusKey?: string;
 }) {
   const { ref, hasFocusedChild } = useFocusable({ focusKey, saveLastFocusedChild: true, trackChildren: true });
   const grid = kind === 'episode-shelf' || kind === 'library-shelf';
@@ -173,9 +175,9 @@ export function Shelf({ focusKey, title, children, kind = '' }: {
   }, [children, grid]);
   return <FocusContext.Provider value={focusKey}><section ref={ref} className={`shelf ${hasFocusedChild ? 'active-shelf' : ''} ${kind}`}>
     <div className="shelf-heading"><h2>{title}</h2></div>
-    {grid ? <div ref={gridRef} className="episode-grid" data-grid={focusKey}>{children}</div> :
+    {grid ? virtualize ? <VirtualGrid focusKey={focusKey} initialFocusKey={initialFocusKey}>{children}</VirtualGrid> : <div ref={gridRef} className="episode-grid" data-grid={focusKey}>{children}</div> :
       <div className={`rail-shell ${directions.left ? 'fade-left' : ''} ${directions.right ? 'fade-right' : ''}`} style={{ '--rail-arrow-top': `${directions.center}px` } as CSSProperties}>
-        <div ref={rail} className="rail-track" data-rail={focusKey}><div className="rail-content">{children}</div></div>
+        <div ref={rail} className="rail-track" data-rail={focusKey}><>{virtualize ? <VirtualRail>{children}</VirtualRail> : <div className="rail-content">{children}</div>}</></div>
         <span aria-hidden="true" className={`rail-direction rail-direction-left ${directions.left ? 'available' : ''}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6" /></svg></span>
         <span aria-hidden="true" className={`rail-direction rail-direction-right ${directions.right ? 'available' : ''}`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg></span>
       </div>}

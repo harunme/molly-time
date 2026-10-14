@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { browserMediaUrl, browserRequest } from './api';
+import type { PlaybackReturn } from './catalog';
 
 type Playback = { mediaId: string; url: string; mime: string; subtitles: { index: number; url: string; language: string; label: string; isDefault: boolean }[] };
 export function BrowserPlaybackHost() {
@@ -14,16 +15,19 @@ export function BrowserPlaybackHost() {
     window.addEventListener('molly:browserPlay', open);
     return () => window.removeEventListener('molly:browserPlay', open);
   }, []);
-  const close = () => {
-    if (document.fullscreenElement === host.current) void document.exitFullscreen().catch(() => {});
+  const close = (progress?: PlaybackReturn) => {
     setTarget(undefined);
-    window.dispatchEvent(new CustomEvent('molly:playbackClosed', { detail: { episodeId: target?.episodeId } }));
+    const returned = () => window.dispatchEvent(new CustomEvent('molly:playbackClosed', { detail: progress ?? { episodeId: target?.episodeId } }));
+    // Exiting fullscreen changes DOM focus. Restore the catalog after it has
+    // completed, rather than racing it with a fixed focus delay.
+    if (document.fullscreenElement === host.current) void document.exitFullscreen().then(returned, returned);
+    else returned();
   };
   return <div ref={host} className="browser-playback-host">
     {target && <BrowserPlayback key={target.episodeId} episode={target.episodeId} fromStart={!!target.fromStart} playNext={(episodeId) => setTarget({ episodeId, fromStart: true })} close={close} />}
   </div>;
 }
-type EpisodeProps = { episode: string; fromStart: boolean; playNext: (episodeId: string) => void; close: () => void };
+type EpisodeProps = { episode: string; fromStart: boolean; playNext: (episodeId: string) => void; close: (progress?: PlaybackReturn) => void };
 function ParentClip({ path, label, done, close }: { path: string; label: string; done: () => void; close: () => void }) {
   const [info, setInfo] = useState<Playback>(), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const ended = useRef(false), retryButton = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
@@ -144,7 +148,11 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     if (closed.current) return;
     closed.current = true;
     // Read the media position while the video is still mounted.
-    sample(true); playing.current = false; video.current?.pause(); close();
+    sample(true); playing.current = false; video.current?.pause();
+    const runtime = (video.current?.duration ?? 0) * 1000;
+    close(session.current ? { episodeId: episode, positionMs: Math.round(position.current * 1000),
+      completed: completed.current || !!video.current?.ended,
+      runtimeMs: Number.isFinite(runtime) && runtime > 0 ? runtime : undefined, progressKnown: true } : undefined);
   };
   const advance = async () => {
     if (advancing.current || closed.current) return;

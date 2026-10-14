@@ -27,7 +27,8 @@ class PlaybackActivity : AppCompatActivity() {
     private val app get() = application as MollyTimeApplication
     private lateinit var playerView: PlayerView
     private lateinit var status: TextView
-    private var player: ExoPlayer? = null
+    private var player: Player? = null
+    private var playerOwner: ThreadedPlayer? = null
     private lateinit var episodeId: String
     private var child = ""
     private var position = 0L
@@ -40,6 +41,9 @@ class PlaybackActivity : AppCompatActivity() {
     private var loadGeneration = 0
     private var watchId = ""
     private var sourceInfo: JSONObject? = null
+    private var episodeRuntimeMs = 0L
+    private var offlineMode = false
+    private var watchStartedAt = 0L
     private var parentClipPath = ""
     private var parentClipAfter = false
     private var parentClipPosition = 0L
@@ -48,10 +52,19 @@ class PlaybackActivity : AppCompatActivity() {
     private val reminderPoll = object : Runnable {
         override fun run() {
             if (!active || isFinishing) return
+            if (offlineMode) {
+                val info = sourceInfo
+                if (info != null) app.catalog.reads.execute {
+                    runCatching { OfflinePolicy.permission(app.catalog.store(), app.session.deviceId, episodeId,
+                        info.getString("mediaId"), info.getString("version")) }.onFailure { runOnUiThread { finish() } }
+                }
+                handler.postDelayed(this, 2000)
+                return
+            }
             if (!reminderChecking && parentClipPath.isEmpty() && !advancing) {
                 reminderChecking = true
                 val generation = loadGeneration
-                app.io.execute {
+                app.playbackIo.execute {
                     runCatching { reminderState() }.onSuccess { state -> runOnUiThread {
                         if (active && generation == loadGeneration && !isFinishing && player != null &&
                             state.optString("phase") == "pending" && state.optString("episodeId") == episodeId &&
@@ -82,7 +95,7 @@ class PlaybackActivity : AppCompatActivity() {
     private val heartbeat = object : Runnable {
         override fun run() {
             report("progress")
-            app.io.execute {
+            if (!offlineMode) app.playbackIo.execute {
                 runCatching { app.api.json("GET", "/api/me") }.onFailure { error ->
                     if (error is ApiFailure && error.status in listOf(401, 403)) runOnUiThread {
                         player?.pause(); finish()
@@ -134,8 +147,12 @@ class PlaybackActivity : AppCompatActivity() {
         val current = ++loadGeneration
         val loadingEpisode = episodeId
         status.text = "正在加载视频…"
-        app.io.execute {
+        val availability = app.catalog.status()
+        val local = availability.optBoolean("supported") && !availability.optBoolean("online")
+        (if (local) app.catalog.reads else app.playbackIo).execute {
             runCatching {
+                if (local) return@runCatching offlineLoad(loadingEpisode)
+                try {
                 val reminder = reminderState()
                 if (reminder.optString("phase") == "pending" &&
                     (reminder.isNull("episodeId") || reminder.optString("episodeId") == loadingEpisode) &&
@@ -152,6 +169,7 @@ class PlaybackActivity : AppCompatActivity() {
                 val info = app.api.json("GET", "/api/episodes/$loadingEpisode/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
                 detail.put("playback", info)
                 Triple(detail, resume, sessionId)
+                } catch (error: java.io.IOException) { offlineLoad(loadingEpisode) }
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
                 if (active && current == loadGeneration && !isDestroyed && !isFinishing) {
                     if (detail.has("parentReminder")) {
@@ -160,7 +178,9 @@ class PlaybackActivity : AppCompatActivity() {
                         showParentClip(reminder.getString("warningPath"), false)
                         return@runOnUiThread
                     }
+                    offlineMode = detail.optJSONObject("playback")?.optBoolean("offline") == true
                     watchId = sessionId
+                    watchStartedAt = resume.optLong("localSessionStartedAt", System.currentTimeMillis())
                     clock = PlayingClock(SystemClock.elapsedRealtime())
                     sequence = 0
                     if (resumeFromProgress && position == 0L && !resume.optBoolean("completed")) position = resume.optLong("positionMs")
@@ -174,13 +194,51 @@ class PlaybackActivity : AppCompatActivity() {
         }
     }
 
+    private fun offlineLoad(id: String): Triple<JSONObject, JSONObject, String> {
+        val store = app.catalog.store()
+        store.requireEventCapacity()
+        val detail = app.media.offline(id, store)
+        val info = detail.getJSONObject("playback")
+        val sessionId = java.util.UUID.randomUUID().toString()
+        val started = OfflinePolicy.now(store)
+        store.session(sessionId, JSONObject().put("id", sessionId).put("episodeId", id)
+            .put("mediaId", info.getString("mediaId")).put("version", info.getString("version"))
+            .put("startedAt", started).put("grant", JSONObject(store.get("grant")!!).getString("token"))
+            .put("expiresAt", OfflinePolicy.payload(JSONObject(store.get("grant")!!).getString("token"), store.get("serverPublicKey")!!).getLong("expiresAt")))
+        val resume = store.overlay(JSONObject().put("id", id)).put("localSessionStartedAt", started)
+        return Triple(detail, resume, sessionId)
+    }
+
     private fun prepare(detail: JSONObject) {
         val runtime = detail.optLong("runtimeMs", 0)
+        if (runtime > 0) episodeRuntimeMs = runtime
         if (runtime > 0 && position >= runtime) position = 0
         val source = detail.getJSONObject("playback")
         sourceInfo = source
-        val dataSource = app.media.factory(cacheWrites = !skipCacheWrites)
-        val exo = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(dataSource)).build()
+        val cacheWrites = !skipCacheWrites
+        connectPlayer(cacheWrites, source.optBoolean("offline")) { exo -> configureEpisode(exo, source) }
+    }
+
+    private fun connectPlayer(cacheWrites: Boolean = true, offline: Boolean = false, ready: (Player) -> Unit) {
+        playerOwner?.release()
+        val owner = ThreadedPlayer(applicationContext)
+        playerOwner = owner
+        owner.connect({ looper ->
+            val dataSource = if (offline) app.media.offlineFactory() else app.media.factory(cacheWrites)
+            ExoPlayer.Builder(applicationContext).setLooper(looper)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource)).build()
+        }, { connected ->
+            if (playerOwner !== owner || !active || isFinishing || isDestroyed) owner.release()
+            else ready(connected)
+        }, { error ->
+            if (playerOwner === owner && active && !isFinishing) {
+                release()
+                status.text = (error.message ?: "播放器初始化失败") + "。按确定重试，返回退出"
+            }
+        })
+    }
+
+    private fun configureEpisode(exo: Player, source: JSONObject) {
         player = exo
         playerView.player = exo
         val subtitles = source.optJSONArray("subtitles")
@@ -191,7 +249,7 @@ class PlaybackActivity : AppCompatActivity() {
         }
         val configs = (0 until (subtitles?.length() ?: 0)).map { index ->
             val sub = subtitles!!.getJSONObject(index)
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(app.session.server + sub.getString("url")))
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(if (source.optBoolean("offline")) sub.getString("url") else app.session.server + sub.getString("url")))
                 .setId("subtitle-${sub.getInt("index")}")
                 .setMimeType(if (sub.optString("codec") == "vtt") MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP)
                 .setLanguage(sub.optString("language", "und")).setLabel(sub.optString("label"))
@@ -242,8 +300,9 @@ class PlaybackActivity : AppCompatActivity() {
         val current = ++loadGeneration
         val finishedEpisode = episodeId
         status.text = "正在准备下一集…"
-        app.io.execute {
+        (if (offlineMode) app.catalog.reads else app.playbackIo).execute {
             runCatching {
+                if (offlineMode) return@runCatching JSONObject().put("episodeId", app.catalog.store().nextEpisode(finishedEpisode) ?: JSONObject.NULL)
                 val reminder = reminderState()
                 if (reminder.optString("episodeId") == finishedEpisode && reminder.optString("phase") != "idle")
                     JSONObject().put("parentFarewell", reminder.getString("farewellPath"))
@@ -297,36 +356,39 @@ class PlaybackActivity : AppCompatActivity() {
     private fun loadParentClip() {
         val generation = ++loadGeneration
         status.text = if (parentClipAfter) "休息提醒" else "茉莉，还剩 1 集哦"
-        app.io.execute {
+        app.playbackIo.execute {
             runCatching { app.api.json("GET", parentClipPath) }.onSuccess { info -> runOnUiThread {
                 if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread
-                val exo = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(app.media.factory())).build()
-                player = exo
-                playerView.player = exo
-                exo.addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_READY) status.text = ""
-                        if (state == Player.STATE_ENDED) finishParentClip()
-                    }
-                    override fun onIsPlayingChanged(playing: Boolean) {
-                        if (playing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    }
-                    override fun onPlayerError(error: PlaybackException) {
-                        reportPlaybackError(error, info.optString("mediaId"), null)
-                        status.text = "家长视频播放失败。按确定重试，返回退出"
-                    }
-                })
-                exo.setMediaItem(MediaItem.Builder().setUri(app.media.uri(info)).setCustomCacheKey(app.media.key(info))
-                    .setMimeType(info.optString("mime", "video/mp4")).build(), parentClipPosition)
-                exo.prepare()
-                exo.playWhenReady = playOnResume
-                handler.postDelayed(heartbeat, 15000)
-                playerView.requestFocus()
+                connectPlayer { exo -> configureParentClip(exo, info) }
             } }.onFailure { error -> runOnUiThread {
                 if (active && generation == loadGeneration) status.text = (error.message ?: "家长视频加载失败") + "。按确定重试，返回退出"
             } }
         }
+    }
+
+    private fun configureParentClip(exo: Player, info: JSONObject) {
+        player = exo
+        playerView.player = exo
+        exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) status.text = ""
+                if (state == Player.STATE_ENDED) finishParentClip()
+            }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                if (playing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                reportPlaybackError(error, info.optString("mediaId"), null)
+                status.text = "家长视频播放失败。按确定重试，返回退出"
+            }
+        })
+        exo.setMediaItem(MediaItem.Builder().setUri(app.media.uri(info)).setCustomCacheKey(app.media.key(info))
+            .setMimeType(info.optString("mime", "video/mp4")).build(), parentClipPosition)
+        exo.prepare()
+        exo.playWhenReady = playOnResume
+        handler.postDelayed(heartbeat, 15000)
+        playerView.requestFocus()
     }
 
     private fun finishParentClip() {
@@ -334,7 +396,7 @@ class PlaybackActivity : AppCompatActivity() {
         if (parentClipAfter) { finish(); return }
         val generation = ++loadGeneration
         status.text = "正在返回最后一集…"
-        app.io.execute {
+        app.playbackIo.execute {
             runCatching { app.api.json("POST", "/api/reminders/requests/$reminderRequestId/ack") }
                 .onSuccess { runOnUiThread {
                     if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread
@@ -351,6 +413,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun refreshSource() {
+        if (offlineMode) { status.text = "离线视频读取失败，请联网检查副本。返回退出"; return }
         val mediaId = sourceInfo?.optString("mediaId") ?: return
         refreshAttempts++
         position = player?.currentPosition?.coerceAtLeast(0) ?: position
@@ -359,7 +422,7 @@ class PlaybackActivity : AppCompatActivity() {
         release()
         status.text = "正在刷新播放地址…"
         val current = ++loadGeneration
-        app.io.execute {
+        app.playbackIo.execute {
             runCatching { app.api.json("GET", "/api/episodes/$episodeId/playback?mediaId=$mediaId&sessionId=$watchId") }
                 .onSuccess { info -> runOnUiThread {
                     if (active && current == loadGeneration) prepare(JSONObject().put("playback", info))
@@ -394,7 +457,7 @@ class PlaybackActivity : AppCompatActivity() {
         position = exo.currentPosition.coerceAtLeast(0)
         val done = completed
         val pos = position
-        setResult(RESULT_OK, Intent().putExtra("episodeId", episodeId).putExtra("positionMs", pos))
+        if (event == "stop" && clock == null) return
         sample(exo.isPlaying)
         if (event == "stop") {
             val end = clock?.offset(SystemClock.elapsedRealtime()) ?: 0
@@ -414,7 +477,17 @@ class PlaybackActivity : AppCompatActivity() {
         val id = watchId
         val body = JSONObject().put("seq", sequence++).put("startMs", start).put("endMs", end)
             .put("playedMs", played).put("positionMs", pos).put("completed", done).put("stopped", stopped)
-        app.io.execute { runCatching { app.watchQueue.enqueue(id, body) } }
+        val local = offlineMode
+        val queuedEpisode = episodeId
+        val store = app.catalog.store()
+        val started = watchStartedAt
+        app.catalog.reads.execute {
+            runCatching {
+                if (local) store.enqueue(id, body)
+                store.recordPosition(queuedEpisode, pos, done, id, body.getInt("seq"), started)
+            }.onFailure { if (local) runOnUiThread { player?.pause(); status.text = "离线记录保存失败，请联网同步。返回退出" } }
+        }
+        if (!local) app.io.execute { runCatching { app.watchQueue.enqueue(id, body) } }
     }
 
     private fun release() {
@@ -422,9 +495,25 @@ class PlaybackActivity : AppCompatActivity() {
         playbackMenu = null
         handler.removeCallbacks(heartbeat)
         if (::playerView.isInitialized) playerView.player = null
-        player?.release()
+        playerOwner?.release()
+        playerOwner = null
         player = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    override fun finish() {
+        // Activity results are captured by finish(), before onStop(). Capture the
+        // final position now; reporting and engine cleanup must not delay return.
+        if (!isFinishing && ::episodeId.isInitialized) {
+            report("stop")
+            val runtime = if (parentClipPath.isEmpty()) player?.duration?.takeIf { it > 0 } ?: episodeRuntimeMs else episodeRuntimeMs
+            setResult(RESULT_OK, Intent().putExtra("episodeId", episodeId)
+                .putExtra("positionMs", position).putExtra("completed", completed)
+                .putExtra("runtimeMs", runtime).putExtra("progressKnown", watchId.isNotEmpty()))
+        }
+        super.finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 
     override fun onPause() {

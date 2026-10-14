@@ -22,6 +22,7 @@ import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class ShellActivity : AppCompatActivity() {
     private val app get() = application as MollyTimeApplication
     private var web: WebView? = null
@@ -52,14 +53,19 @@ class ShellActivity : AppCompatActivity() {
     private var inFlight = 0
     private val player = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         playing = false
+        app.catalog.resume()
         val data = JSONObject().put("episodeId", result.data?.getStringExtra("episodeId") ?: "")
             .put("positionMs", result.data?.getLongExtra("positionMs", 0) ?: 0)
+            .put("completed", result.data?.getBooleanExtra("completed", false) ?: false)
+            .put("runtimeMs", result.data?.getLongExtra("runtimeMs", 0) ?: 0)
+            .put("progressKnown", result.data?.getBooleanExtra("progressKnown", false) ?: false)
         web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('molly:playbackClosed',{detail:$data}))", null)
         pendingClientRelease?.let { pendingClientRelease = null; dispatch("molly:clientUpdateAvailable", it.json()) }
     }
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        app.catalogListener = { name, detail -> dispatch(name, detail) }
         WindowCompat.getInsetsController(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -166,13 +172,14 @@ class ShellActivity : AppCompatActivity() {
                     pendingInstallResult?.let { result -> pendingInstallResult = null; runOnUiThread { handleInstallResult(result) } }
                 }
                 inFlight++
-                app.io.execute {
+                val local = method in setOf("catalogRead", "catalogStatus", "catalogSync", "getCapabilities", "ready")
+                (if (local) app.catalog.reads else if (method == "playEpisode") app.playbackIo else app.io).execute {
                     val response = JSONObject().put("id", id)
                     try {
                         if (generation == current) response.put("result", handle(method, args, current))
                     } catch (error: Exception) {
                         response.put("error", JSONObject().put("message",
-                            if (error is ApiFailure || error is IllegalArgumentException) error.message else "连接失败，请检查媒体库与网络")
+                            if (error is ApiFailure || error is IllegalArgumentException || error is IllegalStateException) error.message else "连接失败，请检查媒体库与网络")
                             .put("status", if (error is ApiFailure) error.status else 0))
                     }
                     runOnUiThread {
@@ -196,6 +203,10 @@ class ShellActivity : AppCompatActivity() {
                 return try {
                     // Width is the only supported image parameter; never forward credentials from the page.
                     val width = req.url.getQueryParameter("w")?.toIntOrNull()?.coerceIn(64, 1280) ?: 480
+                    val version = req.url.getQueryParameter("v").orEmpty()
+                    app.catalog.covers.cached(req.url.path.orEmpty(), version)?.let { cached ->
+                        return WebResourceResponse("image/jpeg", null, cached.inputStream())
+                    }
                     val res = app.api.imageResponse(req.url.path + "?w=$width")
                     val body = res.body!!
                     WebResourceResponse(body.contentType()?.toString()?.substringBefore(';') ?: "image/jpeg",
@@ -230,12 +241,23 @@ class ShellActivity : AppCompatActivity() {
     private fun handle(method: String, args: JSONObject, current: Int): Any = when (method) {
         "ready" -> JSONObject().put("ok", true)
         "getCapabilities" -> JSONObject().put("bridgeVersion", 1).put("shellVersion", BuildConfig.VERSION_NAME)
+            .put("catalogSync", true).put("offlinePlayback", true)
             .put("serverUrl", app.session.server).put("webVersion", app.webBundles.selectedVersion()).put("authenticated", app.session.refresh.isNotEmpty())
             .put("suggestedServerUrl", if (app.session.server.isEmpty()) "https://118.89.122.66:8096" else "")
             .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
             .put("clientUpdates", true)
+        "catalogRead" -> app.catalog.read(args).also { result ->
+            result.optJSONObject("data")?.let { data ->
+                val store = app.catalog.store()
+                data.optJSONArray("episodes")?.let { app.media.decorateOffline(it, store) }
+                data.optJSONArray("rows")?.let { rows -> for (i in 0 until rows.length()) rows.getJSONObject(i).optJSONArray("items")?.let { app.media.decorateOffline(it, store) } }
+            }
+        }
+        "catalogStatus" -> app.catalog.status()
+        "catalogSync" -> { app.catalog.checkSoon(); JSONObject().put("ok", true) }
         "connect" -> {
             app.session.connect(args.getString("serverUrl"))
+            app.catalog.checkSoon()
             webUpdateCheckedServer = ""
             clientUpdateCheckedServer = ""
             checkStartupClientUpdate()
@@ -284,10 +306,13 @@ class ShellActivity : AppCompatActivity() {
         "playEpisode" -> {
             val id = args.getString("episodeId")
             require(BridgePolicy.id.matches(id)) { "无效的剧集 ID" }
-            app.api.json("GET", "/api/episodes/$id") // Authorize before launching native UI.
+            if (app.catalog.status().optBoolean("supported") && !app.catalog.status().optBoolean("online")) app.media.offline(id, app.catalog.store())
+            else try { app.api.json("GET", "/api/episodes/$id") }
+            catch (failure: java.io.IOException) { app.media.offline(id, app.catalog.store()) }
             runOnUiThread {
                 if (!playing && !isDestroyed && generation == current) {
                     playing = true
+                    app.catalog.pause()
                     player.launch(Intent(this, PlaybackActivity::class.java).putExtra("episodeId", id)
                         .putExtra("childId", app.session.childId))
                 }
@@ -387,11 +412,11 @@ class ShellActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() { resumed = false; web?.onPause(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; web?.onResume() }
+    override fun onPause() { if (!playing) app.catalog.pause(); resumed = false; web?.onPause(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; web?.onResume(); if (!playing) app.catalog.resume() }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)
         if (intent.action == ClientUpdateInstaller.INSTALL_RESULT) handleInstallResult(intent)
     }
-    override fun onDestroy() { destroyWeb(); super.onDestroy() }
+    override fun onDestroy() { app.catalogListener = null; destroyWeb(); super.onDestroy() }
 }

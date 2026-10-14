@@ -93,6 +93,7 @@ def init_db() -> None:
     # Import models so they register with Base.metadata.
     from . import (
         accounts,
+        catalog_versions,  # noqa: F401 -- register transactional catalog clocks
         management_models,
         models,
         usage_models,  # noqa: F401 -- register usage tables with Base.metadata

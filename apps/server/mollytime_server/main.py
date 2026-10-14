@@ -28,6 +28,7 @@ from .api import (
     playback,
     playback_settings,
     reminders,
+    tv_sync,
     usage,
     users,
     watch,
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_client_releases.router)
     app.include_router(client_release_uploads.router)
     app.include_router(watch.router)
+    app.include_router(tv_sync.router)
     if (settings.tv_web_dir / "index.html").is_file():
         app.mount("/tv", TvWebFiles(directory=settings.tv_web_dir, html=True), name="tv-web")
     if (settings.parent_web_dir / "index.html").is_file():

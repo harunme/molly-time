@@ -14,7 +14,10 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
     // Retain bridge compatibility while ignoring previously selected profiles.
     val childId: String get() = ""
 
-    fun connect(value: String) {
+    data class Credentials(val server: String, val device: String, val access: String)
+    @Synchronized fun credentials() = Credentials(server, deviceId, access)
+
+    @Synchronized fun connect(value: String) {
         val url = value.trim().toHttpUrl()
         require(url.username.isEmpty() && url.password.isEmpty() && url.query == null && url.fragment == null)
         require(url.encodedPath == "/") { "请输入媒体库根地址，不包含路径" }
@@ -36,7 +39,7 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
         }
     }
 
-    fun save(json: JSONObject, clearChild: Boolean = false) {
+    @Synchronized fun save(json: JSONObject, clearChild: Boolean = false) {
         val edit = prefs.edit().putString("access", json.getString("accessToken"))
             .putString("refresh", json.getString("refreshToken"))
         if (clearChild) edit.remove("child")
@@ -47,6 +50,6 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
         if (previousDevice != deviceId) onBindingChanged()
     }
 
-    fun clear() { prefs.edit().remove("access").remove("refresh").remove("child")
+    @Synchronized fun clear() { prefs.edit().remove("access").remove("refresh").remove("child")
         .remove("device").remove("binding:$server").commit(); onBindingChanged() }
 }

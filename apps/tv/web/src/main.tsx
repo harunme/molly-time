@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { PlaybackSettings } from './playback-settings';
 import { ApiError, call, request, type Capabilities, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
-import { appendItems, appendRow, catalogRequest, loadHome, loadPlaylist } from './catalog';
+import { appendItems, appendRow, catalogRequest, configureCatalog, loadHome, loadPlaylist, readPlaybackReturn, updateHomeProgress, updatePlaylistProgress } from './catalog';
 import { finishScrolls, FocusButton, FocusRegion } from './focus';
 import { CatalogCard, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf } from './content';
 import { PairingPanel } from './pairing';
@@ -15,7 +15,8 @@ init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true
 
 type ViewSnapshot = { focus: string; scroll: number; rails: Record<string, number> };
 type Overlay = 'settings' | 'pairing' | 're-pair' | 'connection' | 'client-update' | null;
-const homeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
+type SyncStatus = { online: boolean; supported?: boolean; message?: string; lastSync?: number; catalogComplete?: boolean; coversComplete?: boolean; paused?: boolean };
+const legacyHomeFocus = (row: number, item: Series) => row === 0 ? `series-${item.id}` : `home-${row}-${item.id}`;
 const emptyVideos: PlaylistEpisode[] = [];
 const duration = (ms?: number) => ms ? `${Math.ceil(ms / 60000)} 分钟` : '';
 const playbackTime = (ms: number) => {
@@ -49,10 +50,13 @@ function App() {
   const displayedVideos = resume && !videos.some((item) => item.id === resume.id) ? [resume, ...videos] : videos;
   const homeSnapshot = useRef<ViewSnapshot | undefined>(undefined);
   const [home, setHome] = useState<Home>({ rows: [] });
+  const homeFocus = (row: number, item: Series, rows = home.rows) => capabilities?.catalogSync && rows[row]?.id
+    ? `home-${rows[row].id}-${item.id}` : legacyHomeFocus(row, item);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [refreshError, setRefreshError] = useState('');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>();
   const [reload, setReload] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [serverAddress, setServerAddress] = useState('');
@@ -113,11 +117,35 @@ function App() {
   }, [folder]);
   useEffect(() => {
     call<Capabilities>('getCapabilities').then((caps) => {
+      configureCatalog(!!caps.catalogSync);
       setBridgeCompatible(caps.bridgeVersion === 1);
       setCapabilities(caps); setAuthenticated(caps.authenticated); setServerAddress(caps.serverUrl || caps.suggestedServerUrl || '');
       return call('ready', { webVersion: caps.webVersion ?? '' });
     }).catch(fail).finally(() => setBusy(false));
   }, [fail]);
+  useEffect(() => {
+    if (!capabilities?.catalogSync) return;
+    const applyStatus = (value: SyncStatus) => {
+      setSyncStatus(value);
+      if (value.supported === false) { configureCatalog(false); setCapabilities((old) => old ? { ...old, catalogSync: false } : old); }
+    };
+    const status = (event: Event) => applyStatus((event as CustomEvent<SyncStatus>).detail);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const changed = (event: Event) => {
+      const collection = (event as CustomEvent<{ collection: string }>).detail.collection;
+      if (collection === 'authorization') { fail(new ApiError('电视授权已失效，请重新绑定', 401)); return; }
+      if (playing || collection === 'status' || collection.startsWith('folder:') && collection !== `folder:${folder?.id}`) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => setReload((value) => value + 1), 100);
+    };
+    const resumed = () => { if (!document.hidden) void call('catalogSync').catch(() => {}); };
+    void call<SyncStatus>('catalogStatus').then(applyStatus).catch(() => {});
+    window.addEventListener('molly:catalogStatus', status);
+    window.addEventListener('molly:catalogChanged', changed);
+    window.addEventListener('online', resumed);
+    document.addEventListener('visibilitychange', resumed);
+    return () => { clearTimeout(timer); window.removeEventListener('molly:catalogStatus', status); window.removeEventListener('molly:catalogChanged', changed); window.removeEventListener('online', resumed); document.removeEventListener('visibilitychange', resumed); };
+  }, [capabilities?.catalogSync, folder?.id, playing, fail]);
   useEffect(() => {
     const progress = (event: Event, client: boolean) => {
       const detail = (event as CustomEvent<{ received: number; total: number; state: string; version?: string; message?: string }>).detail;
@@ -178,6 +206,7 @@ function App() {
     };
     const task = folder ? loadPlaylist(folder.id, cachedPlaylist?.data, active).then((data) => {
       if (serial === loadSerial.current) {
+        if (data.unavailable) { playlistCache.current = undefined; restore.current = homeSnapshot.current; setFolder(undefined); return; }
         // Browsing may append a page while the refresh is in flight. Never
         // replace newer user-visible data with an older refresh snapshot.
         if (cachedPlaylist && playlistCache.current?.data !== cachedPlaylistData) return;
@@ -189,7 +218,7 @@ function App() {
     }) : loadHome(cachedHome?.data, active).then((data) => {
       if (serial === loadSerial.current) {
         if (cachedHome && homeCache.current?.data !== cachedHomeData) return;
-        preserveFocus(data.rows.some((row, rowIndex) => row.items.some((item) => homeFocus(rowIndex, item) === getCurrentFocusKey())));
+        preserveFocus(data.rows.some((row, rowIndex) => row.items.some((item) => homeFocus(rowIndex, item, data.rows) === getCurrentFocusKey())));
         homeCache.current = { scope, reload, data };
         setHome(data);
       }
@@ -255,7 +284,9 @@ function App() {
       appended.current = false;
       if (!restore.current) { setReadyToAppend(true); return; }
     }
-    const timer = setTimeout(() => {
+    // Focus registrations run in effects. Restore on the next frame instead of
+    // adding a fixed delay after every return, including already-mounted cards.
+    const frame = requestAnimationFrame(() => {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' :
         overlay === 'settings' ? (window.MollyBridge ? 'connection' : authenticated ? 're-pair' : 'connect-account') : overlay === 'connection' ? 'server-address' : overlay === 'client-update' ? 'check-client-update' : !authenticated ? (capabilities?.serverUrl ? 'connect-account' : 'connect-home') : error ? 'retry' :
@@ -264,16 +295,17 @@ function App() {
       const canRestore = saved && has(saved.focus);
       const target = canRestore ? saved.focus : fallback;
       const next = has(target) ? target : overlay ? 'close-overlay' : 'settings';
+      if (!canRestore && viewport.current && !overlay) viewport.current.scrollTop = 0;
       setFocus(next);
       finishScrolls(viewport.current);
       if (canRestore && viewport.current) {
         viewport.current.scrollTop = saved.scroll;
         viewport.current.querySelectorAll<HTMLElement>('[data-rail]').forEach((node) => { node.scrollLeft = saved.rails[node.dataset.rail!] ?? 0; });
-      } else if (viewport.current && !overlay) viewport.current.scrollTop = 0;
+      }
       restore.current = undefined;
       setReadyToAppend(true);
-    }, 60);
-    return () => clearTimeout(timer);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [busy, playing, authenticated, folder, videos, resumeId, home, error, overlay, serverAddress, capabilities?.serverUrl]);
   useEffect(() => {
     if (overlay !== 'connection') return;
@@ -282,7 +314,7 @@ function App() {
   }, [overlay]);
 
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || capabilities?.catalogSync) return;
     let alive = true, checking = false;
     const check = async () => {
       if (checking) return;
@@ -296,7 +328,7 @@ function App() {
     const timer = setInterval(() => { void check(); }, 30000);
     document.addEventListener('visibilitychange', resumed);
     return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', resumed); };
-  }, [authenticated, fail]);
+  }, [authenticated, capabilities?.catalogSync, fail]);
 
   const openOverlay = useCallback((next: Overlay) => {
     overlayOrigin.current = getCurrentFocusKey() || 'settings'; setError(''); setOverlay(next);
@@ -334,13 +366,34 @@ function App() {
     return () => { delete window.mollyBack; window.removeEventListener('keydown', onKey); window.removeEventListener('molly:menu', menu); };
   }, [back, playing, overlay, openOverlay]);
   useEffect(() => {
-    const returned = () => {
+    const returned = (event: Event) => {
       setPlaying(false);
-      setReload((value) => value + 1);
+      const progress = readPlaybackReturn((event as CustomEvent).detail);
+      // Older shells and interrupted startup may not return a trustworthy
+      // position. Keep the refresh fallback for those cases.
+      if (!progress) { setReload((value) => value + 1); return; }
+      loadSerial.current++;
+      appended.current = false;
+      setPageStates({});
+      const cachedPlaylist = playlistCache.current;
+      const episode = cachedPlaylist?.data.episodes.find((item) => item.id === progress.episodeId) ??
+        (cachedPlaylist?.data.resumeEpisode?.id === progress.episodeId ? cachedPlaylist.data.resumeEpisode : undefined);
+      if (homeCache.current) homeCache.current.data = updateHomeProgress(homeCache.current.data, progress, episode);
+      setHome((current) => updateHomeProgress(current, progress, episode));
+      if (cachedPlaylist) {
+        const next = updatePlaylistProgress(cachedPlaylist.data, progress);
+        if (next) {
+          cachedPlaylist.data = next;
+          if (folder?.id === cachedPlaylist.folder) setPlaylist(next);
+        } else if (folder?.id === cachedPlaylist.folder) {
+          // Auto-play may have reached an episode outside the loaded pages.
+          setReload((value) => value + 1);
+        }
+      }
     };
     window.addEventListener('molly:playbackClosed', returned);
     return () => window.removeEventListener('molly:playbackClosed', returned);
-  }, []);
+  }, [folder]);
 
   const completePairing = useCallback(() => {
     setError(''); setOverlay(null); restore.current = undefined; setAuthenticated(true);
@@ -398,6 +451,7 @@ function App() {
       <div className="topbar">
         {folder && <FocusButton focusKey="folder-back" className="route-back" ariaLabel="返回" disabled={!!overlay} onClick={() => { back(); }}><Icon name="back" /></FocusButton>}
         <span className="topbar-brand">MollyTime</span>
+        {authenticated && syncStatus?.supported !== false && syncStatus && <span className="sync-status" role="status">{syncStatus.message || (!syncStatus.online ? '离线浏览' : syncStatus.catalogComplete ? '内容已同步' : syncStatus.paused ? '同步已暂停' : '正在同步内容')}{!syncStatus.online && syncStatus.lastSync ? ` · 上次同步 ${new Date(syncStatus.lastSync).toLocaleDateString('zh-CN')}` : ''}</span>}
         <div className="topbar-actions">
           <FocusButton focusKey="settings" className="settings-trigger" ariaLabel="设置" disabled={!!overlay} onArrow={topbarArrow} onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>
         </div>
@@ -405,7 +459,7 @@ function App() {
         {authenticated && (folder ? <DetailHeader series={folder} total={playlist?.total ?? videos.length} loading={busy} /> : <HomeGreeting />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {refreshError && <div className="catalog-notice"><span role="status">{refreshError}</span><FocusButton focusKey="refresh-retry" onClick={() => setReload((value) => value + 1)} className="text-button">重试更新</FocusButton></div>}
-          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1>{capabilities?.serverUrl ? <><p>已连接媒体库，请绑定家庭电视。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></> : <><p>输入家庭媒体库地址开始使用。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('connection')}>设置媒体库地址</FocusButton></>}</div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf">
+          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1>{capabilities?.serverUrl ? <><p>已连接媒体库，请绑定家庭电视。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></> : <><p>输入家庭媒体库地址开始使用。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('connection')}>设置媒体库地址</FocusButton></>}</div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? `episode-${resumeId || videos[0]?.id}`} virtualize={!!capabilities?.catalogSync}>
             {displayedVideos.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={`episode-${item.id}`} disabled={!!overlay}
               firstRow nearEnd={index >= displayedVideos.length - 8} rowId="playlist" playable
               subtitle={`${item.id === resumeId ? '继续观看 · ' : ''}${watchedPosition(item) || duration(item.runtimeMs)}`}
@@ -413,8 +467,8 @@ function App() {
             {playlist?.hasMore && <LoadMore focusKey="more-playlist" loading={pageStates.playlist?.loading} error={pageStates.playlist?.error}
               disabled={!!overlay || playing || !readyToAppend} onLoad={() => loadMore()} onRetry={() => loadMore('playlist', true)} onFocus={() => remember('more-playlist')} />}
           </Shelf> : home.rows.map((row, rowIndex) => {
-            const rowKey = `home-row-${rowIndex}`;
-            return <Shelf key={rowKey} focusKey={rowKey} title={row.title} kind={row.id === 'library' || row.title === '我的媒体库' ? 'library-shelf' : ''}>
+            const rowKey = `home-row-${capabilities?.catalogSync ? row.id ?? rowIndex : rowIndex}`;
+            return <Shelf key={rowKey} focusKey={rowKey} title={row.title} initialFocusKey={restore.current?.focus} virtualize={!!capabilities?.catalogSync} kind={row.id === 'library' || row.title === '我的媒体库' ? 'library-shelf' : ''}>
               {row.items.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={homeFocus(rowIndex, item)} disabled={!!overlay}
                 firstRow={rowIndex === 0} nearEnd={!!row.id && index >= row.items.length - 8} rowId={row.id ?? ''}
                 playable={item.type === 'episode'} subtitle={item.type === 'episode' ? episodeAction(item) : ''}

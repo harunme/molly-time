@@ -58,6 +58,7 @@ android {
             .getOrElse(clientVersion.getProperty("versionName"))
     }
     buildFeatures { buildConfig = true }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     sourceSets.getByName("main").assets.srcDir(prepareTvWebAssets.map { it.destinationDir })
     signingConfigs {
         if (hasReleaseSigning) {
@@ -101,9 +102,12 @@ dependencies {
     implementation(libs.androidx.core)
     implementation("androidx.webkit:webkit:1.14.0")
     implementation(libs.androidx.media3.exoplayer)
+    implementation("androidx.media3:media3-session:1.8.0")
     implementation("androidx.media3:media3-database:1.8.0")
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui)
     implementation(libs.okhttp)
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.robolectric:robolectric:4.16.1")
 }

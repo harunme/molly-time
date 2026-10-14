@@ -51,16 +51,18 @@ class MediaStore(private val context: Context, private val session: SessionStore
         }
     }
 
+    internal fun close() { writer?.cancel(); executor.shutdownNow(); cache.release() }
+
     fun key(info: JSONObject) = info.getString("mediaId") + ":" + info.getString("version")
 
     /** Credentials are chosen for each request, including redirects, by origin. */
     fun upstream(): DataSource.Factory {
-        val server = session.server.toHttpUrl()
         val client = api.http.newBuilder().followRedirects(true).addNetworkInterceptor { chain ->
             val request = chain.request()
-            val sameOrigin = MediaRequestPolicy.sameOrigin(server, request.url)
+            val credentials = session.credentials()
+            val sameOrigin = credentials.server.isNotEmpty() && MediaRequestPolicy.sameOrigin(credentials.server.toHttpUrl(), request.url)
             val builder = request.newBuilder().removeHeader("Authorization").removeHeader("Cookie")
-            if (sameOrigin) builder.header("Authorization", "Bearer ${session.access}")
+            if (sameOrigin) builder.header("Authorization", "Bearer ${credentials.access}")
             chain.proceed(builder.build())
         }.build()
         return DefaultDataSource.Factory(context, OkHttpDataSource.Factory(client))
@@ -80,6 +82,76 @@ class MediaStore(private val context: Context, private val session: SessionStore
 
     fun uri(info: JSONObject): Uri = Uri.parse(info.getString("url")).let {
         if (it.scheme == null) Uri.parse(session.server + it.toString()) else it
+    }
+
+    fun offlineFactory(): DataSource.Factory = androidx.media3.datasource.DefaultDataSource.Factory(context, CacheDataSource.Factory().setCache(cache)
+        .setCacheReadDataSourceFactory(androidx.media3.datasource.FileDataSource.Factory())
+        .setUpstreamDataSourceFactory(null).setCacheWriteDataSinkFactory(null))
+
+    fun offline(episode: String, store: CatalogStore): JSONObject {
+        val detail = store.savedPlayback(episode) ?: throw IllegalStateException("此视频尚未完整保存，需要联网播放")
+        val info = detail.getJSONObject("playback")
+        val permission = OfflinePolicy.permission(store, session.deviceId, episode, info.getString("mediaId"), info.getString("version"))
+        check(permission.optString("sha256").matches(Regex("[a-f0-9]{64}"))) { "此副本缺少完整性校验，请联网重新保存" }
+        check(complete(key(info), permission.getLong("size")) && verified(key(info))) { "离线视频副本不完整，请联网重新保存" }
+        val subs = info.optJSONArray("subtitles") ?: org.json.JSONArray()
+        for (i in 0 until subs.length()) {
+            val path = Uri.parse(subs.getJSONObject(i).getString("url"))
+            check(path.scheme == "file" && File(path.path!!).canonicalPath.startsWith(File(context.filesDir, "offline-subtitles").canonicalPath + "/") && File(path.path!!).isFile) { "离线字幕不完整，请联网同步" }
+        }
+        info.put("url", "cache://offline/" + info.getString("mediaId")).put("offline", true)
+        return detail
+    }
+
+    fun decorateOffline(items: org.json.JSONArray, store: CatalogStore) {
+        val permissions = runCatching { OfflinePolicy.permissions(store, session.deviceId) }.getOrNull() ?: return
+        val allowed = (0 until permissions.length()).map { permissions.getJSONObject(it) }.associateBy { it.getString("episodeId") }
+        for (i in 0 until items.length()) {
+            val item = items.getJSONObject(i); val p = allowed[item.optString("id")] ?: continue
+            val info = store.savedPlayback(item.getString("id"))?.optJSONObject("playback") ?: continue
+            val subs = info.optJSONArray("subtitles") ?: org.json.JSONArray()
+            val ready = info.optString("mediaId") == p.optString("mediaId") && info.optString("version") == p.optString("version") &&
+                p.optString("sha256").matches(Regex("[a-f0-9]{64}")) && complete(key(info), p.optLong("size")) && verified(key(info)) &&
+                (0 until subs.length()).all { val uri = Uri.parse(subs.getJSONObject(it).optString("url")); uri.scheme == "file" && uri.path?.let { path -> File(path).isFile } == true }
+            item.put("offlineAvailable", ready)
+        }
+    }
+    private fun saveDescriptor(row: JSONObject, source: JSONObject) {
+        val app = context.applicationContext as MollyTimeApplication
+        val store = app.catalog.store()
+        val owner = session.server + "|" + session.deviceId
+        val catalogVersion = store.get("catalogVersion").orEmpty()
+        val episode = row.getString("episodeId")
+        val detail = api.json("GET", "/api/episodes/$episode")
+        val info = JSONObject(source.toString())
+        val subs = info.optJSONArray("subtitles") ?: org.json.JSONArray()
+        val folder = File(context.filesDir, "offline-subtitles").apply { mkdirs() }
+        for (i in 0 until subs.length()) {
+            val sub = subs.getJSONObject(i)
+            val path = sub.getString("url")
+            require(path.startsWith("/api/episodes/$episode/subtitles/") && !path.contains(".."))
+            val file = File(folder, CatalogStore.digest("$owner|$path") + ".vtt")
+            if (!file.isFile) {
+                val bytes = api.response("GET", path).use { res ->
+                    val body = res.body ?: error("字幕为空")
+                    require(body.contentLength() <= 8 * 1024 * 1024)
+                    body.byteStream().use { input ->
+                        val output = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(32768)
+                        while (true) { val n = input.read(buffer); if (n < 0) break; require(output.size() + n <= 8 * 1024 * 1024); output.write(buffer, 0, n) }
+                        output.toByteArray()
+                    }
+                }
+                require(bytes.size <= 8 * 1024 * 1024)
+                val temp = File(folder, file.name + ".tmp")
+                temp.writeBytes(bytes); check(temp.renameTo(file))
+            }
+            sub.put("url", Uri.fromFile(file).toString())
+        }
+        check(owner == session.server + "|" + session.deviceId)
+        detail.put("playback", info).put("catalogVersion", catalogVersion)
+        store.put("media:$episode", detail.toString())
+        app.catalog.mediaChanged()
     }
 
     private fun rememberPins() { prefs.edit().putStringSet("pinned", pinned.toSet()).commit() }
@@ -120,6 +192,7 @@ class MediaStore(private val context: Context, private val session: SessionStore
             val row = rows.getJSONObject(i)
             val key = row.getString("mediaId") + ":" + row.getString("version")
             if (row.getString("desired") == "removed") {
+                (context.applicationContext as MollyTimeApplication).catalog.store().removePlayback(row.getString("episodeId"))
                 if (row.optString("status") != "removed" || key in cache.keys) {
                     generation++
                     writer?.cancel()
@@ -133,6 +206,9 @@ class MediaStore(private val context: Context, private val session: SessionStore
             val size = row.getLong("size")
             if (row.optString("status") == "saved") {
                 if (!complete(key, size) || !verified(key)) report(row, "failed", 0, "电视副本已丢失，请重新保存")
+                else if ((context.applicationContext as MollyTimeApplication).catalog.store().let { store -> store.savedPlayback(row.getString("episodeId"))?.optString("catalogVersion") != store.get("catalogVersion").orEmpty() } && busy.compareAndSet(false, true)) {
+                    executor.execute { try { runCatching { saveDescriptor(row, api.json("GET", "/api/device/downloads/${row.getString("id")}/playback")) } } finally { busy.set(false) } }
+                }
                 continue
             }
             if (row.optString("status") !in listOf("queued", "downloading") || !row.has("playback")) continue
@@ -164,6 +240,7 @@ class MediaStore(private val context: Context, private val session: SessionStore
                     }
                     check(owner == generation) { "下载已取消" }
                     verify(key, size, info.optString("sha256"))
+                    saveDescriptor(row, info)
                     check(owner == generation) { "下载已取消" }
                     report(row, "saved", size)
                 } catch (error: Exception) {
