@@ -50,6 +50,8 @@ def test_deepseek_request_uses_chat_completions(monkeypatch):
         assert request.get_header("Authorization") == "Bearer fixture"
         body = json.loads(request.data)
         assert body["model"] == "deepseek-flash"
+        assert body["thinking"] == {"type": "disabled"}
+        assert body["max_tokens"] == 2048
         assert body["messages"][1]["content"] == "verified changes"
         return Response()
 

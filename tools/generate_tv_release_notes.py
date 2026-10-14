@@ -42,6 +42,7 @@ def generate(summary, key, model):
         "https://api.deepseek.com/chat/completions",
         data=json.dumps({
             "model": model,
+            "thinking": {"type": "disabled"},
             "messages": [
                 {"role": "system", "content": (
                     "根据所给电视客户端代码变更撰写面向家长的中文 APK 更新说明。"
@@ -53,7 +54,7 @@ def generate(summary, key, model):
                 {"role": "user", "content": summary},
             ],
             "stream": False,
-            "max_tokens": 300,
+            "max_tokens": 2048,
         }).encode(),
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
         method="POST",
