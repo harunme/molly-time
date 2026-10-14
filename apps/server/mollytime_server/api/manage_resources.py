@@ -186,7 +186,7 @@ def resources(
 
 
 @router.get("/resources/stats")
-def resource_stats(user: Parent, db: DbSession):
+def resource_stats(user: Parent, db: DbSession, folderId: str | None = None):
     query = (
         db.query(Item.id, Item.type, func.coalesce(ResourceState.status, "published"), func.coalesce(ResourceState.ready, True), Item.runtime_ticks)
         .outerjoin(ResourceState, ResourceState.item_id == Item.id)
@@ -196,6 +196,21 @@ def resource_stats(user: Parent, db: DbSession):
         )
     )
     private_ids = reminder_resource_ids(db, user.family_id)
+    if folderId is not None:
+        folder = owned(db, Item, folderId, user.family_id)
+        if folder.id in private_ids:
+            raise HTTPException(404, "内容不存在")
+        ensure_active(db, folder)
+        if folder.type != "Series":
+            raise HTTPException(422, "请选择文件夹")
+        seasons = db.query(Item.id).filter(
+            Item.family_id == user.family_id, Item.parent_id == folder.id, Item.type == "Season",
+        )
+        query = query.filter(or_(
+            Item.id == folder.id,
+            Item.parent_id == folder.id,
+            Item.parent_id.in_(seasons),
+        ))
     if private_ids:
         query = query.filter(Item.id.notin_(private_ids))
     active = query.all()

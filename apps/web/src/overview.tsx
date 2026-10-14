@@ -2,7 +2,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Clock, FolderOpen, Heart, Monitor, UploadCloud } from "lucide-react";
+import { ArrowRight, Clock, Heart, Monitor, UploadCloud } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -160,9 +160,6 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
       restoreFocus={() => { const target = opener.current?.isConnected ? opener.current : heatmap.current?.querySelector<HTMLButtonElement>(".section-heading button"); target?.focus(); }} />
     <div className="page-title">
       <div><h1>概览</h1><p>{familyName}的设备在线状态与观看习惯。</p></div>
-      <div className="actions">
-        <Button onClick={() => navigate("library")}><FolderOpen className="size-4" />管理资源</Button>
-      </div>
     </div>
     {error && <Alert variant="destructive" role="alert" className="banner error"><AlertDescription>{error}</AlertDescription></Alert>}
     {!data && busy && <p role="status" className="muted">正在加载概览…</p>}

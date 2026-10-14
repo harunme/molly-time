@@ -581,7 +581,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
   const pendingUploads = usePendingUploads(serial, 1);
   const kind = !parent ? "Series" : "Episode";
   const filtered = list.data;
-  const stats = useData<{ videoCount: number; folderCount: number; subtitleCount: number; publishedVideoCount: number; readyVideoCount: number; subtitleVideoCount: number; durationMs: number } | undefined>("/resources/stats", undefined, serial);
+  const stats = useData<{ videoCount: number; folderCount: number; subtitleCount: number; publishedVideoCount: number; readyVideoCount: number; subtitleVideoCount: number; durationMs: number } | undefined>(parent ? `/resources/stats?folderId=${encodeURIComponent(parent.id)}` : "/resources/stats", undefined, serial);
   const ratio = (value: number, total: number) => total ? `${Math.round(value * 100 / total)}%` : "—";
   const duration = (value: number) => {
     const minutes = Math.round(value / 60000);
@@ -642,7 +642,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
           </React.Fragment>
         )}
       </div>
-      {stats.data && <ResourceSummary className="library-summary" icon={FolderOpen} title="资源库内容"
+      {stats.data && <ResourceSummary className="library-summary" icon={FolderOpen} title={parent ? "当前文件夹内容" : "资源库内容"}
         primary={`${stats.data.videoCount} 个视频`}
         secondary={<>文件夹 <strong className="font-medium text-foreground">{stats.data.folderCount}</strong> · 字幕 <strong className="font-medium text-foreground">{stats.data.subtitleCount}</strong></>}
         detail={<>已发布 {ratio(stats.data.publishedVideoCount, stats.data.videoCount)} · 已就绪 {ratio(stats.data.readyVideoCount, stats.data.videoCount)} · 字幕覆盖 {ratio(stats.data.subtitleVideoCount, stats.data.videoCount)}</>}

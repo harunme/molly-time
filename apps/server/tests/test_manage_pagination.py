@@ -18,7 +18,7 @@ from mollytime_server.management_models import (
     WatchInterval,
     WatchSession,
 )
-from mollytime_server.models import ChildProfile, Item
+from mollytime_server.models import ChildProfile, Item, MediaFile
 
 
 def test_resource_pages_filter_before_count_and_keep_family_scope(parent):
@@ -59,6 +59,45 @@ def test_folder_pages_include_direct_and_season_videos(parent):
     assert first["total"] == second["total"] == 25
     assert len(first["items"]) == 20 and len(second["items"]) == 5
     assert second["items"][0]["indexNumber"] == 21
+
+
+def test_resource_stats_follow_folder_scope(parent):
+    with Session(db.get_engine()) as session:
+        session.get(Item, "e1").runtime_ticks = 600_000_000
+        session.add_all([
+            Item(id="empty-folder", family_id="f1", type="Series", name="Empty"),
+            Item(id="outside-folder", family_id="f2", type="Series", name="Outside"),
+            Item(id="direct-video", family_id="f1", type="Episode", name="Direct",
+                 parent_id="series", runtime_ticks=300_000_000),
+            Item(id="hidden-video", family_id="f1", type="Episode", name="Hidden",
+                 parent_id="season", runtime_ticks=900_000_000),
+            Item(id="other-video", family_id="f1", type="Episode", name="Other",
+                 parent_id="empty-folder", runtime_ticks=1_200_000_000),
+        ])
+        session.flush()
+        session.add_all([
+            ResourceState(item_id="direct-video", status="draft", ready=False),
+            ResourceState(item_id="hidden-video", status="archived", ready=True),
+            MediaFile(id="second-subtitle", family_id="f1", item_id="e1", kind="subtitle", storage="local", path="second.srt"),
+        ])
+        session.commit()
+    response = parent.get("/api/manage/resources/stats?folderId=series")
+    assert response.status_code == 200
+    assert response.json() == {
+        "videoCount": 2, "folderCount": 1, "subtitleCount": 2,
+        "publishedVideoCount": 1, "readyVideoCount": 1,
+        "subtitleVideoCount": 1, "durationMs": 90_000,
+    }
+    assert parent.get("/api/manage/resources/stats").json()["videoCount"] == 3
+    assert parent.get("/api/manage/resources/stats?folderId=empty-folder").json()["videoCount"] == 1
+    assert parent.post("/api/manage/resources/other-video/archive").status_code == 200
+    empty = parent.get("/api/manage/resources/stats?folderId=empty-folder").json()
+    assert empty["videoCount"] == empty["subtitleCount"] == empty["durationMs"] == 0
+    assert parent.get("/api/manage/resources/stats?folderId=outside-folder").status_code == 404
+    assert parent.get("/api/manage/resources/stats?folderId=missing").status_code == 404
+    assert parent.get("/api/manage/resources/stats?folderId=e1").status_code == 422
+    assert parent.post("/api/manage/resources/series/archive").status_code == 200
+    assert parent.get("/api/manage/resources/stats?folderId=series").status_code == 409
 
 
 @pytest.mark.parametrize("kind,endpoint", [

@@ -38,7 +38,8 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   expect(requests.filter((url) => ['/api/manage/uploads', '/api/manage/devices'].includes(url.pathname)).every((url) => url.searchParams.get('pageSize') === '5' && url.searchParams.has('page'))).toBeTruthy();
   expect(requests.some((url) => url.pathname.includes('home-config') || url.pathname === '/api/manage/resources')).toBeFalsy();
   await page.screenshot({ path: '../../artifacts/manage-overview-desktop.png', fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: '管理资源', exact: true }).click();
+  await expect(page.getByRole('button', { name: '管理资源', exact: true })).toHaveCount(0);
+  await navigation.getByRole('link', { name: '资源库', exact: true }).click();
   await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
   await navigation.getByRole('link', { name: '概览', exact: true }).click();
   await page.getByRole('button', { name: '查看本周观看时长', exact: true }).click();
@@ -56,7 +57,7 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
   await navigation.getByRole('link', { name: '概览', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('button', { name: '管理资源', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '管理资源', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await page.screenshot({ path: '../../artifacts/manage-overview-mobile.png', fullPage: true, animations: 'disabled' });
   expect(errors).toEqual([]);
