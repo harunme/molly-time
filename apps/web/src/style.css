@@ -176,8 +176,10 @@
 .overview-heatmap-legend { @apply flex items-center gap-1.5; }
 .overview-heatmap-swatch { width: var(--spacing-heatmap-cell); height: var(--spacing-heatmap-cell); }
 @media (prefers-reduced-motion: no-preference) {
-  .page-content { animation: workspace-in 180ms ease-out; }
+  /* Translating this viewport-height container briefly overflows the document. */
+  .page-content { animation: workspace-fade-in 180ms ease-out; }
 }
+@keyframes workspace-fade-in { from { opacity: .5; } to { opacity: 1; } }
 @keyframes workspace-in { from { opacity: .5; transform: translateY(.25rem); } to { opacity: 1; transform: none; } }
 .manage-sidebar {
   @apply flex min-w-0 flex-col bg-card p-4 text-foreground lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:p-5 lg:pt-8;
