@@ -151,14 +151,16 @@ function App() {
       const detail = (event as CustomEvent<{ received: number; total: number; state: string; version?: string; message?: string }>).detail;
       const state = detail.state === 'downloading' ? `正在下载${client ? '客户端' : '网页'}更新 ${Math.floor(detail.received * 100 / Math.max(1, detail.total))}%` : detail.state === 'staged' ? `网页 ${detail.version} 已缓存，下次启动生效` : detail.state === 'downloaded' ? '下载完成，可以安装' : detail.state === 'error' ? detail.message ?? '更新失败' : detail.state;
       if (client) setClientUpdate((current) => ({ ...current, state }));
-      else setWebUpdateStatus(state);
+      // Older clients report the running version as staged as well.
+      else setWebUpdateStatus(detail.state === 'staged' && detail.version && detail.version === capabilities?.webVersion
+        ? '当前已是最新网页' : state);
     };
     const webProgress = (event: Event) => progress(event, false);
     const clientProgress = (event: Event) => progress(event, true);
     window.addEventListener('molly:webUpdateProgress', webProgress);
     window.addEventListener('molly:clientUpdateProgress', clientProgress);
     return () => { window.removeEventListener('molly:webUpdateProgress', webProgress); window.removeEventListener('molly:clientUpdateProgress', clientProgress); };
-  }, []);
+  }, [capabilities?.webVersion]);
   useEffect(() => {
     const incompatible = () => {
       setCompatibilityWarning('此网页版本需要更新电视客户端才能使用。');
@@ -511,7 +513,7 @@ function App() {
         </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
           {window.MollyBridge && <FocusButton focusKey="connection" className="settings-item" onClick={() => { setError(''); setOverlay('connection'); }}><Icon name="settings" /><span><strong>连接设置</strong><small>{serverAddress || '设置家庭媒体库地址'}</small></span><span>›</span></FocusButton>}
           {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
-          {window.MollyBridge && capabilities?.serverUrl && <FocusButton focusKey="check-web-update" className="settings-item" onClick={() => { setWebUpdateStatus('正在检查网页更新…'); void call('checkWebUpdate').catch(fail); }}><Icon name="settings" /><span><strong>检查网页更新</strong><small>{webUpdateStatus || `网页版本 ${capabilities?.webVersion ?? ''}`}</small></span><span>›</span></FocusButton>}
+          {window.MollyBridge && capabilities?.serverUrl && <FocusButton focusKey="check-web-update" className="settings-item" onClick={() => { setWebUpdateStatus('正在检查网页更新…'); void call('checkWebUpdate').catch(fail); }}><Icon name="settings" /><span><strong>检查网页更新</strong><small>当前网页版本 {capabilities.webVersion || '未知'}{webUpdateStatus && ` · ${webUpdateStatus}`}</small></span><span>›</span></FocusButton>}
           {authenticated && <PlaybackSettings />}
           {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { setError(''); setOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
         </div>}

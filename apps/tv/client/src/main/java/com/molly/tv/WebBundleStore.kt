@@ -112,12 +112,12 @@ class WebBundleStore(context: Context) {
         require(WebBundlePolicy.bridgeCompatible(bridgeVersion, release.minBridge, release.maxBridge)) {
             "网页版本需要更新电视客户端"
         }
-        if (release.version == selectedVersion()) return release.version
+        // A matching running version is already applied, not a pending update.
+        if (release.version == selectedVersion()) return null
         val directory = serverDirectory(server)
         val installed = listOf("active", "pending").mapNotNull { name ->
             File(directory, name).takeIf { it.isFile }?.readText()?.trim()
         }.toSet()
-        if (release.version == selectedVersion()) return null
         if (release.version in installed && File(directory, "versions/${release.version}/index.html").isFile) {
             return release.version.takeIf { File(directory, "pending").takeIf(File::isFile)?.readText()?.trim() == it }
         }

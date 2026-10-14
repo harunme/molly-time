@@ -4,6 +4,40 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
 });
 
+test('web update distinguishes a pending version from the running version on older clients', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
+    w.MollyBridge = { postMessage(raw) {
+      const { id, method } = JSON.parse(raw);
+      const result = method === 'getCapabilities'
+        ? { bridgeVersion: 1, serverUrl: 'https://media.example.test', webVersion: 'running-web', authenticated: false, nativePlayback: true }
+        : { ok: true };
+      setTimeout(() => {
+        w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) });
+        if (method === 'checkWebUpdate') window.dispatchEvent(new CustomEvent('molly:webUpdateProgress', {
+          detail: { state: 'staged', version: 'running-web' },
+        }));
+      }, 5);
+    } };
+  });
+  await page.goto('/tv/');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  const update = page.locator('[data-focus="check-web-update"]');
+  await expect(update).toContainText('当前网页版本 running-web');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:webUpdateProgress', {
+    detail: { state: 'staged', version: 'next-web' },
+  })));
+  await expect(update).toContainText('网页 next-web 已缓存，下次启动生效');
+  await expect(update).toContainText('当前网页版本 running-web');
+  await update.click();
+  await expect(update).toContainText('当前已是最新网页');
+  await expect(update).not.toContainText('下次启动生效');
+  await page.reload();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await update.click();
+  await expect(update).toContainText('当前网页版本 running-web · 当前已是最新网页');
+});
+
 for (const supported of [true, false]) {
   test(`client update setting respects native capability: ${supported}`, async ({ page }) => {
     await page.addInitScript((supportsUpdates) => {
