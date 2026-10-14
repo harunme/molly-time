@@ -15,6 +15,7 @@ import datetime as dt
 import uuid
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -141,9 +142,9 @@ class Item(Base):
     index_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     parent_index_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     premiere_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    runtime_ticks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    runtime_ticks: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     community_rating: Mapped[float | None] = mapped_column(Float, nullable=True)
-    primary_image_tag: Mapped[str] = mapped_column(String(32), default="")
+    primary_image_tag: Mapped[str] = mapped_column(String(64), default="")
     image_count: Mapped[int] = mapped_column(Integer, default=0)
 
     __table_args__ = (

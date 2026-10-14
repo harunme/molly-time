@@ -24,7 +24,11 @@ class AccountIdentity(Base):
             "length(account_id) = 10 AND account_id NOT GLOB '*[^0-9]*' "
             "AND substr(account_id, 1, 1) != '0'",
             name="ck_account_numeric_id",
-        ),
+        ).ddl_if(dialect="sqlite"),
+        CheckConstraint(
+            "account_id REGEXP '^[1-9][0-9]{9}$'",
+            name="ck_account_numeric_id_mysql",
+        ).ddl_if(dialect="mysql"),
     )
 
 

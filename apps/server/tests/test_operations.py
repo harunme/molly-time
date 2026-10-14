@@ -7,6 +7,7 @@ from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import config, db
 from mollytime_server.api import operations
+from mollytime_server import backup_settings
 from mollytime_server.management_models import OperationsStorage
 from mollytime_server.models import MediaFile, User
 from mollytime_server.storage.factory import build_storage
@@ -34,15 +35,30 @@ def body(**extra):
 
 
 def test_family_admin_cannot_operate(parent):  # noqa: F811
-    for method, path in [("get", "/storage"), ("put", "/storage"), ("post", "/storage/test")]:
+    for method, path in [("get", "/storage"), ("put", "/storage"), ("post", "/storage/test"), ("get", "/backups"), ("put", "/backups")]:
         res = getattr(parent, method)(
-            "/api/manage/operations" + path, **({"json": body()} if method != "get" else {})
+            "/api/manage/operations" + path, **({"json": {"enabled": True, "hour": 3, "minute": 40, "local_retention_days": 7} if path == "/backups" else body()} if method != "get" else {})
         )
         assert res.status_code == 403
     with Session(db.get_engine()) as session:
         session.get(User, "u1").role = "member"
         session.commit()
     assert parent.get("/api/manage/operations/storage").status_code == 403
+
+
+def test_backup_settings_and_daily_claim(operator, monkeypatch):
+    path = "/api/manage/operations/backups"
+    assert operator.get(path).json()["config"]["hour"] == 3
+    value = {"enabled": True, "hour": 4, "minute": 15, "local_retention_days": 14}
+    assert operator.put(path, json=value).status_code == 200
+    assert operator.get(path).json()["config"] == value
+    assert operator.put(path, json={**value, "hour": 24}).status_code == 422
+    monkeypatch.setattr(backup_settings, "_now", lambda: backup_settings.dt.datetime(2026, 10, 14, 20, 15, tzinfo=backup_settings.dt.UTC))
+    assert backup_settings.check_due()
+    assert not backup_settings.check_due()
+    backup_settings.finish(True, "mollytime-backups/mysql/example.sql.gz.fernet")
+    assert operator.get(path).json()["status"]["last_result"] == "success"
+    assert operator.get(path).json()["status"]["last_object_key"].endswith("example.sql.gz.fernet")
 
 
 def test_encrypted_persistence_live_factory_and_revision(operator, monkeypatch):

@@ -12,6 +12,7 @@ from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 from ..client_releases import inventory, publication_lock
+from ..backup_settings import BackupConfig, get_config as get_backup_config, get_status as get_backup_status, save_config as save_backup_config
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..management_models import OperationsStorage, UploadSession, UploadTarget
@@ -30,6 +31,22 @@ def superadmin(user: Parent):
 
 
 Operator = Annotated[object, Depends(superadmin)]
+
+
+@router.get("/backups")
+def backup_settings(user: Operator):
+    return {
+        "config": get_backup_config().model_dump(),
+        "status": get_backup_status(),
+        "timezone": "Asia/Shanghai",
+        "oss_retention": "indefinite",
+    }
+
+
+@router.put("/backups")
+def update_backup_settings(body: BackupConfig, user: Operator):
+    save_backup_config(body)
+    return backup_settings(user)
 
 
 class StorageBody(BaseModel):

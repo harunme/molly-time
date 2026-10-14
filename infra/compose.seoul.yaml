@@ -1,0 +1,70 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    env_file: ../.env.mysql
+    environment:
+      MYSQL_DATABASE: mollytime
+      MYSQL_USER: mollytime
+    volumes:
+      - ../mysql-data:/var/lib/mysql
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  mollytime-server:
+    image: mollytime-server:${MOLLYTIME_RELEASE:-seoul}
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prebuilt
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      MOLLYTIME_DATA_DIR: /data
+      MOLLYTIME_MEDIA_DIR: /data/media
+      MOLLYTIME_LISTEN_HOST: 0.0.0.0
+      MOLLYTIME_LISTEN_PORT: "8096"
+      MOLLYTIME_DB_URL: ${MOLLYTIME_DB_URL:?database URL required}
+      MOLLYTIME_PUBLIC_BASE_URL: https://mollytime.app
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - ../data:/data
+      - ../tools/upload_mysql_backup.py:/app/upload_mysql_backup.py:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.seoul:/etc/caddy/Caddyfile:ro
+      - ../caddy-data:/data
+      - ../caddy-config:/config
+    depends_on:
+      mollytime-server:
+        condition: service_healthy
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"

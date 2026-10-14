@@ -5,8 +5,20 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 
 class SessionStore(context: Context, private val onBindingChanged: () -> Unit = {}) {
+    companion object {
+        const val DEFAULT_SERVER = "https://mollytime.app"
+        private const val LEGACY_SERVER = "https://118.89.122.66:8096"
+    }
+
     // New store intentionally does not inherit the previous client's credentials.
     private val prefs = context.getSharedPreferences("molly.shell.v1", Context.MODE_PRIVATE)
+    init {
+        // The server moved with its database and signing secret. Preserve the
+        // existing device credentials while changing only the saved origin.
+        if (prefs.getString("server", "")?.trimEnd('/') == LEGACY_SERVER) {
+            prefs.edit().putString("server", DEFAULT_SERVER).commit()
+        }
+    }
     val server: String get() = prefs.getString("server", "")!!
     val access: String get() = prefs.getString("access", "")!!
     val refresh: String get() = prefs.getString("refresh", "")!!

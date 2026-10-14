@@ -1,0 +1,4 @@
+mollytime.app {
+    encode zstd gzip
+    reverse_proxy mollytime-server:8096
+}

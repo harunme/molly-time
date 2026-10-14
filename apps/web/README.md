@@ -79,7 +79,7 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。基础组件迁移自 `smart-afs-platform/frontend/smartafs/src/components/ui`，组件源码统一在 `src/components/ui`。Tailwind v4 的 CSS-first 全局配置在 `src/styles/theme.css`，集中维护颜色、字号、圆角、控件尺寸、阴影、层级及动效变量；`src/styles/ui-motion.css` 提供配套动画，`src/style.css` 只保留应用基础规则和页面布局。组件不再各自写固定颜色或重复定义变量。Geist 字体随应用自托管，图标使用 Lucide。
 
-页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看明细弹窗 `/manage/#/overview?watch=1`（旧 `/manage/#/watch` 自动跳转）、家庭设置 `/manage/#/family`；运营设置页签分别为 `/manage/#/operations/storage`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
+页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看明细弹窗 `/manage/#/overview?watch=1`（旧 `/manage/#/watch` 自动跳转）、家庭设置 `/manage/#/family`；运营设置页签包括 `/manage/#/operations/storage`、`/manage/#/operations/backups`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。数据库备份页可设置每日备份时间与本地保留天数，并查看最近执行结果。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
 
 上传任务合并到资源库，通过页面顶部“上传任务”打开弹窗。上传开始后自动显示进度，关闭弹窗继续管理资源，后台传输不会停止；暂停、续传、重新选文件、重试及分页保留。弹窗状态使用资源库或文件夹 URL 的 `?uploads=1`，关闭和浏览器后退保留当前目录、搜索、页码与选择；直接访问、刷新及概览“全部任务”均支持打开弹窗。旧 `/manage/#/upload` 链接重定向到 `/manage/#/library?uploads=1`。弹窗内部滚动，任务错误显示在弹窗内。
 

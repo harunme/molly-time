@@ -60,6 +60,9 @@ class FakeOss:
     def download(self, key, path, expected_size):
         Path(path).write_bytes(self.objects[key])
 
+    def put_file(self, key, path, mime):
+        self.objects[key] = Path(path).read_bytes()
+
     def open(self, key):
         return self.objects[key]
 
@@ -214,8 +217,11 @@ def test_webvtt_timing_and_unicode():
     assert "你好" in result.decode()
 
 
-def test_remote_video_processes_and_preserves_cloud_source(remote, mp4):
+def test_remote_video_processes_and_preserves_cloud_source(remote, mp4, monkeypatch):
     import hashlib
+    from mollytime_server import media_worker
+
+    monkeypatch.setattr(media_worker, "extract_cover", lambda *_: b"cover")
 
     web, oss = remote
     data = mp4
@@ -229,6 +235,10 @@ def test_remote_video_processes_and_preserves_cloud_source(remote, mp4):
         assert file.storage == "oss" and file.path == obj
         assert file.sha256 == hashlib.sha256(data).hexdigest()
         assert session.get(MediaOptions, key).retention == "backup"
+        cover = session.query(MediaFile).filter(MediaFile.item_id == file.item_id,
+                                                MediaFile.kind == "image").first()
+        assert cover is not None and cover.storage == "oss"
+        assert oss.objects[cover.path] == b"cover"
     assert oss.objects[obj] == data
     assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
     db.init_db()  # additive migration is safe to repeat

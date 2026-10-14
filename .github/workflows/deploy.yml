@@ -56,6 +56,7 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/mollytime-deploy
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat infra/seoul-known-hosts >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/mollytime-deploy ~/.ssh/known_hosts
       - name: Decide whether a TV APK is required
         id: native_plan
@@ -65,7 +66,7 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
-            root@118.89.122.66 apk-state > "$RUNNER_TEMP/tv-apk-state.json"
+            ubuntu@43.133.227.83 apk-state > "$RUNNER_TEMP/tv-apk-state.json"
           python tools/ci_tv_apk.py plan --state "$RUNNER_TEMP/tv-apk-state.json" \
             --commit "$GITHUB_SHA" --force "$FORCE_APK" \
             --output artifacts/tv-client-plan.json
@@ -137,8 +138,9 @@ jobs:
           tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
             apps/server/pyproject.toml apps/server/mollytime_server \
             apps/web/dist apps/tv/web/dist \
-            infra/Dockerfile.prebuilt infra/compose.production.yaml \
-            infra/compose.tls.yaml infra/nginx-tls.conf artifacts/tv-client-plan.json
+            infra/Dockerfile.prebuilt infra/compose.seoul.yaml \
+            infra/Caddyfile.seoul infra/backup-seoul.sh tools/upload_mysql_backup.py \
+            artifacts/tv-client-plan.json
       - name: Deploy and verify
         env:
           RELEASE_SHA: ${{ github.sha }}
@@ -154,17 +156,17 @@ jobs:
             tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
               apps/server/pyproject.toml apps/server/mollytime_server \
               apps/web/dist apps/tv/web/dist \
-              infra/Dockerfile.prebuilt infra/compose.production.yaml \
-              infra/compose.tls.yaml infra/nginx-tls.conf \
+              infra/Dockerfile.prebuilt infra/compose.seoul.yaml \
+              infra/Caddyfile.seoul infra/backup-seoul.sh tools/upload_mysql_backup.py \
               artifacts/tv-client-plan.json artifacts/mollytime-tv-release.apk
-            ssh "${ssh_options[@]}" root@118.89.122.66 \
+            ssh "${ssh_options[@]}" ubuntu@43.133.227.83 \
               "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
           }
           if [[ -n "$APK_ARTIFACT_ID" ]]; then
             if apk_url=$(python tools/ci_artifact_url.py --repo "$GITHUB_REPOSITORY" --artifact-id "$APK_ARTIFACT_ID"); then
               apk_sha=$(sha256sum artifacts/mollytime-tv-release.apk | cut -d ' ' -f 1)
               set +e
-              ssh "${ssh_options[@]}" root@118.89.122.66 \
+              ssh "${ssh_options[@]}" ubuntu@43.133.227.83 \
                 "deploy $RELEASE_SHA apk $apk_url $apk_sha" < /tmp/mollytime-release.tar.gz
               result=$?
               set -e
@@ -177,12 +179,12 @@ jobs:
               deploy_full_apk
             fi
           else
-            ssh "${ssh_options[@]}" root@118.89.122.66 \
+            ssh "${ssh_options[@]}" ubuntu@43.133.227.83 \
               "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
           fi
           curl --fail --silent --show-error --retry 5 --retry-all-errors \
             --retry-delay 3 --connect-timeout 10 --max-time 30 \
-            https://118.89.122.66:8096/healthz
+            https://mollytime.app/healthz
       - name: Remove private signing material
         if: always()
         run: python tools/ci_tv_apk.py cleanup-signing --directory "$RUNNER_TEMP/molly-tv-signing"

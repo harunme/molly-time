@@ -198,16 +198,20 @@ def process(task_id):
                 ):
                     image_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "molly-cover:" + upload.id))
                     if not db.get(MediaFile, image_id):
+                        cover_key = f"families/{upload.family_id}/media/{image_id}.jpg"
+                        if remote:
+                            build_storage("oss").put_file(cover_key, cover, "image/jpeg")
                         db.add(
                             MediaFile(
                                 id=image_id,
                                 family_id=upload.family_id,
                                 item_id=item.id,
                                 kind="image",
-                                storage="local",
-                                path=str(cover.relative_to(root)),
+                                storage="oss" if remote else "local",
+                                path=cover_key if remote else str(cover.relative_to(root)),
                                 mime="image/jpeg",
                                 size_bytes=cover.stat().st_size,
+                                sha256=hashlib.sha256(cover_data).hexdigest(),
                             )
                         )
                     item.primary_image_tag = image_id
@@ -236,6 +240,7 @@ def process(task_id):
             if remote:
                 try:
                     source.unlink(missing_ok=True)
+                    cover.unlink(missing_ok=True)
                 except OSError:
                     logger.exception("Remote processing temporary cleanup failed for %s", upload.id)
 

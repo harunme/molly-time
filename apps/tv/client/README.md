@@ -14,7 +14,7 @@ bash tools/build-tv-client.sh
 .local/android-sdk/platform-tools/adb -e shell am start -n com.molly.tv.debug/com.molly.tv.ShellActivity
 ```
 
-命令在仓库根目录运行。构建客户端会先构建网页并将其打进 APK。首次启动由网页输入媒体库根地址，然后用手机扫码绑定；电视端不输入账号密码。默认预填地址为 `https://118.89.122.66:8096`；本地模拟器可手动改为 `http://10.0.2.2:8096`，真实电视也可填写同局域网主机地址。默认账号仅供本地原型，见根 README。生产包要求 HTTPS；debug 包允许 HTTP 方便家庭实测。
+命令在仓库根目录运行。构建客户端会先构建网页并将其打进 APK。首次启动由网页输入媒体库根地址，然后用手机扫码绑定；电视端不输入账号密码。默认预填地址为 `https://mollytime.app`。升级时，已绑定旧地址 `https://118.89.122.66:8096` 的安装会自动改连新域名并保留设备令牌；其他自定义地址不变。本地模拟器可手动改为 `http://10.0.2.2:8096`，真实电视也可填写同局域网主机地址。默认账号仅供本地原型，见根 README。生产包要求 HTTPS；debug 包允许 HTTP 方便家庭实测。
 
 调试包名为 `com.molly.tv.debug`，发布包名为 `com.molly.tv`。正式包使用独立的本地签名密钥，配置步骤见下文。
 

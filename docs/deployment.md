@@ -1,6 +1,8 @@
-# 服务器部署
+# 旧上海服务器部署（历史）
 
-当前服务器：`118.89.122.66`。部署目录 `/opt/mollytime`，使用 Docker Compose。
+当前生产部署和 GitHub Actions 发布目标已迁至首尔，见 [首尔部署说明](seoul-deployment.md)。本页保留旧上海服务器的回退与维护记录；以下旧版自动部署流程不再是当前流水线。
+
+旧服务器：`118.89.122.66`。部署目录 `/opt/mollytime`，使用 Docker Compose。
 
 - 管理网页：`https://118.89.122.66:8096/manage/`
 - TV 网页：`https://118.89.122.66:8096/tv/`
@@ -17,7 +19,7 @@
 
 服务器使用 `MOLLYTIME_HTTP_BIND=0.0.0.0:8096`，并配置腾讯云依赖镜像源：`MOLLYTIME_APT_MIRROR=mirrors.cloud.tencent.com`、`MOLLYTIME_PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple`。
 
-## 更新
+## 原自动部署流程（历史）
 
 日常更新使用 GitHub Actions：推送到 `main` 会自动运行 [deploy.yml](../.github/workflows/deploy.yml)。也可在仓库 Actions 的 **Deploy MollyTime** 中选择 main 手动运行。工作流先构建两个网页，运行 API、TV、上传及部署回退测试，成功后上传发布包。部署任务串行执行，不会中途取消正在进行的服务更新。
 
