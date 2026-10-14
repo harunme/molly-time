@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SelectField } from "@/components/ui/select";
 import { api, bytes } from "./api";
 import { ClientReleaseUpload } from "./client-release-upload";
@@ -90,18 +91,32 @@ export function ClientReleases() {
       <div className="table-scroll"><Table className="client-releases-table"><TableHeader><TableRow>
         <TableHead scope="col">版本</TableHead><TableHead scope="col">渠道</TableHead><TableHead scope="col">发布状态</TableHead><TableHead scope="col">发布时间</TableHead><TableHead scope="col">大小</TableHead><TableHead scope="col">存储位置</TableHead><TableHead scope="col">操作</TableHead>
       </TableRow></TableHeader><TableBody>{data.items.map((release) => <TableRow className="hover:bg-transparent" key={`${release.packageName}-${release.versionCode}-${release.sha256}`}>
-        <TableCell><strong>{release.versionName}</strong><small className="muted">构建号 {release.versionCode}</small>
-          <details><summary>更新说明与校验信息</summary><p>{release.notes || "未填写更新说明"}</p><dl>
-            <dt>包名</dt><dd>{release.packageName}</dd><dt>最低系统 API</dt><dd>{release.minSdk}</dd>
-            <dt>SHA-256</dt><dd><code>{release.sha256}</code></dd><dt>文件路径</dt><dd><code>{release.key}</code></dd>
-          </dl></details>
-        </TableCell>
+        <TableCell><div className="client-release-inline"><strong>{release.versionName}</strong><small className="muted">构建号 {release.versionCode}</small></div></TableCell>
         <TableCell>{release.packageName === "com.molly.tv" ? "正式版" : "Debug 测试版"}</TableCell>
-        <TableCell><Badge variant={release.isCurrent ? "default" : "secondary"}>{release.isCurrent ? "当前发布" : "历史版本"}</Badge>
-          {!release.canDownload && <small className="error">文件缺失</small>}</TableCell>
+        <TableCell><div className="client-release-inline"><Badge variant={release.isCurrent ? "default" : "secondary"}>{release.isCurrent ? "当前发布" : "历史版本"}</Badge>
+          {!release.canDownload && <small className="error">文件缺失</small>}</div></TableCell>
         <TableCell>{release.publishedAt ? new Date(release.publishedAt).toLocaleString("zh-CN", { hour12: false }) : "未记录"}</TableCell>
         <TableCell>{bytes(release.size)}</TableCell><TableCell>{release.storage === "local" ? "服务器" : "私有 OSS"}</TableCell>
-        <TableCell><Button variant="bordered" disabled={!release.canDownload || !!downloading} aria-label={`下载 ${release.packageName === "com.molly.tv" ? "正式版" : "Debug"} ${release.versionName}`} onClick={() => { void download(release); }}>{downloading === release.sha256 ? "准备下载…" : "下载 APK"}</Button></TableCell>
+        <TableCell><div className="flex items-center gap-2">
+          <Button variant="bordered" disabled={!release.canDownload || !!downloading} aria-label={`下载 ${release.packageName === "com.molly.tv" ? "正式版" : "Debug"} ${release.versionName}`} onClick={() => { void download(release); }}>{downloading === release.sha256 ? "准备下载…" : "下载 APK"}</Button>
+          <Dialog>
+            <DialogTrigger asChild><Button variant="bordered">更新说明与校验信息</Button></DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>更新说明与校验信息</DialogTitle>
+                <DialogDescription>{release.packageName === "com.molly.tv" ? "正式版" : "Debug 测试版"} {release.versionName} · 构建号 {release.versionCode}</DialogDescription>
+              </DialogHeader>
+              <DialogBody className="client-release-details min-w-0">
+                <p>{release.notes || "未填写更新说明"}</p>
+                <dl>
+                  <dt>包名</dt><dd>{release.packageName}</dd><dt>最低系统 API</dt><dd>{release.minSdk}</dd>
+                  <dt>SHA-256</dt><dd><code>{release.sha256}</code></dd><dt>文件路径</dt><dd><code>{release.key}</code></dd>
+                </dl>
+              </DialogBody>
+              <DialogFooter><DialogClose asChild><Button variant="bordered">关闭</Button></DialogClose></DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div></TableCell>
       </TableRow>)}</TableBody></Table></div>}
     {data && data.total > pageSize && <Pagination page={page} pageSize={pageSize} total={data.total} loading={loading} setPage={setPage} label="客户端版本分页" />}
   </Card>;

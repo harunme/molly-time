@@ -622,14 +622,19 @@ td small {
 .family-usage-table td { vertical-align: top; }
 .family-usage-table small { display: block; margin-top: .35rem; overflow-wrap: anywhere; }
 .client-releases-table { min-width: 900px; }
-.client-releases-table td { vertical-align: top; }
+.client-releases-table td { vertical-align: middle; }
+.client-releases-table th:first-child { width: 20%; }
+.client-releases-table th:nth-child(4) { width: 20%; }
+.client-releases-table th:nth-child(5),
+.client-releases-table td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+.client-releases-table th:last-child { width: 1%; text-align: right; }
+.client-releases-table td:last-child > div { justify-content: flex-end; }
 .client-releases-table td:nth-child(n+2) { @apply whitespace-nowrap; }
-.client-releases-table small { display: block; margin-top: .4rem; }
-.client-releases-table details { margin-top: .75rem; max-width: 22rem; }
-.client-releases-table summary { cursor: pointer; font-size: var(--text-ui); }
-.client-releases-table details p { white-space: pre-wrap; margin: .75rem 0; }
-.client-releases-table dd { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
-.client-releases-table dt { font-size: var(--text-xs); color: var(--muted-foreground); }
+.client-release-inline { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.client-release-inline small { margin: 0; }
+.client-release-details p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 1rem; }
+.client-release-details dd { margin: .25rem 0 .75rem; overflow-wrap: anywhere; }
+.client-release-details dt { font-size: var(--text-xs); color: var(--muted-foreground); }
 .operations-tabs {
   @apply min-w-0 gap-6;
 }
