@@ -55,7 +55,7 @@ rollback requires a deliberate database reconciliation.
 
 Pushing a commit to `main` runs `.github/workflows/deploy.yml`. CI reads the
 current APK version and native-input fingerprint from Seoul using the restricted
-SSH command `apk-state`, builds both web apps, and builds a signed Android APK
+SSH command `apk-state`, builds the parent app, TV app, and official site, and builds a signed Android APK
 only when its native inputs changed (or `force_apk` was selected). It sends the
 release to `ubuntu@43.133.227.83`. The public Seoul host key is pinned in
 `infra/seoul-known-hosts`; the existing `MOLLYTIME_DEPLOY_KEY` secret is reused.
@@ -70,6 +70,10 @@ publishes the signed APK to OSS and advances the Seoul-local release manifest.
 Application or publication failure restores the previous image and deployment
 state. It does not roll back MySQL data. The receiver and gate are installed
 through the management SSH key; uploaded releases cannot overwrite them.
+The site is staged at `apps/web/dist/site` in the release image and mounted at
+`https://mollytime.app/` by FastAPI. The existing `/manage/`, `/tv/`, and `/api/`
+routes retain precedence. The receiver checks the site in the archive and on
+the public homepage before it accepts a release.
 
 The host cron runs `infra/backup-seoul.sh` under the same backup lock. The
 receiver invokes it with `--force` before each deployment. The MySQL data and

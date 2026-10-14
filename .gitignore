@@ -11,6 +11,10 @@ artifacts/
 apps/tv/local.properties
 apps/tv/app/src/main/assets/molly/
 node_modules/
+.astro/
+apps/site/test-results/
+apps/site/playwright-report/
+apps/site/dist/
 apps/tv/web/dist/
 apps/tv/web/test-results/
 apps/tv/web/playwright-report/

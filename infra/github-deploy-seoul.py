@@ -95,6 +95,8 @@ def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = 
                     raise ValueError("Release archive is too large")
                 output.write(chunk)
         common.unpack(archive, destination)
+        if not (destination / "apps/web/dist/site/index.html").is_file():
+            raise ValueError("Official site index.html is missing from the release")
         if encoded_apk_url is not None:
             try:
                 common.fetch_apk(destination, encoded_apk_url, apk_sha)
@@ -118,10 +120,12 @@ def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = 
         original_state = STATE.read_text() if STATE.exists() else None
         try:
             compose(destination, tag, "up", "-d", "--no-deps", "--wait", "--wait-timeout", "180", "mollytime-server")
-            for path in ("/healthz", "/manage/", "/tv/"):
+            for path in ("/healthz", "/manage/", "/tv/", "/"):
                 with urllib.request.urlopen("https://mollytime.app" + path, timeout=20) as response:
                     if response.status != 200:
                         raise RuntimeError("Public health check failed: " + path)
+                    if path == "/" and ("text/html" not in response.headers.get("Content-Type", "") or b"MollyTime" not in response.read()):
+                        raise RuntimeError("Official site is missing from the public homepage")
             common.atomic_write(ROOT / ".env", set_release_tag(original_env, tag))
             common.atomic_write(STATE, json.dumps({"path": str(destination), "tag": tag}) + "\n")
             common.publish_apk(destination, tag, plan)

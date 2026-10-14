@@ -1,0 +1,54 @@
+---
+import Layout from '~/layouts/PageLayout.astro';
+import Hero from '~/components/widgets/Hero.astro';
+import Features from '~/components/widgets/Features.astro';
+import Steps from '~/components/widgets/Steps.astro';
+import FAQs from '~/components/widgets/FAQs.astro';
+import Download from '~/components/widgets/Download.astro';
+import StructuredData from '~/components/common/StructuredData.astro';
+
+const metadata = { title: 'MollyTime — 给孩子的家庭视频空间', ignoreTitleTemplate: true };
+const schema = {
+  '@context': 'https://schema.org', '@type': 'WebSite',
+  name: 'MollyTime', url: 'https://mollytime.app/', inLanguage: 'zh-CN',
+};
+---
+<Layout metadata={metadata}>
+  <StructuredData slot="head" schema={schema} />
+  <Hero
+    id="download"
+    tagline="给孩子的家庭视频空间"
+    actions={[
+      { variant: 'primary', text: '进入家长后台', href: '/manage/', icon: 'tabler:arrow-right' },
+      { id: 'download-button', type: 'button', text: '下载电视端', icon: 'tabler:download' },
+    ]}
+    image={{ src: '~/assets/images/hero-image.png', alt: '色彩斑斓的探索者，走向新的世界' }}
+  >
+    <Fragment slot="title">让孩子的每次观看，<br class="hidden sm:block" />都有<span class="underline decoration-primary decoration-[0.08em] underline-offset-[0.13em]">你的用心</span>在里面。</Fragment>
+    <Fragment slot="subtitle"><span class="font-semibold">MollyTime</span> 把你选好的故事，带到孩子面前。<br class="hidden sm:block" />家长整理内容，孩子在电视上看，让每一次打开大屏，都有值得发现的新世界。</Fragment>
+    <Download slot="content" />
+  </Hero>
+
+  <Features id="features" tagline="产品功能" title="用心选内容，轻松陪成长。" subtitle="从上传第一段视频，到孩子在电视上继续观看。MollyTime 把家庭视频的整理、发布与观看，连在一起。" items={[
+    { title: '自家的内容库', description: '上传想分享给孩子的视频，整理系列与单集。喜欢的故事，留在自家的内容库里。', icon: 'tabler:books' },
+    { title: '为孩子编排首页', description: '安排电视首页的内容分组与展示顺序。把你选好的故事，放在孩子打开电视就能找到的地方。', icon: 'tabler:layout-dashboard' },
+    { title: '适合遥控器的浏览', description: '电视端围绕大屏和遥控器设计。用方向键找到故事，选好单集，进入观看。', icon: 'tabler:device-tv' },
+    { title: '接着上次的故事看', description: '按孩子档案记录播放进度。回到喜欢的故事时，可以从上次离开的地方继续。', icon: 'tabler:player-play' },
+    { title: '了解观看情况', description: '在家长后台查看观看记录与时长。孩子最近喜欢什么，下次一起聊聊就有了话题。', icon: 'tabler:chart-bar' },
+    { title: '管理家里的设备', description: '配对电视，查看设备状态，按需撤销配对。内容在家长端整理，在已配对设备上观看。', icon: 'tabler:devices' },
+  ]} />
+
+  <Steps id="how-it-works" title="把故事带到大屏幕，就从这里开始。" items={[
+    { title: '第一步：<span class="font-medium">开通并登录账号</span>', description: '当前通过邀请开通账号。收到邀请后，按提示完成激活，再进入家长后台，为孩子添加档案。', icon: 'tabler:user-check' },
+    { title: '第二步：<span class="font-medium">添加与发布内容</span>', description: '上传你准备好的视频，整理系列与单集，再安排电视首页，把内容发布给孩子观看。', icon: 'tabler:cloud-upload' },
+    { title: '第三步：<span class="font-medium">安装电视端并配对</span>', description: '下载并安装电视端，确认服务地址为 <code>https://mollytime.app</code>，再按提示完成配对。', icon: 'tabler:device-tv' },
+    { title: '准备好了，选择孩子档案开始观看！', icon: 'tabler:check' },
+  ]} image={{ src: '~/assets/images/children-cartoons.jpg', alt: '小猪佩奇、米奇、汪汪队、探险活宝、飞天小女警等儿童动画角色拼图' }} />
+
+  <FAQs id="faqs" tagline="使用帮助" title="开始之前，你可能想了解。" subtitle="关于内容、设备和第一次使用，先聊聊这些。" schema items={[
+    { title: 'MollyTime 自带视频内容吗？', description: 'MollyTime 提供家庭视频管理和电视播放功能，视频由家长自行上传与整理。官网配图用于产品介绍，不代表应用内提供的视频资源。' },
+    { title: '哪些电视可以使用？', description: '电视端面向支持安装 APK 的 Android 电视与电视盒子。不同品牌、系统版本的安装方式和兼容情况有所不同，请先在你的设备上测试。' },
+    { title: '换一台电视，需要重新上传内容吗？', description: '在同一账号下配对新电视即可访问已发布内容。设备配对和撤销可以在家长后台管理，无需为每台电视重复整理。' },
+  ]} />
+
+</Layout>

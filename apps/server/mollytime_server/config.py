@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     server_version: str = "0.2.0"
     tv_web_dir: Path = Path(__file__).resolve().parents[2] / "tv" / "web" / "dist"
     parent_web_dir: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
+    site_web_dir: Path | None = None  # defaults to parent_web_dir / "site"
     media_worker_enabled: bool = True
     max_upload_bytes: int = Field(default=500 * 1024**2, gt=0)
     public_base_url: str = ""  # Phone-accessible server origin for pairing QR links.

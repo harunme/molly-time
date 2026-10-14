@@ -1,0 +1,31 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Header from '~/components/widgets/Header.astro';
+
+import { headerData } from '~/navigation';
+
+import type { MetaData } from '~/types';
+
+export interface Props {
+  metadata?: MetaData;
+}
+
+const { metadata } = Astro.props;
+---
+
+<Layout metadata={metadata}>
+  <slot name="head" slot="head" />
+  {
+    /*
+    Slot fallbacks are rendered explicitly. With `<slot name="x">fallback</slot>`
+    Astro still evaluates the fallback when the page overrides the slot, and
+    astro-icon then believes the icons inside it (the RSS icon of the default
+    header, for instance) were already emitted, so their SVG sprite symbol
+    goes missing on that page.
+  */
+  }
+  {Astro.slots.has('header') ? <slot name="header" /> : <Header {...headerData} isSticky showToggleTheme />}
+  <main class="flex-1">
+    <slot />
+  </main>
+</Layout>

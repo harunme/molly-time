@@ -37,6 +37,7 @@ jobs:
           cache-dependency-path: |
             apps/web/pnpm-lock.yaml
             apps/tv/web/pnpm-lock.yaml
+            apps/site/pnpm-lock.yaml
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -96,6 +97,8 @@ jobs:
         run: |
           pnpm --dir apps/web build
           pnpm --dir apps/tv/web build
+          bash tools/build-site.sh
+          test -s apps/web/dist/site/index.html
           python tools/package-tv-web.py
       - name: Build and verify signed TV APK
         if: steps.native_plan.outputs.required == 'true'
@@ -185,6 +188,10 @@ jobs:
           curl --fail --silent --show-error --retry 5 --retry-all-errors \
             --retry-delay 3 --connect-timeout 10 --max-time 30 \
             https://mollytime.app/healthz
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            --retry-delay 3 --connect-timeout 10 --max-time 30 \
+            -o "$RUNNER_TEMP/mollytime-home.html" https://mollytime.app/
+          grep -q 'MollyTime' "$RUNNER_TEMP/mollytime-home.html"
       - name: Remove private signing material
         if: always()
         run: python tools/ci_tv_apk.py cleanup-signing --directory "$RUNNER_TEMP/molly-tv-signing"

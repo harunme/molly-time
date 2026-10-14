@@ -1,0 +1,27 @@
+<p id="download-status" class="mt-4 text-sm text-muted" aria-live="polite" hidden></p>
+<script>
+  const button = document.querySelector<HTMLButtonElement>('#download-button');
+  const status = document.querySelector<HTMLElement>('#download-status');
+  button?.addEventListener('click', async () => {
+    if (!status) return;
+    status.hidden = false;
+    button.disabled = true;
+    status.textContent = '正在获取最新安装包…';
+    try {
+      const response = await fetch('/api/client/releases/latest', { signal: AbortSignal.timeout(12000), cache: 'no-store' });
+      if (!response.ok) throw new Error('暂时无法获取安装包，请稍后重试。');
+      const { release } = await response.json();
+      if (!release) { status.textContent = '电视安装包尚未发布，请稍后再来。'; return; }
+      if (release.packageName !== 'com.molly.tv' || typeof release.url !== 'string' || typeof release.versionName !== 'string' || !Number.isSafeInteger(release.size) || release.size <= 0) throw new Error('安装包信息不完整，请稍后重试。');
+      const url = new URL(release.url, location.origin);
+      if (url.origin !== location.origin || !/^\/api\/client\/releases\/com\.molly\.tv\/\d+\/[a-f0-9]{64}\.apk$/.test(url.pathname) || url.search || url.hash) throw new Error('安装包地址无效，请稍后重试。');
+      const link = document.createElement('a');
+      link.href = url.href;
+      link.download = 'mollytime-tv.apk';
+      document.body.append(link); link.click(); link.remove();
+      status.textContent = `v${release.versionName} · ${(release.size / 1024 / 1024).toFixed(1)} MB · 已开始下载`;
+    } catch (error) {
+      status.textContent = error instanceof Error && error.name !== 'TimeoutError' ? error.message : '网络连接超时，请重试。';
+    } finally { button.disabled = false; }
+  });
+</script>

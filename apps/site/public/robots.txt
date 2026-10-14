@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /manage/
+Disallow: /tv/
+Sitemap: https://mollytime.app/sitemap-index.xml

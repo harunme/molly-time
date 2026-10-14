@@ -16,6 +16,7 @@
 apps/
 ├── server/       业务与媒体后台
 ├── web/          家长管理网页
+├── site/         AstroWind 改造的官网静态页面
 └── tv/           电视端
     ├── web/      TV 网页界面
     └── client/   Android 壳子与原生播放器
@@ -71,6 +72,8 @@ bash tools/start-tv-emulator.sh
 历史离线样本工具 `tools/prepare_samples.py` 仍保留，但新版构建不执行它。视频通过家长后台上传并发布后联网播放。
 
 ## 本地 MollyTime Server
+
+官网位于根路径 `/`，开发预览使用 `make site`（`http://127.0.0.1:4321`）。`make build-web` 同时构建家长后台和官网；详情见 [`apps/site/README.md`](apps/site/README.md)。
 
 ```bash
 bash tools/build-server.sh       # 创建 .venv

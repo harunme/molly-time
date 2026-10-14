@@ -1,0 +1,45 @@
+site:
+  name: MollyTime
+  site: 'https://mollytime.app'
+  base: '/'
+  trailingSlash: false
+metadata:
+  title:
+    default: MollyTime
+    template: '%s — MollyTime'
+  description: 'MollyTime 是给孩子的家庭视频空间。家长上传和整理内容，安排电视首页，查看观看记录，让每一次打开电视，都有你选好的故事。'
+  robots:
+    index: true
+    follow: true
+  openGraph:
+    site_name: MollyTime
+    images:
+      - url: '~/assets/images/share.png'
+        width: 1200
+        height: 630
+    type: website
+  twitter:
+    cardType: summary_large_image
+i18n:
+  language: zh-CN
+  textDirection: ltr
+apps:
+  blog:
+    isEnabled: false
+    post:
+      isEnabled: false
+    list:
+      isEnabled: false
+      pathname: blog
+    category:
+      isEnabled: false
+      pathname: category
+    tag:
+      isEnabled: false
+      pathname: tag
+analytics:
+  vendors:
+    googleAnalytics:
+      id: null
+ui:
+  theme: 'light'

@@ -7,6 +7,7 @@ import logging
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import manage_auth
 from .api import (
@@ -92,13 +93,15 @@ def create_app() -> FastAPI:
     def healthz() -> dict:
         return {"ok": True, "version": settings.server_version}
 
-    @app.get("/")
-    def root() -> dict:
-        return {
-            "name": settings.server_name,
-            "version": settings.server_version,
-            "apiBase": "/api",
-        }
+    site_dir = settings.site_web_dir or settings.parent_web_dir / "site"
+    if not (site_dir / "index.html").is_file():
+        @app.get("/")
+        def root() -> dict:
+            return {
+                "name": settings.server_name,
+                "version": settings.server_version,
+                "apiBase": "/api",
+            }
 
     app.include_router(api_auth.router)
     app.include_router(account_invitations.router)
@@ -131,6 +134,9 @@ def create_app() -> FastAPI:
         app.mount(
             "/manage", TvWebFiles(directory=settings.parent_web_dir, html=True), name="parent-web"
         )
+    # Mount last so the marketing site cannot shadow API, health, or app routes.
+    if (site_dir / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=site_dir, html=True), name="public-site")
     return app
 
 
