@@ -452,12 +452,15 @@ def uploads(
     user: Parent, db: DbSession,
     page: int | None = Query(default=None, ge=1),
     pageSize: int = Query(default=20, ge=1, le=100),
+    pending: bool = False,
 ):
     query = (
         db.query(UploadSession)
         .filter(UploadSession.family_id == user.family_id)
         .order_by(UploadSession.created_at.desc(), UploadSession.id.desc())
     )
+    if pending:
+        query = query.filter(UploadSession.status.in_(["uploading", "processing", "failed"]))
     def preload(rows):
         keys = [row.id for row in rows]
         tasks = {row.upload_id: row for row in db.query(MediaTask).filter(MediaTask.upload_id.in_(keys)).all()}

@@ -575,6 +575,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
     `${parent ? `/folders/${parent.id}/videos` : "/resources"}?q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}`,
     serial,
   );
+  const pendingUploads = usePendingUploads(serial, 1);
   const kind = !parent ? "Series" : "Episode";
   const filtered = list.data;
   const stats = useData<{ videoCount: number; folderCount: number; subtitleCount: number; publishedVideoCount: number; readyVideoCount: number; subtitleVideoCount: number; durationMs: number } | undefined>("/resources/stats", undefined, serial);
@@ -613,29 +614,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
           <p>先整理和预览，发布后在电视上观看。</p>
         </div>
         <div className="actions">
-          <DialogTrigger asChild>
-            <Button variant="bordered"><ListTodo className="size-4" />上传任务</Button>
-          </DialogTrigger>
-          {!readonly && (
-            <>
-              <Button variant="bordered" asChild><Link to="/share">领取分享</Link></Button>
-              <Button variant="bordered" onClick={() => setEdit("new")}>
-                新建{kind === "Series" ? "文件夹" : "视频"}
-              </Button>
-              <Button
-                variant="default"
-                aria-label="＋ 上传资源"
-                className="primary"
-                onClick={() => {
-                  setUploadKind("video");
-                  setUpload("new");
-                }}
-              >
-                <UploadCloud className="size-4" />
-                上传资源
-              </Button>
-            </>
-          )}
+          {!readonly && <Button variant="bordered" asChild><Link to="/share">领取分享</Link></Button>}
         </div>
       </div>
       <div className="breadcrumbs">
@@ -668,7 +647,13 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         secondary={<>文件夹 <strong className="font-medium text-foreground">{stats.data.folderCount}</strong> · 字幕 <strong className="font-medium text-foreground">{stats.data.subtitleCount}</strong></>}
         detail={<>已发布 {ratio(stats.data.publishedVideoCount, stats.data.videoCount)} · 已就绪 {ratio(stats.data.readyVideoCount, stats.data.videoCount)} · 字幕覆盖 {ratio(stats.data.subtitleVideoCount, stats.data.videoCount)}</>}
         note={<>视频总时长 {duration(stats.data.durationMs)}，资源整理完成后即可发布到电视。</>}
-      />}
+      >
+        {pendingUploads.total > 0 && <DialogTrigger asChild>
+          <Button variant="bordered" className="library-upload-status" aria-label="上传任务">
+            <ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务
+          </Button>
+        </DialogTrigger>}
+      </ResourceSummary>}
       <div className="resource-library-card">
         <div className="toolbar library-toolbar">
           <InputGroup className="search-field">
@@ -685,6 +670,23 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
             value={status}
             onValueChange={(value) => setStatus(value)}
             options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> })]} />
+          {!readonly && <div className="actions library-create-actions">
+              <Button variant="bordered" onClick={() => setEdit("new")}>
+                新建{kind === "Series" ? "文件夹" : "视频"}
+              </Button>
+              <Button
+                variant="default"
+                aria-label="＋ 上传资源"
+                className="primary"
+                onClick={() => {
+                  setUploadKind("video");
+                  setUpload("new");
+                }}
+              >
+                <UploadCloud className="size-4" />
+                上传资源
+              </Button>
+          </div>}
         </div>
         <State loading={list.loading} error={list.error} />
         {!list.loading && !list.error && (
@@ -942,7 +944,7 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       <DialogContent className="upload-tasks-dialog">
         <DialogHeader>
           <DialogTitle>上传任务</DialogTitle>
-          <DialogDescription>查看进度、继续上传或重试处理。关闭弹窗不影响上传。</DialogDescription>
+          <DialogDescription>仅显示未完成的任务，可继续上传或重试处理。关闭弹窗不影响上传。</DialogDescription>
         </DialogHeader>
         <DialogBody><Uploads run={run} readonly={readonly} /></DialogBody>
       </DialogContent>
@@ -1343,6 +1345,25 @@ function UploadDialog({
   );
 }
 
+function usePendingUploads(serial: number, pageSize = 20) {
+  const [updates, refresh] = useState(0);
+  useEffect(() => {
+    let ids = new Set(live.keys());
+    const changed = () => {
+      const next = new Set(live.keys());
+      if (next.size !== ids.size || [...next].some((id) => !ids.has(id))) refresh((value) => value + 1);
+      ids = next;
+    };
+    const timer = window.setInterval(() => refresh((value) => value + 1), 5000);
+    window.addEventListener("mollytime:uploads", changed);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("mollytime:uploads", changed);
+    };
+  }, []);
+  return usePagedData<Upload>("/uploads?pending=true", serial + updates, pageSize);
+}
+
 function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
   const [serial, refresh] = useState(0),
     [localSerial, localRefresh] = useState(0);
@@ -1351,15 +1372,9 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
     setActionError("");
     await execute(action);
   };
-  const list = usePagedData<Upload>("/uploads", serial);
+  const list = usePendingUploads(serial);
   useEffect(() => {
-    let ids = new Set(live.keys());
-    const changed = () => {
-      const next = new Set(live.keys());
-      if (next.size !== ids.size || [...next].some((id) => !ids.has(id))) refresh((value) => value + 1);
-      ids = next;
-      localRefresh((v) => v + 1);
-    };
+    const changed = () => localRefresh((v) => v + 1);
     const failed = (event: Event) => setActionError((event as CustomEvent<string>).detail);
     window.addEventListener("mollytime:uploads", changed);
     window.addEventListener("mollytime:error", failed);
@@ -1376,8 +1391,8 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
       <State loading={list.loading} />
       {!list.loading && !list.data.length && (
         <Empty className="empty">
-          <h3>还没有上传任务</h3>
-          <p>到资源库选择视频，或给已有视频添加字幕和封面。</p>
+          <h3>没有正在上传的任务</h3>
+          <p>未完成的任务会显示在这里，已完成的资源可在资源库中查看。</p>
         </Empty>
       )}
       {!!list.data.length && <Card className="upload-task-list">{list.data.map((row) => {

@@ -167,3 +167,20 @@ def test_download_pages_only_include_requested_devices_and_media(parent):
 def test_page_bounds_are_validated(parent, endpoint):
     assert parent.get(f"/api/manage/{endpoint}?page=0").status_code == 422
     assert parent.get(f"/api/manage/{endpoint}?page=1&pageSize=101").status_code == 422
+
+
+def test_pending_uploads_filter_before_pagination_and_keep_family_scope(parent):
+    with Session(db.get_engine()) as session:
+        for index, status in enumerate(["ready", "cancelled", "uploading", "processing", "failed"]):
+            session.add(UploadSession(id=f"pending-{index}", family_id="f1", item_id="e1",
+                filename=f"video-{index}.mp4", kind="video", size=100, fingerprint=str(index), status=status))
+        session.add(UploadSession(id="other-pending", family_id="f2", item_id="e1",
+            filename="other.mp4", kind="video", size=100, fingerprint="other", status="uploading"))
+        session.commit()
+    first = parent.get("/api/manage/uploads?pending=true&page=1&pageSize=2").json()
+    second = parent.get("/api/manage/uploads?pending=true&page=2&pageSize=2").json()
+    assert first["total"] == second["total"] == 3
+    rows = first["items"] + second["items"]
+    assert {row["status"] for row in rows} == {"uploading", "processing", "failed"}
+    assert {row["id"] for row in rows} == {"pending-2", "pending-3", "pending-4"}
+    assert parent.get("/api/manage/uploads?page=1").json()["total"] == 5

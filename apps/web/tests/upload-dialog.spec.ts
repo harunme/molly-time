@@ -13,6 +13,7 @@ const task = (index: number): Upload => ({ id: `task-${index}`, itemId: 'episode
   size: 1024, offset: 1024, status: 'ready', fingerprint: 'fixture', kind: 'video', error: '', taskId: null, taskStatus: null });
 
 test('task modal preserves folder filters and selection and supports browser history', async ({ page }) => {
+  await page.route('**/api/manage/uploads?*', (route) => route.fulfill({ json: { items: [{ ...task(0), status: 'uploading', offset: 0 }], total: 1, page: 1, pageSize: Number(new URL(route.request().url()).searchParams.get('pageSize')) } }));
   await login(page);
   const navigation = page.getByRole('navigation', { name: '管理导航' });
   await expect(navigation.getByRole('link', { name: '上传任务', exact: true })).toHaveCount(0);
@@ -24,14 +25,13 @@ test('task modal preserves folder filters and selection and supports browser his
   await page.getByRole('checkbox', { name: '选择 Hello', exact: true }).check();
   let requests = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/manage/uploads') requests++; });
-  expect(requests).toBe(0);
   const trigger = page.getByRole('button', { name: '上传任务', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '上传任务', exact: true });
   await expect(dialog).toBeVisible();
   await expect(page.locator('input[aria-label="搜索资源"]')).toHaveValue('Hello');
   await expect(page).toHaveURL(/\/library\/series\?uploads=1$/);
-  await expect.poll(() => requests).toBe(1);
+  await expect.poll(() => requests).toBeGreaterThanOrEqual(1);
   await page.goBack();
   await expect(dialog).not.toBeVisible();
   await expect(search).toHaveValue('Hello');
@@ -58,13 +58,14 @@ test('legacy task links and refreshed modal links return to the resource library
 });
 
 test('task pagination and action errors remain inside the modal on mobile', async ({ page }) => {
-  const items = Array.from({ length: 21 }, (_, index) => task(index));
+  const items = Array.from({ length: 21 }, (_, index) => ({ ...task(index), status: 'processing' }));
   items[0] = { ...items[0], status: 'uploading', offset: 0 };
   items[20] = { ...items[20], status: 'failed', taskId: 'failed-job' };
   await page.route('**/api/manage/uploads?*', (route) => {
     const url = new URL(route.request().url());
     const page = Number(url.searchParams.get('page'));
-    return route.fulfill({ json: { items: items.slice((page - 1) * 20, page * 20), total: 21, page, pageSize: 20 } });
+    const pageSize = Number(url.searchParams.get('pageSize'));
+    return route.fulfill({ json: { items: items.slice((page - 1) * pageSize, page * pageSize), total: 21, page, pageSize } });
   });
   await page.route('**/api/manage/tasks/failed-job/retry', (route) => route.fulfill({ status: 503, json: { detail: '处理任务重试失败' } }));
   await page.setViewportSize({ width: 390, height: 844 });
@@ -73,7 +74,7 @@ test('task pagination and action errors remain inside the modal on mobile', asyn
   const dialog = page.getByRole('dialog', { name: '上传任务', exact: true });
   await expect(dialog.locator('.upload-task')).toHaveCount(20);
   await expect(dialog.getByRole('button', { name: '继续管理资源', exact: true })).toHaveCount(0);
-  const ready = dialog.locator('.upload-task[data-status="ready"]').first();
+  const ready = dialog.locator('.upload-task[data-status="processing"]').first();
   expect((await ready.boundingBox())!.height).toBeLessThan(80);
   await expect(ready.getByRole('progressbar')).toHaveCount(0);
   await page.screenshot({ path: '../../artifacts/manage-upload-list-mobile.png', fullPage: true, animations: 'disabled' });
@@ -123,7 +124,7 @@ test('pausing, resuming and closing the task modal preserve background upload', 
       await route.continue();
     } else if (url.pathname.endsWith('/uploads')) {
       if (request.method() === 'POST') row = { ...row, fingerprint: request.postDataJSON().fingerprint };
-      await route.fulfill({ json: request.method() === 'POST' ? row : { items: [row], total: 1, page: 1, pageSize: 20 } });
+      await route.fulfill({ json: request.method() === 'POST' ? row : { items: row.status === 'ready' ? [] : [row], total: row.status === 'ready' ? 0 : 1, page: 1, pageSize: Number(url.searchParams.get('pageSize')) } });
     } else if (url.pathname.endsWith('/chunks')) {
       await gate;
       row = { ...row, offset: row.size };
@@ -154,7 +155,25 @@ test('pausing, resuming and closing the task modal preserve background upload', 
     const completed = page.waitForResponse((response) => response.url().endsWith('/background-upload/complete') && response.ok());
     releaseChunk();
     await completed;
-    await page.getByRole('button', { name: '上传任务', exact: true }).click();
-    await expect(dialog.getByText('文件就绪', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
   } finally { releaseChunk(); }
+});
+
+
+test('completed uploads are hidden and create actions sit in the list toolbar', async ({ page }) => {
+  await page.route('**/api/manage/uploads?*', (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get('pending')).toBe('true');
+    return route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: Number(url.searchParams.get('pageSize')) } });
+  });
+  await login(page);
+  await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
+  const toolbar = page.locator('.resource-library-card .library-toolbar');
+  await expect(toolbar.getByRole('button', { name: '新建文件夹', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeVisible();
+  await expect(page.locator('.page-title').getByRole('button', { name: '新建文件夹', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '../../artifacts/manage-library-actions-desktop.png', fullPage: true, animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '../../artifacts/manage-library-actions-mobile.png', fullPage: true, animations: 'disabled' });
 });

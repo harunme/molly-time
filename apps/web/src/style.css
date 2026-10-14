@@ -263,6 +263,18 @@
 .resource-library-card > .library-toolbar {
   @apply mb-5 rounded-none border-0 bg-transparent p-0;
 }
+.library-create-actions {
+  @apply ml-auto;
+}
+.library-summary {
+  @apply relative;
+}
+.library-summary:has(.library-upload-status) {
+  @apply sm:pr-64;
+}
+.library-upload-status {
+  @apply sm:absolute sm:right-6 sm:top-1/2 sm:-translate-y-1/2;
+}
 .resource-list-heading {
   @apply hidden h-control items-center rounded-full bg-muted px-3 text-footnote font-semibold text-foreground sm:flex;
 }
