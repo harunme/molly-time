@@ -144,7 +144,7 @@ jobs:
             infra/Dockerfile.prebuilt infra/compose.seoul.yaml \
             infra/Caddyfile.seoul infra/backup-seoul.sh tools/upload_mysql_backup.py \
             artifacts/tv-client-plan.json
-      - name: Deploy and verify
+      - name: Deploy application
         env:
           RELEASE_SHA: ${{ github.sha }}
           APK_ARTIFACT_ID: ${{ steps.apk_artifact.outputs.artifact-id }}
@@ -185,13 +185,37 @@ jobs:
             ssh "${ssh_options[@]}" ubuntu@43.133.227.83 \
               "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
           fi
-          curl --fail --silent --show-error --retry 5 --retry-all-errors \
-            --retry-delay 3 --connect-timeout 10 --max-time 30 \
-            https://mollytime.app/healthz
-          curl --fail --silent --show-error --retry 5 --retry-all-errors \
-            --retry-delay 3 --connect-timeout 10 --max-time 30 \
-            -o "$RUNNER_TEMP/mollytime-home.html" https://mollytime.app/
-          grep -q 'MollyTime' "$RUNNER_TEMP/mollytime-home.html"
+      - name: Verify public HTTPS
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          check_page() {
+            local path="$1" name="$2" metadata
+            echo "Checking public HTTPS $path"
+            metadata=$(curl --fail --silent --show-error --location \
+              --retry 2 --retry-all-errors --retry-delay 2 --retry-max-time 35 \
+              --connect-timeout 5 --max-time 10 \
+              --write-out '%{http_code} %{content_type}' \
+              -o "$RUNNER_TEMP/mollytime-$name.html" "https://mollytime.app$path") || return 1
+            [[ "$metadata" == 200\ * ]] || return 1
+            if [[ "$path" == / ]]; then
+              [[ "$metadata" == 200\ text/html* ]] || return 1
+              grep -q 'MollyTime' "$RUNNER_TEMP/mollytime-$name.html" || return 1
+            fi
+            echo "Public HTTPS OK $path"
+          }
+          pids=()
+          for path in /healthz /manage/ /tv/ /; do
+            name="${path//\//}"
+            if [[ -z "$name" ]]; then name=home; fi
+            check_page "$path" "$name" &
+            pids+=("$!")
+          done
+          result=0
+          for pid in "${pids[@]}"; do
+            wait "$pid" || result=1
+          done
+          exit "$result"
       - name: Remove private signing material
         if: always()
         run: python tools/ci_tv_apk.py cleanup-signing --directory "$RUNNER_TEMP/molly-tv-signing"

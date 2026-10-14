@@ -64,8 +64,8 @@ by `infra/github-deploy-seoul-gate.sh` on the Seoul host.
 
 The fixed host receiver `/usr/local/lib/mollytime-deploy-seoul.py` comes from
 `infra/github-deploy-seoul.py`. It validates the release archive and APK plan,
-builds an image tagged with the commit SHA, runs an encrypted MySQL backup to
-OSS, replaces only the API service, checks the public HTTPS pages, then
+builds an image tagged with the commit SHA, replaces only the API service,
+checks four local HTTPS routes in parallel through Caddy, then
 publishes the signed APK to OSS and advances the Seoul-local release manifest.
 Application or publication failure restores the previous image and deployment
 state. It does not roll back MySQL data. The receiver and gate are installed
@@ -73,10 +73,15 @@ through the management SSH key; uploaded releases cannot overwrite them.
 The site is staged at `apps/web/dist/site` in the release image and mounted at
 `https://mollytime.app/` by FastAPI. The existing `/manage/`, `/tv/`, and `/api/`
 routes retain precedence. The receiver checks the site in the archive and on
-the public homepage before it accepts a release.
+the local HTTPS homepage before it accepts a release. Local checks use curl's
+`--resolve` to connect to loopback while retaining the domain's TLS certificate
+verification, with a 10-second request limit. After deployment, a separate CI
+step checks all four public HTTPS routes in parallel, with up to two retries
+and a two-minute step limit. Both stages print each route's progress.
 
-The host cron runs `infra/backup-seoul.sh` under the same backup lock. The
-receiver invokes it with `--force` before each deployment. The MySQL data and
+The host cron runs `infra/backup-seoul.sh` under the backup lock on the configured
+daily schedule. Deployment does not trigger or wait for a database backup.
+The MySQL data and
 encryption key live outside the release directory. CI does not restart MySQL or
 Caddy. The first deployment starts from the current image tag recorded in
 `/opt/mollytime/.env`; subsequent release paths are recorded in

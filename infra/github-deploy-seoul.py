@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import importlib.util
 import json
@@ -13,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.request
 
 ROOT = Path("/opt/mollytime")
 STATE = ROOT / "seoul-deployment-state.json"
@@ -75,6 +75,35 @@ def set_release_tag(contents: str, tag: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def verify_local_https() -> None:
+    """Check Caddy/TLS without routing the host through its public IP or DNS."""
+    def check(path: str) -> None:
+        print("Checking local HTTPS " + path, flush=True)
+        try:
+            response = subprocess.run(
+                ["curl", "--fail", "--silent", "--show-error", "--location",
+                 "--noproxy", "*", "--resolve", "mollytime.app:443:127.0.0.1",
+                 "--connect-timeout", "3", "--max-time", "10",
+                 "--write-out", "\n%{http_code}\n%{content_type}",
+                 "https://mollytime.app" + path],
+                check=True, capture_output=True, timeout=15,
+            )
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError("Local HTTPS check failed: " + path + ": " +
+                               error.stderr.decode(errors="replace")) from error
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError("Local HTTPS check timed out: " + path) from error
+        body, status, content_type = response.stdout.rsplit(b"\n", 2)
+        if status != b"200":
+            raise RuntimeError("Local HTTPS check failed: " + path)
+        if path == "/" and (b"text/html" not in content_type or b"MollyTime" not in body):
+            raise RuntimeError("Official site is missing from the local homepage")
+        print("Local HTTPS OK " + path, flush=True)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(check, ("/healthz", "/manage/", "/tv/", "/")))
+
+
 def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = None) -> None:
     if not re.fullmatch(r"[0-9a-f]{40}", tag):
         raise ValueError("Invalid release SHA")
@@ -112,22 +141,17 @@ def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = 
             ".env\n.env.mysql\ndata\nmysql-data\ncaddy-data\ncaddy-config\nartifacts\nrelease.tar.gz\n"
         )
         compose(destination, tag, "config", "--quiet")
+        print("Building application image", flush=True)
         compose(destination, tag, "build", "mollytime-server")
-        # Stop if the pre-deployment snapshot cannot be encrypted and uploaded.
-        run("/usr/bin/flock", "-w", "600", "/var/lock/mollytime-backup.lock",
-            str(ROOT / "infra/backup-seoul.sh"), "--force")
         original_env = (ROOT / ".env").read_text()
         original_state = STATE.read_text() if STATE.exists() else None
         try:
+            print("Starting application and waiting for container health", flush=True)
             compose(destination, tag, "up", "-d", "--no-deps", "--wait", "--wait-timeout", "180", "mollytime-server")
-            for path in ("/healthz", "/manage/", "/tv/", "/"):
-                with urllib.request.urlopen("https://mollytime.app" + path, timeout=20) as response:
-                    if response.status != 200:
-                        raise RuntimeError("Public health check failed: " + path)
-                    if path == "/" and ("text/html" not in response.headers.get("Content-Type", "") or b"MollyTime" not in response.read()):
-                        raise RuntimeError("Official site is missing from the public homepage")
+            verify_local_https()
             common.atomic_write(ROOT / ".env", set_release_tag(original_env, tag))
             common.atomic_write(STATE, json.dumps({"path": str(destination), "tag": tag}) + "\n")
+            print("Publishing TV APK" if plan and plan["requiresApk"] else "TV APK unchanged; skipping publication", flush=True)
             common.publish_apk(destination, tag, plan)
             backup_script = ROOT / "infra/backup-seoul.sh"
             temporary = backup_script.with_suffix(".next")
