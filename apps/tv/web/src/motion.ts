@@ -7,17 +7,21 @@ const cancel = (animations: Animation[]) => { animations.forEach((animation) => 
 
 // Animate containers, leaving card focus transforms and scroll geometry intact
 // as soon as the remote is used. No animation completion gates navigation.
-export function useTvMotion(homeReady: boolean, page: string | null) {
+export function useTvMotion(homeReady: boolean, page: string | null, homeVisible: boolean) {
   const homeRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const direction = useRef<Direction>('open');
   const homeShown = useRef(false);
+  const greetingShown = useRef(false);
+  const greetingAnimations = useRef<Animation[]>([]);
   const homeAnimations = useRef<Animation[]>([]);
   const panelAnimations = useRef<Animation[]>([]);
 
   useLayoutEffect(() => {
     const interrupt = () => {
       homeShown.current = true;
+      greetingShown.current = true;
+      cancel(greetingAnimations.current);
       cancel(homeAnimations.current);
       cancel(panelAnimations.current);
     };
@@ -32,16 +36,29 @@ export function useTvMotion(homeReady: boolean, page: string | null) {
       window.removeEventListener('pointerdown', interrupt, true);
       window.removeEventListener('molly:menu', interrupt);
       preference.removeEventListener('change', changed);
+      cancel(greetingAnimations.current);
       cancel(homeAnimations.current);
       cancel(panelAnimations.current);
     };
   }, []);
 
+  // The greeting enters when the shell is ready, independently of the catalog.
+  // A slow first response must never make it disappear and enter a second time.
+  useLayoutEffect(() => {
+    if (!homeVisible || greetingShown.current) return;
+    greetingShown.current = true;
+    const node = homeRef.current?.querySelector<HTMLElement>('.home-greeting');
+    if (!node || reducedMotion() || typeof node.animate !== 'function') return;
+    greetingAnimations.current.push(node.animate([
+      { opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' },
+    ], { id: 'tv-home-entry', duration: 340, easing }));
+    return () => cancel(greetingAnimations.current);
+  }, [homeVisible]);
+
   useLayoutEffect(() => {
     if (!homeReady || homeShown.current || !homeRef.current) return;
     homeShown.current = true;
     if (reducedMotion()) return;
-    const greeting = homeRef.current.querySelector<HTMLElement>('.home-greeting');
     const rows = Array.from(homeRef.current.querySelectorAll<HTMLElement>('.shelf')).slice(0, 3);
     const enter = (node: HTMLElement, delay: number) => {
       if (typeof node.animate !== 'function') return;
@@ -50,7 +67,6 @@ export function useTvMotion(homeReady: boolean, page: string | null) {
         { opacity: 1, transform: 'translateY(0)' },
       ], { id: 'tv-home-entry', duration: 340, delay, easing, fill: 'backwards' }));
     };
-    if (greeting) enter(greeting, 0);
     rows.forEach((row, index) => enter(row, 60 + index * 50));
     return () => cancel(homeAnimations.current);
   }, [homeReady]);

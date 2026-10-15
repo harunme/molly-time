@@ -10,6 +10,7 @@ import { CatalogCard, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf } from '
 import { PairingPanel } from './pairing';
 import { useClientUpdate } from './client-update';
 import { useTvMotion } from './motion';
+import { HomeLoading } from './home-loading';
 import './style.css';
 
 init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true,
@@ -65,7 +66,7 @@ function App() {
   const contentFocus = useRef('');
   const restore = useRef<ViewSnapshot | undefined>(undefined);
   const overlayPage = useRef<Overlay>(null);
-  const overlayHistory = useRef<{ page: Overlay; snapshot: ViewSnapshot }[]>([]);
+  const overlayHistory = useRef<{ page: Overlay; snapshot: ViewSnapshot; error: string }[]>([]);
   const viewport = useRef<HTMLDivElement>(null);
   const loadSerial = useRef(0);
   const appended = useRef(false);
@@ -74,25 +75,25 @@ function App() {
   const [pageStates, setPageStates] = useState<Record<string, { loading?: boolean; error?: string }>>({});
   const [readyToAppend, setReadyToAppend] = useState(false);
   const pageRequests = useRef(new Set<string>());
-  const motion = useTvMotion(authenticated && !busy && !folder && !overlay && !playing && !error && home.rows.length > 0, overlay);
+  const motion = useTvMotion(authenticated && !busy && !folder && !overlay && !playing && !error && home.rows.length > 0, overlay, authenticated && !folder && !overlay && !playing);
   const resetOverlay = useCallback((next: Overlay) => {
     motion.direction.current = overlayPage.current ? 'forward' : 'open';
     overlayHistory.current = [];
     overlayPage.current = next;
     setOverlay(next);
   }, []);
-  const openOverlay = useCallback((next: Exclude<Overlay, null>) => {
+  const openOverlay = useCatalogCallback((next: Exclude<Overlay, null>) => {
     if (overlayPage.current === next) return;
     finishScrolls(viewport.current);
     motion.direction.current = overlayPage.current ? 'forward' : 'open';
-    overlayHistory.current.push({ page: overlayPage.current, snapshot: {
+    overlayHistory.current.push({ page: overlayPage.current, error, snapshot: {
       focus: getCurrentFocusKey() || 'content', scroll: viewport.current?.scrollTop ?? 0,
       rails: Object.fromEntries(Array.from(viewport.current?.querySelectorAll<HTMLElement>('[data-rail]') ?? [])
         .map((node) => [node.dataset.rail!, node.scrollLeft])),
     } });
     overlayPage.current = next;
     setError(''); setOverlay(next);
-  }, []);
+  });
   const parentOverlay = overlayHistory.current[overlayHistory.current.length - 1]?.page;
   useEffect(() => {
     if (overlay !== 'client-update') return;
@@ -108,7 +109,10 @@ function App() {
       setAuthenticated(false); setFolder(undefined); setHome({ rows: [] });
       if (overlayPage.current !== 'pairing') resetOverlay(null);
     }
-    setError(error instanceof Error ? error.message : '连接失败，请检查网络后重试');
+    const message = error instanceof Error ? error.message : '连接失败，请检查网络后重试';
+    const origin = overlayHistory.current[0];
+    if (origin?.page === null) origin.error = message;
+    setError(message);
   }, []);
   useLayoutEffect(() => {
     // Cached routes render immediately. Restore their viewport before observers
@@ -126,8 +130,10 @@ function App() {
       configureCatalog(!!caps.catalogSync);
       setBridgeCompatible(caps.bridgeVersion === 1);
       setCapabilities(caps); setAuthenticated(caps.authenticated);
+      // Once authenticated, the catalog request owns its loading state.
+      if (!caps.authenticated) setBusy(false);
       return call('ready', { webVersion: caps.webVersion ?? '' });
-    }).catch(fail).finally(() => setBusy(false));
+    }).catch((failure) => { fail(failure); setBusy(false); });
   }, [fail]);
   useEffect(() => {
     if (!capabilities?.catalogSync) return;
@@ -269,7 +275,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (busy || playing) return;
+    if (playing || (busy && (!overlay || overlay === 're-pair'))) return;
     // Appending cards keeps existing DOM focus and scroll position. Do not run
     // the route-entry focus reset after every background batch.
     if (appended.current) {
@@ -325,7 +331,7 @@ function App() {
     const previous = overlayHistory.current.pop();
     restore.current = previous?.snapshot;
     overlayPage.current = previous?.page ?? null;
-    setError(''); setOverlay(overlayPage.current);
+    setError(previous?.error ?? ''); setOverlay(overlayPage.current);
   }, [overlay, busy]);
   const back = useCallback(() => {
     if (overlay) { closeOverlay(); return true; }
@@ -433,7 +439,7 @@ function App() {
         {authenticated && (folder ? <DetailHeader series={folder} total={playlist?.total ?? videos.length} loading={busy} /> : <HomeGreeting />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {refreshError && <div className="catalog-notice"><span role="status">{refreshError}</span><FocusButton focusKey="refresh-retry" onClick={() => setReload((value) => value + 1)} className="text-button">重试更新</FocusButton></div>}
-          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>请绑定家庭电视，开始观看。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? <div role="status" className="state">正在加载内容…</div> : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? `episode-${videos[0]?.id}`} virtualize={!!capabilities?.catalogSync}>
+          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>请绑定家庭电视，开始观看。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? (!folder ? <HomeLoading /> : <div role="status" className="state">正在加载内容…</div>) : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? `episode-${videos[0]?.id}`} virtualize={!!capabilities?.catalogSync}>
             {videos.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={`episode-${item.id}`} disabled={!!overlay}
               firstRow nearEnd={index >= videos.length - 8} rowId="playlist" playable
               subtitle={`${item.id === resumeId ? '继续观看 · ' : ''}${watchedPosition(item) || duration(item.runtimeMs)}`}
@@ -455,7 +461,7 @@ function App() {
             <div className="state empty-state"><h2>媒体库还没有内容</h2><p>请家长在管理后台上传并发布视频。</p></div>}
           {authenticated && !overlay && error && <div className="state"><p role="alert" className="error">{error}</p><FocusButton focusKey="retry" className="primary" onClick={() => {
             setError(''); setReload((value) => value + 1);
-          }}>重试</FocusButton></div>}
+          }}>重试</FocusButton><FocusButton focusKey="load-error-settings" className="text-button" onClick={() => openOverlay('settings')}>打开设置</FocusButton></div>}
         </FocusRegion>
       </FocusRegion>
       {playing && <footer><span role="status" className="player-status">正在打开播放器…</span></footer>}

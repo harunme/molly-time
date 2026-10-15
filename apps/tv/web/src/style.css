@@ -78,6 +78,19 @@ h1 { margin: 0; font-size: 3.6rem; line-height: 1.13; font-weight: 750; letter-s
 h2 { font-size: 1.25rem; line-height: 1.4; margin: 0; font-weight: 600; }
 .shelf-heading h2 { color: #e5e7eb; }
 .active-shelf .shelf-heading h2 { color: var(--white); }
+/* Match the loaded shelves so catalog arrival fills the existing layout. */
+.loading-shelf { margin: 0 0 1.1rem; padding-top: .4rem; overflow: hidden; }
+.loading-heading { height: 1.75rem; margin-bottom: .25rem; padding: 0 3.4rem; display: flex; align-items: center; }
+.loading-heading p { margin: 0; color: var(--muted); font-size: .9rem; }
+.loading-title { display: block; width: 6rem; height: .85rem; border-radius: .25rem; background: #292c32; }
+.loading-rail { display: flex; gap: 1.35rem; width: max-content; padding: 1.1rem 3.4rem 1.5rem; animation: loading-breathe 1.8s ease-in-out infinite; }
+.loading-card { flex: 0 0 17.4rem; width: 17.4rem; padding: .3rem; border: .15rem solid transparent; }
+.loading-cover { aspect-ratio: 16 / 9; border-radius: var(--card-radius); background: #292c32; }
+.loading-copy { padding: .75rem .15rem .25rem; }
+.loading-copy span, .loading-copy small { display: block; border-radius: .2rem; background: #292c32; }
+.loading-copy span { width: 58%; height: 1.365rem; }
+.loading-copy small { width: 30%; height: .9rem; margin-top: .4rem; }
+@keyframes loading-breathe { 0%, 100% { opacity: .55; } 50% { opacity: .85; } }
 .rail-shell { position: relative; margin: 0 2.8rem; }
 .rail-direction { position: absolute; top: var(--rail-arrow-top); transform: translateY(-50%); height: 2.1rem; width: 2.1rem; display: flex; align-items: center; justify-content: center; color: #e3e5e9; pointer-events: none; opacity: 0; transition: opacity .4s var(--ease); }
 .rail-direction svg { width: 1.65rem; height: 1.65rem; opacity: .8; transition: opacity .4s var(--ease); }
@@ -163,7 +176,8 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
   .detail-context { width: 100%; }
   .detail-context h1 { font-size: 1.8rem; }
   .detail-art { display: none; }
-  .shelf-heading { padding: 0 1.5rem; }
+  .shelf-heading, .loading-heading { padding: 0 1.5rem; }
+  .loading-rail { padding-left: 1.5rem; padding-right: 1.5rem; }
   .rail-shell { margin: 0 1.5rem; }
   .rail-track { padding-left: .4rem; padding-right: .4rem; }
   .rail-direction { width: 1.4rem; height: 1.4rem; }
