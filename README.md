@@ -42,13 +42,13 @@ docs/             架构、设计与验证文档
 
 ## 日常开发
 
-本地开发入口由根目录 `Makefile` 管理。`make dev` 并行启动 API、TV 网页和家长网页；需要 Node.js、pnpm 和 Python。首次使用时先运行 `make init` 初始化本地数据库和管理员账号。日常不启动 Docker、Android 模拟器或客户端。
+本地开发入口由根目录 `Makefile` 管理。`make dev` 并行启动 API、TV 网页、家长网页和官网；需要 Node.js、pnpm 和 Python。首次使用时先运行 `make init` 初始化本地数据库和管理员账号。日常不启动 Docker、Android 模拟器或客户端。
 
 ```bash
 make dev
 ```
 
-TV 网页位于 `http://127.0.0.1:5173/tv/`，家长网页开发服务位于 `http://127.0.0.1:5174/manage/`，API 位于 `http://127.0.0.1:8096`。`make dev` 启动前会检查这三个端口（API 端口遵循配置），自动终止占用端口的监听进程；先发送 SIGTERM，等待 5 秒后仍未释放则发送 SIGKILL，释放失败时中止启动。修改前端代码后由 Vite 热更新。方向键、回车和返回交互可在浏览器中验证。按 Ctrl+C 会停止三个服务及其子进程。
+官网位于 `http://127.0.0.1:4321/`，TV 网页位于 `http://127.0.0.1:5173/tv/`，家长网页开发服务位于 `http://127.0.0.1:5174/manage/`，API 位于 `http://127.0.0.1:8096`。`make dev` 启动前会检查这四个端口（API 端口遵循配置），自动终止占用端口的监听进程；先发送 SIGTERM，等待 5 秒后仍未释放则发送 SIGKILL，释放失败时中止启动。TV、家长端和官网修改源码后由 Vite/Astro 热更新，API 修改 Python 源码后自动重启（仅监听 `apps/server/mollytime_server`，不监听媒体和数据库目录）。官网的 `/manage/`、`/tv/` 入口及热更新连接代理到对应开发服务；API 代理地址自动跟随配置端口，也可用 `MOLLYTIME_API_PROXY` 覆盖。请使用这些开发地址查看实时修改，API 端口上的静态页面仍为上次构建产物。方向键、回车和返回交互可在浏览器中验证。按 Ctrl+C 会停止四个服务及其子进程。
 
 如果已有 API，可分别用 `make tv` 和 `make web` 启动网页，避免启动本地 API。登录和真实媒体目录需要可用的 MollyTime API；TV 网页默认代理 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 指定已有后台。浏览器可验证登录和目录，原生视频播放及观看统计在发版前用 Android 客户端验证。运行 `make` 查看全部命令。
 

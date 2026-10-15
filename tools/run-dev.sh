@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release development ports, then supervise the API and both Vite servers.
+# Release development ports, then supervise the API and all web dev servers.
 set -euo pipefail
 set -m
 
@@ -53,15 +53,26 @@ api_port="${MOLLYTIME_LISTEN_PORT:-${MOLLY_LISTEN_PORT:-8096}}"
 if [[ -x "$ROOT/apps/server/.venv/bin/python" ]]; then
   api_port="$(cd "$ROOT/apps/server" && .venv/bin/python -c 'from mollytime_server.config import Settings; print(Settings().listen_port)')"
 fi
-for port in "$api_port" 5173 5174; do
+for port in "$api_port" 5173 5174 4321; do
   if [[ ! "$port" =~ ^[0-9]+$ ]] || ((10#$port < 1 || 10#$port > 65535)); then
     echo "[dev] Invalid development port: $port" >&2
     exit 1
   fi
 done
-for port in "$api_port" 5173 5174; do
+for port in "$api_port" 5173 5174 4321; do
   release_port "$port"
 done
+
+# All dev frontends must follow the API's configured port. Website app links
+# go to Vite rather than the API's previously built static files.
+export MOLLYTIME_API_PROXY="${MOLLYTIME_API_PROXY:-${MOLLY_API_PROXY:-http://127.0.0.1:$api_port}}"
+export MOLLYTIME_WEB_PROXY="http://127.0.0.1:5174"
+export MOLLYTIME_TV_PROXY="http://127.0.0.1:5173"
+
+echo "[dev] Website: http://127.0.0.1:4321/"
+echo "[dev] Parent:  http://127.0.0.1:5174/manage/"
+echo "[dev] TV:      http://127.0.0.1:5173/tv/"
+echo "[dev] API:     http://127.0.0.1:$api_port (auto reload)"
 
 pids=()
 cleanup() {
@@ -76,9 +87,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Background services must not read the controlling terminal (SIGTTIN stops their group).
-bash tools/run-server.sh </dev/null & pids+=("$!")
-bash tools/run-tv-web.sh --port 5173 --strictPort & pids+=("$!")
-pnpm --dir apps/web dev --strictPort & pids+=("$!")
+bash tools/run-server.sh --reload </dev/null & pids+=("$!")
+bash tools/run-tv-web.sh --port 5173 --strictPort </dev/null & pids+=("$!")
+pnpm --dir apps/web dev --strictPort </dev/null & pids+=("$!")
+pnpm --dir apps/site dev </dev/null & pids+=("$!")
 
 while true; do
   for pid in "${pids[@]}"; do

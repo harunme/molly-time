@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -144,6 +146,9 @@ def create_app() -> FastAPI:
 
 
 def run() -> None:  # console-script entry
+    parser = argparse.ArgumentParser(description="Run the MollyTime API server")
+    parser.add_argument("--reload", action="store_true", help="Reload on Python source changes")
+    args = parser.parse_args()
     s = get_settings()
     uvicorn.run(
         "mollytime_server.main:create_app",
@@ -151,6 +156,8 @@ def run() -> None:  # console-script entry
         host=s.listen_host,
         port=s.listen_port,
         log_level="info",
+        reload=args.reload,
+        reload_dirs=[str(Path(__file__).resolve().parent)] if args.reload else None,
     )
 
 

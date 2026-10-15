@@ -18,4 +18,4 @@ export MOLLYTIME_DATA_DIR="${MOLLYTIME_DATA_DIR:-${MOLLY_DATA_DIR:-$ROOT/.local/
 source "$VENV_DIR/bin/activate"
 
 cd "$ROOT/apps/server"
-exec python -m mollytime_server.main
+exec python -m mollytime_server.main "$@"

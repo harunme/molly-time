@@ -6,7 +6,7 @@ SHELL := /bin/bash
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-dev: ## Start API, TV web, and parent web development servers
+dev: ## Start API, TV web, parent web, and website with live reload
 	@bash tools/run-dev.sh
 
 tv: ## Start only the TV web development server

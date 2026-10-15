@@ -11,7 +11,9 @@ make build-site # apps/site/dist，并复制至 apps/web/dist/site
 pnpm --dir apps/site test # 在构建后验证静态页面及下载逻辑
 ```
 
-开发服务把 `/api`、`/manage` 和 `/tv` 代理给 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 覆盖。未启动 API 时，页面仍可预览，登录和下载需要后台。
+`make dev` 会同时启动官网、家长端、TV 和 API，并开启源码热更新；官网的 `/manage`、`/tv`（含 WebSocket）连接对应 Vite 开发服务。
+
+单独运行 `make site` 时，开发服务把 `/api`、`/manage` 和 `/tv` 代理给 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 覆盖。未启动 API 时，页面仍可预览，登录和下载需要后台。
 
 生产环境通过 FastAPI 挂载到 `/`，其余路由优先于官网。官网文件默认位于 `MOLLYTIME_PARENT_WEB_DIR/site`，可用 `MOLLYTIME_SITE_WEB_DIR` 单独指定。未构建官网时保留原有根路径 JSON 响应。`tools/build-web.sh`、标准 Docker 构建和 GitHub 发布流程均包含官网；现有预构建镜像和受限发布接收器无需新增目录白名单。
 
