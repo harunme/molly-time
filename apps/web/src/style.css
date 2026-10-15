@@ -774,6 +774,47 @@ td small {
 .operations-card .muted {
   @apply mb-4;
 }
+.backup-status {
+  @apply mt-6 border-t pt-5;
+}
+.backup-status h3 {
+  @apply mb-4;
+}
+.backup-status-details {
+  @apply grid min-w-0 gap-x-8 gap-y-4 sm:grid-cols-2;
+}
+.backup-status-details > div {
+  @apply min-w-0;
+}
+.backup-status-details dt {
+  @apply mb-2 text-xs text-muted-foreground;
+}
+.backup-status-details dd {
+  @apply min-w-0 text-sm;
+  overflow-wrap: anywhere;
+}
+.backup-status-execution {
+  @apply flex flex-wrap items-center gap-2 tabular-nums;
+}
+.backup-status-wide {
+  @apply sm:col-span-2;
+}
+.backup-status-note {
+  @apply mt-2 text-xs leading-5 text-muted-foreground;
+}
+.backup-status-success {
+  @apply border-transparent bg-published-surface text-published-foreground;
+}
+.backup-status-warning {
+  @apply border-warning-border bg-warning-surface text-warning-foreground;
+}
+.backup-status-error {
+  @apply text-destructive;
+}
+.backup-object-key {
+  @apply block rounded-ui bg-surface-subtle px-3 py-2 font-mono text-xs leading-5;
+  overflow-wrap: anywhere;
+}
 .manage-footer {
   @apply mt-auto flex flex-wrap justify-between gap-2 pt-8 text-xs text-muted-foreground;
 }

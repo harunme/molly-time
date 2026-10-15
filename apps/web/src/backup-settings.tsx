@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -52,6 +53,7 @@ export function BackupSettings({ notify }: { notify: (message: string) => void }
   if (!data || !config) return error ? <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert> : <Empty>正在加载备份设置…</Empty>;
   const checked = data.status.last_checked_at ? Date.parse(data.status.last_checked_at) : 0;
   const schedulerActive = checked > Date.now() - 5 * 60_000;
+  const result = data.status.last_result;
   return (
     <Card className="settings-card operations-card">
       <h2>数据库备份</h2>
@@ -74,10 +76,29 @@ export function BackupSettings({ notify }: { notify: (message: string) => void }
           <div className="actions"><Button type="submit" className="primary">{busy ? "正在保存…" : "保存备份设置"}</Button></div>
         </fieldset>
       </form>
-      <p className="muted">定时任务：{schedulerActive ? "运行中" : "未检测到最近运行，请检查服务器定时任务"}</p>
-      <p className="muted">最近执行：{timestamp(data.status.last_started_at)} · {data.status.last_result === "success" ? "成功" : data.status.last_result === "failed" ? "失败" : data.status.last_result === "running" ? "进行中" : "暂无自动备份记录"}</p>
-      {data.status.last_error && <p className="muted">失败原因：{data.status.last_error}</p>}
-      {data.status.last_object_key && <p className="muted">OSS 路径：{data.status.last_object_key}</p>}
+      <section className="backup-status" aria-labelledby="backup-status-heading">
+        <h3 id="backup-status-heading">备份状态</h3>
+        <dl className="backup-status-details">
+          <div>
+            <dt>定时任务</dt>
+            <dd>
+              <Badge variant="secondary" className={schedulerActive ? "backup-status-success" : "backup-status-warning"}>{schedulerActive ? "运行中" : "待检查"}</Badge>
+              {!schedulerActive && <p className="backup-status-note">未检测到最近运行，请检查服务器定时任务</p>}
+            </dd>
+          </div>
+          <div>
+            <dt>最近执行</dt>
+            <dd className="backup-status-execution">
+              {data.status.last_started_at && <time dateTime={data.status.last_started_at}>{timestamp(data.status.last_started_at)}</time>}
+              <Badge variant={result === "failed" ? "destructive" : "secondary"} className={result === "success" ? "backup-status-success" : undefined}>
+                {result === "success" ? "成功" : result === "failed" ? "失败" : result === "running" ? "进行中" : "暂无自动备份记录"}
+              </Badge>
+            </dd>
+          </div>
+          {data.status.last_error && <div className="backup-status-wide"><dt>失败原因</dt><dd className="backup-status-error">{data.status.last_error}</dd></div>}
+          {data.status.last_object_key && <div className="backup-status-wide"><dt>OSS 路径</dt><dd><code className="backup-object-key">{data.status.last_object_key}</code></dd></div>}
+        </dl>
+      </section>
     </Card>
   );
 }
