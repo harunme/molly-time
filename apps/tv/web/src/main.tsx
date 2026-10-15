@@ -83,6 +83,7 @@ function App() {
     setOverlay(next);
   }, []);
   const openOverlay = useCatalogCallback((next: Exclude<Overlay, null>) => {
+    if (next === 'client-update' && overlayPage.current === 'settings') return;
     if (overlayPage.current === next) return;
     finishScrolls(viewport.current);
     motion.direction.current = overlayPage.current ? 'forward' : 'open';
@@ -96,6 +97,10 @@ function App() {
   });
   const parentOverlay = overlayHistory.current[overlayHistory.current.length - 1]?.page;
   useEffect(() => {
+    if (overlay === 'settings' && !updateActionable && getCurrentFocusKey() === 'client-update-action') {
+      const frame = requestAnimationFrame(() => setFocus('check-update'));
+      return () => cancelAnimationFrame(frame);
+    }
     if (overlay !== 'client-update') return;
     const frame = requestAnimationFrame(() => setFocus(updateActionable ? 'client-update-action' : 'close-overlay'));
     return () => cancelAnimationFrame(frame);
@@ -429,6 +434,14 @@ function App() {
   useLayoutEffect(() => { cardArrowRef.current = cardArrow; });
   const navigateCard = useCallback((direction: string, firstRow: boolean) => cardArrowRef.current(firstRow)(direction), []);
 
+  const updateDetails = <div className="client-update-panel">
+    {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
+    <p role="status">{clientUpdate?.message ?? '正在检查更新…'}</p>
+    {overlay === 'client-update' && <p>当前版本 {capabilities?.shellVersion}</p>}
+    {clientUpdate?.release && <><p>新版本 {clientUpdate.release.versionName} · {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p></>}
+    {updateActionable && <FocusButton focusKey="client-update-action" className="primary" onClick={() => { void updateClient(); }}>{updateActionLabel}</FocusButton>}
+  </div>;
+
   return <FocusRegion focusKey="screen" className="app">
     <main ref={motion.homeRef} className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
       <FocusRegion focusKey="content" className="content-panels shelves-scroll" scrollRef={viewport}>
@@ -475,14 +488,11 @@ function App() {
             {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
             <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
               <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
-          </div> : overlay === 'client-update' ? <div className="client-update-panel">
-            {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
-            <p role="status">{clientUpdate?.message ?? '正在检查更新…'}</p>
-            <p>当前版本 {capabilities?.shellVersion}</p>
-            {clientUpdate?.release && <><p>新版本 {clientUpdate.release.versionName} · {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p></>}
-            {updateActionable && <FocusButton focusKey="client-update-action" className="primary" onClick={() => { void updateClient(); }}>{updateActionLabel}</FocusButton>}
-          </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
-            {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
+          </div> : overlay === 'client-update' ? updateDetails : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
+            {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <>
+              <FocusButton focusKey="check-update" className="settings-item" onClick={() => { void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span></FocusButton>
+              {clientUpdate && updateDetails}
+            </>}
             {authenticated && <PlaybackSettings />}
             {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
           </div>}
