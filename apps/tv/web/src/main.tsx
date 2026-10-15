@@ -58,7 +58,6 @@ function App() {
   const [reload, setReload] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [clientUpdate, setClientUpdate] = useState<{ state: string; release?: { versionName: string; size: number; notes: string } }>();
-  const [webUpdateStatus, setWebUpdateStatus] = useState('');
   const [bridgeCompatible, setBridgeCompatible] = useState(true);
   const [compatibilityWarning, setCompatibilityWarning] = useState('');
   const contentFocus = useRef('');
@@ -138,20 +137,14 @@ function App() {
     return () => { clearTimeout(timer); window.removeEventListener('molly:catalogStatus', status); window.removeEventListener('molly:catalogChanged', changed); window.removeEventListener('online', resumed); document.removeEventListener('visibilitychange', resumed); };
   }, [capabilities?.catalogSync, folder?.id, playing, fail]);
   useEffect(() => {
-    const progress = (event: Event, client: boolean) => {
-      const detail = (event as CustomEvent<{ received: number; total: number; state: string; version?: string; message?: string }>).detail;
-      const state = detail.state === 'downloading' ? `正在下载${client ? '客户端' : '网页'}更新 ${Math.floor(detail.received * 100 / Math.max(1, detail.total))}%` : detail.state === 'staged' ? `网页 ${detail.version} 已缓存，下次启动生效` : detail.state === 'downloaded' ? '下载完成，可以安装' : detail.state === 'error' ? detail.message ?? '更新失败' : detail.state;
-      if (client) setClientUpdate((current) => ({ ...current, state }));
-      // Older clients report the running version as staged as well.
-      else setWebUpdateStatus(detail.state === 'staged' && detail.version && detail.version === capabilities?.webVersion
-        ? '当前已是最新网页' : state);
+    const clientProgress = (event: Event) => {
+      const detail = (event as CustomEvent<{ received: number; total: number; state: string; message?: string }>).detail;
+      const state = detail.state === 'downloading' ? `正在下载客户端更新 ${Math.floor(detail.received * 100 / Math.max(1, detail.total))}%` : detail.state === 'downloaded' ? '下载完成，可以安装' : detail.state === 'error' ? detail.message ?? '更新失败' : detail.state;
+      setClientUpdate((current) => ({ ...current, state }));
     };
-    const webProgress = (event: Event) => progress(event, false);
-    const clientProgress = (event: Event) => progress(event, true);
-    window.addEventListener('molly:webUpdateProgress', webProgress);
     window.addEventListener('molly:clientUpdateProgress', clientProgress);
-    return () => { window.removeEventListener('molly:webUpdateProgress', webProgress); window.removeEventListener('molly:clientUpdateProgress', clientProgress); };
-  }, [capabilities?.webVersion]);
+    return () => window.removeEventListener('molly:clientUpdateProgress', clientProgress);
+  }, []);
   useEffect(() => {
     const incompatible = () => {
       setCompatibilityWarning('此网页版本需要更新电视客户端才能使用。');
@@ -282,7 +275,7 @@ function App() {
     const frame = requestAnimationFrame(() => {
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' :
-        overlay === 'settings' ? (window.MollyBridge && capabilities?.serverUrl ? capabilities.clientUpdates ? 'check-update' : 'check-web-update' : authenticated ? 're-pair' : 'connect-account') : overlay === 'client-update' ? 'check-client-update' : !authenticated ? 'connect-home' : error ? 'retry' :
+        overlay === 'settings' ? (window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl ? 'check-update' : authenticated ? 're-pair' : 'connect-account') : overlay === 'client-update' ? 'check-client-update' : !authenticated ? 'connect-home' : error ? 'retry' :
         (folder ? (videos.length ? `episode-${videos[0].id}` : 'content') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'content');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
@@ -481,7 +474,6 @@ function App() {
           <FocusButton focusKey="check-client-update" className="text-button" onClick={() => { void checkClientUpdate(); }}>重新检查</FocusButton>
         </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
           {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { setClientUpdate(undefined); setOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
-          {window.MollyBridge && capabilities?.serverUrl && <FocusButton focusKey="check-web-update" className="settings-item" onClick={() => { setWebUpdateStatus('正在检查网页更新…'); void call('checkWebUpdate').catch(fail); }}><Icon name="settings" /><span><strong>检查网页更新</strong><small>当前网页版本 {capabilities.webVersion || '未知'}{webUpdateStatus && ` · ${webUpdateStatus}`}</small></span><span>›</span></FocusButton>}
           {authenticated && <PlaybackSettings />}
           {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { setError(''); setOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
         </div>}

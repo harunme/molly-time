@@ -4,43 +4,6 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
 });
 
-test('web update distinguishes a pending version from the running version on older clients', async ({ page }) => {
-  await page.addInitScript(() => {
-    const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
-    w.MollyBridge = { postMessage(raw) {
-      const { id, method } = JSON.parse(raw);
-      const result = method === 'getCapabilities'
-        ? { bridgeVersion: 1, serverUrl: 'https://media.example.test', webVersion: 'running-web', authenticated: false, nativePlayback: true }
-        : { ok: true };
-      setTimeout(() => {
-        w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) });
-        if (method === 'checkWebUpdate') window.dispatchEvent(new CustomEvent('molly:webUpdateProgress', {
-          detail: { state: 'staged', version: 'running-web' },
-        }));
-      }, 5);
-    } };
-  });
-  await page.goto('/tv/');
-  await expect(page.locator('[data-focus-region="screen"]')).toBeVisible();
-  await expect(page.getByText('正在加载内容…', { exact: true })).toHaveCount(0);
-  await page.keyboard.press('ContextMenu');
-  const update = page.locator('[data-focus="check-web-update"]');
-  await expect(update).toContainText('当前网页版本 running-web');
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:webUpdateProgress', {
-    detail: { state: 'staged', version: 'next-web' },
-  })));
-  await expect(update).toContainText('网页 next-web 已缓存，下次启动生效');
-  await expect(update).toContainText('当前网页版本 running-web');
-  await update.click();
-  await expect(update).toContainText('当前已是最新网页');
-  await expect(update).not.toContainText('下次启动生效');
-  await page.reload();
-  await expect(page.locator('[data-focus="connect-home"]')).toBeFocused();
-  await page.keyboard.press('ContextMenu');
-  await update.click();
-  await expect(update).toContainText('当前网页版本 running-web · 当前已是最新网页');
-});
-
 for (const supported of [true, false]) {
   test(`client update setting respects native capability: ${supported}`, async ({ page }) => {
     await page.addInitScript((supportsUpdates) => {
@@ -62,6 +25,9 @@ for (const supported of [true, false]) {
     await page.goto('/tv/');
     await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
     await page.keyboard.press('ContextMenu');
+    await expect(page.getByRole('button', { name: /检查网页更新/ })).toHaveCount(0);
+    await expect(page.locator('[data-focus="check-web-update"]')).toHaveCount(0);
+    await expect(page.locator(`[data-focus="${supported ? 'check-update' : 're-pair'}"]`)).toBeFocused();
     await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
     if (supported) {
       await expect(page.locator('[data-focus="check-update"]')).toContainText('当前版本 0.4.0');
