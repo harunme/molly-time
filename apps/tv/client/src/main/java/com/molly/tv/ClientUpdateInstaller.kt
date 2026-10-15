@@ -14,7 +14,7 @@ class ClientUpdateInstaller(private val activity: Activity) {
     private val app get() = activity.application as MollyTimeApplication
     private val prefs get() = activity.getSharedPreferences("molly.updates", Activity.MODE_PRIVATE)
 
-    fun install(file: File, release: ClientUpdates.Release, operation: ClientUpdates.Operation, state: (String) -> Unit) {
+    fun install(file: File, release: ClientUpdates.Release, operation: ClientUpdates.Operation, state: (String, Boolean) -> Unit) {
         app.updates.executor.execute {
             val installer = activity.packageManager.packageInstaller
             var sessionId: Int? = null
@@ -62,9 +62,9 @@ class ClientUpdateInstaller(private val activity: Activity) {
                     session.commit(sender)
                     committed = true
                 }
-                activity.runOnUiThread { state("请在系统安装界面确认更新") }
+                activity.runOnUiThread { state("请在系统安装界面确认更新", true) }
             } catch (error: Exception) {
-                activity.runOnUiThread { state(error.message ?: "准备安装失败") }
+                activity.runOnUiThread { state(error.message ?: "准备安装失败", false) }
             } finally {
                 if (!committed && sessionId != null) runCatching { installer.abandonSession(sessionId) }
             }

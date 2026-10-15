@@ -37,6 +37,33 @@ for (const supported of [true, false]) {
       await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
       await expect(page.getByText('发现新版本 0.5.0')).toBeVisible();
       await expect(page.getByText('网页显示更新说明')).toBeVisible();
+      await expect(page.getByRole('dialog')).toHaveCount(1);
+      // Button, remote key, and native Bridge back all pop exactly one page.
+      await page.getByRole('button', { name: '返回设置' }).click();
+      await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
+      await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
+      await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', repeat: true })));
+      await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
+      await page.evaluate(() => window.mollyBack?.());
+      await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
+      await page.evaluate(() => window.mollyBack?.());
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
+      // A direct update notification has no settings page to return to.
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:clientUpdateAvailable', {
+        detail: { versionName: '0.5.0', size: 2097152, notes: '网页显示更新说明' },
+      })));
+      await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
+      await expect(page.getByRole('button', { name: '返回设置' })).toHaveCount(0);
+      await page.getByRole('button', { name: '返回媒体库' }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
     } else await expect(page.locator('[data-focus="check-update"]')).toHaveCount(0);
   });
 }
@@ -65,6 +92,21 @@ test('fresh older shell connects to the official service without an address form
   await page.keyboard.press('Enter');
   await expect(page.locator('.pairing-code')).toHaveText('0123');
   await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-focus="connect-home"]')).toBeFocused();
+  await page.keyboard.press('ContextMenu');
+  await page.locator('[data-focus="connect-account"]').click();
+  await expect(page.getByRole('heading', { name: '绑定电视' })).toBeVisible();
+  await page.getByRole('button', { name: '返回设置' }).click();
+  await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
+  await expect(page.locator('[data-focus="connect-account"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: '绑定电视' })).toBeVisible();
+  await page.evaluate(() => window.mollyBack?.());
+  await expect(page.locator('[data-focus="connect-account"]')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('[data-focus="connect-home"]')).toBeFocused();
 });
 
 test('recent playback precedes library and supports remote playback and return', async ({ page }) => {
@@ -575,3 +617,63 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   expect(apiRequests).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem('mollytime.tv.binding.v1'))).toBe('existing-binding');
 });
+
+for (const outcome of ['cancel', 'error'] as const) {
+  test(`update has one action and keeps the downloaded package after install ${outcome}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as {
+        updateCalls: string[];
+        MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void };
+      };
+      w.updateCalls = [];
+      w.MollyBridge = { postMessage(raw) {
+        const { id, method, args } = JSON.parse(raw);
+        let result: unknown = { ok: true };
+        if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl: 'https://media.example.test', authenticated: true, clientUpdates: true, shellVersion: '0.4.0' };
+        if (method === 'request' && args.path.split('?')[0] === '/api/home') result = { rows: [{ title: '媒体库', items: [{ id: 'story', name: '故事', episodeCount: 1 }] }] };
+        if (method === 'request' && args.path === '/api/families/me/children') result = [];
+        if (['checkUpdate', 'downloadUpdate', 'installUpdate'].includes(method)) w.updateCalls.push(method);
+        if (method === 'checkUpdate') result = { release: { versionName: '0.5.0', size: 2097152, notes: '更新说明' } };
+        setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
+      } };
+    });
+    const emit = (detail: object) => page.evaluate((detail) => {
+      window.dispatchEvent(new CustomEvent('molly:clientUpdateProgress', { detail }));
+    }, detail);
+    const calls = () => page.evaluate(() => (window as unknown as { updateCalls: string[] }).updateCalls);
+    const open = async () => {
+      await page.keyboard.press('ContextMenu');
+      await page.locator('[data-focus="check-update"]').click();
+    };
+    await page.goto('/tv/');
+    await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
+    await open();
+    const action = page.locator('[data-focus="client-update-action"]');
+    await expect(action).toHaveText('立即更新');
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(action).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新检查' })).toHaveCount(0);
+    await emit({ state: 'downloading', received: 100, total: 100 });
+    await expect(page.getByRole('status')).toHaveText('正在准备安装…');
+    await page.getByRole('button', { name: '返回设置' }).click();
+    await open();
+    await expect(page.getByRole('status')).toHaveText('正在准备安装…');
+    await emit({ state: 'downloaded' });
+    await expect(action).toHaveText('立即安装');
+    await expect(action).toBeFocused();
+    await page.getByRole('button', { name: '返回设置' }).click();
+    await open();
+    await expect(action).toHaveText('立即安装');
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(action).toHaveCount(0);
+    await emit(outcome === 'cancel'
+      ? { state: '尚未安装，更新包已保留', phase: 'ready' }
+      : { state: '安装失败，请重试', phase: 'error' });
+    await expect(action).toHaveText(outcome === 'cancel' ? '立即安装' : '重试');
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(calls).toEqual(['checkUpdate', 'downloadUpdate', 'installUpdate', 'installUpdate']);
+  });
+}

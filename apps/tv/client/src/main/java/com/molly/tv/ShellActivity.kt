@@ -37,6 +37,7 @@ class ShellActivity : AppCompatActivity() {
     private var fallbackAttempted = false
     private var clientRelease: ClientUpdates.Release? = null
     private var downloadedClient: java.io.File? = null
+    @Volatile private var clientUpdateProgress: JSONObject? = null
     @Volatile private var clientDownloadRunning = false
     private val clientUpdateOperation = ClientUpdates.Operation()
     private var installAfterPermission = false
@@ -268,9 +269,16 @@ class ShellActivity : AppCompatActivity() {
         }
         "checkWebUpdate" -> { checkWebUpdateAsync(force = true); JSONObject().put("ok", true) }
         "checkUpdate" -> {
-            val release = app.updates.check(app.session.server)
+            // A new check must not replace the release belonging to an active
+            // download or to the verified package waiting for installation.
+            val release = if (clientDownloadRunning || downloadedClient?.isFile == true) clientRelease
+                else app.updates.check(app.session.server)
+            if (release?.sha256 != clientRelease?.sha256) {
+                downloadedClient = null
+                clientUpdateProgress = null
+            }
             clientRelease = release
-            JSONObject().put("release", release?.json())
+            JSONObject().put("release", release?.json()).put("progress", clientUpdateProgress)
         }
         "downloadUpdate" -> {
             val release = clientRelease ?: throw IllegalStateException("请先检查客户端更新")
@@ -325,24 +333,26 @@ class ShellActivity : AppCompatActivity() {
     }
 
     private fun dispatch(name: String, detail: JSONObject) {
+        if (name == "molly:clientUpdateProgress") clientUpdateProgress = detail
         runOnUiThread { web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('$name',{detail:${detail}}))", null) }
     }
 
     private fun startClientInstall() {
         val release = clientRelease ?: return
         val file = downloadedClient ?: return
+        if (installReady || installAfterPermission) return
         if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
             installAfterPermission = true
-            dispatch("molly:clientUpdateProgress", JSONObject().put("state", "请允许 MollyTime 安装应用，然后返回继续"))
+            dispatch("molly:clientUpdateProgress", JSONObject().put("state", "请允许 MollyTime 安装应用，然后返回继续").put("phase", "installing"))
             runCatching { installPermission.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
-                .onFailure { dispatch("molly:clientUpdateProgress", JSONObject().put("state", "电视未提供安装授权入口，请在系统设置中允许安装应用")) }
+                .onFailure { installAfterPermission = false; dispatch("molly:clientUpdateProgress", JSONObject().put("state", "电视未提供安装授权入口，请在系统设置中允许安装应用").put("phase", "ready")) }
             return
         }
-        if (installReady) return
         installReady = true
-        ClientUpdateInstaller(this).install(file, release, clientUpdateOperation) { state ->
-            if (state != "请在系统安装界面确认更新") installReady = false
-            dispatch("molly:clientUpdateProgress", JSONObject().put("state", state))
+        ClientUpdateInstaller(this).install(file, release, clientUpdateOperation) { state, waiting ->
+            if (!waiting) installReady = false
+            dispatch("molly:clientUpdateProgress", JSONObject().put("state", state)
+                .put("phase", if (waiting) "installing" else "error"))
         }
     }
 
@@ -364,12 +374,16 @@ class ShellActivity : AppCompatActivity() {
                 prefs.edit().clear().commit()
                 dispatch("molly:clientUpdateProgress", JSONObject().put("state", "更新已安装，请重新打开 MollyTime"))
             }
+            android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED -> {
+                prefs.edit().clear().commit(); installReady = false
+                dispatch("molly:clientUpdateProgress", JSONObject().put("state", "尚未安装，更新包已保留").put("phase", "ready"))
+            }
             else -> {
                 prefs.edit().clear().commit(); installReady = false
                 val detail = result.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE)
                     ?.replace(Regex("\\s+"), " ")?.take(300)?.takeIf { it.isNotBlank() }
                 val message = "安装失败（系统状态 $status）" + (detail?.let { "：$it" } ?: "，请重试")
-                dispatch("molly:clientUpdateProgress", JSONObject().put("state", message))
+                dispatch("molly:clientUpdateProgress", JSONObject().put("state", message).put("phase", "error"))
             }
         }
     }
@@ -382,6 +396,7 @@ class ShellActivity : AppCompatActivity() {
             val release = runCatching { app.updates.check(server) }.getOrNull()
             runOnUiThread {
                 if (!isDestroyed && app.session.server == server && release != null) {
+                    if (!clientDownloadRunning && downloadedClient == null) clientRelease = release
                     if (playing) pendingClientRelease = release
                     else dispatch("molly:clientUpdateAvailable", release.json())
                 }
