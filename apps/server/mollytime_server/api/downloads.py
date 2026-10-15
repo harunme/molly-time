@@ -84,6 +84,8 @@ def command(item_id: str, body: CommandBody, user: Parent, db: DbSession):
     )
     if not media:
         raise HTTPException(409, "暂无处理完成的视频")
+    if body.desired == "saved" and media.storage == "oss" and not media.sha256:
+        raise HTTPException(409, "此视频使用播放时自动缓存，请更新电视客户端后直接播放")
     if not media.size_bytes:
         media.size_bytes = build_storage(media.storage).size(media.path)
     row = (

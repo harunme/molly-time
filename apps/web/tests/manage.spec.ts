@@ -62,12 +62,7 @@ test("real upload, parent preview and resource publication", async ({
       const data = await response.json();
       return data.items.find((item: { filename: string; status: string }) => item.filename === '自然小故事.mp4')?.status;
     }, { timeout: 20000 }).toBe('ready');
-    await page.getByRole("button", { name: "上传任务", exact: true }).click();
-    await expect(page.getByText("文件就绪", { exact: true })).toBeVisible({
-      timeout: 20000,
-    });
-    await tasks.getByRole("button", { name: "关闭", exact: true }).click();
-    await expect(tasks).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "上传任务", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "自然与发现", exact: true }).click();
     await page.getByRole("button", { name: "自然小故事", exact: true }).click();
     await expect(

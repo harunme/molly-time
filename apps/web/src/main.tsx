@@ -17,7 +17,7 @@ import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
 import { ResourceSummary } from "./resource-summary";
-import { MediaPreview, TvDownloads, SubtitleSettings } from "./media";
+import { MediaPreview, SubtitleSettings } from "./media";
 import { ShareClaimDialog, ShareDialog, ShareReceive } from "./shares";
 import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
@@ -1075,10 +1075,7 @@ function ResourceEditor({
           </section>
         )}
         {item?.type === "Episode" && (
-          <>
-            <SubtitleSettings item={item} readonly={readonly} />
-            <TvDownloads item={item} readonly={readonly} />
-          </>
+          <SubtitleSettings item={item} readonly={readonly} />
         )}
         {!readonly && (
           <DialogFooter className="modal-actions">
@@ -1415,6 +1412,8 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
               value={Math.min(100, (offset / row.size) * 100)}
               aria-label={`${row.filename} 上传进度`}
             />}
+            {current?.preparing && <p className="muted" role="status">正在准备视频…</p>}
+            {row.expiresAt && ["uploading", "failed"].includes(row.status) && <p className="muted">未完成或失败的文件将在 {dateTime(row.expiresAt)} 后自动清理。</p>}
             {(row.error || current?.error) && (
               <p className="error">{row.error || current?.error}</p>
             )}
@@ -1646,7 +1645,7 @@ function Family({
                   {!readonly && <Button variant="bordered">保存时区</Button>}
                 </form>
                 <p className="muted">
-                  云端文件默认长期保留；保存到电视后重复观看优先读取本地副本。
+                  云端文件默认长期保留；电视播放时自动缓存，重复观看优先读取本地缓存，空间不足时自动清理较久未用的缓存。
                 </p>
               </>
             )}

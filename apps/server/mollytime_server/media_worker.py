@@ -12,6 +12,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from oss2.exceptions import OssError
 from PIL import Image
 from sqlalchemy import or_, update
 
@@ -21,6 +22,7 @@ from .db import get_session_factory, init_db
 from .management_models import MediaOptions, MediaTask, ResourceState, UploadSession, UploadTarget
 from .models import Item, MediaFile
 from .storage import build_storage
+from .upload_metadata import metadata_path, read_metadata
 from .utils.image import atomic_write
 
 logger = logging.getLogger(__name__)
@@ -103,38 +105,59 @@ def process(task_id):
         item = db.get(Item, upload.item_id)
         target = db.get(UploadTarget, upload.id)
         remote = bool(target and target.backend == "oss")
+        client_video = upload.kind == "video" and (remote or metadata_path(upload.id).is_file())
         source = get_settings().data_dir / "uploads" / f"{upload.id}.part"
         root = get_settings().resolved_media_dir().resolve()
         folder = root / "managed" / upload.family_id
         folder.mkdir(parents=True, exist_ok=True)
         destination = folder / f"{upload.id}{Path(upload.filename).suffix.lower()}"
+        cover = folder / f"{upload.id}-cover.jpg"
         try:
-            if remote:
+            if upload.status == "ready" and db.get(MediaFile, upload.id) is not None:
+                task.status, task.error, task.lease_until = "done", "", None
+                db.commit()
+                return
+            storage = build_storage("oss") if remote else None
+            if remote and client_video and storage.size(target.object_key) != upload.size:
+                raise ValueError("云端文件大小已变化，请重新上传")
+            if remote and not client_video:
                 source.parent.mkdir(parents=True, exist_ok=True)
                 if upload.size > get_settings().media_processing_max_bytes:
                     raise ValueError("文件超出处理容量限制，请联系管理员")
                 if shutil.disk_usage(source.parent).free < upload.size + 64 * 1024**2:
                     raise ValueError("处理磁盘空间不足，请稍后重试")
-                build_storage("oss").download(target.object_key, source, upload.size)
-            if not source.is_file() or source.stat().st_size != upload.size:
+                storage.download(target.object_key, source, upload.size)
+            sha256 = ""
+            if not (remote and client_video) and (
+                not source.is_file() or source.stat().st_size != upload.size
+            ):
                 raise ValueError("临时文件缺失或大小不一致，请重新上传")
-            digest = hashlib.sha256()
-            with source.open("rb") as handle:
-                for block in iter(lambda: handle.read(1024 * 1024), b""):
-                    digest.update(block)
+            if not client_video:
+                digest = hashlib.sha256()
+                with source.open("rb") as handle:
+                    for block in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(block)
+                sha256 = digest.hexdigest()
             runtime = None
             cover_data = None
-            cover = folder / f"{upload.id}-cover.jpg"
             if upload.kind == "video":
-                runtime = inspect_video(source)
-                try:
-                    cover_data = extract_cover(source, runtime)
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                    # The TV may support a codec that this FFmpeg build cannot decode.
-                    # An optional automatic cover must not block a valid video upload.
-                    logger.warning("Automatic cover extraction failed for %s", upload.id, exc_info=True)
-                if cover_data is not None:
-                    atomic_write(cover, cover_data)
+                metadata = read_metadata(upload.id) if client_video else None
+                runtime = metadata.runtimeMs * 10000 if metadata else inspect_video(source)
+                has_cover = db.query(MediaFile.id).filter(
+                    MediaFile.item_id == item.id, MediaFile.kind == "image",
+                ).first()
+                if not has_cover:
+                    try:
+                        cover_data = metadata.cover_bytes() if metadata else extract_cover(source, runtime)
+                        if cover_data is not None:
+                            atomic_write(cover, cover_data)
+                            if remote:
+                                image_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "molly-cover:" + upload.id))
+                                storage.put_file(f"families/{upload.family_id}/media/{image_id}.jpg", cover, "image/jpeg")
+                    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError,
+                            OssError, Image.DecompressionBombError):
+                        cover_data = None
+                        logger.warning("Automatic cover extraction failed for %s", upload.id)
                 mime = "video/mp4"
             elif upload.kind == "image":
                 with Image.open(source) as image:
@@ -176,7 +199,7 @@ def process(task_id):
                         is_default=False,
                         index=index,
                         size_bytes=upload.size,
-                        sha256=digest.hexdigest(),
+                        sha256=sha256,
                     )
                 )
             db.flush()
@@ -199,8 +222,6 @@ def process(task_id):
                     image_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "molly-cover:" + upload.id))
                     if not db.get(MediaFile, image_id):
                         cover_key = f"families/{upload.family_id}/media/{image_id}.jpg"
-                        if remote:
-                            build_storage("oss").put_file(cover_key, cover, "image/jpeg")
                         db.add(
                             MediaFile(
                                 id=image_id,
@@ -221,6 +242,7 @@ def process(task_id):
             # Source can be removed only after the catalog transaction is durable.
             try:
                 source.unlink(missing_ok=True)
+                metadata_path(upload.id).unlink(missing_ok=True)
             except OSError:
                 logger.exception("Committed media source cleanup failed for %s", upload.id)
         except Exception as error:  # noqa: BLE001 -- persist failure for any task error
@@ -235,6 +257,11 @@ def process(task_id):
             )
             task.status, task.error, task.lease_until = "failed", message, None
             upload.status, upload.error = "failed", message
+            target = db.get(UploadTarget, upload.id)
+            if target is None:
+                target = UploadTarget(upload_id=upload.id, backend="local")
+                db.add(target)
+            target.expires_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=get_settings().upload_expiry_hours)
             db.commit()
         finally:
             if remote:

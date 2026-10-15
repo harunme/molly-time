@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Upload } from '../src/api';
+import { mp4Fixture } from './mp4-fixture';
 
 async function login(page: Page, path = '/manage/#/library') {
   await page.goto(path);
@@ -123,7 +124,7 @@ test('pausing, resuming and closing the task modal preserve background upload', 
     if (url.pathname.endsWith('/uploads/options')) {
       await route.continue();
     } else if (url.pathname.endsWith('/uploads')) {
-      if (request.method() === 'POST') row = { ...row, fingerprint: request.postDataJSON().fingerprint };
+      if (request.method() === 'POST') row = { ...row, size: request.postDataJSON().size, fingerprint: request.postDataJSON().fingerprint };
       await route.fulfill({ json: request.method() === 'POST' ? row : { items: row.status === 'ready' ? [] : [row], total: row.status === 'ready' ? 0 : 1, page: 1, pageSize: Number(url.searchParams.get('pageSize')) } });
     } else if (url.pathname.endsWith('/chunks')) {
       await gate;
@@ -137,11 +138,11 @@ test('pausing, resuming and closing the task modal preserve background upload', 
   try {
     await login(page);
     const chunk = page.waitForRequest((request) => request.url().includes('/background-upload/chunks'));
-    await page.evaluate(async () => {
+    await page.evaluate(async (encoded) => {
       // @ts-expect-error Browser-side Vite module import.
       const { enqueue } = await import('/manage/src/uploads.ts');
-      await enqueue(new File([new Uint8Array(16)], '后台任务.mp4', { type: 'video/mp4' }), 'episode', 'video');
-    });
+      await enqueue(new File([Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))], '后台任务.mp4', { type: 'video/mp4' }), 'episode', 'video');
+    }, mp4Fixture().toString('base64'));
     await chunk;
     await page.getByRole('button', { name: '上传任务', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '上传任务', exact: true });

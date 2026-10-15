@@ -178,6 +178,7 @@ def objects_for(db, keys):
         if target and target.backend == "oss" and target.object_key and upload.status != "cancelled":
             add("oss", target.object_key, upload.size)
         add("temporary", f"{upload.id}.part", 0)
+        add("temporary", f"{upload.id}.video.json", 0)
         base = f"managed/{upload.family_id}/{upload.id}"
         for key in (base + Path(upload.filename).suffix.lower(), base + "-cover.jpg",
                     base + Path(upload.filename).suffix.lower() + ".tmp"):

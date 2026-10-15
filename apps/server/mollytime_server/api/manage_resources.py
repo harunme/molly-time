@@ -28,6 +28,7 @@ from ..models import Item, MediaFile
 from ..remote_uploads import (
     PART_SIZE,
     check_target,
+    cleanup_upload_files,
     ensure_capacity,
     transport,
     upload_lock,
@@ -38,6 +39,7 @@ from ..storage import build_storage
 from ..storage.settings import get_storage_settings
 from ..transactions import serialize_sqlite_write
 from ..trash import archive, ensure_active
+from ..upload_metadata import VideoMetadata, save_metadata
 from .pagination import paginate
 
 router = APIRouter(prefix="/api/manage", tags=["manage-resources"])
@@ -445,6 +447,7 @@ def upload_dto(db, row):
         "taskStatus": task.status if task else None,
         "transport": target.backend if target else "local",
         "partSize": PART_SIZE,
+        "expiresAt": aware(target.expires_at).isoformat() if target else None,
     }
 
 
@@ -614,8 +617,21 @@ def write_chunk(db, row, offset, data):
     return upload_dto(db, row)
 
 
+def accept_video_metadata(row, body, *, required=False):
+    if row.kind != "video":
+        return
+    if body is None:
+        if required:
+            raise HTTPException(422, "请重新选择原视频，由浏览器读取视频时长后继续上传")
+        return
+    try:
+        save_metadata(row.id, body)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
 @router.post("/uploads/{upload_id}/complete")
-def complete_upload(upload_id: str, user: Parent, db: DbSession):
+def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMetadata | None = None):
     row = owned(db, UploadSession, upload_id, user.family_id)
     if row.status == "processing" or row.status == "ready":
         return upload_dto(db, row)
@@ -626,6 +642,7 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession):
             if row.status in ("processing", "ready"):
                 return upload_dto(db, row)
             target = check_target(db, row)
+            accept_video_metadata(row, body, required=True)
             store = build_storage("oss")
             # Recover an OSS completion whose database commit was interrupted.
             size = store.size_if_exists(target.object_key)
@@ -652,6 +669,7 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession):
             raise HTTPException(410, "上传已过期")
         if row.status != "uploading" or row.offset != row.size:
             raise HTTPException(409, "文件尚未上传完整")
+        accept_video_metadata(row, body)
         row.status = "processing"
         if not db.query(MediaTask).filter(MediaTask.upload_id == row.id).first():
             db.add(MediaTask(upload_id=row.id))
@@ -671,12 +689,8 @@ def cancel_upload(upload_id: str, user: Parent, db: DbSession):
         if db.get(MediaFile, row.id) is not None:
             raise HTTPException(409, "文件已入库，不能作为失败上传删除")
         target = transport(db, row)
-        if target and target.backend == "oss":
-            store = build_storage("oss")
-            store.abort(target.object_key, target.multipart_id)
-            store.delete(target.object_key)
-        else:
-            (get_settings().data_dir / "uploads" / f"{row.id}.part").unlink(missing_ok=True)
+        if not cleanup_upload_files(db, row, target):
+            raise HTTPException(409, "文件已入库，不能作为失败上传删除")
         task = db.query(MediaTask).filter(MediaTask.upload_id == row.id).first()
         if task:
             task.status = "cancelled"
@@ -687,17 +701,25 @@ def cancel_upload(upload_id: str, user: Parent, db: DbSession):
 
 @router.post("/tasks/{task_id}/retry")
 def retry_task(task_id: str, user: Parent, db: DbSession):
-    serialize_sqlite_write(db)
     task = db.get(MediaTask, task_id)
     if task is None:
         raise HTTPException(404)
     row = owned(db, UploadSession, task.upload_id, user.family_id)
     ensure_active(db, owned(db, Item, row.item_id, user.family_id))
-    if task.status != "failed":
-        raise HTTPException(409, "任务没有失败")
-    task.status, task.error = "queued", ""
-    row.status, row.error = "processing", ""
-    db.commit()
+    with upload_lock(row.id):
+        serialize_sqlite_write(db)
+        db.refresh(row)
+        db.refresh(task)
+        if task.status != "failed" or row.status != "failed":
+            raise HTTPException(409, "任务不可重试，文件可能已过期清理")
+        task.status, task.error = "queued", ""
+        row.status, row.error = "processing", ""
+        target = transport(db, row)
+        if target is None:
+            target = UploadTarget(upload_id=row.id, backend="local")
+            db.add(target)
+        target.expires_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=get_settings().upload_expiry_hours)
+        db.commit()
     return upload_dto(db, row)
 
 

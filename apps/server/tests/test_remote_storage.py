@@ -1,8 +1,11 @@
 # ruff: noqa: F811 -- imported pytest fixtures
+import base64
 import datetime as dt
+import io
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from sqlalchemy.orm import Session
 from test_management import mp4, parent  # noqa: F401
 from test_tv_playback import client  # noqa: F401
@@ -13,6 +16,7 @@ from mollytime_server.media_worker import run_once
 from mollytime_server.models import MediaFile
 from mollytime_server.remote_uploads import expire_uploads
 from mollytime_server.storage import build_storage
+from mollytime_server.upload_metadata import metadata_path
 from mollytime_server.utils.subtitles import webvtt
 
 
@@ -80,15 +84,15 @@ def remote(parent, monkeypatch):
     return parent, fake
 
 
-def start(client, size=10):
+def start(client, size=10, *, kind="video", filename="sample.mp4"):
     response = client.post(
         "/api/manage/uploads",
         json={
             "itemId": "e1",
-            "filename": "sample.mp4",
+            "filename": filename,
             "size": size,
             "fingerprint": "fingerprint",
-            "kind": "video",
+            "kind": kind,
         },
     )
     assert response.status_code == 200
@@ -106,12 +110,12 @@ def test_direct_upload_validation_and_recovery(remote):
     assert client.post(f"/api/manage/uploads/{key}/part-url", json=part).status_code == 422
     part["number"] = 1
     assert client.post(f"/api/manage/uploads/{key}/part-url", json=part).status_code == 200
-    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 409
+    assert client.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 409
     oss.uploaded[obj] = [{"number": 1, "size": 9, "etag": "tag"}]
     assert client.get(f"/api/manage/uploads/{key}/parts").status_code == 409
     oss.uploaded[obj][0]["size"] = 10
-    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 200
-    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert client.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
+    assert client.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
     assert oss.completed == 1
     assert client.post(f"/api/manage/uploads/{key}/cancel").status_code == 409
 
@@ -168,7 +172,8 @@ def test_remote_worker_failure_cleans_disk(remote):
     client, oss = remote
     key, obj = start(client)
     oss.objects[obj] = b"not a mp4!"
-    assert client.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert client.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
+    metadata_path(key).unlink()
     assert run_once()
     assert client.get(f"/api/manage/uploads/{key}").json()["status"] == "failed"
     assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
@@ -218,29 +223,36 @@ def test_webvtt_timing_and_unicode():
 
 
 def test_remote_video_processes_and_preserves_cloud_source(remote, mp4, monkeypatch):
-    import hashlib
+    from unittest.mock import Mock
+
     from mollytime_server import media_worker
 
-    monkeypatch.setattr(media_worker, "extract_cover", lambda *_: b"cover")
+    extract = Mock(side_effect=AssertionError("Must not decode video on the server"))
+    monkeypatch.setattr(media_worker, "extract_cover", extract)
+    image = io.BytesIO()
+    Image.new("RGB", (64, 36), "blue").save(image, "JPEG")
+    cover_data = image.getvalue()
 
     web, oss = remote
+    monkeypatch.setattr(oss, "download", Mock(side_effect=AssertionError("Must not download video")))
     data = mp4
     key, obj = start(web, len(data))
     oss.objects[obj] = data
-    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250, "cover": "data:image/jpeg;base64," + base64.b64encode(cover_data).decode()}).status_code == 200
     assert run_once()
     assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
     with Session(db.get_engine()) as session:
         file = session.get(MediaFile, key)
         assert file.storage == "oss" and file.path == obj
-        assert file.sha256 == hashlib.sha256(data).hexdigest()
+        assert file.sha256 == ""
         assert session.get(MediaOptions, key).retention == "backup"
         cover = session.query(MediaFile).filter(MediaFile.item_id == file.item_id,
                                                 MediaFile.kind == "image").first()
         assert cover is not None and cover.storage == "oss"
-        assert oss.objects[cover.path] == b"cover"
+        assert oss.objects[cover.path] == cover_data
     assert oss.objects[obj] == data
     assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
+    extract.assert_not_called()
     db.init_db()  # additive migration is safe to repeat
     assert web.get("/api/episodes/e1/playback").json()["mediaId"] == key
 
@@ -249,7 +261,8 @@ def test_failed_upload_can_be_discarded(remote):
     web, oss = remote
     key, obj = start(web)
     oss.objects[obj] = b"not a mp4!"
-    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
+    metadata_path(key).unlink()
     assert run_once()
     assert web.post(f"/api/manage/uploads/{key}/cancel").status_code == 200
     assert obj not in oss.objects
@@ -260,7 +273,7 @@ def test_remote_completion_recovers_after_database_interruption(remote):
     key, obj = start(web)
     # OSS has completed, but the original request never committed task creation.
     oss.objects[obj] = b"x" * 10
-    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
     assert oss.completed == 0
     assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "processing"
 
@@ -295,3 +308,89 @@ def test_cross_family_cannot_sign_or_cancel_upload(remote):
         == 404
     )
     assert web.post(f"/api/manage/uploads/{key}/cancel").status_code == 404
+
+
+@pytest.mark.parametrize("metadata", [None, {}, {"runtimeMs": 0}, {"runtimeMs": -1},
+                                     {"runtimeMs": True}, {"runtimeMs": "1250"},
+                                     {"runtimeMs": 2**63},
+                                     {"runtimeMs": 1250, "cover": "not an image"},
+                                     {"runtimeMs": 1250, "cover": "x" * 350001}])
+def test_remote_completion_rejects_missing_or_invalid_browser_metadata(remote, metadata):
+    web, oss = remote
+    key, obj = start(web)
+    oss.objects[obj] = b"x" * 10
+    result = web.post(f"/api/manage/uploads/{key}/complete", json=metadata)
+    assert result.status_code == 422
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "uploading"
+    assert oss.completed == 0
+
+
+def test_browser_video_without_cover_avoids_all_server_video_processing(remote, monkeypatch):
+    from unittest.mock import Mock
+
+    from mollytime_server import media_worker
+    web, oss = remote
+    forbidden = Mock(side_effect=AssertionError("Video processing belongs to the browser"))
+    monkeypatch.setattr(oss, "download", forbidden)
+    monkeypatch.setattr(media_worker, "inspect_video", forbidden)
+    monkeypatch.setattr(media_worker, "extract_cover", forbidden)
+    monkeypatch.setattr(media_worker.shutil, "disk_usage", forbidden)
+    key, obj = start(web)
+    oss.objects[obj] = b"x" * 10
+    assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    forbidden.assert_not_called()
+    assert not metadata_path(key).exists()
+    with Session(db.get_engine()) as session:
+        assert session.query(MediaFile).filter_by(item_id="e1", kind="image").first() is None
+    info = web.get("/api/episodes/e1/playback").json()
+    assert info["mediaId"] == info["version"] == key
+    assert info["sha256"] == ""
+
+
+def test_browser_metadata_is_kept_for_retry_and_cleared_after_success(remote, monkeypatch):
+    from mollytime_server.management_models import MediaTask
+    web, oss = remote
+    key, obj = start(web)
+    oss.objects[obj] = b"x" * 10
+    assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
+    size = oss.size
+    def offline(*args):
+        raise OSError("OSS unavailable")
+    monkeypatch.setattr(oss, "size", offline)
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "failed"
+    assert metadata_path(key).exists()
+    monkeypatch.setattr(oss, "size", size)
+    with Session(db.get_engine()) as session:
+        task_id = session.query(MediaTask).filter_by(upload_id=key).one().id
+    assert web.post(f"/api/manage/tasks/{task_id}/retry").status_code == 200
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    assert not metadata_path(key).exists()
+
+
+@pytest.mark.parametrize("kind,filename", [("image", "cover.jpg"), ("subtitle", "en.srt")])
+def test_small_remote_files_keep_server_validation(remote, kind, filename):
+    import hashlib
+    web, oss = remote
+    output = io.BytesIO()
+    Image.new("RGB", (64, 36), "blue").save(output, "JPEG")
+    content = output.getvalue() if kind == "image" else b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
+    key, obj = start(web, len(content), kind=kind, filename=filename)
+    oss.objects[obj] = content
+    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    with Session(db.get_engine()) as session:
+        assert session.get(MediaFile, key).sha256 == hashlib.sha256(content).hexdigest()
+
+
+def test_cancel_removes_metadata_left_by_incomplete_completion(remote):
+    web, _ = remote
+    key, _ = start(web)
+    assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 409
+    assert metadata_path(key).exists()
+    assert web.post(f"/api/manage/uploads/{key}/cancel").status_code == 200
+    assert not metadata_path(key).exists()

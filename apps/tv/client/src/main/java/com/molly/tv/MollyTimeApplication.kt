@@ -47,7 +47,7 @@ class MollyTimeApplication : Application() {
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         handler.postDelayed(object : Runnable {
             override fun run() {
-                io.execute { runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() }; runCatching { media.poll() } }
+                io.execute { runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() } }
                 handler.postDelayed(this, 60000)
             }
         }, 1000)

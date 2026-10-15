@@ -160,7 +160,7 @@ def test_real_alternate_codecs_retry_legacy_failure_without_transcoding(remote, 
     else:
         key, obj = start(web, len(data))
         oss.objects[obj] = data
-        assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
+        assert web.post(f"/api/manage/uploads/{key}/complete", json={"runtimeMs": 1250}).status_code == 200
     # Model an existing upload rejected by the old codec whitelist.
     with Session(db.get_engine()) as session:
         upload = session.get(UploadSession, key)
@@ -176,7 +176,8 @@ def test_real_alternate_codecs_retry_legacy_failure_without_transcoding(remote, 
     with Session(db.get_engine()) as session:
         file = session.get(MediaFile, key)
         assert file.storage == backend and file.mime == "video/mp4"
-        assert file.size_bytes == len(data) and file.sha256 == hashlib.sha256(data).hexdigest()
+        assert file.size_bytes == len(data)
+        assert file.sha256 == (hashlib.sha256(data).hexdigest() if backend == "local" else "")
         assert session.get(Item, "e1").runtime_ticks >= 10_000_000
         if backend == "local":
             assert (config.get_settings().resolved_media_dir() / file.path).read_bytes() == data

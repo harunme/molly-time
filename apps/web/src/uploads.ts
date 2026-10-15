@@ -2,12 +2,13 @@ import SparkMD5 from 'spark-md5';
 import { api, type Upload } from './api';
 import { sha256Blob as sha } from './file-hash';
 import { getUploadLimits, validateUploadSize } from './upload-limits';
+import { prepareVideo } from './video-metadata';
 
 const files = new Map<string, File>();
 const paused = new Set<string>();
 const waiting = new Set<string>();
 const running = new Set<string>();
-export const live = new Map<string, { offset: number; error: string; paused: boolean }>();
+export const live = new Map<string, { offset: number; error: string; paused: boolean; preparing?: boolean }>();
 let active = 0;
 function changed() { window.dispatchEvent(new Event('mollytime:uploads')); }
 async function fingerprint(file: File) {
@@ -50,6 +51,14 @@ function pump() {
 async function transfer(id: string) {
   const file = files.get(id)!;
   let row = await api<Upload>(`/uploads/${id}`);
+  if (row.kind === 'video') {
+    live.set(id, { offset: row.offset, error: '', paused: paused.has(id), preparing: true }); changed();
+  }
+  const metadata = row.kind === 'video' ? await prepareVideo(file).finally(() => {
+    const state = live.get(id);
+    if (state) { live.set(id, { ...state, preparing: false }); changed(); }
+  }) : undefined;
+  if (paused.has(id)) return;
   if (row.transport === 'oss') {
     const { parts, partSize } = await api<{ parts: { number: number; size: number }[]; partSize: number }>(`/uploads/${id}/parts`);
     const existing = new Set(parts.map((p) => p.number));
@@ -69,7 +78,7 @@ async function transfer(id: string) {
       offset += chunk.size;
       live.set(id, { offset, error: '', paused: paused.has(id) }); changed();
     }
-    if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST'); files.delete(id); live.delete(id); }
+    if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
     return;
   }
   while (row.offset < file.size && !paused.has(id)) {
@@ -83,5 +92,5 @@ async function transfer(id: string) {
     row = result!;
     live.set(id, { offset: row.offset, error: '', paused: false }); changed();
   }
-  if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST'); files.delete(id); live.delete(id); }
+  if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
 }
