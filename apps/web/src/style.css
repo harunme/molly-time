@@ -1009,11 +1009,20 @@ td small {
 .overview-playback-device > span:last-child { @apply shrink-0 text-xs; }
 
 /* Compact statistics and daily bars, following Pulse's native usage panel. */
-.watch-history-dialog { --watch-accent: #007aff; @apply max-w-[440px] gap-0; max-height: 90dvh; border: 1px solid rgb(255 255 255 / .8); border-radius: 20px; background: rgb(248 248 250 / .95); backdrop-filter: blur(24px); box-shadow: 0 24px 80px rgb(0 0 0 / .2), 0 2px 8px rgb(0 0 0 / .08); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+.watch-history-dialog { --watch-accent: #007aff; @apply max-w-[440px] gap-0; max-height: 90dvh; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid rgb(255 255 255 / .8); border-radius: 20px; background: rgb(248 248 250 / .95); backdrop-filter: blur(24px); box-shadow: 0 24px 80px rgb(0 0 0 / .2), 0 2px 8px rgb(0 0 0 / .08); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
 .watch-history-dialog [data-slot="dialog-header"] { @apply gap-1 px-5 pt-5 pr-12 pb-4; }
 .watch-history-dialog [data-slot="dialog-title"] { @apply text-xl font-semibold tracking-tight; }
 .watch-history-dialog [data-slot="dialog-description"] { @apply text-xs; color: #8b8b90; }
-.watch-history-body { @apply min-w-0 px-5 pb-3; }
+.watch-history-body {
+  @apply min-h-0 min-w-0 overflow-y-auto px-5 pb-3;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c6c6cd transparent;
+}
+.watch-history-body::-webkit-scrollbar { width: 6px; }
+.watch-history-body::-webkit-scrollbar-track { background: transparent; margin-block: 8px; }
+.watch-history-body::-webkit-scrollbar-thumb { background: #c6c6cd; border-radius: 999px; }
+.watch-history-body::-webkit-scrollbar-thumb:hover { background: #a5a5ae; }
 .watch-history-stats { @apply m-0 grid grid-cols-2 gap-x-4 gap-y-5 border-t border-border pt-4; }
 .watch-history-stats dt { @apply mb-1 text-sm; color: #808087; }
 .watch-history-stats dd { @apply m-0 min-w-0; }
