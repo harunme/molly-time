@@ -5,7 +5,7 @@ import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatia
 import { PlaybackSettings } from './playback-settings';
 import { ApiError, call, request, type Capabilities, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
 import { appendItems, appendRow, catalogRequest, configureCatalog, loadHome, loadPlaylist, readPlaybackReturn, updateHomeProgress, updatePlaylistProgress } from './catalog';
-import { finishScrolls, FocusButton, FocusRegion } from './focus';
+import { finishScrolls, FocusButton, FocusRegion, isFirstGridRow } from './focus';
 import { CatalogCard, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf } from './content';
 import { PairingPanel } from './pairing';
 import './style.css';
@@ -403,8 +403,7 @@ function App() {
   const cardArrow = (firstRow: boolean) => (direction: string) => {
     if (direction === 'up' && firstRow) {
       const current = document.querySelector<HTMLElement>(`[data-focus="${getCurrentFocusKey()}"]`);
-      const first = current?.closest('.episode-grid')?.querySelector<HTMLElement>('.poster');
-      if (first && current!.offsetTop !== first.offsetTop) return true;
+      if (current?.closest('.episode-grid') && !isFirstGridRow(current)) return true;
       return false;
     }
     return true;

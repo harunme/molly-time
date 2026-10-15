@@ -33,6 +33,17 @@ function getNavigation(root: HTMLElement): Navigation {
   return value;
 }
 
+export function isFirstGridRow(node: HTMLElement) {
+  const grid = node.closest<HTMLElement>('.episode-grid');
+  if (!grid) return false;
+  // Virtual grids may have unmounted all earlier rows. Use logical keys rather
+  // than the first mounted card or its position among the remaining buttons.
+  if (grid.dataset.firstRowKeys) return (JSON.parse(grid.dataset.firstRowKeys) as string[]).includes(node.dataset.focus ?? '');
+  const { indices, columns } = getNavigation(grid);
+  const index = indices.get(node as HTMLButtonElement);
+  return index !== undefined && index < columns;
+}
+
 function restoreContainerFocus(event: FocusEvent<HTMLDivElement>) {
   const target = event.target as HTMLElement;
   if (document.activeElement !== target || !target.matches('[data-focus-region], .shelf, .rail-track, .rail-content, .episode-grid')) return;
@@ -119,6 +130,10 @@ export function revealCard(node: HTMLElement) {
   const viewport = node.closest<HTMLElement>('.shelves-scroll');
   if (viewport && node.closest('.topbar')) glide(viewport, 0, 0);
   if (shelf && viewport) {
+    if (shelf === viewport.querySelector('.shelf') && isFirstGridRow(node)) {
+      glide(viewport, 0, 0);
+      return;
+    }
     let top = shelf.offsetTop, bottom = top + shelf.offsetHeight;
     if (node.closest('.episode-grid')) {
       top = 0;
@@ -175,5 +190,8 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
     onFocus: () => { if (ref.current) revealCard(ref.current); onFocus?.(); } });
   return <button type="button" ref={ref} data-focus={focusKey} aria-label={ariaLabel} aria-pressed={selected}
     className={`${className} ${focused ? 'focused' : ''}`} disabled={disabled}
+    onKeyDown={(event) => {
+      if (event.key.startsWith('Arrow') && event.currentTarget.closest('.episode-grid')) event.preventDefault();
+    }}
     onFocus={() => { if (getCurrentFocusKey() !== focusKey) focusSelf(); }} onClick={onClick}>{children}</button>;
 }

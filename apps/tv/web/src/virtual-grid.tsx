@@ -46,6 +46,7 @@ export function VirtualGrid({ children, focusKey, initialFocusKey }: { children:
   }
   if (previous < totalRows - 1) rendered.push(<div key="space-end" aria-hidden="true" style={{ gridColumn: '1 / -1', height: (totalRows - previous - 1) * stride - gap }} />);
   return <div ref={node} className="episode-grid virtual-grid" data-grid={focusKey} data-total-items={items.length}
+    data-first-row-keys={JSON.stringify(keys.slice(0, columns))}
     onFocusCapture={(event) => {
       const key = (event.target as HTMLElement).closest<HTMLElement>('button[data-focus]')?.dataset.focus;
       const index = keys.indexOf(key);
