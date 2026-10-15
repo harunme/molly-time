@@ -552,3 +552,91 @@ def test_cover_replacement_changes_image_reference(parent):
         assert parent.get(url).status_code == 200
         versions.append(url)
     assert versions[0] != versions[1]
+
+
+def test_watch_chart_device_segments_cover_full_range_without_pagination(parent):
+    from mollytime_server.management_models import Device
+
+    with Session(db.get_engine()) as session:
+        session.add_all([
+            Device(id="chart-a", family_id="f1", user_id="u1", name="客厅电视"),
+            Device(id="chart-b", family_id="f1", user_id="u1", name="卧室电视", revoked=True),
+        ])
+        session.flush()
+        for key, device, family, purpose in [
+            ("a", "chart-a", "f1", "family_watch"),
+            ("b", "chart-b", "f1", "family_watch"),
+            ("legacy", None, "f1", "family_watch"),
+            ("preview", None, "f1", "parent_preview"),
+            ("other", None, "f2", "family_watch"),
+        ]:
+            session.add(WatchSession(id=f"chart-{key}", family_id=family, user_id="u1",
+                item_id="e1", item_name="Story", device_id=device, purpose=purpose,
+                started_at=dt.datetime(2026, 10, 10, 15, 59, 59, 500000), last_seq=0))
+            session.flush()
+            session.add(WatchInterval(session_id=f"chart-{key}", seq=0,
+                start_ms=0, end_ms=2000, played_ms=2000, position_ms=2000))
+        session.commit()
+    path = "/api/manage/reports/watch-time?start=2026-10-10&end=2026-10-11&pageSize=1"
+    report = parent.get(path).json()
+    assert report["totalPlayedMs"] == 6000
+    assert len(report["sessions"]) == 1
+    assert report["devices"] == [
+        {"id": None, "name": "旧设备身份"},
+        {"id": "chart-a", "name": "客厅电视"},
+        {"id": "chart-b", "name": "卧室电视"},
+    ]
+    for day, value in zip(report["days"], [500, 1500], strict=True):
+        assert day["playedMs"] == value * 3
+        assert {part["deviceId"]: part["playedMs"] for part in day["devices"]} == {
+            None: value, "chart-a": value, "chart-b": value,
+        }
+    report = parent.get(path.replace("start=2026-10-10", "start=2026-10-11")).json()
+    assert sum(hour["playedMs"] for hour in report["hours"]) == 4500
+    assert report["hours"][0]["playedMs"] == 4500
+    for hour in report["hours"]:
+        assert sum(part["playedMs"] for part in hour["devices"]) == hour["playedMs"]
+
+
+def test_watch_report_device_filter_is_family_scoped_and_filters_all_totals(parent):
+    from mollytime_server.management_models import Device
+
+    with Session(db.get_engine()) as session:
+        session.add_all([
+            Device(id="filter-a", family_id="f1", user_id="u1", name="客厅"),
+            Device(id="filter-b", family_id="f1", user_id="u1", name="卧室", revoked=True),
+            Device(id="filter-other", family_id="f2", user_id="u1", name="其他家庭"),
+        ])
+        session.flush()
+        for index, (device, family) in enumerate([
+            ("filter-a", "f1"), ("filter-a", "f1"), ("filter-b", "f1"),
+            (None, "f1"), ("filter-other", "f2"),
+        ]):
+            session.add(WatchSession(id=f"filtered-{index}", family_id=family, user_id="u1",
+                item_id="e1", item_name="Story", device_id=device, purpose="family_watch",
+                last_reported_at=dt.datetime(2026, 10, 11),
+                started_at=dt.datetime(2026, 10, 10, 15, 59, 59, 500000), last_seq=0))
+            session.flush()
+            session.add(WatchInterval(session_id=f"filtered-{index}", seq=0,
+                start_ms=0, end_ms=2000, played_ms=2000, position_ms=2000))
+        session.commit()
+    path = "/api/manage/reports/watch-time?start=2026-10-11&end=2026-10-11&pageSize=1"
+    for query, expected, session_total in [
+        ("&deviceId=filter-a", 3000, 2),
+        ("&deviceId=filter-b", 1500, 1),
+        ("&unassignedDevice=true", 1500, 1),
+        ("&deviceId=filter-other", 0, 0),
+    ]:
+        report = parent.get(path + query).json()
+        assert report["totalPlayedMs"] == expected
+        assert report["sessionTotal"] == session_total
+        assert len(report["sessions"]) == min(1, session_total)
+        assert sum(hour["playedMs"] for hour in report["hours"]) == expected
+        assert sum(content["playedMs"] for content in report["contents"]) == expected
+        if session_total:
+            assert report["statisticsSince"] and report["lastSync"]
+        else:
+            assert report["statisticsSince"] is None and report["lastSync"] is None
+    second = parent.get(path + "&deviceId=filter-a&sessionPage=2").json()
+    assert second["totalPlayedMs"] == 3000 and len(second["sessions"]) == 1
+    assert parent.get(path + "&deviceId=filter-a&unassignedDevice=true").status_code == 422

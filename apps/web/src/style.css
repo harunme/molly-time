@@ -1030,16 +1030,21 @@ td small {
 .watch-history-stats dd > span { @apply mt-0.5 block text-xs; color: #96969b; }
 .watch-history-trend { @apply mt-4 mb-4; }
 .watch-history-bars { @apply flex h-14 items-end gap-[3px]; }
-.watch-history-bars button { @apply flex h-full min-w-0 flex-1 cursor-pointer items-end rounded-sm border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring; }
-.watch-history-bars button span { @apply block w-full; border-radius: 2px; background: #dedee2; }
-.watch-history-bars button[data-active="true"] span { background: var(--watch-accent); }
-.watch-history-bars button:hover span, .watch-history-bars button[aria-pressed="true"] span { background: #0056c5; }
+.watch-history-bars > div { @apply relative flex h-full min-w-0 flex-1 items-end; }
 .watch-history-trend p { @apply mt-2 text-xs leading-5; color: #929298; }
 .watch-history-hourly { @apply mt-4 mb-3; }
 .watch-history-hourly-bars { @apply flex h-14 items-end gap-[3px]; }
-.watch-history-hourly-bars > span { @apply flex h-full min-w-0 flex-1 items-end; }
-.watch-history-hourly-bars > span > span { @apply block w-full rounded-sm; background: #dedee2; }
-.watch-history-hourly-bars > span[data-active="true"] > span { background: var(--watch-accent); }
+.watch-history-hourly-bars > div { @apply flex h-full min-w-0 flex-1 items-end; }
+.watch-history-stack { @apply flex w-full flex-col-reverse overflow-hidden rounded-sm; background: #dedee2; }
+[data-active="true"] > .watch-history-stack { min-height: 1px; background: var(--watch-accent); }
+.watch-history-stack > button { @apply block w-full shrink-0 cursor-pointer border-0 p-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring; }
+.watch-history-stack > button:hover { filter: brightness(.85); }
+.watch-history-empty-bar { @apply absolute inset-0 cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring; }
+.watch-history-device-legend { @apply mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground; }
+.watch-history-device-legend > button { @apply inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm border-0 bg-transparent p-0 text-inherit outline-none focus-visible:ring-2 focus-visible:ring-focus-ring; overflow-wrap: anywhere; }
+.watch-history-device-legend > button[aria-pressed="true"] { @apply font-semibold text-foreground underline underline-offset-4; }
+.watch-history-device-legend i { @apply size-2 shrink-0 rounded-sm; }
+.watch-history-chart-detail { @apply mt-2 text-xs leading-5 text-muted-foreground; }
 .watch-history-hourly-labels { @apply mt-2 flex justify-between text-[11px] text-muted-foreground; }
 .watch-history-scope { @apply flex min-h-9 items-center justify-between gap-2 text-xs text-muted-foreground; }
 .watch-history-scope strong { @apply font-semibold text-foreground; }

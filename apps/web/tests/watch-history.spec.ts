@@ -80,3 +80,66 @@ test('legacy watch URL redirects and failed reports can be retried', async ({ pa
   await dialog.getByRole('button', { name: '重试' }).click();
   await expect(dialog.locator('.watch-history-stats')).toBeVisible();
 });
+
+for (const width of [390, 1440]) {
+  test(`device stacks filter records and reset pagination at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/manage/reports/watch-time?*', async (route) => {
+      const data = await (await route.fetch()).json();
+      const params = new URL(route.request().url()).searchParams;
+      const selected = params.get('deviceId');
+      const deviceName = selected === 'bedroom' ? '卧室电视' : '客厅电视';
+      const allParts = [{ deviceId: 'living-room', playedMs: 120000 }, { deviceId: 'bedroom', playedMs: 60000 }];
+      const parts = selected ? allParts.filter((part) => part.deviceId === selected) : allParts;
+      const playedMs = parts.reduce((sum, part) => sum + part.playedMs, 0);
+      await route.fulfill({ json: { ...data,
+        devices: [{ id: 'living-room', name: '客厅电视' }, { id: 'bedroom', name: '卧室电视' }],
+        days: data.days.map((day: { date: string }) => ({ ...day, playedMs, devices: parts })),
+        hours: data.hours.map((hour: { hour: number }) => ({ ...hour, playedMs: hour.hour === 8 ? playedMs : 0, devices: hour.hour === 8 ? parts : [] })),
+        totalPlayedMs: data.days.length * playedMs, episodeCount: 1,
+        sessions: [{ id: `session-${selected ?? 'all'}`, name: `${selected ?? 'all'}的节目`, deviceName, startedAt: '2026-10-10T00:00:00Z', playedMs, ended: true }],
+        sessionTotal: 2, pageSize: 1,
+        contents: [{ id: selected ?? 'all', name: `${selected ?? 'all'}的内容`, playedMs }], contentTotal: 1,
+      } });
+    });
+    await login(page);
+    await page.getByRole('button', { name: '查看明细', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '观看记录', exact: true });
+    const bars = dialog.locator('.watch-history-bars > div');
+    await expect(bars).toHaveCount(31);
+    const segments = bars.first().locator('.watch-history-stack > button');
+    await expect(segments).toHaveCount(2);
+    await segments.first().focus();
+    await expect(dialog.locator('.watch-history-chart-detail')).toContainText('客厅电视 2 分钟 · 卧室电视 1 分钟');
+    const colors = await segments.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+    expect(colors[0]).not.toBe(colors[1]);
+    const date = (await bars.first().getAttribute('aria-label'))!.slice(0, 10);
+    const request = page.waitForRequest((request) => request.url().includes('/reports/watch-time?') && new URL(request.url()).searchParams.get('deviceId') === 'living-room');
+    await segments.first().click();
+    const selectedParams = new URL((await request).url()).searchParams;
+    expect(selectedParams.get('start')).toBe(date);
+    expect(selectedParams.get('end')).toBe(date);
+    await expect(dialog.locator('.watch-history-scope')).toContainText('客厅电视');
+    await expect(dialog.locator('.watch-history-list').first()).toContainText('living-room的节目');
+    await expect(dialog.locator('.watch-history-stats')).toContainText('2 分钟');
+    const hours = dialog.locator('.watch-history-hourly-bars > div');
+    await expect(hours).toHaveCount(24);
+    expect(await hours.nth(8).locator('.watch-history-stack > button').evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor))).toEqual(colors);
+    await dialog.getByRole('navigation', { name: '播放明细分页' }).getByRole('button', { name: '播放明细分页：下一页', exact: true }).click();
+    await expect(dialog.getByRole('navigation', { name: '播放明细分页' })).toContainText('2');
+    const switchRequest = page.waitForRequest((request) => request.url().includes('/reports/watch-time?') && new URL(request.url()).searchParams.get('deviceId') === 'bedroom');
+    await hours.nth(8).getByRole('button', { name: '卧室电视 · 1 分钟，查看该设备记录', exact: true }).click();
+    expect(new URL((await switchRequest).url()).searchParams.get('sessionPage')).toBe('1');
+    await expect(dialog.locator('.watch-history-scope')).toContainText('卧室电视');
+    await expect(dialog.locator('.watch-history-list').first()).toContainText('bedroom的节目');
+    await expect(dialog.locator('.watch-history-list').first()).not.toContainText('living-room的节目');
+    await dialog.getByText('内容分布', { exact: true }).click();
+    await expect(dialog.locator('.watch-history-list').last()).toContainText('bedroom的内容');
+    expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`device-filter-${width}.png`) });
+    await dialog.getByRole('button', { name: '全部设备', exact: true }).click();
+    await expect(dialog.locator('.watch-history-list').first()).toContainText('all的节目');
+    await expect(dialog.locator('.watch-history-scope')).not.toContainText('卧室电视');
+    await expect(dialog.getByRole('button', { name: '全部设备', exact: true })).toHaveCount(0);
+  });
+}

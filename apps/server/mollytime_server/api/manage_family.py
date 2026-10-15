@@ -180,12 +180,16 @@ def password(body: PasswordBody, user: Parent, db: DbSession):
 @router.get("/reports/watch-time")
 def report(
     user: Parent, db: DbSession, start: dt.date, end: dt.date, childId: str | None = None,
+    deviceId: str | None = Query(default=None, min_length=1),
+    unassignedDevice: bool = False,
     sessionPage: int = Query(default=1, ge=1),
     contentPage: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=100),
 ):
     if childId:
         owned(db, ChildProfile, childId, user.family_id)
+    if deviceId is not None and unassignedDevice:
+        raise HTTPException(422, "请只指定一种设备范围")
     if end < start or (end - start).days > 365:
         raise HTTPException(422, "请查询不超过一年的日期范围")
     config = db.get(FamilySettings, user.family_id)
@@ -206,8 +210,15 @@ def report(
     )
     if childId:
         query = query.filter(WatchSession.child_id == childId)
+    if deviceId is not None:
+        query = query.filter(WatchSession.device_id == deviceId)
+    elif unassignedDevice:
+        query = query.filter(WatchSession.device_id.is_(None))
     days = {(start + dt.timedelta(days=i)).isoformat(): 0 for i in range((end - start).days + 1)}
     hours = [0] * 24 if start == end else []
+    day_devices = {day: {} for day in days}
+    hour_devices = [{} for _ in hours]
+    device_ids = set()
     contents, sessions, episodes, catalog = {}, {}, set(), {}
     # Summary totals cover the whole range; stream intervals instead of loading
     # them all at once. Only paged details are sent to the browser.
@@ -219,6 +230,7 @@ def report(
         if b <= a:
             continue
         played = round((b - a).total_seconds() * 1000)
+        device_ids.add(watch.device_id)
         episodes.add(watch.item_id)
         if watch.item_id not in catalog:
             episode = db.get(Item, watch.item_id)
@@ -245,8 +257,15 @@ def report(
                     microseconds=-local.microsecond,
                 )
                 edge = min(edge, next_hour)
-                hours[local.hour] += round((edge - a).total_seconds() * 1000)
-            days[local.date().isoformat()] += round((edge - a).total_seconds() * 1000)
+                part = round((edge - a).total_seconds() * 1000)
+                hours[local.hour] += part
+                bucket = hour_devices[local.hour]
+                bucket[watch.device_id] = bucket.get(watch.device_id, 0) + part
+            part = round((edge - a).total_seconds() * 1000)
+            day = local.date().isoformat()
+            days[day] += part
+            bucket = day_devices[day]
+            bucket[watch.device_id] = bucket.get(watch.device_id, 0) + part
             a = edge
     started_query = db.query(WatchSession).filter(
         WatchSession.family_id == user.family_id, viewing
@@ -258,6 +277,10 @@ def report(
     )
     if childId:
         started_query = started_query.filter(WatchSession.child_id == childId)
+    if deviceId is not None:
+        started_query = started_query.filter(WatchSession.device_id == deviceId)
+    elif unassignedDevice:
+        started_query = started_query.filter(WatchSession.device_id.is_(None))
     first = started_query.order_by(WatchSession.started_at).first()
     latest = started_query.order_by(WatchSession.last_reported_at.desc()).first()
     selected = sorted(sessions.values(), key=lambda row: (row["startedAt"], row["id"]), reverse=True)[
@@ -279,7 +302,17 @@ def report(
             "deviceName": device.name if device else "旧设备身份",
             "positionMs": positions.get(watch.id, 0), "ended": watch.ended,
             "lastSync": aware(watch.last_reported_at).isoformat() if watch.last_reported_at else None})
+    chart_devices = {row.id: row.name for row in db.query(Device).filter(
+        Device.family_id == user.family_id, Device.id.in_(device_ids - {None}),
+    ).all()}
+
+    def segments(bucket):
+        return [{"deviceId": key, "playedMs": bucket[key]}
+                for key in sorted(bucket, key=lambda key: key or "")]
+
     return {
+        "devices": [{"id": key, "name": chart_devices.get(key, "旧设备身份")}
+                    for key in sorted(device_ids, key=lambda key: key or "")],
         "timezone": str(zone),
         "totalPlayedMs": sum(days.values()),
         "episodeCount": len(episodes),
@@ -287,8 +320,10 @@ def report(
         "lastSync": aware(latest.last_reported_at).isoformat()
         if latest and latest.last_reported_at
         else None,
-        "days": [{"date": key, "playedMs": value} for key, value in days.items()],
-        "hours": [{"hour": hour, "playedMs": played} for hour, played in enumerate(hours)],
+        "days": [{"date": key, "playedMs": value, "devices": segments(day_devices[key])}
+                 for key, value in days.items()],
+        "hours": [{"hour": hour, "playedMs": played, "devices": segments(hour_devices[hour])}
+                  for hour, played in enumerate(hours)],
         "contentTotal": len(contents),
         "sessionTotal": len(sessions),
         "pageSize": pageSize,
