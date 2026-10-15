@@ -115,6 +115,9 @@
 .overview-metric-label svg { @apply text-icon-subtle; }
 .overview-metric-value { @apply mt-3 block whitespace-nowrap text-metric leading-9 font-semibold tracking-tight tabular-nums; }
 .overview-metric-unit { @apply text-base font-medium tracking-normal; }
+.overview-skeleton { @apply block rounded-md bg-muted motion-safe:animate-pulse; }
+.overview-metric-skeleton { @apply h-9 w-28 max-w-full; }
+.overview-heatmap-skeleton { @apply h-44 w-full; }
 .overview-metric-bottom { @apply mt-auto flex min-w-0 items-center justify-between gap-1 pt-3 text-footnote text-muted-foreground; }
 .overview-metric-bottom > span { @apply min-w-0 leading-5; }
 .overview-metric-bottom button { @apply -mr-2 shrink-0; }

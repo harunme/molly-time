@@ -105,3 +105,38 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
   await page.screenshot({ path: testInfo.outputPath('overview-watch-mobile.png'), fullPage: true, animations: 'disabled' });
   expect(errors).toEqual([]);
 });
+
+test('overview keeps loading inside widgets and clears it after success or failure', async ({ page }) => {
+  let releaseOverview!: () => void;
+  const pending = new Promise<void>((resolve) => { releaseOverview = resolve; });
+  await page.route('**/api/manage/overview', async (route) => {
+    await pending;
+    await route.continue();
+  });
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  const metrics = page.locator('.overview-metrics');
+  const heatmap = page.locator('.overview-heatmap');
+  await expect(metrics).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByRole('status').filter({ hasText: '正在加载概览' })).toHaveClass('sr-only');
+  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-skeleton')).toBeVisible();
+  await expect(heatmap.locator('.overview-heatmap-skeleton')).toBeVisible();
+  await expect(heatmap.getByRole('button', { name: '查看明细' })).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  releaseOverview();
+  await expect(metrics).toHaveAttribute('aria-busy', 'false');
+  await expect(heatmap.locator('.overview-heatmap-skeleton')).toHaveCount(0);
+  await expect(heatmap.getByRole('button', { name: '查看明细' })).toBeEnabled();
+  await expect(page.locator('.overview-heatmap-day')).toHaveCount(365);
+
+  await page.unroute('**/api/manage/overview');
+  await page.route('**/api/manage/overview', (route) => route.fulfill({ status: 503, json: { detail: '概览服务暂时不可用' } }));
+  await page.reload();
+  await expect(page.getByRole('alert').filter({ hasText: '概览服务暂时不可用' })).toBeVisible();
+  await expect(metrics).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('.overview-skeleton')).toHaveCount(0);
+  await expect(heatmap).toContainText('观看热力图加载失败');
+});

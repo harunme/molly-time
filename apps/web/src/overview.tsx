@@ -114,6 +114,7 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
   const [data, setData] = useState<OverviewData>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const loading = !data && busy;
   const reminders = useReminderData(true);
   const onlineCount = reminders.devices?.filter((device) => device.online).length ?? data?.devices.online;
   const uploads = usePagedData<Upload>("/uploads", 0, 5);
@@ -162,20 +163,23 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
       <div><h1>概览</h1><p>{familyName}的设备在线状态与观看习惯。</p></div>
     </div>
     {error && <Alert variant="destructive" role="alert" className="banner error"><AlertDescription>{error}</AlertDescription></Alert>}
-    {!data && busy && <p role="status" className="muted">正在加载概览…</p>}
-    <div className="overview-metrics">
+    {loading && <p role="status" className="sr-only">正在加载概览…</p>}
+    <div className="overview-metrics" aria-busy={loading}>
       {metrics.map((metric) => <Card className="overview-metric" key={metric.label}>
         <div className="overview-metric-label"><span>{metric.label}</span><metric.icon className="size-4" /></div>
         <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : ""}`} title={metric.value}>
-          {metric.label === "最喜欢的视频" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
+          {loading && !(metric.label === "在线设备" && onlineCount !== undefined) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "最喜欢的视频" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
         </strong>
         <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => metric.page === "watch" ? openWatch(metric.label === "今日观看时长" ? today : undefined) : navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
         {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
       </Card>)}
     </div>
-    <Card className="overview-panel overview-heatmap" ref={heatmap}>
-      <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
-      {data ? <WatchHeatmap watch={data.watch} onOpen={(date) => openWatch(date, date)} /> : <p className="overview-empty-note">{busy ? "正在加载观看热力图…" : "观看热力图加载失败，请重新进入概览。"}</p>}
+    <Card className="overview-panel overview-heatmap" ref={heatmap} aria-busy={loading}>
+      <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" disabled={!data} onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
+      {data ? <WatchHeatmap watch={data.watch} onOpen={(date) => openWatch(date, date)} /> : loading ? <div className="overview-heatmap-body" aria-hidden="true">
+        <div className="overview-heatmap-summary"><span className="overview-skeleton h-5 w-32" /><span className="overview-skeleton h-5 w-24" /><span className="overview-skeleton h-4 w-48" /></div>
+        <div className="overview-skeleton overview-heatmap-skeleton" />
+      </div> : <p className="overview-empty-note">观看热力图加载失败，请重新进入概览。</p>}
       {data && <p className="overview-watch-note">时区 {data.watch.timezone} · 每格一天 · 不含家长预览</p>}
     </Card>
     <div className="overview-panels">
