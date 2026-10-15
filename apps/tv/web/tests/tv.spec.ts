@@ -522,6 +522,8 @@ test('rail scrolling keeps arrow geometry out of animation frames', async ({ pag
   await expect(rail.locator('.cover img').first()).toBeVisible();
   // Wait for initial arrow measurements before counting layout reads during motion.
   await expect.poll(() => shelf.evaluate((node) => parseFloat((node.querySelector('.rail-shell') as HTMLElement).style.getPropertyValue('--rail-arrow-top')))).toBeGreaterThan(0);
+  // Settle the first-visit entrance before measuring horizontal scrolling.
+  await page.keyboard.press('ArrowUp');
   const bounds = await rail.boundingBox();
   await rail.evaluate((node) => {
     const cover = node.querySelector<HTMLElement>('.cover')!;

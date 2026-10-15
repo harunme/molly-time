@@ -9,6 +9,7 @@ import { finishScrolls, FocusButton, FocusRegion, isFirstGridRow } from './focus
 import { CatalogCard, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf } from './content';
 import { PairingPanel } from './pairing';
 import { useClientUpdate } from './client-update';
+import { useTvMotion } from './motion';
 import './style.css';
 
 init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true,
@@ -73,7 +74,9 @@ function App() {
   const [pageStates, setPageStates] = useState<Record<string, { loading?: boolean; error?: string }>>({});
   const [readyToAppend, setReadyToAppend] = useState(false);
   const pageRequests = useRef(new Set<string>());
+  const motion = useTvMotion(authenticated && !busy && !folder && !overlay && !playing && !error && home.rows.length > 0, overlay);
   const resetOverlay = useCallback((next: Overlay) => {
+    motion.direction.current = overlayPage.current ? 'forward' : 'open';
     overlayHistory.current = [];
     overlayPage.current = next;
     setOverlay(next);
@@ -81,6 +84,7 @@ function App() {
   const openOverlay = useCallback((next: Exclude<Overlay, null>) => {
     if (overlayPage.current === next) return;
     finishScrolls(viewport.current);
+    motion.direction.current = overlayPage.current ? 'forward' : 'open';
     overlayHistory.current.push({ page: overlayPage.current, snapshot: {
       focus: getCurrentFocusKey() || 'content', scroll: viewport.current?.scrollTop ?? 0,
       rails: Object.fromEntries(Array.from(viewport.current?.querySelectorAll<HTMLElement>('[data-rail]') ?? [])
@@ -317,6 +321,7 @@ function App() {
   const closeOverlay = useCallback(() => {
     if (overlay === 're-pair' && busy) return;
     finishScrolls(viewport.current);
+    motion.direction.current = 'back';
     const previous = overlayHistory.current.pop();
     restore.current = previous?.snapshot;
     overlayPage.current = previous?.page ?? null;
@@ -419,7 +424,7 @@ function App() {
   const navigateCard = useCallback((direction: string, firstRow: boolean) => cardArrowRef.current(firstRow)(direction), []);
 
   return <FocusRegion focusKey="screen" className="app">
-    <main className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
+    <main ref={motion.homeRef} className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
       <FocusRegion focusKey="content" className="content-panels shelves-scroll" scrollRef={viewport}>
       <div className="topbar">
         <span className="topbar-brand">MollyTime</span>
@@ -457,25 +462,27 @@ function App() {
     </main>
     {overlay && <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
       <FocusRegion focusKey="overlay" className={`overlay-panel ${overlay === 'pairing' ? 'account-panel' : 'settings-panel'}`} boundary>
-        <h1 id="overlay-title">{overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : overlay === 'client-update' ? '客户端更新' : '电视设置'}</h1>
-        {overlay === 're-pair' ? <div className="re-pair-confirm">
-          <p>重新配对会断开当前家庭媒体库，需要家长再次输入配对码确认。</p>
-          {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
-          <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
-            <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
-        </div> : overlay === 'client-update' ? <div className="client-update-panel">
-          {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
-          <p role="status">{clientUpdate?.message ?? '正在检查更新…'}</p>
-          <p>当前版本 {capabilities?.shellVersion}</p>
-          {clientUpdate?.release && <><p>新版本 {clientUpdate.release.versionName} · {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p></>}
-          {updateActionable && <FocusButton focusKey="client-update-action" className="primary" onClick={() => { void updateClient(); }}>{updateActionLabel}</FocusButton>}
-        </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
-          {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
-          {authenticated && <PlaybackSettings />}
-          {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
-        </div>}
-        {error && <p role="alert" className="error">{error}</p>}
-        {overlay !== 're-pair' && <FocusButton focusKey="close-overlay" className="text-button" onClick={closeOverlay}>{parentOverlay === 'settings' ? '返回设置' : '返回媒体库'}</FocusButton>}
+        <div key={overlay} ref={motion.panelRef} className="overlay-page">
+          <h1 id="overlay-title">{overlay === 'pairing' ? '绑定电视' : overlay === 're-pair' ? '重新配对？' : overlay === 'client-update' ? '客户端更新' : '电视设置'}</h1>
+          {overlay === 're-pair' ? <div className="re-pair-confirm">
+            <p>重新配对会断开当前家庭媒体库，需要家长再次输入配对码确认。</p>
+            {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
+            <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
+              <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
+          </div> : overlay === 'client-update' ? <div className="client-update-panel">
+            {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
+            <p role="status">{clientUpdate?.message ?? '正在检查更新…'}</p>
+            <p>当前版本 {capabilities?.shellVersion}</p>
+            {clientUpdate?.release && <><p>新版本 {clientUpdate.release.versionName} · {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p></>}
+            {updateActionable && <FocusButton focusKey="client-update-action" className="primary" onClick={() => { void updateClient(); }}>{updateActionLabel}</FocusButton>}
+          </div> : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
+            {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <FocusButton focusKey="check-update" className="settings-item" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span><span>›</span></FocusButton>}
+            {authenticated && <PlaybackSettings />}
+            {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
+          </div>}
+          {error && <p role="alert" className="error">{error}</p>}
+          {overlay !== 're-pair' && <FocusButton focusKey="close-overlay" className="text-button" onClick={closeOverlay}>{parentOverlay === 'settings' ? '返回设置' : '返回媒体库'}</FocusButton>}
+        </div>
       </FocusRegion>
     </div>}
   </FocusRegion>;
