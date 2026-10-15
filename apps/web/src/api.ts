@@ -21,34 +21,6 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, extra
   }
   return response.json();
 }
-export function uploadApi<T>(path: string, file: File, progress: (percent: number) => void, signal: AbortSignal): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const abort = () => xhr.abort();
-    const cleanup = () => signal.removeEventListener('abort', abort);
-    if (signal.aborted) { reject(new ApiError('上传已取消', 0)); return; }
-    xhr.open('PUT', '/api/manage' + path);
-    xhr.withCredentials = true;
-    xhr.timeout = 20 * 60 * 1000;
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.setRequestHeader('X-CSRF-Token', csrf);
-    xhr.upload.onprogress = (event) => progress(Math.min(100, Math.floor(event.loaded * 100 / (event.total || file.size))));
-    xhr.onload = () => {
-      cleanup();
-      let data: unknown;
-      try { data = JSON.parse(xhr.responseText); } catch { reject(new ApiError('服务器响应无效，请重新进入客户端版本页确认发布状态', xhr.status)); return; }
-      if (xhr.status < 200 || xhr.status >= 300) {
-        if (xhr.status === 401) window.dispatchEvent(new Event('mollytime:unauthorized'));
-        const detail = (data as { detail?: unknown })?.detail;
-        reject(new ApiError(typeof detail === 'string' ? detail : '安装包上传失败，请重试', xhr.status));
-      } else resolve(data as T);
-    };
-    xhr.onerror = xhr.ontimeout = () => { cleanup(); reject(new ApiError('上传未完成，请重新进入客户端版本页确认发布状态后重试', 0)); };
-    xhr.onabort = () => { cleanup(); reject(new ApiError('上传已取消', 0)); };
-    signal.addEventListener('abort', abort, { once: true });
-    xhr.send(file);
-  });
-}
 export const bytes = (value: number) => value >= 1024**3 ? `${(value / 1024**3).toFixed(1)} GB` : `${(value / 1024**2).toFixed(1)} MB`;
 export const minutes = (value: number) => value < 60000 ? `${Math.round(value / 1000)} 秒` : `${(value / 60000).toFixed(1)} 分钟`;
 export const dateTime = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未同步';

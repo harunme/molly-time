@@ -1,7 +1,6 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Label } from "@/components/ui/label";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,6 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SelectField } from "@/components/ui/select";
 import { api, bytes } from "./api";
-import { ClientReleaseUpload } from "./client-release-upload";
 import { Pagination } from "./pagination";
 
 type Release = {
@@ -32,7 +30,6 @@ const pageSize = 20;
 export function ClientReleases() {
   const [channel, setChannel] = useState("");
   const [page, setPage] = useState(1);
-  const [refresh, setRefresh] = useState(0);
   const [data, setData] = useState<Inventory>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,7 +48,7 @@ export function ClientReleases() {
       .catch((failure) => { if (active) setError(failure instanceof Error ? failure.message : "安装包列表加载失败，请重试"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [channel, page, refresh]);
+  }, [channel, page]);
 
   const download = async (release: Release) => {
     if (downloadActive.current) return;
@@ -76,12 +73,9 @@ export function ClientReleases() {
   };
 
   return <Card className="settings-card client-releases-card">
-    <div className="client-releases-heading">
-      <div><h2>客户端版本</h2><p className="muted">查看电视安装包历史与各渠道当前发布的版本。</p></div>
-    </div>
-    <ClientReleaseUpload published={() => { setChannel(""); setPage(1); setRefresh((value) => value + 1); }} />
+    <h2>客户端版本</h2>
     <div className="client-releases-toolbar">
-      <Label>发布渠道<SelectField aria-label="发布渠道" value={channel} onValueChange={(value) => { setChannel(value); setPage(1); }} options={[({ value: "", label: <> 全部渠道 </> }), ({ value: "com.molly.tv", label: <> 正式版 </> }), ({ value: "com.molly.tv.debug", label: <> Debug 测试版 </> })]} /></Label>
+      <SelectField className="w-48" aria-label="发布渠道" value={channel} onValueChange={(value) => { setChannel(value); setPage(1); }} options={[({ value: "", label: <> 全部渠道 </> }), ({ value: "com.molly.tv", label: <> 正式版 </> }), ({ value: "com.molly.tv.debug", label: <> Debug 测试版 </> })]} />
       {data && <span className="muted">共 {data.total} 个安装包</span>}
     </div>
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}

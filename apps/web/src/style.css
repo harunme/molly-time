@@ -704,18 +704,8 @@ td small {
   @apply mb-0 shrink-0;
 }
 .client-releases-card { max-width: none; min-width: 0; }
-.client-release-upload { margin-bottom: 1.5rem; padding: 1rem; border-radius: var(--radius); }
-.client-release-upload > summary { cursor: pointer; font-weight: 500; }
-.client-release-upload > p { margin: .75rem 0; }
-.client-release-upload fieldset { border: 0; padding: 0; }
-.client-release-upload fieldset > label { display: grid; gap: .5rem; margin: 1rem 0; }
-.client-release-upload-progress { display: grid; gap: .75rem; margin-top: 1rem; }
-.client-release-upload-progress button { justify-self: start; }
-.client-releases-heading, .client-releases-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-.client-releases-heading { margin-bottom: 1.25rem; }
-.client-releases-heading p { margin-top: .5rem; }
+.client-releases-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .client-releases-toolbar { margin-bottom: 1rem; }
-.client-releases-toolbar label { display: grid; gap: .5rem; min-width: 12rem; }
 .family-usage-table { min-width: 760px; }
 .family-usage-table td { vertical-align: top; }
 .family-usage-table small { display: block; margin-top: .35rem; overflow-wrap: anywhere; }
@@ -740,7 +730,7 @@ td small {
   @apply grid h-auto w-full grid-cols-4 justify-start gap-1 rounded-none border-b bg-transparent p-0 sm:flex sm:gap-4;
 }
 .operations-tabs [data-slot="tabs-trigger"] {
-  @apply relative h-12 min-w-0 flex-none whitespace-nowrap rounded-none border-0 bg-transparent px-1 py-3 text-sm font-medium text-muted-foreground shadow-none transition-colors sm:px-4;
+  @apply relative h-12 min-w-0 flex-none cursor-pointer whitespace-nowrap rounded-none border-0 bg-transparent px-1 py-3 text-sm font-medium text-muted-foreground shadow-none transition-colors disabled:cursor-not-allowed sm:px-4;
 }
 .operations-tabs [data-slot="tabs-trigger"]:hover {
   @apply bg-accent text-foreground;

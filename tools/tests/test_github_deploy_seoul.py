@@ -22,6 +22,7 @@ def release_archive():
     names = deploy.common.FILES | {
         "apps/server/mollytime_server/main.py",
         "apps/web/dist/index.html",
+        "apps/web/dist/site/index.html",
         "apps/tv/web/dist/index.html",
         "artifacts/tv-client-plan.json",
     }
