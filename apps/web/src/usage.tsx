@@ -70,7 +70,7 @@ export function OperationsUsage() {
       <Button variant="bordered" asChild><a href={`/api/manage/operations/usage/export?${params}`} download>导出月度 CSV</a></Button>
     </div></div>
     <UsageNotes />
-    <div className="form-grid">
+    <div className="grid w-full max-w-[37rem] grid-cols-1 gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
       <Label>用量月份<MonthPicker aria-label="用量月份" value={month} onValueChange={setMonth} /></Label>
       <Label>搜索家庭或账号<Input placeholder="家庭名称、家庭 ID、邮箱或账号 ID" value={search} onChange={(event) => setSearch(event.target.value)} /></Label>
     </div>
