@@ -177,13 +177,13 @@
 .overview-heatmap-legend { @apply flex items-center gap-1.5; }
 .overview-heatmap-swatch { width: var(--spacing-heatmap-cell); height: var(--spacing-heatmap-cell); }
 .overview-most-played { --watch-accent: #007aff; }
-.overview-ranking { @apply mt-6 min-w-0; }
-.overview-most-played .overview-ranking-bars { @apply h-16 gap-3; }
-.overview-most-played .overview-ranking-bars > div { @apply relative w-10 flex-none justify-center; }
-.overview-ranking-bars .watch-history-stack { @apply w-6 shrink-0; }
-.overview-ranking-count { @apply absolute -top-5 left-0 w-full truncate text-center text-tiny text-muted-foreground tabular-nums; }
-.overview-ranking-labels { @apply mt-2 flex gap-3 text-tiny text-muted-foreground; }
-.overview-ranking-labels > span { @apply w-10 min-w-0 flex-none truncate text-center; }
+.overview-ranking { @apply mt-4 grid min-w-0 gap-3; }
+.overview-ranking-item { @apply grid min-w-0 gap-1.5; }
+.overview-ranking-name { @apply line-clamp-2 text-xs leading-5; overflow-wrap: anywhere; }
+.overview-ranking-measure { @apply flex items-center gap-3; }
+.overview-ranking-track { @apply block h-2 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted; }
+.overview-ranking-bar { @apply block h-full rounded-sm; background: var(--watch-accent); }
+.overview-ranking-count { @apply w-12 shrink-0 text-right text-xs text-muted-foreground tabular-nums; }
 .overview-ranking-skeleton { @apply mt-6 h-20 w-full; }
 @media (prefers-reduced-motion: no-preference) {
   /* Translating this viewport-height container briefly overflows the document. */

@@ -98,9 +98,9 @@ test('overview shows watch durations, video play counts and heatmap intensity on
   await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('8 小时 5 分钟');
   await expect(page.locator('.overview-ranking')).toHaveAttribute('aria-label', /一起认识世界和新的朋友：12 次.*Yum Yum：6 次/);
   await expect(page.locator('.overview-most-played').getByRole('button')).toHaveCount(0);
-  const bars = page.locator('.overview-ranking .watch-history-stack');
-  const heights = await bars.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
-  expect(heights[0]).toBeCloseTo(heights[1] * 2, 0);
+  const bars = page.locator('.overview-ranking-bar');
+  const widths = await bars.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
+  expect(widths[0]).toBeCloseTo(widths[1] * 2, 0);
   const currentDuration = page.locator('.overview-metric').filter({ hasText: '本次观看时长' });
   const currentVideo = page.locator('.overview-metric').filter({ hasText: '正在观看' });
   await expect(currentDuration.locator('.overview-metric-value')).toHaveText('30 分钟');

@@ -99,13 +99,13 @@ function MostPlayedChart({ videos }: { videos: OverviewData["watch"]["mostPlayed
   if (!videos.length) return <p className="overview-empty-note">暂无观看记录</p>;
   const peak = Math.max(1, ...videos.map((video) => video.playCount));
   return <div className="overview-ranking" role="img" aria-label={videos.map((video) => `${video.name}：${video.playCount} 次`).join("；")}>
-    <div className="watch-history-bars overview-ranking-bars">
-      {videos.map((video) => <div key={video.id} data-active="true" title={`${video.name} · 累计播放 ${video.playCount} 次`}>
+    {videos.map((video) => <div className="overview-ranking-item" key={video.id}>
+      <span className="overview-ranking-name" title={video.name}>{video.name}</span>
+      <div className="overview-ranking-measure">
+        <span className="overview-ranking-track"><span className="overview-ranking-bar" style={{ width: `${video.playCount / peak * 100}%` }} /></span>
         <span className="overview-ranking-count">{video.playCount} 次</span>
-        <span className="watch-history-stack" style={{ height: `${video.playCount / peak * 100}%` }} />
-      </div>)}
-    </div>
-    <div className="overview-ranking-labels">{videos.map((video) => <span key={video.id} title={video.name}>{video.name}</span>)}</div>
+      </div>
+    </div>)}
   </div>;
 }
 
