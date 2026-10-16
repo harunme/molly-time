@@ -17,6 +17,7 @@ from .models import MediaFile
 from .share_models import ContentShare, ShareFile
 from .storage import build_storage
 from .storage.local import LocalStorage
+from .transactions import external_io
 from .upload_metadata import metadata_path
 
 PART_SIZE = 8 * 1024**2
@@ -96,26 +97,35 @@ def cleanup_upload_files(db, row, target) -> bool:
     if db.get(MediaFile, row.id) is not None:
         return False
     remote = target is not None and target.backend == "oss"
+    remote_keys = []
     if remote:
         if referenced_upload_object(db, "oss", [target.object_key]):
             return False
-        store = build_storage("oss")
-        store.abort(target.object_key, target.multipart_id)
-        store.delete(target.object_key)
+        remote_keys.append(target.object_key)
         if row.kind == "video":
             cover_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "molly-cover:" + row.id))
             cover_key = f"families/{row.family_id}/media/{cover_id}.jpg"
             if not referenced_upload_object(db, "oss", [cover_key]):
-                store.delete(cover_key)
-    directory = get_settings().data_dir / "uploads"
-    (directory / f"{row.id}.part").unlink(missing_ok=True)
-    metadata_path(row.id).unlink(missing_ok=True)
-    root = get_settings().resolved_media_dir().resolve()
+                remote_keys.append(cover_key)
+    with external_io(db, row, target):
+        root = get_settings().resolved_media_dir().resolve()
     base = f"managed/{row.family_id}/{row.id}"
     suffix = Path(row.filename).suffix.lower()
-    local = LocalStorage(root)
+    local_keys = []
     for key in (base + suffix, base + suffix + ".tmp", base + "-cover.jpg"):
         if not referenced_upload_object(db, "local", [key, str(root / key)]):
+            local_keys.append(key)
+    with external_io(db, row, target):
+        if remote:
+            store = build_storage("oss")
+            store.abort(target.object_key, target.multipart_id)
+            for key in remote_keys:
+                store.delete(key)
+        directory = get_settings().data_dir / "uploads"
+        (directory / f"{row.id}.part").unlink(missing_ok=True)
+        metadata_path(row.id).unlink(missing_ok=True)
+        local = LocalStorage(root)
+        for key in local_keys:
             local.delete(key)
     return True
 
@@ -157,6 +167,7 @@ def expire_uploads():
                     if not cleanup_upload_files(db, row, target):
                         continue
                     if task:
+                        db.add(task)
                         task.status, task.error, task.lease_until = "cancelled", "上传已过期", None
                     row.status, row.error = "cancelled", "上传或失败文件已过期清理，请重新上传"
                     db.commit()

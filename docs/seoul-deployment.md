@@ -30,6 +30,20 @@ old server, then run `tools/migrate_sqlite_to_mysql.py` against an empty MySQL
 database. The script validates SQLite integrity, row counts, and foreign keys.
 Do not copy a live `server.db` file without using SQLite's backup API.
 
+Application startup also upgrades report indexes on existing tables and widens
+media/upload byte counters and watch interval offsets to `BIGINT`. The upgrade
+preserves IDs, values, nullability and database defaults, and is repeatable after
+an interrupted startup. A MySQL advisory lock serializes concurrent initializers.
+The first startup may take longer because MySQL can rebuild tables when widening
+integer columns; application rollback keeps these compatible schema additions.
+
+Storage/network work runs after releasing the database read transaction. Uploads
+and share acceptance share a per-family filesystem lock for quota reservations;
+processing and deletion retain their existing host-level locks across I/O and
+the subsequent short database write. This coordination assumes the single-host
+deployment described above. Static TV catalogs keep their repeatable-read
+snapshot and omit expiring direct image URLs rather than performing signing I/O.
+
 ## Backups and recovery
 
 The host cron entry `/etc/cron.d/mollytime-backup` checks

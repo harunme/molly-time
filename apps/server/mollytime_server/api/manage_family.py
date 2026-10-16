@@ -7,16 +7,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 
 from ..auth import hash_password, verify_password
 from ..config import get_settings
 from ..deps import DbSession
 from ..manage_auth import Parent, aware
-from ..transactions import serialize_sqlite_write
-from ..playback_settings import SubtitlePreference, default_subtitle, save_default_subtitle
 from ..management_models import Device, FamilySettings, WatchInterval, WatchSession
 from ..models import ChildProfile, Family, Item
+from ..playback_settings import SubtitlePreference, default_subtitle, save_default_subtitle
 from ..storage.settings import get_storage_settings
+from ..transactions import external_io, serialize_sqlite_write
 from ..usage import storage_totals
 from .manage_resources import owned
 from .pagination import paginate
@@ -109,8 +110,9 @@ def settings(user: Parent, db: DbSession):
     row = db.get(FamilySettings, user.family_id)
     family = db.get(Family, user.family_id)
     path = get_settings().resolved_media_dir()
-    path.mkdir(parents=True, exist_ok=True)
-    disk = shutil.disk_usage(path)
+    with external_io(db):
+        path.mkdir(parents=True, exist_ok=True)
+        disk = shutil.disk_usage(path)
     usage = storage_totals(db, [user.family_id])[user.family_id]
     return {
         "familyName": family.name if family else "我的家庭",
@@ -199,9 +201,17 @@ def report(
     # Earlier TV sessions without a child were incorrectly labeled as previews.
     # Only authenticated device sessions qualify; parent previews stay excluded.
     viewing = family_watch_clause()
+    episode_item, parent_item, grandparent_item = aliased(Item), aliased(Item), aliased(Item)
     query = (
-        db.query(WatchSession, WatchInterval)
+        db.query(
+            WatchSession, WatchInterval,
+            parent_item.id, parent_item.name, parent_item.type,
+            grandparent_item.id, grandparent_item.name,
+        )
         .join(WatchInterval, WatchInterval.session_id == WatchSession.id)
+        .outerjoin(episode_item, episode_item.id == WatchSession.item_id)
+        .outerjoin(parent_item, parent_item.id == episode_item.parent_id)
+        .outerjoin(grandparent_item, grandparent_item.id == parent_item.parent_id)
         .filter(
             WatchSession.family_id == user.family_id,
             viewing,
@@ -219,10 +229,14 @@ def report(
     day_devices = {day: {} for day in days}
     hour_devices = [{} for _ in hours]
     device_ids = set()
-    contents, sessions, episodes, catalog = {}, {}, set(), {}
+    contents, sessions, episodes = {}, {}, set()
     # Summary totals cover the whole range; stream intervals instead of loading
-    # them all at once. Only paged details are sent to the browser.
-    for watch, interval in query.yield_per(256):
+    # them all at once. Fetch catalog names in the same query: issuing another
+    # query on a MySQL connection with an active streaming result truncates it.
+    # Only paged details are sent to the browser.
+    for (
+        watch, interval, parent_id, parent_name, parent_type, series_id, series_name
+    ) in query.yield_per(256):
         if not interval.played_ms:
             continue
         a = max(aware(watch.started_at) + dt.timedelta(milliseconds=interval.start_ms), lower)
@@ -232,14 +246,12 @@ def report(
         played = round((b - a).total_seconds() * 1000)
         device_ids.add(watch.device_id)
         episodes.add(watch.item_id)
-        if watch.item_id not in catalog:
-            episode = db.get(Item, watch.item_id)
-            parent = db.get(Item, episode.parent_id) if episode and episode.parent_id else None
-            series = parent if parent and parent.type == "Series" else (
-                db.get(Item, parent.parent_id) if parent and parent.parent_id else None
-            )
-            catalog[watch.item_id] = (series.id, series.name) if series else (watch.item_id, watch.item_name)
-        content_id, name = catalog[watch.item_id]
+        if parent_type == "Series":
+            content_id, name = parent_id, parent_name
+        elif series_id is not None:
+            content_id, name = series_id, series_name
+        else:
+            content_id, name = watch.item_id, watch.item_name
         bucket = contents.setdefault(content_id, {"id": content_id, "name": name, "playedMs": 0})
         bucket["playedMs"] += played
         sessions.setdefault(watch.id, {"id": watch.id,
@@ -270,11 +282,11 @@ def report(
     started_query = db.query(WatchSession).filter(
         WatchSession.family_id == user.family_id, viewing
     )
-    started_query = (
-        started_query.join(WatchInterval, WatchInterval.session_id == WatchSession.id)
-        .filter(WatchInterval.played_ms > 0)
-        .distinct()
-    )
+    # EXISTS uses the interval/session index without multiplying sessions by
+    # every heartbeat and then materializing a DISTINCT temporary result.
+    started_query = started_query.filter(db.query(WatchInterval.id).filter(
+        WatchInterval.session_id == WatchSession.id, WatchInterval.played_ms > 0,
+    ).exists())
     if childId:
         started_query = started_query.filter(WatchSession.child_id == childId)
     if deviceId is not None:

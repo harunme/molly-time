@@ -115,7 +115,7 @@ def clip_playback(kind: ClipKind, request: Request, user: CurrentUser, db: DbSes
 @router.api_route("/api/reminders/{kind}/play", methods=["GET", "HEAD"])
 def play_clip(kind: ClipKind, request: Request, user: CurrentUser, db: DbSession):
     file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False))
-    return stream_file(file, request)
+    return stream_file(file, request, db=db)
 
 
 def device_state(db, user, device_id):

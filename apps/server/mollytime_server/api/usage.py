@@ -11,6 +11,7 @@ from ..db import get_session_factory
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..models import Family, User
+from ..transactions import external_io
 from ..usage import family_usage, month_bounds
 from .operations import Operator
 
@@ -55,6 +56,8 @@ def all_usage(
 def export_usage(user: Operator, db: DbSession, month: str | None = None,
                  q: str = Query(default="", max_length=254)):
     month, _, _ = month_bounds(month)
+    with external_io(db):
+        pass
 
     def rows():
         # Independent session for StreamingResponse; export every matching family.
@@ -76,7 +79,10 @@ def export_usage(user: Operator, db: DbSession, month: str | None = None,
             query = family_query(session, q)
             offset = 0
             while families := query.offset(offset).limit(100).all():
-                for row in family_usage(session, families, month):
+                page = family_usage(session, families, month)
+                with external_io(session):
+                    pass
+                for row in page:
                     s, t = row["storage"], row["traffic"]
                     # Prevent spreadsheet formula execution from user-controlled names.
                     name = row["name"]

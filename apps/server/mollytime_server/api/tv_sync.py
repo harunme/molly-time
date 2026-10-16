@@ -92,6 +92,9 @@ def static_images(db, value):
 def begin_snapshot(db):
     # Authentication uses a separate dependency session. This transaction keeps
     # returned clocks, permissions, and rows at the same database snapshot.
+    # Static catalogs discard expiring direct URLs. Skip signing/configuration
+    # I/O so image rendering never ends this repeatable-read snapshot early.
+    db.info["static_catalog"] = True
     connection = db.connection()
     if connection.dialect.name == "sqlite":
         connection.exec_driver_sql("BEGIN")

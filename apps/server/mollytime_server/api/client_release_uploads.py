@@ -20,8 +20,10 @@ from starlette.concurrency import run_in_threadpool
 
 from ..client_releases import MAX_APK_BYTES, release_dir
 from ..config import get_settings
+from ..deps import DbSession
 from ..scripts.publish_tv_release import publish, tool_environment
 from ..storage.settings import get_storage_settings
+from ..transactions import external_io
 from .operations import Operator
 
 router = APIRouter(prefix="/api/manage/operations/client-releases", tags=["operations"])
@@ -70,12 +72,16 @@ def options():
 
 
 @router.get("/upload-options")
-def upload_options(user: Operator):
+def upload_options(user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     return options()
 
 
 @router.post("/uploads")
-def start_upload(body: UploadBody, user: Operator):
+def start_upload(body: UploadBody, user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     capability = options()
     if not capability["canUpload"]:
         raise HTTPException(
@@ -116,7 +122,9 @@ def upload_ticket(identifier, user):
 
 
 @router.delete("/uploads/{upload_id}")
-def cancel_upload(upload_id: UploadId, user: Operator):
+def cancel_upload(upload_id: UploadId, user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     ticket, _ = upload_ticket(upload_id, user)
     lock_path = ticket.with_suffix(".lock")
     with lock_path.open("a") as lock:
@@ -130,7 +138,9 @@ def cancel_upload(upload_id: UploadId, user: Operator):
 
 
 @router.put("/uploads/{upload_id}")
-async def upload_apk(upload_id: UploadId, request: Request, user: Operator):
+async def upload_apk(upload_id: UploadId, request: Request, user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     ticket, body = upload_ticket(upload_id, user)
     content_length = request.headers.get("content-length")
     if content_length is not None and (

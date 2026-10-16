@@ -181,6 +181,74 @@ def test_watch_detail_pages_preserve_full_range_totals(parent):
     assert first["sessions"][0]["positionMs"] == 1000
 
 
+def test_watch_report_stream_is_not_interrupted_by_catalog_queries(parent, monkeypatch):
+    from sqlalchemy import event
+    from sqlalchemy.orm import Query
+
+    engine = db.get_engine()
+    with Session(engine) as session:
+        session.add_all([
+            Item(id="stream-direct", family_id="f1", type="Episode", name="Direct",
+                 parent_id="series"),
+            Item(id="stream-standalone", family_id="f1", type="Episode", name="Standalone"),
+        ])
+        session.flush()
+        for index in range(300):
+            session.add(WatchSession(
+                id=f"stream-{index:03}", family_id="f1", user_id="u1",
+                item_id=["e1", "stream-direct", "stream-standalone"][index % 3],
+                item_name="Recorded title", purpose="family_watch", last_seq=0,
+                started_at=dt.datetime(2026, 10, 10, 1) + dt.timedelta(seconds=index),
+            ))
+        session.flush()
+        session.add_all([
+            WatchInterval(session_id=f"stream-{index:03}", seq=0, start_ms=0,
+                          end_ms=1000, played_ms=1000, position_ms=1000)
+            for index in range(300)
+        ])
+        session.commit()
+
+    # SQLite permits nested reads; emulate MySQL's restriction while iterating
+    # the real streaming query, including records beyond the 256-row batch.
+    streaming = False
+    original_yield_per = Query.yield_per
+
+    def guarded_stream(query, batch_size):
+        nonlocal streaming
+        for row in original_yield_per(query, batch_size):
+            streaming = True
+            try:
+                yield row
+            finally:
+                streaming = False
+
+    def forbid_nested_query(*args):
+        assert not streaming, "SQL issued before the watch stream was exhausted"
+
+    monkeypatch.setattr(Query, "yield_per", guarded_stream)
+    event.listen(engine, "before_cursor_execute", forbid_nested_query)
+    try:
+        pages = [parent.get(
+            "/api/manage/reports/watch-time?start=2026-10-10&end=2026-10-10"
+            f"&pageSize=100&sessionPage={page}"
+        ).json() for page in (1, 2, 3)]
+    finally:
+        event.remove(engine, "before_cursor_execute", forbid_nested_query)
+
+    for page in pages:
+        assert page["sessionTotal"] == 300
+        assert page["totalPlayedMs"] == 300000
+        assert sum(hour["playedMs"] for hour in page["hours"]) == 300000
+        assert page["days"][0]["playedMs"] == 300000
+        assert page["contentTotal"] == 2
+        assert {row["id"]: (row["name"], row["playedMs"]) for row in page["contents"]} == {
+            "series": ("Stories", 200000),
+            "stream-standalone": ("Recorded title", 100000),
+        }
+        assert len(page["sessions"]) == 100
+    assert len({row["id"] for page in pages for row in page["sessions"]}) == 300
+
+
 def test_download_pages_only_include_requested_devices_and_media(parent):
     with Session(db.get_engine()) as session:
         for index in range(25):

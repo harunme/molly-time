@@ -23,7 +23,7 @@ from ..models import MediaFile
 from ..share_models import ObjectCleanup, ShareFile
 from ..storage.oss import OssStorage
 from ..storage.settings import FIELDS, encode, get_storage_settings
-from ..transactions import serialize_sqlite_write
+from ..transactions import external_io, serialize_sqlite_write
 
 router = APIRouter(prefix="/api/manage/operations", tags=["operations"])
 
@@ -38,7 +38,9 @@ Operator = Annotated[object, Depends(superadmin)]
 
 
 @router.get("/backups")
-def backup_settings(user: Operator):
+def backup_settings(user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     return {
         "config": get_backup_config().model_dump(),
         "status": get_backup_status(),
@@ -48,9 +50,10 @@ def backup_settings(user: Operator):
 
 
 @router.put("/backups")
-def update_backup_settings(body: BackupConfig, user: Operator):
-    save_backup_config(body)
-    return backup_settings(user)
+def update_backup_settings(body: BackupConfig, user: Operator, db: DbSession):
+    with external_io(db):
+        save_backup_config(body)
+    return backup_settings(user, db)
 
 
 class StorageBody(BaseModel):
@@ -165,18 +168,25 @@ def test_connection(values):
 
 
 @router.get("/storage")
-def storage(user: Operator):
-    return public_settings()
+def storage(user: Operator, db: DbSession):
+    with external_io(db):
+        return public_settings()
 
 
 @router.post("/storage/test")
-def check_storage(body: StorageBody, user: Operator):
-    values, _ = candidate(body)
-    test_connection(values)
+def check_storage(body: StorageBody, user: Operator, db: DbSession):
+    with external_io(db):
+        values, _ = candidate(body)
+        test_connection(values)
     return {"ok": True, "message": "OSS 服务端读写及删除测试通过；浏览器跨域需在 Bucket 配置"}
 
 
-def check_destination(db, values, current):
+def check_destination(db, values, current, releases=None):
+    if releases is None:
+        with external_io(db):
+            releases, _, invalid = inventory()
+            if invalid:
+                raise HTTPException(409, "客户端版本记录损坏，请先修复后修改存储配置")
     has_files = db.query(MediaFile.id).filter(MediaFile.storage == "oss").first()
     pending = (
         db.query(UploadSession.id)
@@ -187,9 +197,6 @@ def check_destination(db, values, current):
         )
         .first()
     )
-    releases, _, invalid = inventory()
-    if invalid:
-        raise HTTPException(409, "客户端版本记录损坏，请先修复后修改存储配置")
     share_files = db.query(ShareFile.id).filter(ShareFile.storage == "oss").first()
     cleanup_files = db.query(ObjectCleanup.id).filter(ObjectCleanup.storage == "oss").first()
     referenced = bool(has_files or pending or share_files or cleanup_files
@@ -207,24 +214,33 @@ def check_destination(db, values, current):
 @router.put("/storage")
 def save_storage(body: StorageBody, user: Operator, db: DbSession):
     # Keep a release upload's selected bucket stable until its reference is recorded.
+    with external_io(db):
+        pass
     with publication_lock():
         return persist_storage(body, user, db)
 
 
 def persist_storage(body, user, db):
-    values, current = candidate(body)
-    referenced = check_destination(db, values, current)
+    with external_io(db):
+        values, current = candidate(body)
+        releases, _, invalid = inventory()
+        if invalid:
+            raise HTTPException(409, "客户端版本记录损坏，请先修复后修改存储配置")
+    referenced = check_destination(db, values, current, releases)
     connection_changed = any(
         values[field] != (getattr(current, field) or "")
         for field in ("oss_access_key_id", "oss_access_key_secret", "oss_internal_endpoint")
     )
-    if values["storage_backend"] == "oss" or (referenced and connection_changed):
-        test_connection(values)
+    with external_io(db):
+        if values["storage_backend"] == "oss" or (referenced and connection_changed):
+            test_connection(values)
+        encoded = encode(values)
     serialize_sqlite_write(db)
-    values, current = candidate(body)
-    check_destination(db, values, current)
+    # The revision predicate below rejects changes made during the connection
+    # test; do not decrypt configuration or read release files under a DB lock.
+    check_destination(db, values, current, releases)
     record = {
-        "config": encode(values),
+        "config": encoded,
         "updated_by": user.id,
         "updated_at": dt.datetime.now(dt.UTC),
     }

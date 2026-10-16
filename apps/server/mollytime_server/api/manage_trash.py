@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..management_models import TrashSettings
-from ..transactions import serialize_sqlite_write
+from ..transactions import external_io, serialize_sqlite_write
 from ..trash import purge, restore, retention_days, trash_snapshot
 
 router = APIRouter(prefix="/api/manage/trash", tags=["manage-trash"])
@@ -46,6 +46,8 @@ def restore_item(item_id: str, user: Parent, db: DbSession):
 
 
 @router.delete("/{item_id}")
-def delete_item(item_id: str, user: Parent):
-    purge(item_id, user.family_id)
+def delete_item(item_id: str, user: Parent, db: DbSession):
+    # purge owns a separate session; release the authentication snapshot too.
+    with external_io(db):
+        purge(item_id, user.family_id)
     return {"ok": True}

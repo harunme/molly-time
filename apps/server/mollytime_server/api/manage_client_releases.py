@@ -13,6 +13,8 @@ from ..client_releases import (
     local_apk,
     release_identity,
 )
+from ..deps import DbSession
+from ..transactions import external_io
 from .operations import Operator
 
 router = APIRouter(prefix="/api/manage/operations/client-releases", tags=["operations"])
@@ -31,10 +33,13 @@ def available(release):
 @router.get("")
 def list_releases(
     user: Operator,
+    db: DbSession,
     packageName: PackageName | None = None,
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=100),
 ):
+    with external_io(db):
+        pass
     records, current, invalid = inventory()
     filtered = [
         record for record in records if packageName is None or record.packageName == packageName
@@ -70,13 +75,17 @@ def require_release(package, version, digest):
 
 
 @router.get("/{package}/{version}/{digest}/download-url")
-def download_url(package: PackageName, version: int, digest: str, user: Operator):
+def download_url(package: PackageName, version: int, digest: str, user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     require_release(package, version, digest)
     return {"url": f"/api/manage/operations/client-releases/{package}/{version}/{digest}/file"}
 
 
 @router.get("/{package}/{version}/{digest}/file")
-def download_file(package: PackageName, version: int, digest: str, user: Operator):
+def download_file(package: PackageName, version: int, digest: str, user: Operator, db: DbSession):
+    with external_io(db):
+        pass
     release = require_release(package, version, digest)
     try:
         path = download_apk(release)

@@ -11,6 +11,7 @@ from .config import get_settings
 from .management_models import SchemaRevision, UploadSession, UploadTarget
 from .models import MediaFile, User
 from .storage.local import LocalStorage
+from .transactions import external_io
 from .usage_models import TrafficEvent
 
 BILLING_ZONE = ZoneInfo("Asia/Shanghai")
@@ -28,33 +29,49 @@ def month_bounds(month: str | None):
     return month, lower.astimezone(dt.UTC), upper.astimezone(dt.UTC)
 
 
-def family_objects(db, family):
-    """Physical identities retained by a household, including live share snapshots."""
+def object_rows(db, families):
+    """Batch all families in a page, rather than querying once per household."""
     from .share_models import ContentShare, ShareFile
+
+    files = db.query(
+        MediaFile.family_id, MediaFile.storage, MediaFile.path, MediaFile.size_bytes,
+    ).filter(MediaFile.family_id.in_(families), MediaFile.kind != "deleted").all()
+    files += db.query(
+        ContentShare.family_id, ShareFile.storage, ShareFile.path, ShareFile.size_bytes,
+    ).join(ContentShare).filter(
+        ContentShare.family_id.in_(families), ContentShare.expires_at > dt.datetime.now(dt.UTC),
+    ).all()
+    return files
+
+
+def measure_objects(files, families):
     from .trash import object_identity
 
-    objects = {}
-    files = db.query(MediaFile.storage, MediaFile.path, MediaFile.size_bytes).filter(
-        MediaFile.family_id == family, MediaFile.kind != "deleted",
-    ).all()
-    files += db.query(ShareFile.storage, ShareFile.path, ShareFile.size_bytes).join(ContentShare).filter(
-        ContentShare.family_id == family, ContentShare.expires_at > dt.datetime.now(dt.UTC),
-    ).all()
-    for backend, path, size in files:
+    objects = {family: {} for family in families}
+    measured = {}
+    for family, backend, path, size in files:
+        identity = object_identity(backend, path)
         unknown = backend not in ("local", "oss") or size <= 0
         if backend == "local":
-            try:
-                size = LocalStorage(get_settings().resolved_media_dir()).size(path)
-                unknown = False
-            except FileNotFoundError:
-                size, unknown = 0, False
-            except (OSError, ValueError):
-                unknown = True
-        identity = object_identity(backend, path)
-        previous = objects.get(identity)
+            if identity not in measured:
+                try:
+                    measured[identity] = (LocalStorage(get_settings().resolved_media_dir()).size(path), False)
+                except FileNotFoundError:
+                    measured[identity] = (0, False)
+                except (OSError, ValueError):
+                    measured[identity] = (size, True)
+            size, unknown = measured[identity]
+        previous = objects[family].get(identity)
         if previous is None or size > previous["size"]:
-            objects[identity] = {"backend": backend, "path": path, "size": max(0, size), "unknown": unknown}
+            objects[family][identity] = {"backend": backend, "path": path, "size": max(0, size), "unknown": unknown}
     return objects
+
+
+def family_objects(db, family):
+    """Physical identities retained by a household, including live share snapshots."""
+    files = object_rows(db, [family])
+    with external_io(db):
+        return measure_objects(files, [family])[family]
 
 
 def storage_totals(db, family_ids):
@@ -65,36 +82,42 @@ def storage_totals(db, family_ids):
     result = {key: {"usedBytes": 0, "localBytes": 0, "ossBytes": 0,
                     "objectCount": 0, "unknownSizeCount": 0, "reservedBytes": 0,
                     "pendingBytes": 0} for key in family_ids}
-    for family in family_ids:
-        for obj in family_objects(db, family).values():
-            row = result[family]
-            row["objectCount"] += 1
-            row["unknownSizeCount"] += obj["unknown"]
-            row["usedBytes"] += obj["size"]
-            if obj["backend"] in ("local", "oss"):
-                row[f"{obj['backend']}Bytes"] += obj["size"]
-    uploads = db.query(UploadSession, UploadTarget).outerjoin(
-        UploadTarget, UploadTarget.upload_id == UploadSession.id,
+    if not result:
+        return result
+    files = object_rows(db, family_ids)
+    uploads = db.query(
+        UploadSession.id, UploadSession.family_id, UploadSession.size, UploadSession.status,
+        UploadTarget.backend, MediaFile.id,
+    ).outerjoin(UploadTarget, UploadTarget.upload_id == UploadSession.id).outerjoin(
+        MediaFile, MediaFile.id == UploadSession.id,
     ).filter(UploadSession.family_id.in_(family_ids),
-             UploadSession.status.in_(["uploading", "processing", "failed"]))
-    # Completed uploads waiting for processing occupy storage, even if validation failed.
-    known_ids = {key for (key,) in db.query(MediaFile.id).filter(
-        MediaFile.family_id.in_(family_ids),
-    )}
-    for upload, target in uploads.yield_per(256):
-        row = result[upload.family_id]
-        row["reservedBytes"] += upload.size
-        if upload.id in known_ids:
-            continue
-        if target and target.backend == "oss":
-            size = upload.size if upload.status in ("processing", "failed") else 0
-        else:
-            path = get_settings().data_dir / "uploads" / f"{upload.id}.part"
-            try:
-                size = path.stat().st_size
-            except FileNotFoundError:
-                size = 0
-        row["pendingBytes"] += size
+             UploadSession.status.in_(["uploading", "processing", "failed"])).all()
+    # Finish database reads before stat() calls; never retain a MySQL cursor or
+    # repeatable-read snapshot while waiting on a filesystem.
+    with external_io(db):
+        objects = measure_objects(files, family_ids)
+        for family, values in objects.items():
+            for obj in values.values():
+                row = result[family]
+                row["objectCount"] += 1
+                row["unknownSizeCount"] += obj["unknown"]
+                row["usedBytes"] += obj["size"]
+                if obj["backend"] in ("local", "oss"):
+                    row[f"{obj['backend']}Bytes"] += obj["size"]
+        for key, family, reserved, status, backend, registered in uploads:
+            row = result[family]
+            row["reservedBytes"] += reserved
+            if registered:
+                continue
+            if backend == "oss":
+                size = reserved if status in ("processing", "failed") else 0
+            else:
+                path = get_settings().data_dir / "uploads" / f"{key}.part"
+                try:
+                    size = path.stat().st_size
+                except FileNotFoundError:
+                    size = 0
+            row["pendingBytes"] += size
     return result
 
 

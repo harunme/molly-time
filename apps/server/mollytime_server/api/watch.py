@@ -72,7 +72,10 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
     # SQLite serializes writers before reading interval neighbors/progress projections.
     # This protects overlap validation from concurrent uploads with different seq values.
     serialize_sqlite_write(db)
-    row = db.get(WatchSession, session_id)
+    # MySQL must serialize validation and insertion for a session. SQLite's
+    # BEGIN IMMEDIATE already does this. Current/locking reads also avoid an
+    # older authentication snapshot under MySQL REPEATABLE READ.
+    row = db.query(WatchSession).filter(WatchSession.id == session_id).with_for_update().first()
     if (
         row is None
         or row.family_id != user.family_id
@@ -94,6 +97,7 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
     previous = (
         db.query(WatchInterval)
         .filter(WatchInterval.session_id == row.id, WatchInterval.seq == body.seq)
+        .with_for_update()
         .first()
     )
     if previous:
@@ -114,12 +118,14 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
         db.query(WatchInterval)
         .filter(WatchInterval.session_id == row.id, WatchInterval.seq < body.seq)
         .order_by(WatchInterval.seq.desc())
+        .with_for_update()
         .first()
     )
     upper = (
         db.query(WatchInterval)
         .filter(WatchInterval.session_id == row.id, WatchInterval.seq > body.seq)
         .order_by(WatchInterval.seq)
+        .with_for_update()
         .first()
     )
     if (

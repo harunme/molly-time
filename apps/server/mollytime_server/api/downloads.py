@@ -11,7 +11,7 @@ from ..management_models import Device, DeviceDownload
 from ..models import Item, MediaFile
 from ..resource_policy import require_visible
 from ..storage import build_storage
-from ..transactions import serialize_sqlite_write
+from ..transactions import external_io, serialize_sqlite_write
 from ..trash import ensure_active
 from .manage_resources import owned
 from .pagination import paginate
@@ -21,8 +21,10 @@ router = APIRouter(tags=["downloads"])
 
 
 def download_dto(row, db):
-    file = db.get(MediaFile, row.media_id)
-    device = db.get(Device, row.device_id)
+    files = db.info.get("download_files", {})
+    devices = db.info.get("download_devices", {})
+    file = files.get(row.media_id) or db.get(MediaFile, row.media_id)
+    device = devices.get(row.device_id) or db.get(Device, row.device_id)
     return {
         "id": row.id,
         "deviceId": row.device_id,
@@ -62,8 +64,15 @@ def list_downloads(
         query = query.filter(DeviceDownload.device_id.in_(keys))
     if mediaId:
         query = query.filter(DeviceDownload.media_id == mediaId)
+    def preload(rows):
+        db.info["download_files"] = {file.id: file for file in db.query(MediaFile).filter(
+            MediaFile.id.in_({row.media_id for row in rows}),
+        ).all()}
+        db.info["download_devices"] = {device.id: device for device in db.query(Device).filter(
+            Device.id.in_({row.device_id for row in rows}),
+        ).all()}
     return paginate(query.order_by(DeviceDownload.updated_at.desc(), DeviceDownload.id),
-                    page, pageSize, lambda row: download_dto(row, db))
+                    page, pageSize, lambda row: download_dto(row, db), preload)
 
 
 class CommandBody(BaseModel):
@@ -87,7 +96,9 @@ def command(item_id: str, body: CommandBody, user: Parent, db: DbSession):
     if body.desired == "saved" and media.storage == "oss" and not media.sha256:
         raise HTTPException(409, "此视频使用播放时自动缓存，请更新电视客户端后直接播放")
     if not media.size_bytes:
-        media.size_bytes = build_storage(media.storage).size(media.path)
+        with external_io(db, media):
+            size = build_storage(media.storage).size(media.path)
+        media.size_bytes = size
     row = (
         db.query(DeviceDownload)
         .filter(DeviceDownload.device_id == device.id, DeviceDownload.media_id == media.id)

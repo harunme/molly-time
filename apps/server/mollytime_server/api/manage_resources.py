@@ -4,6 +4,7 @@ import datetime as dt
 import hashlib
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -37,7 +38,7 @@ from ..remote_uploads import (
 from ..share_models import SharedOrigin
 from ..storage import build_storage
 from ..storage.settings import get_storage_settings
-from ..transactions import serialize_sqlite_write
+from ..transactions import external_io, serialize_sqlite_write
 from ..trash import archive, ensure_active
 from ..upload_metadata import VideoMetadata, save_metadata
 from .pagination import paginate
@@ -490,6 +491,15 @@ def uploads(
 
 @router.post("/uploads")
 def start_upload(body: UploadBody, user: Parent, db: DbSession):
+    # All API processes on this host share the lock, including quota reservation.
+    # Do not hold the authentication read transaction while waiting for it.
+    with external_io(db):
+        pass
+    with upload_lock(f"family-{user.family_id}"):
+        return create_upload(body, user, db)
+
+
+def create_upload(body, user, db):
     serialize_sqlite_write(db)
     item = owned(db, Item, body.itemId, user.family_id)
     ensure_active(db, item)
@@ -519,18 +529,11 @@ def start_upload(body: UploadBody, user: Parent, db: DbSession):
     ):
         raise HTTPException(409, "此资源已有同类文件正在上传或处理")
     ensure_capacity(db, user.family_id, body.size)
-    directory = get_settings().data_dir / "uploads"
-    directory.mkdir(parents=True, exist_ok=True)
-    remaining = sum(
-        r.size - r.offset
-        for r in db.query(UploadSession).filter(UploadSession.status == "uploading").all()
-    )
-    if (
-        get_storage_settings().storage_backend == "local"
-        and shutil.disk_usage(directory).free < body.size + remaining + 64 * 1024**2
-    ):
-        raise HTTPException(507, "磁盘剩余空间不足")
+    remaining = db.query(func.coalesce(func.sum(UploadSession.size - UploadSession.offset), 0)).filter(
+        UploadSession.status == "uploading",
+    ).scalar()
     row = UploadSession(
+        id=str(uuid.uuid4()),
         family_id=user.family_id,
         item_id=item.id,
         filename=Path(body.filename).name,
@@ -538,27 +541,37 @@ def start_upload(body: UploadBody, user: Parent, db: DbSession):
         fingerprint=body.fingerprint,
         kind=body.kind,
         language=body.language,
+        offset=0,
+        status="uploading",
+        error="",
     )
-    db.add(row)
-    db.flush()
-    backend = get_storage_settings().storage_backend
-    if backend not in ("local", "oss"):
-        raise HTTPException(503, "上传存储配置错误")
-    target = UploadTarget(
-        upload_id=row.id,
-        backend=backend,
-        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=get_settings().upload_expiry_hours),
-    )
-    if backend == "oss":
-        target.object_key = f"families/{user.family_id}/media/{row.id}{ext}"
-        try:
-            target.multipart_id = build_storage("oss").initiate(target.object_key)
-        except Exception as exc:
-            raise HTTPException(503, "云存储不可用，请联系管理员") from exc
-    db.add(target)
+    with external_io(db):
+        directory = get_settings().data_dir / "uploads"
+        directory.mkdir(parents=True, exist_ok=True)
+        backend = get_storage_settings().storage_backend
+        if backend not in ("local", "oss"):
+            raise HTTPException(503, "上传存储配置错误")
+        if backend == "local" and shutil.disk_usage(directory).free < body.size + remaining + 64 * 1024**2:
+            raise HTTPException(507, "磁盘剩余空间不足")
+        target = UploadTarget(
+            upload_id=row.id, backend=backend,
+            expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=get_settings().upload_expiry_hours),
+        )
+        if backend == "oss":
+            target.object_key = f"families/{user.family_id}/media/{row.id}{ext}"
+            try:
+                target.multipart_id = build_storage("oss").initiate(target.object_key)
+            except Exception as exc:
+                raise HTTPException(503, "云存储不可用，请联系管理员") from exc
     try:
+        # Revalidate after external work; archives may have changed meanwhile.
+        ensure_active(db, owned(db, Item, body.itemId, user.family_id))
+        db.add(row)
+        db.flush()
+        db.add(target)
         db.commit()
     except Exception:
+        db.rollback()
         if backend == "oss":
             build_storage("oss").abort(target.object_key, target.multipart_id)
         raise
@@ -580,11 +593,12 @@ async def upload_chunk(upload_id: str, request: Request, user: Parent, db: DbSes
         raise HTTPException(409, "上传已经结束")
     if target and aware(target.expires_at) <= dt.datetime.now(dt.UTC):
         raise HTTPException(410, "上传已过期")
-    data = bytearray()
-    async for block in request.stream():
-        data.extend(block)
-        if len(data) > 8 * 1024**2:
-            raise HTTPException(413, "上传块过大")
+    with external_io(db, row):
+        data = bytearray()
+        async for block in request.stream():
+            data.extend(block)
+            if len(data) > 8 * 1024**2:
+                raise HTTPException(413, "上传块过大")
     if not data or offset < 0 or offset + len(data) > row.size:
         raise HTTPException(422, "上传范围错误")
     if hashlib.sha256(data).hexdigest() != request.headers.get("x-chunk-sha256"):
@@ -595,23 +609,27 @@ async def upload_chunk(upload_id: str, request: Request, user: Parent, db: DbSes
 def write_chunk(db, row, offset, data):
     path = get_settings().data_dir / "uploads" / f"{row.id}.part"
     # Shared with completion, cancellation and expiry across API processes.
+    with external_io(db, row):
+        pass
     with upload_lock(row.id):
         db.refresh(row)
         if row.status != "uploading":
             raise HTTPException(409, "上传已经结束")
-        with open(path, "r+b" if path.exists() else "w+b") as target:
-            if offset < row.offset:
+        duplicate = offset < row.offset
+        with external_io(db, row), open(path, "r+b" if path.exists() else "w+b") as target:
+            if duplicate:
                 target.seek(offset)
                 if offset + len(data) > row.offset or target.read(len(data)) != data:
                     raise HTTPException(409, "上传块与已接收文件不一致")
-                return upload_dto(db, row)
-            if offset != row.offset:
-                raise HTTPException(409, "上传偏移已变化，请刷新进度")
-            target.truncate(row.offset)
-            target.seek(row.offset)
-            target.write(data)
-            target.flush()
-            os.fsync(target.fileno())
+            else:
+                if offset != row.offset:
+                    raise HTTPException(409, "上传偏移已变化，请刷新进度")
+                target.truncate(row.offset)
+                target.seek(row.offset)
+                target.write(data)
+                target.flush()
+                os.fsync(target.fileno())
+        if not duplicate:
             row.offset += len(data)
             db.commit()
     return upload_dto(db, row)
@@ -637,29 +655,34 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMeta
         return upload_dto(db, row)
     target = transport(db, row)
     if target and target.backend == "oss":
+        with external_io(db, row):
+            pass
         with upload_lock(row.id):
             db.refresh(row)
             if row.status in ("processing", "ready"):
                 return upload_dto(db, row)
             target = check_target(db, row)
-            accept_video_metadata(row, body, required=True)
-            store = build_storage("oss")
-            # Recover an OSS completion whose database commit was interrupted.
-            size = store.size_if_exists(target.object_key)
-            if size is None:
-                parts = verified_parts(target, row)
-                if sum(p["size"] for p in parts) != row.size:
-                    raise HTTPException(409, "文件尚未上传完整")
-                store.complete(target.object_key, target.multipart_id, parts)
-                size = store.size(target.object_key)
-            if size != row.size:
-                raise HTTPException(409, "云端文件大小不一致")
+            with external_io(db, row):
+                accept_video_metadata(row, body, required=True)
+                store = build_storage("oss")
+                # Recover an OSS completion whose database commit was interrupted.
+                size = store.size_if_exists(target.object_key)
+                if size is None:
+                    parts = verified_parts(target, row)
+                    if sum(p["size"] for p in parts) != row.size:
+                        raise HTTPException(409, "文件尚未上传完整")
+                    store.complete(target.object_key, target.multipart_id, parts)
+                    size = store.size(target.object_key)
+                if size != row.size:
+                    raise HTTPException(409, "云端文件大小不一致")
             row.offset = row.size
             row.status = "processing"
             if not db.query(MediaTask).filter(MediaTask.upload_id == row.id).first():
                 db.add(MediaTask(upload_id=row.id))
             db.commit()
             return upload_dto(db, row)
+    with external_io(db, row):
+        pass
     with upload_lock(row.id):
         db.refresh(row)
         if row.status in ("processing", "ready"):
@@ -669,7 +692,8 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMeta
             raise HTTPException(410, "上传已过期")
         if row.status != "uploading" or row.offset != row.size:
             raise HTTPException(409, "文件尚未上传完整")
-        accept_video_metadata(row, body)
+        with external_io(db, row):
+            accept_video_metadata(row, body)
         row.status = "processing"
         if not db.query(MediaTask).filter(MediaTask.upload_id == row.id).first():
             db.add(MediaTask(upload_id=row.id))
@@ -682,6 +706,8 @@ def cancel_upload(upload_id: str, user: Parent, db: DbSession):
     row = owned(db, UploadSession, upload_id, user.family_id)
     if row.status not in ("uploading", "failed"):
         raise HTTPException(409, "仅可取消未完成或处理失败的上传")
+    with external_io(db, row):
+        pass
     with upload_lock(row.id):
         db.refresh(row)
         if row.status not in ("uploading", "failed"):
@@ -706,6 +732,8 @@ def retry_task(task_id: str, user: Parent, db: DbSession):
         raise HTTPException(404)
     row = owned(db, UploadSession, task.upload_id, user.family_id)
     ensure_active(db, owned(db, Item, row.item_id, user.family_id))
+    with external_io(db, row, task):
+        pass
     with upload_lock(row.id):
         serialize_sqlite_write(db)
         db.refresh(row)
@@ -727,7 +755,8 @@ def retry_task(task_id: str, user: Parent, db: DbSession):
 def upload_parts(upload_id: str, user: Parent, db: DbSession):
     row = owned(db, UploadSession, upload_id, user.family_id)
     target = check_target(db, row)
-    parts = verified_parts(target, row)
+    with external_io(db):
+        parts = verified_parts(target, row)
     return {"parts": parts, "partSize": PART_SIZE}
 
 
@@ -742,13 +771,14 @@ def part_url(upload_id: str, body: PartBody, user: Parent, db: DbSession):
     target = check_target(db, row)
     if body.number > (row.size + PART_SIZE - 1) // PART_SIZE:
         raise HTTPException(422, "分片编号超出文件范围")
-    ttl = min(
-        get_storage_settings().oss_upload_ttl,
-        max(1, int((aware(target.expires_at) - dt.datetime.now(dt.UTC)).total_seconds())),
-    )
-    return build_storage("oss").part_url(
-        target.object_key, target.multipart_id, body.number, ttl, body.md5
-    )
+    with external_io(db):
+        ttl = min(
+            get_storage_settings().oss_upload_ttl,
+            max(1, int((aware(target.expires_at) - dt.datetime.now(dt.UTC)).total_seconds())),
+        )
+        return build_storage("oss").part_url(
+            target.object_key, target.multipart_id, body.number, ttl, body.md5
+        )
 
 
 class SubtitleOptionsBody(BaseModel):

@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, func, inspect, select
+from sqlalchemy import BigInteger, create_engine, event, func, inspect, select
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -149,6 +149,54 @@ def upgrade_share_credentials(engine) -> None:
                 connection.commit()
 
 
+def upgrade_query_schema(engine):
+    """Add report indexes and widen counters without rewriting application data."""
+    from .management_models import (
+        DeviceDownload,
+        UploadSession,
+        WatchInterval,
+        WatchProgress,
+        WatchSession,
+    )
+    from .models import Item, MediaFile
+
+    tables = [Item.__table__, MediaFile.__table__, UploadSession.__table__,
+              WatchSession.__table__, WatchInterval.__table__, WatchProgress.__table__,
+              DeviceDownload.__table__]
+    with engine.begin() as connection:
+        mysql = engine.dialect.name == "mysql"
+        if mysql:
+            acquired = connection.exec_driver_sql(
+                "SELECT GET_LOCK('mollytime_query_schema', 30)"
+            ).scalar()
+            if acquired != 1:
+                raise RuntimeError("Cannot acquire query schema migration lock")
+        try:
+            inspector = inspect(connection)
+            for table in tables:
+                if engine.dialect.name == "mysql":
+                    columns = {column["name"]: column for column in inspector.get_columns(table.name)}
+                    quote = connection.dialect.identifier_preparer.quote_identifier
+                    for column in table.columns:
+                        existing = columns[column.name]
+                        if not isinstance(column.type, BigInteger) or isinstance(existing["type"], BigInteger):
+                            continue
+                        nullable = "NULL" if existing["nullable"] else "NOT NULL"
+                        default = existing.get("default")
+                        default_sql = f" DEFAULT {default}" if default is not None else ""
+                        connection.exec_driver_sql(
+                            f"ALTER TABLE {quote(table.name)} MODIFY COLUMN {quote(column.name)} "
+                            f"BIGINT {nullable}{default_sql}"
+                        )
+                existing_indexes = {index["name"] for index in inspector.get_indexes(table.name)}
+                for index in sorted(table.indexes, key=lambda index: index.name):
+                    if index.name not in existing_indexes:
+                        index.create(bind=connection, checkfirst=True)
+        finally:
+            if mysql:
+                connection.exec_driver_sql("SELECT RELEASE_LOCK('mollytime_query_schema')")
+
+
 def init_db() -> None:
     """Create tables. Idempotent."""
     # Import models so they register with Base.metadata.
@@ -178,6 +226,7 @@ def init_db() -> None:
     # create_all creates new tables but does not upgrade columns in existing ones.
     upgrade_reminder_sessions(engine)
     upgrade_trash_entries(engine)
+    upgrade_query_schema(engine)
     # create_all does not add indexes to existing tables. Enforce the same global
     # username invariant on legacy databases without rewriting users or their IDs.
     with engine.begin() as connection:

@@ -14,11 +14,11 @@ from ..deps import DbSession
 from ..manage_auth import Parent, aware, check_origin, parent_session
 from ..management_models import MediaOptions, ResourceState
 from ..models import Item, MediaFile
-from ..remote_uploads import ensure_capacity
+from ..remote_uploads import ensure_capacity, upload_lock
 from ..resource_policy import published_episodes, visible
 from ..share_models import ContentShare, ShareClaim, SharedOrigin, ShareFile
 from ..storage import build_storage
-from ..transactions import serialize_sqlite_write
+from ..transactions import external_io, serialize_sqlite_write
 from ..trash import deletion_lock, ensure_active, ensure_idle, family_tree, subtree
 from ..usage import family_objects
 from .account_invitations import CODE_ALPHABET
@@ -146,18 +146,23 @@ def build_snapshot(db, user, resource_id, share_id):
     if not visible(db, item):
         raise HTTPException(409, "请先发布并完成内容处理")
     episodes = published_episodes(db, item.id, user.family_id) if item.type == "Series" else [item]
-    episodes = [
-        ep
-        for ep in episodes
-        if db.query(MediaFile.id).filter_by(item_id=ep.id, kind="video").first()
-    ]
+    playable = {key for (key,) in db.query(MediaFile.item_id).filter(
+        MediaFile.item_id.in_([ep.id for ep in episodes]), MediaFile.kind == "video",
+    ).distinct()}
+    episodes = [ep for ep in episodes if ep.id in playable]
     if not episodes:
         raise HTTPException(409, "没有已发布且处理完成的视频可分享")
     selected = {item.id: item}
+    seasons = {row.id: row for row in db.query(Item).filter(
+        Item.id.in_({ep.parent_id for ep in episodes} - {item.id}),
+        Item.family_id == user.family_id,
+    ).all()}
     for ep in episodes:
         selected[ep.id] = ep
         if item.type == "Series" and ep.parent_id != item.id:
-            season = owned(db, Item, ep.parent_id, user.family_id)
+            season = seasons.get(ep.parent_id)
+            if season is None:
+                raise HTTPException(409, "分享目录结构无效")
             selected[season.id] = season
     files = (
         db.query(MediaFile)
@@ -189,32 +194,36 @@ def build_snapshot(db, user, resource_id, share_id):
     descriptors = []
     from ..trash import object_identity
 
-    for file in files:
-        size = file.size_bytes
-        if file.storage == "local" or size <= 0:
-            try:
-                size = build_storage(file.storage).size(file.path)
-            except (OSError, ValueError):
-                raise HTTPException(409, "文件不可用，无法分享")
-        sizes[object_identity(file.storage, file.path)] = size
-        options = db.get(MediaOptions, file.id)
-        metadata = {
-            key: getattr(file, key)
-            for key in ("kind", "mime", "language", "index", "is_default", "sha256")
-        }
-        metadata["label"] = options.label if options else Path(file.path).name
-        metadata["offset_ms"] = options.offset_ms if options else 0
-        descriptors.append(
-            ShareFile(
-                share_id=share_id,
-                source_media_id=file.id,
-                source_item_id=file.item_id if file.item_id in selected else item.id,
-                storage=file.storage,
-                path=file.path,
-                size_bytes=size,
-                metadata_=metadata,
+    media_options = {row.media_id: row for row in db.query(MediaOptions).filter(
+        MediaOptions.media_id.in_([file.id for file in files]),
+    ).all()}
+    with external_io(db):
+        for file in files:
+            size = file.size_bytes
+            if file.storage == "local" or size <= 0:
+                try:
+                    size = build_storage(file.storage).size(file.path)
+                except (OSError, ValueError):
+                    raise HTTPException(409, "文件不可用，无法分享")
+            sizes[object_identity(file.storage, file.path)] = size
+            options = media_options.get(file.id)
+            metadata = {
+                key: getattr(file, key)
+                for key in ("kind", "mime", "language", "index", "is_default", "sha256")
+            }
+            metadata["label"] = options.label if options else Path(file.path).name
+            metadata["offset_ms"] = options.offset_ms if options else 0
+            descriptors.append(
+                ShareFile(
+                    share_id=share_id,
+                    source_media_id=file.id,
+                    source_item_id=file.item_id if file.item_id in selected else item.id,
+                    storage=file.storage,
+                    path=file.path,
+                    size_bytes=size,
+                    metadata_=metadata,
+                )
             )
-        )
     if item.type == "Episode":
         inherited = next(
             (file for file in files if file.kind == "image" and file.item_id != item.id), None
@@ -297,7 +306,8 @@ def shared_image(image_id: str, credential: Credential, request: Request, db: Db
     if mime not in ("image/jpeg", "image/png", "image/webp"):
         raise HTTPException(404, "封面不存在")
     try:
-        content = build_storage(file.storage).open(file.path)
+        with external_io(db):
+            content = build_storage(file.storage).open(file.path)
     except (OSError, ValueError):
         raise HTTPException(404, "封面不存在")
     return Response(content, media_type=mime, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
@@ -366,7 +376,10 @@ def accept_share(body: AcceptShare, request: Request, user: Parent, db: DbSessio
     serialize_sqlite_write(db)
     limit(db, request, "share-accept", 30, 600, principal=user.id)
     db.rollback()
-    with deletion_lock():
+    family_id = user.family_id  # Load the identity expired by the rate-limit rollback.
+    with external_io(db):
+        pass
+    with deletion_lock(), upload_lock(f"family-{family_id}"):
         serialize_sqlite_write(db)
         share = find_share(db, body)
         claim = claim_for(db, share, user.family_id)

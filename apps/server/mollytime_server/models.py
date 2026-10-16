@@ -22,7 +22,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -37,7 +36,7 @@ def _uuid() -> str:
 
 
 def _now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -52,8 +51,8 @@ class Family(Base):
     name: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
-    users: Mapped[list["User"]] = relationship(back_populates="family")
-    children: Mapped[list["ChildProfile"]] = relationship(back_populates="family")
+    users: Mapped[list[User]] = relationship(back_populates="family")
+    children: Mapped[list[ChildProfile]] = relationship(back_populates="family")
 
 
 class User(Base):
@@ -68,7 +67,7 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
     family: Mapped[Family] = relationship(back_populates="users")
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(back_populates="user")
 
     __table_args__ = (Index("uq_user_name", "name", unique=True),)
 
@@ -148,6 +147,7 @@ class Item(Base):
     image_count: Mapped[int] = mapped_column(Integer, default=0)
 
     __table_args__ = (
+        Index("ix_item_family_type_parent", "family_id", "type", "parent_id"),
         UniqueConstraint("family_id", "view_id", "parent_id", "name", "type", name="uq_item_family_parent_name_type"),
     )
 
@@ -165,8 +165,10 @@ class MediaFile(Base):
     language: Mapped[str] = mapped_column(String(16), default="")
     index: Mapped[int] = mapped_column(Integer, default=0)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     sha256: Mapped[str] = mapped_column(String(64), default="")
+
+    __table_args__ = (Index("ix_media_family_kind", "family_id", "kind"),)
 
 
 class PlaybackEvent(Base):

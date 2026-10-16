@@ -22,6 +22,7 @@ from .db import get_session_factory, init_db
 from .management_models import MediaOptions, MediaTask, ResourceState, UploadSession, UploadTarget
 from .models import Item, MediaFile
 from .storage import build_storage
+from .transactions import external_io
 from .upload_metadata import metadata_path, read_metadata
 from .utils.image import atomic_write
 
@@ -105,11 +106,9 @@ def process(task_id):
         item = db.get(Item, upload.item_id)
         target = db.get(UploadTarget, upload.id)
         remote = bool(target and target.backend == "oss")
-        client_video = upload.kind == "video" and (remote or metadata_path(upload.id).is_file())
         source = get_settings().data_dir / "uploads" / f"{upload.id}.part"
-        root = get_settings().resolved_media_dir().resolve()
+        root = get_settings().resolved_media_dir()
         folder = root / "managed" / upload.family_id
-        folder.mkdir(parents=True, exist_ok=True)
         destination = folder / f"{upload.id}{Path(upload.filename).suffix.lower()}"
         cover = folder / f"{upload.id}-cover.jpg"
         try:
@@ -117,65 +116,69 @@ def process(task_id):
                 task.status, task.error, task.lease_until = "done", "", None
                 db.commit()
                 return
-            storage = build_storage("oss") if remote else None
-            if remote and client_video and storage.size(target.object_key) != upload.size:
-                raise ValueError("云端文件大小已变化，请重新上传")
-            if remote and not client_video:
-                source.parent.mkdir(parents=True, exist_ok=True)
-                if upload.size > get_settings().media_processing_max_bytes:
-                    raise ValueError("文件超出处理容量限制，请联系管理员")
-                if shutil.disk_usage(source.parent).free < upload.size + 64 * 1024**2:
-                    raise ValueError("处理磁盘空间不足，请稍后重试")
-                storage.download(target.object_key, source, upload.size)
-            sha256 = ""
-            if not (remote and client_video) and (
-                not source.is_file() or source.stat().st_size != upload.size
-            ):
-                raise ValueError("临时文件缺失或大小不一致，请重新上传")
-            if not client_video:
-                digest = hashlib.sha256()
-                with source.open("rb") as handle:
-                    for block in iter(lambda: handle.read(1024 * 1024), b""):
-                        digest.update(block)
-                sha256 = digest.hexdigest()
-            runtime = None
-            cover_data = None
-            if upload.kind == "video":
-                metadata = read_metadata(upload.id) if client_video else None
-                runtime = metadata.runtimeMs * 10000 if metadata else inspect_video(source)
-                has_cover = db.query(MediaFile.id).filter(
-                    MediaFile.item_id == item.id, MediaFile.kind == "image",
-                ).first()
-                if not has_cover:
-                    try:
-                        cover_data = metadata.cover_bytes() if metadata else extract_cover(source, runtime)
-                        if cover_data is not None:
-                            atomic_write(cover, cover_data)
-                            if remote:
-                                image_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "molly-cover:" + upload.id))
-                                storage.put_file(f"families/{upload.family_id}/media/{image_id}.jpg", cover, "image/jpeg")
-                    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError,
-                            OssError, Image.DecompressionBombError):
-                        cover_data = None
-                        logger.warning("Automatic cover extraction failed for %s", upload.id)
-                mime = "video/mp4"
-            elif upload.kind == "image":
-                with Image.open(source) as image:
-                    image.verify()
-                mime = "image/" + (
-                    "jpeg" if destination.suffix in (".jpg", ".jpeg") else destination.suffix[1:]
-                )
-            else:
-                content = source.read_text(encoding="utf-8-sig")
-                if "-->" not in content or (
-                    destination.suffix == ".vtt" and not content.startswith("WEBVTT")
+            has_cover = db.query(MediaFile.id).filter(
+                MediaFile.item_id == item.id, MediaFile.kind == "image",
+            ).first()
+            with external_io(db, task, upload, item, target):
+                root = root.resolve()
+                folder.mkdir(parents=True, exist_ok=True)
+                client_video = upload.kind == "video" and (remote or metadata_path(upload.id).is_file())
+                storage = build_storage("oss") if remote else None
+                if remote and client_video and storage.size(target.object_key) != upload.size:
+                    raise ValueError("云端文件大小已变化，请重新上传")
+                if remote and not client_video:
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    if upload.size > get_settings().media_processing_max_bytes:
+                        raise ValueError("文件超出处理容量限制，请联系管理员")
+                    if shutil.disk_usage(source.parent).free < upload.size + 64 * 1024**2:
+                        raise ValueError("处理磁盘空间不足，请稍后重试")
+                    storage.download(target.object_key, source, upload.size)
+                sha256 = ""
+                if not (remote and client_video) and (
+                    not source.is_file() or source.stat().st_size != upload.size
                 ):
-                    raise ValueError("字幕需要 UTF-8 编码，并包含有效的时间轴")
-                mime = "text/vtt" if destination.suffix == ".vtt" else "application/x-subrip"
-            if not remote:
-                staging = destination.with_suffix(destination.suffix + ".tmp")
-                shutil.copyfile(source, staging)
-                staging.replace(destination)
+                    raise ValueError("临时文件缺失或大小不一致，请重新上传")
+                if not client_video:
+                    digest = hashlib.sha256()
+                    with source.open("rb") as handle:
+                        for block in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(block)
+                    sha256 = digest.hexdigest()
+                runtime = None
+                cover_data = None
+                if upload.kind == "video":
+                    metadata = read_metadata(upload.id) if client_video else None
+                    runtime = metadata.runtimeMs * 10000 if metadata else inspect_video(source)
+                    if not has_cover:
+                        try:
+                            cover_data = metadata.cover_bytes() if metadata else extract_cover(source, runtime)
+                            if cover_data is not None:
+                                atomic_write(cover, cover_data)
+                                if remote:
+                                    image_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "molly-cover:" + upload.id))
+                                    storage.put_file(f"families/{upload.family_id}/media/{image_id}.jpg", cover, "image/jpeg")
+                        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError,
+                                OssError, Image.DecompressionBombError):
+                            cover_data = None
+                            logger.warning("Automatic cover extraction failed for %s", upload.id)
+                    mime = "video/mp4"
+                elif upload.kind == "image":
+                    with Image.open(source) as image:
+                        image.verify()
+                    mime = "image/" + (
+                        "jpeg" if destination.suffix in (".jpg", ".jpeg") else destination.suffix[1:]
+                    )
+                else:
+                    content = source.read_text(encoding="utf-8-sig")
+                    if "-->" not in content or (
+                        destination.suffix == ".vtt" and not content.startswith("WEBVTT")
+                    ):
+                        raise ValueError("字幕需要 UTF-8 编码，并包含有效的时间轴")
+                    mime = "text/vtt" if destination.suffix == ".vtt" else "application/x-subrip"
+                if not remote:
+                    staging = destination.with_suffix(destination.suffix + ".tmp")
+                    shutil.copyfile(source, staging)
+                    staging.replace(destination)
             if db.get(MediaFile, upload.id) is None:
                 old = (
                     db.query(MediaFile)
@@ -231,7 +234,7 @@ def process(task_id):
                                 storage="oss" if remote else "local",
                                 path=cover_key if remote else str(cover.relative_to(root)),
                                 mime="image/jpeg",
-                                size_bytes=cover.stat().st_size,
+                                size_bytes=len(cover_data),
                                 sha256=hashlib.sha256(cover_data).hexdigest(),
                             )
                         )

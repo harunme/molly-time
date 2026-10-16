@@ -19,6 +19,7 @@ from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..storage.local import LocalStorage
 from ..storage.settings import get_storage_settings
+from ..transactions import external_io
 from ..usage_meter import meter_media
 from ..utils.image import resize_to_file
 from ..utils.subtitles import webvtt
@@ -120,17 +121,6 @@ def playback_info(db, file, session_id=None):
 
     from ..playback_settings import default_subtitle, preferred_subtitle_index
 
-    storage = build_storage(file.storage)
-    ttl = get_storage_settings().oss_signed_url_ttl
-    query = {"mediaId": file.id}
-    if session_id:
-        query["sessionId"] = session_id
-    if file.storage == "local":
-        url = f"/api/episodes/{file.item_id}/play?{urlencode(query)}"
-        expires = None
-    else:
-        url = storage.signed_url(file.path, ttl)
-        expires = (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=ttl)).isoformat()
     subs = (
         db.query(MediaFile)
         .filter(MediaFile.item_id == file.item_id, MediaFile.kind == "subtitle")
@@ -140,8 +130,11 @@ def playback_info(db, file, session_id=None):
     tracks = []
     preference = default_subtitle(db, file.family_id)
     selected = preferred_subtitle_index(subs, preference)
+    media_options = {row.media_id: row for row in db.query(MediaOptions).filter(
+        MediaOptions.media_id.in_([sub.id for sub in subs]),
+    ).all()}
     for sub in subs:
-        options = db.get(MediaOptions, sub.id)
+        options = media_options.get(sub.id)
         tracks.append(
             {
                 "index": sub.index,
@@ -155,20 +148,32 @@ def playback_info(db, file, session_id=None):
                 "url": f"/api/episodes/{file.item_id}/subtitles/{sub.index}?format=vtt&v={sub.sha256 or sub.id}",
             }
         )
-    return {
-        "mediaId": file.id,
-        "version": file.sha256 or file.id,
-        "size": file.size_bytes or storage.size(file.path),
-        "sha256": file.sha256,
-        "mime": file.mime or "video/mp4",
-        "storage": file.storage,
-        "url": url,
-        "expiresAt": expires,
-        "subtitles": tracks,
-        "defaultSubtitle": preference,
-        "headers": {},
-        "retention": "backup",
-    }
+    with external_io(db):
+        storage = build_storage(file.storage)
+        ttl = get_storage_settings().oss_signed_url_ttl
+        query = {"mediaId": file.id}
+        if session_id:
+            query["sessionId"] = session_id
+        if file.storage == "local":
+            url = f"/api/episodes/{file.item_id}/play?{urlencode(query)}"
+            expires = None
+        else:
+            url = storage.signed_url(file.path, ttl)
+            expires = (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=ttl)).isoformat()
+        return {
+            "mediaId": file.id,
+            "version": file.sha256 or file.id,
+            "size": file.size_bytes or storage.size(file.path),
+            "sha256": file.sha256,
+            "mime": file.mime or "video/mp4",
+            "storage": file.storage,
+            "url": url,
+            "expiresAt": expires,
+            "subtitles": tracks,
+            "defaultSubtitle": preference,
+            "headers": {},
+            "retention": "backup",
+        }
 
 
 @router.api_route(
@@ -185,11 +190,14 @@ def play(
 ):
     """Legacy playback entry: local Range delivery or authorized OSS redirect."""
     file = authorized_file(db, episode_id, request, user, mediaId, sessionId)
-    return stream_file(file, request, user.family_id)
+    return stream_file(file, request, user.family_id, db=db)
 
 
-def stream_file(file, request, family_id=None):
+def stream_file(file, request, family_id=None, *, db=None):
     """Shared authenticated delivery for catalog videos and private parent clips."""
+    if db is not None:
+        with external_io(db):
+            return stream_file(file, request, family_id)
     storage = build_storage(file.storage)
     if not isinstance(storage, LocalStorage):
         return RedirectResponse(
@@ -325,28 +333,29 @@ def subtitle(
     )
     if f is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    storage = build_storage(f.storage)
     meter_media(request, user.family_id)
     options = db.get(MediaOptions, f.id)
-    if format == "vtt":
-        cache = get_settings().data_dir / "subtitle-cache"
-        cache.mkdir(parents=True, exist_ok=True)
-        offset = options.offset_ms if options else 0
-        path = cache / f"{f.id}-{f.sha256 or f.id}-{offset}.vtt"
-        if not path.exists():
-            data = webvtt(storage.open(f.path), offset)
-            from ..utils.image import atomic_write
+    with external_io(db):
+        storage = build_storage(f.storage)
+        if format == "vtt":
+            cache = get_settings().data_dir / "subtitle-cache"
+            cache.mkdir(parents=True, exist_ok=True)
+            offset = options.offset_ms if options else 0
+            path = cache / f"{f.id}-{f.sha256 or f.id}-{offset}.vtt"
+            if not path.exists():
+                data = webvtt(storage.open(f.path), offset)
+                from ..utils.image import atomic_write
 
-            atomic_write(path, data)
+                atomic_write(path, data)
+            return Response(
+                path.read_bytes(), media_type="text/vtt", headers={"Cache-Control": "private, no-cache"}
+            )
+        blob = storage.open(f.path)
         return Response(
-            path.read_bytes(), media_type="text/vtt", headers={"Cache-Control": "private, no-cache"}
+            content=blob,
+            media_type=f.mime or "application/x-subrip",
+            headers={"Content-Length": str(len(blob))},
         )
-    blob = storage.open(f.path)
-    return Response(
-        content=blob,
-        media_type=f.mime or "application/x-subrip",
-        headers={"Content-Length": str(len(blob))},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -390,20 +399,21 @@ def image(
     if file is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    storage = build_storage(file.storage)
-    target_w = w if (w and w > 0) else 800
-    if h is not None and h <= 0:
-        h = None
+    with external_io(db):
+        storage = build_storage(file.storage)
+        target_w = w if (w and w > 0) else 800
+        if h is not None and h <= 0:
+            h = None
 
-    settings = get_settings()
-    cache_dir = settings.data_dir / "image-cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w or 'orig'}.jpg"
-    if not cache_path.exists():
-        resize_to_file(storage.open(file.path), cache_path, target_w)
-    data = cache_path.read_bytes()
-    meter_media(request, user.family_id)
-    tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}".encode()).hexdigest()
-    return Response(content=data, media_type="image/jpeg", headers={
-        "Cache-Control": "private, no-cache", "X-Molly-Image-Version": tag,
-    })
+        settings = get_settings()
+        cache_dir = settings.data_dir / "image-cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w or 'orig'}.jpg"
+        if not cache_path.exists():
+            resize_to_file(storage.open(file.path), cache_path, target_w)
+        data = cache_path.read_bytes()
+        meter_media(request, user.family_id)
+        tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}".encode()).hexdigest()
+        return Response(content=data, media_type="image/jpeg", headers={
+            "Cache-Control": "private, no-cache", "X-Molly-Image-Version": tag,
+        })

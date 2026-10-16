@@ -26,7 +26,7 @@ from .management_models import (
 from .models import Item, MediaFile
 from .storage import build_storage
 from .storage.local import LocalStorage
-from .transactions import serialize_sqlite_write
+from .transactions import external_io, serialize_sqlite_write
 
 logger = logging.getLogger(__name__)
 DEFAULT_RETENTION_DAYS = 7
@@ -145,13 +145,27 @@ def restore(db, item_id, family_id):
 
 def object_identity(backend, key):
     if backend in ("local", "temporary"):
-        store = (build_storage("local") if backend == "local"
-                 else LocalStorage(get_settings().data_dir / "uploads"))
+        # Local identities do not depend on OSS configuration. Avoid reading and
+        # decrypting the operations settings once per media object.
+        store = LocalStorage(get_settings().resolved_media_dir() if backend == "local"
+                             else get_settings().data_dir / "uploads")
         return "disk", str(store._abspath(key))
     return backend, key
 
 
-def objects_for(db, keys):
+def object_snapshot(db, keys):
+    return (
+        db.query(MediaFile).filter(
+            MediaFile.item_id.in_(keys), MediaFile.kind != "deleted",
+        ).all(),
+        db.query(UploadSession, UploadTarget).outerjoin(UploadTarget).filter(
+            UploadSession.item_id.in_(keys),
+        ).all(),
+        db.query(TrashEntry).filter(TrashEntry.item_id.in_(keys)).all(),
+    )
+
+
+def objects_for(db, keys, snapshot=None):
     """All versions, failed completed uploads and local processing leftovers, deduplicated."""
     objects = {}
 
@@ -170,36 +184,53 @@ def objects_for(db, keys):
         if previous is None or size > previous["size"]:
             objects[identity] = {"backend": backend, "key": key, "size": max(0, size), "unknown": unknown}
 
-    for file in db.query(MediaFile).filter(MediaFile.item_id.in_(keys), MediaFile.kind != "deleted"):
-        add(file.storage, file.path, file.size_bytes)
-    for upload, target in db.query(UploadSession, UploadTarget).outerjoin(UploadTarget).filter(
-        UploadSession.item_id.in_(keys),
-    ):
-        if target and target.backend == "oss" and target.object_key and upload.status != "cancelled":
-            add("oss", target.object_key, upload.size)
-        add("temporary", f"{upload.id}.part", 0)
-        add("temporary", f"{upload.id}.video.json", 0)
-        base = f"managed/{upload.family_id}/{upload.id}"
-        for key in (base + Path(upload.filename).suffix.lower(), base + "-cover.jpg",
-                    base + Path(upload.filename).suffix.lower() + ".tmp"):
-            add("local", key, 0)
-    for entry in db.query(TrashEntry).filter(TrashEntry.item_id.in_(keys)):
-        for identity in entry.deleted_objects:
-            objects.pop(tuple(identity), None)
+    files, uploads, entries = snapshot if snapshot is not None else object_snapshot(db, keys)
+    with external_io(db):
+        for file in files:
+            if file.item_id in keys:
+                add(file.storage, file.path, file.size_bytes)
+        for upload, target in uploads:
+            if upload.item_id not in keys:
+                continue
+            if target and target.backend == "oss" and target.object_key and upload.status != "cancelled":
+                add("oss", target.object_key, upload.size)
+            add("temporary", f"{upload.id}.part", 0)
+            add("temporary", f"{upload.id}.video.json", 0)
+            base = f"managed/{upload.family_id}/{upload.id}"
+            for key in (base + Path(upload.filename).suffix.lower(), base + "-cover.jpg",
+                        base + Path(upload.filename).suffix.lower() + ".tmp"):
+                add("local", key, 0)
+        for entry in entries:
+            if entry.item_id in keys:
+                for identity in entry.deleted_objects:
+                    objects.pop(tuple(identity), None)
     return objects
 
 
-def outside_references(db, keys):
-    refs = {object_identity(file.storage, file.path) for file in db.query(MediaFile).filter(
-        ~MediaFile.item_id.in_(keys), MediaFile.kind != "deleted",
-    )}
-    for target in db.query(UploadTarget).join(UploadSession).filter(~UploadSession.item_id.in_(keys)):
-        if target.object_key:
-            refs.add(object_identity(target.backend, target.object_key))
-    from .shares import retained_identities
+def reference_snapshot(db):
+    from .shares import retained_files
 
-    refs.update(retained_identities(db))
+    files = db.query(MediaFile.item_id, MediaFile.storage, MediaFile.path).filter(
+        MediaFile.kind != "deleted",
+    ).all()
+    targets = db.query(UploadSession.item_id, UploadTarget.backend, UploadTarget.object_key).join(
+        UploadTarget, UploadTarget.upload_id == UploadSession.id,
+    ).all()
+    shares = retained_files(db).all()
+    with external_io(db):
+        refs = {}
+        for item, backend, path in [*files, *targets]:
+            if path:
+                refs.setdefault(object_identity(backend, path), set()).add(item)
+        for file in shares:
+            # A live snapshot protects the object independently of any catalog tree.
+            refs.setdefault(object_identity(file.storage, file.path), set()).add(None)
     return refs
+
+
+def outside_references(db, keys, snapshot=None):
+    refs = snapshot if snapshot is not None else reference_snapshot(db)
+    return {identity for identity, owners in refs.items() if owners - keys}
 
 
 def object_totals(objects, shared):
@@ -217,21 +248,23 @@ def trash_snapshot(db, family_id, q="", page=1, page_size=20):
     roots = sorted(root_entries(db, items), key=lambda row: (aware(row.archived_at), row.item_id), reverse=True)
     keys = set().union(*(subtree(items, row.item_id) for row in roots)) if roots else set()
     days = retention_days(db, family_id)
-    all_objects = objects_for(db, keys)
-    storage = object_totals(all_objects, outside_references(db, keys))
+    snapshot = object_snapshot(db, keys)
+    references = reference_snapshot(db)
+    all_objects = objects_for(db, keys, snapshot)
+    storage = object_totals(all_objects, outside_references(db, keys, references))
     matching = [row for row in roots if q.strip().casefold() in items[row.item_id].name.casefold()]
     rows = []
     for entry in matching[(page - 1) * page_size:page * page_size]:
         item = items[entry.item_id]
         child_keys = subtree(items, item.id)
-        objects = objects_for(db, child_keys)
+        objects = objects_for(db, child_keys, snapshot)
         rows.append({
             "id": item.id, "name": item.name, "type": item.type,
             "archivedAt": aware(entry.archived_at).isoformat(),
             "deleteAt": (aware(entry.archived_at) + dt.timedelta(days=days)).isoformat() if days else None,
             "deleting": entry.deleting, "error": entry.error,
             "videoCount": sum(items[key].type == "Episode" for key in child_keys),
-            "storage": object_totals(objects, outside_references(db, child_keys)),
+            "storage": object_totals(objects, outside_references(db, child_keys, references)),
         })
     return {"items": rows, "total": len(matching), "page": page, "pageSize": page_size,
             "storage": storage, "entryCount": len(roots), "retentionDays": days}
@@ -263,15 +296,17 @@ def purge(item_id, family_id, *, expired_at=None):
         ensure_idle(db, keys)
         objects = objects_for(db, keys)
         shared = outside_references(db, keys)
+        db.add(entry)
         entry.deleting, entry.error = True, ""
         db.commit()  # Durable before the first deletion; partially deleted trees cannot be restored.
         try:
             for identity, obj in objects.items():
                 if identity in shared:
                     continue
-                store = (LocalStorage(get_settings().data_dir / "uploads")
-                         if obj["backend"] == "temporary" else build_storage(obj["backend"]))
-                store.delete(obj["key"])
+                with external_io(db, entry):
+                    store = (LocalStorage(get_settings().data_dir / "uploads")
+                             if obj["backend"] == "temporary" else build_storage(obj["backend"]))
+                    store.delete(obj["key"])
                 entry.deleted_objects = [*entry.deleted_objects, list(identity)]
                 db.commit()  # Track partial progress for accurate totals and idempotent retries.
             serialize_sqlite_write(db)

@@ -64,6 +64,8 @@ def get_storage_settings():
     with get_session_factory()() as db:
         row = db.get(OperationsStorage, "storage")
         revision = row.revision if row else 0
-        if row:
-            values.update(decode(row.config))
+        config = dict(row.config) if row else None
+    # Reading the encryption key is filesystem I/O, outside the read transaction.
+    if config is not None:
+        values.update(decode(config))
     return SimpleNamespace(**values, revision=revision)

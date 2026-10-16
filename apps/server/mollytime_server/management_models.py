@@ -110,13 +110,18 @@ class UploadSession(Base):
     item_id: Mapped[str] = mapped_column(ForeignKey("items.id"))
     filename: Mapped[str] = mapped_column(String(256))
     kind: Mapped[str] = mapped_column(String(16))
-    size: Mapped[int] = mapped_column(Integer)
+    size: Mapped[int] = mapped_column(BigInteger)
     fingerprint: Mapped[str] = mapped_column(String(128))
-    offset: Mapped[int] = mapped_column(Integer, default=0)
+    offset: Mapped[int] = mapped_column(BigInteger, default=0)
     status: Mapped[str] = mapped_column(String(16), default="uploading")
     error: Mapped[str] = mapped_column(Text, default="")
     language: Mapped[str] = mapped_column(String(32), default="und")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
+
+    __table_args__ = (
+        Index("ix_upload_family_status", "family_id", "status"),
+        Index("ix_upload_item_kind_status", "item_id", "kind", "status"),
+    )
 
 
 class MediaTask(Base):
@@ -218,16 +223,21 @@ class WatchSession(Base):
     last_seq: Mapped[int] = mapped_column(Integer, default=-1)
     ended: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    __table_args__ = (
+        Index("ix_watch_family_started", "family_id", "started_at"),
+        Index("ix_watch_device_started", "device_id", "started_at"),
+    )
+
 
 class WatchInterval(Base):
     __tablename__ = "watch_intervals"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(ForeignKey("watch_sessions.id"), index=True)
     seq: Mapped[int] = mapped_column(Integer)
-    start_ms: Mapped[int] = mapped_column(Integer)
-    end_ms: Mapped[int] = mapped_column(Integer)
-    played_ms: Mapped[int] = mapped_column(Integer)
-    position_ms: Mapped[int] = mapped_column(Integer)
+    start_ms: Mapped[int] = mapped_column(BigInteger)
+    end_ms: Mapped[int] = mapped_column(BigInteger)
+    played_ms: Mapped[int] = mapped_column(BigInteger)
+    position_ms: Mapped[int] = mapped_column(BigInteger)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     stopped: Mapped[bool] = mapped_column(Boolean, default=False)
     __table_args__ = (
@@ -245,7 +255,7 @@ class WatchProgress(Base):
     session_id: Mapped[str] = mapped_column(ForeignKey("watch_sessions.id"))
     session_started_at: Mapped[dt.datetime] = mapped_column(DateTime)
     seq: Mapped[int] = mapped_column(Integer)
-    position_ms: Mapped[int] = mapped_column(Integer)
+    position_ms: Mapped[int] = mapped_column(BigInteger)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -276,7 +286,7 @@ class DeviceDownload(Base):
     media_id: Mapped[str] = mapped_column(ForeignKey("media_files.id"), index=True)
     desired: Mapped[str] = mapped_column(String(16), default="saved")
     status: Mapped[str] = mapped_column(String(16), default="queued")
-    downloaded_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    downloaded_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     error: Mapped[str] = mapped_column(String(256), default="")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     __table_args__ = (UniqueConstraint("device_id", "media_id"),)

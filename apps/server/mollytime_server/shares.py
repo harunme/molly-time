@@ -7,7 +7,7 @@ import logging
 from .db import get_session_factory
 from .share_models import ContentShare, ObjectCleanup, ShareFile
 from .storage import build_storage
-from .transactions import serialize_sqlite_write
+from .transactions import external_io, serialize_sqlite_write
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +25,14 @@ def retained_files(db, now=None):
 def retained_identities(db, now=None):
     from .trash import object_identity
 
-    return {object_identity(file.storage, file.path) for file in retained_files(db, now)}
+    files = retained_files(db, now).all()
+    with external_io(db):
+        return {object_identity(file.storage, file.path) for file in files}
 
 
-def enqueue_cleanup(db, storage, path):
-    from .trash import object_identity
-
+def enqueue_cleanup(db, storage, path, identity):
     if storage not in ("oss", "local") or not path:
         return
-    identity = object_identity(storage, path)
     key = hashlib.sha256(repr(identity).encode()).hexdigest()
     # autoflush=False: also check objects queued earlier in the current transaction.
     if db.get(ObjectCleanup, key) is None and not any(
@@ -52,21 +51,28 @@ def cleanup_shares(now=None):
         expired = (
             db.query(ShareFile).join(ContentShare).filter(ContentShare.expires_at <= now).all()
         )
-        for file in expired:
-            enqueue_cleanup(db, file.storage, file.path)
+        with external_io(db):
+            identities = [object_identity(file.storage, file.path) for file in expired]
+        for file, identity in zip(expired, identities, strict=True):
+            enqueue_cleanup(db, file.storage, file.path, identity)
             db.delete(file)
         db.commit()  # Expired pins and cleanup candidates change atomically.
         protected = outside_references(db, set()) | retained_identities(db, now)
-        for candidate in db.query(ObjectCleanup).all():
-            if object_identity(candidate.storage, candidate.path) in protected:
+        candidates = db.query(ObjectCleanup).all()
+        with external_io(db):
+            identities = [object_identity(row.storage, row.path) for row in candidates]
+        for candidate, identity in zip(candidates, identities, strict=True):
+            if identity in protected:
                 continue
             try:
-                build_storage(candidate.storage).delete(candidate.path)
+                with external_io(db, candidate):
+                    build_storage(candidate.storage).delete(candidate.path)
                 db.delete(candidate)
                 db.commit()
                 deleted += 1
             except Exception:
                 db.rollback()
+                candidate = db.get(ObjectCleanup, candidate.id)
                 candidate.error = "文件清理失败，将在下一轮重试"
                 db.commit()
                 logger.exception("Shared object cleanup failed: %s", candidate.id)
