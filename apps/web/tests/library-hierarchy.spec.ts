@@ -14,10 +14,9 @@ test('organize a cartoon into seasons, sort episodes and move existing videos', 
   const series = await response.json();
   try {
     await page.goto(`/manage/#/library/${series.id}`);
-    await page.getByRole('button', { name: '新建季', exact: true }).click();
-    await page.getByLabel('名称', { exact: true }).fill('冒险第二季');
-    await page.getByLabel('第几季', { exact: true }).fill('2');
-    await page.getByRole('button', { name: '保存', exact: true }).click();
+    // Existing numbered seasons remain supported alongside ordinary folders.
+    expect((await page.request.post('/api/manage/resources', { headers, data: { type: 'Season', name: '冒险第二季', parentId: series.id, indexNumber: 2 } })).ok()).toBeTruthy();
+    await page.reload();
     const seasons = await (await page.request.get(`/api/manage/resources?parentId=${series.id}`)).json();
     const season = seasons[0];
     for (const [name, indexNumber, parentId] of [['第十集', 10, season.id], ['第二集', 2, season.id], ['待整理视频', 1, series.id]] as const) {
@@ -37,10 +36,12 @@ test('organize a cartoon into seasons, sort episodes and move existing videos', 
     await expect(page.getByRole('button', { name: '返回分季整理测试', exact: true })).toBeVisible();
     await expect(page.locator('.resource-tile .name-button')).toHaveText(['待整理视频', '第二集', '第十集']);
     await page.getByRole('button', { name: '更多操作 第十集', exact: true }).click();
-    await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
-    await page.getByLabel('第几集', { exact: true }).fill('3');
-    await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page.locator('.resource-tile').filter({ hasText: '第十集' })).toContainText('EP 03');
+    await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+    const name = page.getByRole('textbox', { name: '视频名称', exact: true });
+    await expect(name).toBeFocused();
+    await name.fill('第十集 · 新名字');
+    await name.press('Enter');
+    await expect(page.locator('.resource-tile').filter({ hasText: '第十集 · 新名字' })).toContainText('EP 10');
     const picker = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: '＋ 上传资源', exact: true }).click();
     await (await picker).setFiles([]);

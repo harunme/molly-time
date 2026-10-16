@@ -13,19 +13,69 @@ async function login(page: Page, path = '/manage/#/library') {
 const task = (index: number): Upload => ({ id: `task-${index}`, itemId: 'episode', filename: `英语启蒙故事-第${index + 1}集.mp4`,
   size: 1024, offset: 1024, status: 'ready', fingerprint: 'fixture', kind: 'video', error: '', taskId: null, taskStatus: null });
 
+test('menu cover upload opens the picker directly and shows progress and errors on its card', async ({ page }) => {
+  await login(page);
+  const tile = page.locator('.resource-tile').filter({ has: page.getByRole('button', { name: '英语启蒙', exact: true }) });
+  const original = await tile.locator('img').getAttribute('src');
+  const choose = async (files: Parameters<import('@playwright/test').FileChooser['setFiles']>[0]) => {
+    await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: '编辑', exact: true })).toHaveCount(0);
+    const picker = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: '上传封面', exact: true }).click();
+    await (await picker).setFiles(files);
+  };
+  await choose([]);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await choose({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
+  await expect(tile.getByRole('alert')).toContainText('封面图片无效');
+  await expect(tile.locator('img')).toHaveAttribute('src', original!);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/manage/uploads/*/complete', async route => {
+    await gate;
+    await route.continue();
+  });
+  try {
+    const completing = page.waitForRequest('**/api/manage/uploads/*/complete');
+    await choose({
+      name: 'cover.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAE0lEQVR4nGNkaGDACpiwCw9WCQBqCACQJ5at+QAAAABJRU5ErkJggg==', 'base64'),
+    });
+    await completing;
+    await expect(tile.getByRole('status')).toHaveText('正在上传封面…');
+    await expect(tile.locator('img')).toHaveAttribute('src', original!);
+    await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    release();
+    await expect(tile.getByRole('status')).toHaveCount(0);
+    const resource = await (await page.request.get('/api/manage/resources/series')).json();
+    await expect(tile.locator('img')).toHaveAttribute('src', resource.imageUrl);
+    await expect(tile.locator('img')).toHaveAttribute('data-loaded', 'true');
+    await expect(tile.locator('.desktop-folder-badge')).toBeVisible();
+    expect(await tile.locator('.desktop-cover').evaluate(node => getComputedStyle(node, '::before').display)).toBe('none');
+    await page.screenshot({ path: '../../artifacts/library-folder-cover.png', fullPage: true });
+    await expect(tile.getByRole('alert')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/library$/);
+  } finally { release(); }
+});
+
 test('task modal preserves the current folder and supports browser history', async ({ page }) => {
   await page.route('**/api/manage/uploads?*', (route) => route.fulfill({ json: { items: [{ ...task(0), status: 'uploading', offset: 0 }], total: 1, page: 1, pageSize: Number(new URL(route.request().url()).searchParams.get('pageSize')) } }));
   await login(page);
   const navigation = page.getByRole('navigation', { name: '管理导航' });
   await expect(navigation.getByRole('link', { name: '上传任务', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '上传任务', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
+  await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '第 1 季', exact: true }).click();
   await expect(page.getByRole('heading', { name: '第 1 季', exact: true })).toBeVisible();
   await expect(page.locator('.resource-tile')).toHaveCount(3);
   let requests = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/manage/uploads') requests++; });
-  const trigger = page.getByRole('button', { name: '上传任务', exact: true });
-  await trigger.click();
+  await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
+  await page.evaluate(() => { window.location.hash = '/library/season?uploads=1'; });
   const dialog = page.getByRole('dialog', { name: '上传任务', exact: true });
   await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(/\/library\/season\?uploads=1$/);
@@ -37,7 +87,7 @@ test('task modal preserves the current folder and supports browser history', asy
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(trigger).toBeFocused();
+  await expect(page.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeFocused();
   await expect(page).toHaveURL(/\/library\/season$/);
 });
 
@@ -166,9 +216,9 @@ test('completed uploads are hidden and create actions sit in the list toolbar', 
   await login(page);
   await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
   const toolbar = page.locator('.resource-library-card .library-toolbar');
-  await expect(toolbar.getByRole('button', { name: '新建动画片', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: '新建文件夹', exact: true })).toBeVisible();
   await expect(toolbar.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeVisible();
-  await expect(page.locator('.page-title').getByRole('button', { name: '新建动画片', exact: true })).toHaveCount(0);
+  await expect(page.locator('.page-title').getByRole('button', { name: '新建文件夹', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '../../artifacts/manage-library-actions-desktop.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

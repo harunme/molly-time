@@ -546,12 +546,39 @@ def test_cover_replacement_changes_image_reference(parent):
             ).status_code
             == 200
         )
-        parent.post(f"/api/manage/uploads/{row['id']}/complete")
-        assert run_once()
+        completed = parent.post(f"/api/manage/uploads/{row['id']}/complete")
+        assert completed.status_code == 200
+        assert completed.json()["status"] == "ready"
+        assert completed.json()["taskId"] is None
+        assert parent.post(f"/api/manage/uploads/{row['id']}/complete").json() == completed.json()
+        assert not run_once()
         url = parent.get("/api/manage/resources/series").json()["imageUrl"]
         assert parent.get(url).status_code == 200
         versions.append(url)
     assert versions[0] != versions[1]
+
+
+def test_invalid_cover_keeps_previous_image_and_returns_inline_error(parent):
+    payload = b"not an image"
+    row = parent.post("/api/manage/uploads", json={
+        "itemId": "series", "filename": "broken.png", "kind": "image",
+        "size": len(payload), "fingerprint": "invalid",
+    }).json()
+    path = f"/api/manage/uploads/{row['id']}"
+    assert parent.put(path + "/chunks?offset=0", content=payload, headers={
+        "X-Chunk-SHA256": hashlib.sha256(payload).hexdigest(),
+    }).status_code == 200
+    with Session(db.get_engine()) as session:
+        previous = session.get(Item, "series").primary_image_tag
+    response = parent.post(path + "/complete")
+    assert response.status_code == 422
+    assert "封面图片无效" in response.json()["detail"]
+    assert not run_once()
+    with Session(db.get_engine()) as session:
+        assert session.get(Item, "series").primary_image_tag == previous
+        assert session.get(MediaFile, row["id"]) is None
+    assert parent.get("/api/manage/uploads?pending=true").json() == []
+    assert parent.post(path + "/cancel").status_code == 200
 
 
 def test_watch_chart_device_segments_cover_full_range_without_pagination(parent):

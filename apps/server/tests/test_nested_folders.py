@@ -70,6 +70,48 @@ def test_move_rejects_cycles_cross_family_and_duplicate_folders(parent):
     assert parent.post(f'/api/manage/resources/{group}/move', json={'folderId': original}).status_code == 409
 
 
+def test_create_folders_directly_in_nested_containers(parent):
+    first = create(parent, '歌曲分类', 'Series', 'series')
+    second = create(parent, '韵律儿歌', 'Series', 'season')
+    third = create(parent, '英文儿歌', 'Series', second)
+    assert parent.get(f'/api/manage/resources/{first}').json()['parentId'] == 'series'
+    assert parent.get(f'/api/manage/resources/{third}').json()['parentId'] == second
+    response = parent.post('/api/manage/resources', json={
+        'name': '错误位置', 'type': 'Series', 'parentId': 'e1',
+    })
+    assert response.status_code == 422
+
+
+def test_new_folders_get_unique_default_names_and_reject_conflicting_renames(parent):
+    def new(parent_id):
+        result = parent.post('/api/manage/resources', json={
+            'name': '新建文件夹', 'type': 'Series', 'parentId': parent_id, 'autoName': True,
+        })
+        assert result.status_code == 200, result.text
+        return result.json()
+
+    first, second = new('season'), new('season')
+    assert first['name'] == '新建文件夹'
+    assert second['name'] == '新建文件夹 (2)'
+    assert second['type'] == 'Series'
+    assert new('series')['name'] == '新建文件夹'
+    response = parent.patch(f"/api/manage/resources/{second['id']}", json={'name': first['name']})
+    assert response.status_code == 409
+    assert parent.get(f"/api/manage/resources/{second['id']}").json()['name'] == second['name']
+    assert parent.patch(f"/api/manage/resources/{second['id']}", json={'name': '韵律儿歌'}).status_code == 200
+
+
+def test_name_only_updates_preserve_existing_description_and_number(parent):
+    assert parent.patch('/api/manage/resources/season', json={
+        'name': '原名称', 'overview': '已有介绍', 'indexNumber': 3,
+    }).status_code == 200
+    result = parent.patch('/api/manage/resources/season', json={'name': '新名称'})
+    assert result.status_code == 200
+    assert result.json()['name'] == '新名称'
+    assert result.json()['indexNumber'] == 3
+    assert result.json()['overview'] == '已有介绍'
+
+
 def test_nested_seasons_play_and_parent_clock_updates(parent):
     from mollytime_server.catalog_versions import version
     group = create(parent, '父动画片')

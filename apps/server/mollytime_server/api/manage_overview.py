@@ -12,8 +12,8 @@ from ..device_presence import ONLINE_WINDOW
 from ..manage_auth import Parent, aware
 from ..management_models import (
     Device,
-    FamilySettings,
     FamilyReminders,
+    FamilySettings,
     ResourceState,
     UploadSession,
     WatchInterval,
@@ -148,7 +148,7 @@ def overview(user: Parent, db: DbSession):
                 media[status] += count
     upload_counts = dict(
         db.query(UploadSession.status, func.count(UploadSession.id))
-        .filter(UploadSession.family_id == family)
+        .filter(UploadSession.family_id == family, UploadSession.kind != "image")
         .group_by(UploadSession.status)
         .all()
     )

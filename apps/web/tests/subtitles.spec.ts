@@ -26,7 +26,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
     await tv.addInitScript((binding) => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), {
       accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId, childId: 'child',
     });
-    await tv.goto('http://127.0.0.1:8098/tv/');
+    await tv.goto(`http://127.0.0.1:${process.env.MOLLYTIME_E2E_PORT || '8098'}/tv/`);
     await tv.getByRole('button', { name: '设置', exact: true }).click();
     const preference = tv.getByRole('region', { name: '默认字幕' });
     const subtitleSelect = preference.getByRole('combobox', { name: '默认字幕' });
@@ -92,7 +92,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
     await page.getByRole('button', { name: '第 1 季', exact: true }).click();
     await page.getByRole('button', { name: '更多操作 Browser fixture', exact: true }).click();
-    await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
+    await page.getByRole('menuitem', { name: '字幕设置', exact: true }).click();
     await expect(page.getByRole('heading', { name: '字幕资源' })).toBeVisible();
     await expect(page.getByText('默认字幕', { exact: true })).toHaveCount(0);
     await expect(page.getByLabel('字幕类型').nth(2)).toHaveAttribute('data-value', 'zh-en');

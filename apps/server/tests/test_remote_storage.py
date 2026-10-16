@@ -380,8 +380,15 @@ def test_small_remote_files_keep_server_validation(remote, kind, filename):
     content = output.getvalue() if kind == "image" else b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
     key, obj = start(web, len(content), kind=kind, filename=filename)
     oss.objects[obj] = content
-    assert web.post(f"/api/manage/uploads/{key}/complete").status_code == 200
-    assert run_once()
+    result = web.post(f"/api/manage/uploads/{key}/complete")
+    assert result.status_code == 200
+    if kind == "image":
+        assert result.json()["status"] == "ready"
+        assert result.json()["taskId"] is None
+        assert not run_once()
+        assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
+    else:
+        assert run_once()
     assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
     with Session(db.get_engine()) as session:
         assert session.get(MediaFile, key).sha256 == hashlib.sha256(content).hexdigest()

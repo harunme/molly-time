@@ -90,12 +90,10 @@ test("parents group existing folders without uploading videos again", async ({
   page,
 }) => {
   await login(page);
-  await page.getByRole("button", { name: "新建动画片", exact: true }).click();
-  await page
-    .getByRole("dialog")
-    .getByLabel("名称", { exact: true })
-    .fill("小动物学习");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByRole("button", { name: "新建文件夹", exact: true }).click();
+  const folderName = page.getByRole('textbox', { name: '文件夹名称', exact: true });
+  await folderName.fill('小动物学习');
+  await folderName.press('Enter');
   const from = (await page.getByRole('button', { name: '打开 未整理', exact: true }).boundingBox())!;
   const to = (await page.getByRole('button', { name: '打开 小动物学习', exact: true }).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
@@ -108,7 +106,7 @@ test("parents group existing folders without uploading videos again", async ({
   await page.getByRole('button', { name: '未整理', exact: true }).click();
   await expect(page.getByRole('button', { name: '自然小故事', exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "新建季", exact: true }),
+    page.getByRole("button", { name: "新建文件夹", exact: true }),
   ).toBeVisible();
 });
 

@@ -12,7 +12,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectField } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
@@ -550,10 +549,9 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   const location = useLocation();
   const tasksOpen = new URLSearchParams(location.search).get("uploads") === "1";
   const [serial, refresh] = useState(0);
-  const [newType, setNewType] = useState<"Series" | "Season" | "Episode">("Series");
-  const [edit, setEdit] = useState<Resource | "new">(),
-    [upload, setUpload] = useState<Resource>(),
+  const [upload, setUpload] = useState<Resource>(),
     [preview, setPreview] = useState<Resource>();
+  const [subtitleSettings, setSubtitleSettings] = useState<Resource>();
   const [share, setShare] = useState<Resource>();
   const [uploadKind, setUploadKind] = useState("video");
   const videoInput = useRef<HTMLInputElement>(null);
@@ -561,6 +559,25 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   const quickLock = useRef(false);
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickError, setQuickError] = useState('');
+  const [createdFolder, setCreatedFolder] = useState<Resource>();
+  const [folderCreating, setFolderCreating] = useState(false);
+  const [folderError, setFolderError] = useState('');
+  const [renaming, setRenaming] = useState<{ item: Resource; name: string; error: string; saving: boolean }>();
+  const folderNameInput = useRef<HTMLInputElement>(null);
+  const folderCreateLock = useRef(false);
+  const folderRenameLock = useRef(false);
+  const renameFromMenu = useRef(false);
+  const coverInput = useRef<HTMLInputElement>(null);
+  const coverTarget = useRef<Resource | undefined>(undefined);
+  const coverLock = useRef(false);
+  const [coverUploading, setCoverUploading] = useState<string>();
+  const [coverError, setCoverError] = useState<{ id: string; message: string }>();
+  useEffect(() => {
+    if (renaming && !renaming.saving) {
+      folderNameInput.current?.focus();
+      folderNameInput.current?.select();
+    }
+  }, [renaming?.item.id, renaming?.saving]);
 
   const previousTasksOpen = useRef(tasksOpen);
   useEffect(() => {
@@ -591,12 +608,61 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   const parentName = parent?.ancestors?.[parent.ancestors.length - 1]?.name || "全部文件夹";
   const closeFolder = () => navigate(parent?.parentId ? `/library/${encodeURIComponent(parent.parentId)}` : "/library");
   const pendingUploads = usePendingUploads(serial, 1);
-  const filtered = list.data;
+  const filtered = createdFolder ? [createdFolder, ...list.data.filter(item => item.id !== createdFolder.id)] : list.data;
+  useEffect(() => {
+    if (createdFolder && !renaming && list.data.some(item => item.id === createdFolder.id && item.name === createdFolder.name)) {
+      setCreatedFolder(undefined);
+    }
+  }, [list.data, createdFolder, renaming]);
+  useEffect(() => { setCreatedFolder(undefined); setRenaming(undefined); }, [list.page]);
   const changed = () => {
     refresh((v) => v + 1);
   };
-  const openEditor = (item: Resource) => {
-    void run(async () => setEdit(await api<Resource>(`/resources/${item.id}`)));
+  const saveFolderName = async () => {
+    if (!renaming || folderRenameLock.current) return;
+    const name = renaming.name.trim();
+    if (!name) {
+      setRenaming({ ...renaming, error: "名称不能为空" });
+      folderNameInput.current?.focus();
+      return;
+    }
+    if (name === renaming.item.name) { setRenaming(undefined); return; }
+    folderRenameLock.current = true;
+    setRenaming({ ...renaming, saving: true, error: "" });
+    try {
+      const item = await api<Resource>(`/resources/${renaming.item.id}`, "PATCH", {
+        name,
+      });
+      setCreatedFolder(item);
+      setRenaming(undefined);
+      changed();
+    } catch (error) {
+      setRenaming({ ...renaming, saving: false, error: (error as Error).message });
+    } finally { folderRenameLock.current = false; }
+  };
+  const createFolder = async () => {
+    if (readonly || folderCreateLock.current || renaming) { folderNameInput.current?.focus(); return; }
+    folderCreateLock.current = true;
+    setFolderCreating(true); setFolderError("");
+    try {
+      const item = await api<Resource>("/resources", "POST", {
+        name: "新建文件夹", type: "Series", parentId: parent?.id || null, autoName: true,
+      });
+      setCreatedFolder(item);
+      setRenaming({ item, name: item.name, error: "", saving: false });
+      changed();
+    } catch (error) { setFolderError((error as Error).message); }
+    finally { folderCreateLock.current = false; setFolderCreating(false); }
+  };
+  const uploadCover = async (item: Resource, file: File) => {
+    if (readonly || coverLock.current) return;
+    coverLock.current = true; setCoverUploading(item.id); setCoverError(undefined);
+    try {
+      await enqueue(file, item.id, "image");
+      changed();
+    } catch (error) {
+      setCoverError({ id: item.id, message: (error as Error).message });
+    } finally { coverLock.current = false; setCoverUploading(undefined); }
   };
   const action = (id: string, mode: string) => {
     void run(async () => { await api(`/resources/${id}/${mode}`, "POST"); changed(); });
@@ -624,14 +690,13 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   </Alert>;
     const toolbar = (
 <div className="toolbar library-toolbar">
-          {pendingUploads.total > 0 && <Button variant="bordered" aria-label="上传任务" onClick={() => setTasksOpen(true)}>
+          {!parent && pendingUploads.total > 0 && <Button variant="bordered" aria-label="上传任务" onClick={() => setTasksOpen(true)}>
               <ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务
             </Button>}
           {!readonly && <div className="actions library-create-actions">
-              {parent?.type === "Series" && <Button variant="bordered" onClick={() => { setNewType("Season"); setEdit("new"); }}>新建季</Button>}
-              {!parent && <Button variant="bordered" onClick={() => { setNewType("Series"); setEdit("new"); }}>
-                新建动画片
-              </Button>}
+              <Button variant="bordered" disabled={folderCreating || !!renaming} onClick={() => void createFolder()}>
+                {folderCreating ? "正在新建…" : "新建文件夹"}
+              </Button>
               <Button
                 variant="default"
                 aria-label="＋ 上传资源"
@@ -660,9 +725,9 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         </div>
       </div>
       <div className="resource-library-card">
-            <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing} canArrange
-              toolbar={<>{toolbar}{quickFeedback}</>}
-              suspended={!!(edit || upload || preview || share || tasksOpen)}
+            <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing && !renaming} canArrange
+              toolbar={toolbar} feedback={<>{quickFeedback}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
+              suspended={!!(upload || preview || share || subtitleSettings || tasksOpen)}
               loading={list.loading} loadError={list.error}
               footer={<Pagination {...list} loading={list.refreshing} label="资源库分页" />}
               empty={<Empty className="empty"><FolderOpen className="size-9" /><h3>还没有内容</h3><p>新建文件夹或上传视频。</p></Empty>}
@@ -672,6 +737,9 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                 backgroundError: backgroundList.error,
                 backgroundFooter: <Pagination {...backgroundList} loading={backgroundList.refreshing} label="上级文件夹分页" />,
                 close: closeFolder,
+                path: parent.ancestors || [],
+                open: id => navigate(id ? `/library/${encodeURIComponent(id)}` : "/library"),
+                dismiss: () => navigate("/library"),
               } : undefined}
               reorder={async (id, beforeId, afterId) => {
                 await api(`/resources/${id}/position`, "PUT", { beforeId, afterId });
@@ -689,14 +757,16 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                   onClick={() => item.type === "Episode" ? setPreview(item) : navigate(`/library/${encodeURIComponent(item.id)}`)}>
                   <span className="desktop-cover-art">
                     <img key={item.imageUrl} src={item.imageUrl} alt="" loading="lazy" draggable={false}
-                      onError={(event) => { event.currentTarget.style.display = "none"; }} />
+                      onLoad={event => { event.currentTarget.dataset.loaded = "true"; }}
+                      onError={(event) => { delete event.currentTarget.dataset.loaded; event.currentTarget.style.display = "none"; }} />
                     {item.type !== "Episode" ? <FolderOpen className="desktop-fallback-icon" /> : <FileVideo className="desktop-fallback-icon" />}
+                    {item.type !== "Episode" && <span className="desktop-folder-badge" aria-hidden="true"><FolderOpen /></span>}
                     {item.type !== "Series" && <span className="desktop-cover-caption">{item.type === "Season" ? (item.indexNumber ? `SEASON ${String(item.indexNumber).padStart(2, "0")}` : "分季") : (item.indexNumber ? `EP ${String(item.indexNumber).padStart(2, "0")}` : "视频")}</span>}
                     {item.type === "Episode" && !!item.runtimeMs && <span className="desktop-runtime">{minutes(item.runtimeMs)}</span>}
+                    {coverUploading === item.id && <span className="desktop-cover-status" role="status">正在上传封面…</span>}
                   </span>
                 </button>
                 <div className="desktop-card-menu">
-                  {readonly && <Button variant="ghost" className="quiet" onClick={() => openEditor(item)}>详情</Button>}
                   {!readonly && (
                     <>
                       <DropdownMenu>
@@ -709,8 +779,17 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                             <MoreHorizontal className="size-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="desktop-resource-menu">
-                          <DropdownMenuItem onSelect={() => openEditor(item)}>编辑</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="desktop-resource-menu" onCloseAutoFocus={event => {
+                          if (renameFromMenu.current) { event.preventDefault(); renameFromMenu.current = false; folderNameInput.current?.focus(); }
+                        }}>
+                          <DropdownMenuItem disabled={!!renaming} onSelect={() => {
+                            renameFromMenu.current = true;
+                            setRenaming({ item, name: item.name, error: "", saving: false });
+                          }}>重命名</DropdownMenuItem>
+                          <DropdownMenuItem disabled={!!coverUploading || !!renaming} onSelect={() => {
+                            coverTarget.current = item;
+                            coverInput.current?.click();
+                          }}>上传封面</DropdownMenuItem>
                           {parent && (parent.parentId || item.type === "Series") && <DropdownMenuItem onSelect={() => {
                             void run(async () => { await api(`/resources/${item.id}/move`, "POST", { folderId: parent.parentId }); changed(); });
                           }}>移到上一级</DropdownMenuItem>}
@@ -722,6 +801,9 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                           {item.status === "published" && !item.shared && item.type !== "Season" && <DropdownMenuItem onSelect={() => setShare(item)}>分享内容</DropdownMenuItem>}
                           {item.type === "Episode" && (
                             <>
+                              <DropdownMenuItem onSelect={() => {
+                                void run(async () => setSubtitleSettings(await api<Resource>(`/resources/${item.id}`)));
+                              }}>字幕设置</DropdownMenuItem>
                               <DropdownMenuItem
                                 onSelect={() => setPreview(item)}
                               >
@@ -766,6 +848,22 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                 </div>
                 </div>
                 <div className="resource-name">
+                  {renaming?.item.id === item.id ? <div className="folder-inline-name">
+                    <Input ref={folderNameInput} autoFocus data-folder-rename aria-label={item.type === "Episode" ? "视频名称" : "文件夹名称"} maxLength={256}
+                      value={renaming.name} disabled={renaming.saving}
+                      aria-invalid={!!renaming.error} aria-describedby={renaming.error ? "folder-name-error" : undefined}
+                      onFocus={event => { event.currentTarget.select(); event.currentTarget.scrollIntoView({ block: "nearest" }); }}
+                      onChange={event => setRenaming({ ...renaming, name: event.target.value, error: "" })}
+                      onBlur={() => void saveFolderName()}
+                      onKeyDown={event => {
+                        event.stopPropagation();
+                        if (event.nativeEvent.isComposing) return;
+                        if (event.key === "Enter") { event.preventDefault(); void saveFolderName(); }
+                        if (event.key === "Escape") { event.preventDefault(); setRenaming(undefined); }
+                      }} />
+                    {renaming.error && <p id="folder-name-error" role="alert">{renaming.error}</p>}
+                    {renaming.saving && <span role="status">正在保存…</span>}
+                  </div> :
                   <Button
                     variant="bordered"
                     className="name-button"
@@ -776,27 +874,20 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                     }
                   >
                     {item.name}
-                  </Button>
+                  </Button>}
                 </div>
+                {coverError?.id === item.id && <p className="desktop-cover-error" role="alert">{coverError.message}</p>}
               </>}
             />
       </div>
-      {edit && (
-        <ResourceEditor
-          item={edit === "new" ? undefined : edit}
-          type={newType}
-          parentId={parent?.id}
-          readonly={readonly}
-          close={() => setEdit(undefined)}
-          saved={changed}
-          run={run}
-          attach={(item) => {
-            setEdit(undefined);
-            setUploadKind("video");
-            setUpload(item);
-          }}
-        />
-      )}
+      <input ref={coverInput} type="file" hidden accept=".jpg,.jpeg,.png,.webp" aria-label="选择封面图片" onChange={event => {
+        const file = event.currentTarget.files?.[0], item = coverTarget.current;
+        event.currentTarget.value = "";
+        if (file && item) void uploadCover(item, file);
+      }} />
+      {subtitleSettings && <Modal title={`字幕设置 · ${subtitleSettings.name}`} close={() => setSubtitleSettings(undefined)}>
+        <SubtitleSettings item={subtitleSettings} readonly={readonly} />
+      </Modal>}
       {upload && (
         <UploadDialog
           initialKind={uploadKind}
@@ -813,7 +904,8 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         <Preview item={preview} close={() => setPreview(undefined)} />
       )}
       <DialogContent className="upload-tasks-dialog" onCloseAutoFocus={event => {
-        event.preventDefault(); document.querySelector<HTMLButtonElement>('button[aria-label="上传任务"]')?.focus();
+        event.preventDefault();
+        document.querySelector<HTMLButtonElement>(parent ? 'button[aria-label="＋ 上传资源"]' : 'button[aria-label="上传任务"]')?.focus();
       }}>
         <DialogHeader>
           <DialogTitle>上传任务</DialogTitle>
@@ -822,144 +914,6 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
         <DialogBody>{quickFeedback}<Uploads run={run} readonly={readonly} /></DialogBody>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ResourceEditor({
-  item,
-  type,
-  parentId,
-  readonly,
-  close,
-  saved,
-  run,
-  attach,
-}: {
-  item?: Resource;
-  type: string;
-  parentId?: string;
-  readonly: boolean;
-  close: () => void;
-  saved: () => void;
-  run: Run;
-  attach: (item: Resource) => void;
-}) {
-  const [name, setName] = useState(item?.name || ""),
-    [overview, setOverview] = useState(item?.overview || ""),
-    [index, setIndex] = useState(item?.indexNumber?.toString() || ""),
-    [busy, setBusy] = useState(false);
-  return (
-    <Modal
-      title={
-        item
-          ? `${readonly ? "资源详情" : "编辑"} · ${item.name}`
-          : `新建${type === "Series" ? "动画片" : type === "Season" ? "季" : "视频"}`
-      }
-      close={close}
-    >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setBusy(true);
-          void run(async () => {
-            await api(
-              item ? `/resources/${item.id}` : "/resources",
-              item ? "PATCH" : "POST",
-              {
-                name,
-                overview,
-                indexNumber: index ? Number(index) : null,
-                ...(!item ? { type, parentId: parentId || null } : {}),
-              },
-            );
-            saved();
-            close();
-          }).finally(() => setBusy(false));
-        }}
-      >
-        <Label>
-          名称
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={256}
-            required
-            disabled={readonly}
-          />
-        </Label>
-        {(item?.type || type) !== "Series" && (
-          <Label>
-            {(item?.type || type) === "Season" ? "第几季" : "第几集"}
-            <Input
-              type="number"
-              min="1"
-              max="100000"
-              value={index}
-              onChange={(e) => setIndex(e.target.value)}
-              disabled={readonly}
-            />
-          </Label>
-        )}
-        <Label>
-          介绍
-          <Textarea
-            value={overview}
-            onChange={(e) => setOverview(e.target.value)}
-            rows={3}
-            disabled={readonly}
-          />
-        </Label>
-        {item && (
-          <section className="file-list">
-            <h3>配套文件</h3>
-            {item.files.length ? (
-              item.files.map((file) => (
-                <div key={file.id}>
-                  <span>
-                    {file.kind === "video"
-                      ? "视频"
-                      : file.kind === "subtitle"
-                        ? "字幕"
-                        : "封面"}{" "}
-                    · {file.name}
-                  </span>
-                  <small>{bytes(file.size)}</small>
-                </div>
-              ))
-            ) : (
-              <p className="muted">还没有文件</p>
-            )}
-            {item.legacy && (
-              <p className="muted">从原有媒体库导入，沿用之前的发布状态。</p>
-            )}
-            {!readonly && (
-              <Button
-                variant="bordered"
-                type="button"
-                onClick={() => attach(item)}
-              >
-                {item.type === "Episode"
-                  ? "上传 / 替换视频、字幕或封面"
-                  : "上传封面"}
-              </Button>
-            )}
-          </section>
-        )}
-        {item?.type === "Episode" && (
-          <SubtitleSettings item={item} readonly={readonly} />
-        )}
-        {!readonly && (
-          <DialogFooter className="modal-actions">
-            <Button variant="bordered" type="button" onClick={close}>
-              取消
-            </Button>
-            <Button variant="default" className="primary" disabled={busy}>
-              {busy ? "正在保存…" : "保存"}
-            </Button>
-          </DialogFooter>
-        )}
-      </form>
-    </Modal>
   );
 }
 
@@ -978,9 +932,7 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
   close: () => void;
   started: () => void;
 }) {
-  const [kind, setKind] = useState(
-    item.type === "Episode" ? initialKind : "image",
-  ),
+  const [kind, setKind] = useState(initialKind),
     [language, setLanguage] = useState("und");
   const [rows, setRows] = useState<
     { file: File; }[]
@@ -989,6 +941,7 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
   const [error, setError] = useState("");
   const uploadPolicy = useUploadLimits();
   const submit = () => {
+    if (busy) return;
     setBusy(true);
     setError("");
     void (async () => {
@@ -1006,7 +959,7 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
       .finally(() => setBusy(false));
   };
   return (
-    <Modal title={`上传文件 · ${item.name}`} close={close}>
+    <Modal title={`上传文件 · ${item.name}`} close={() => { if (!busy) close(); }}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1018,13 +971,12 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
             文件用途
             <SelectField
               value={kind}
+              disabled={busy}
               onValueChange={(value) => {
                 setKind(value);
                 setRows([]);
               }}
-              options={[item.type === "Episode" && (
-                [({ value: "video", label: <> 视频（替换当前视频） </> }), ({ value: "subtitle", label: <> 新增字幕 </> })]
-              ), ({ value: "image", label: <> 封面（替换当前封面） </> })]} />
+              options={[{ value: "video", label: "视频（替换当前视频）" }, { value: "subtitle", label: "新增字幕" }]} />
           </Label>
         )}
         {kind === "subtitle" && (
@@ -1032,6 +984,7 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
             字幕类型
             <SelectField
               value={language}
+              disabled={busy}
               onValueChange={(value) => setLanguage(value)}
               options={[({ value: "und", label: <> 未指定 </> }), ({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> })]} />
             {language === "und" && <span className="muted">请选择字幕的实际类型；未指定类型的字幕不会自动匹配默认字幕语言。</span>}
@@ -1040,7 +993,7 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
         <FileUpload className="file-drop" inputLabel="选择上传文件"
           multiple={kind === "subtitle"}
           disabled={busy || !uploadPolicy.limits}
-          accept={kind === "video" ? ".mp4" : kind === "subtitle" ? ".srt,.vtt" : ".jpg,.jpeg,.png,.webp"}
+          accept={kind === "video" ? ".mp4" : ".srt,.vtt"}
           onFilesSelect={(files) => {
             try {
               if (!uploadPolicy.limits) return;
@@ -1055,15 +1008,13 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
           <UploadCloud className="size-8" />
           <strong>
             选择
-            {kind === "video" ? "视频" : kind === "subtitle" ? "字幕" : "封面"}
+            {kind === "video" ? "视频" : "字幕"}
             文件
           </strong>
           <span>
             {kind === "video"
               ? "MP4；可批量选择，播放兼容性取决于电视设备"
-              : kind === "subtitle"
-                ? "UTF-8 编码的 SRT / VTT"
-                : "JPG / PNG / WebP"}
+              : "UTF-8 编码的 SRT / VTT"}
           </span>
           <Button asChild variant="bordered">
             <span>

@@ -71,6 +71,24 @@
   border-top: 1px solid rgb(255 255 255 / .85);
 }
 .desktop-cover-art > img { position: absolute; z-index: 1; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.desktop-folder:has(img[data-loaded])::before { display: none; }
+.desktop-folder:has(img[data-loaded]) .desktop-cover-art { border-top: 0; background: transparent; }
+.desktop-folder:has(img[data-loaded]) .desktop-fallback-icon { visibility: hidden; }
+.desktop-folder-badge { display: none; }
+.desktop-folder:has(img[data-loaded]) .desktop-folder-badge {
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / .9);
+  color: var(--color-foreground);
+}
+.desktop-folder-badge svg { width: 15px; height: 15px; stroke-width: 1.7; }
 .desktop-fallback-icon { width: 44px; height: 44px; stroke-width: 1.15; opacity: .42; }
 .desktop-cover-caption {
   position: absolute;
@@ -113,6 +131,11 @@
   line-height: 20px;
 }
 .desktop-cover-wrap { position: relative; }
+.desktop-cover-status { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: rgb(255 255 255 / .85); color: var(--color-foreground); font-size: 12px; }
+.desktop-cover-error { margin: 6px 0 0; color: var(--color-destructive); font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
+.folder-inline-name input { width: 100%; height: 30px; min-width: 0; padding: 3px 6px; border-radius: 5px; text-align: center; font-size: 13px; }
+.folder-inline-name p { margin: 5px 0 0; color: var(--color-destructive); font-size: 11px; line-height: 16px; }
+.folder-inline-name [role="status"] { font-size: 11px; color: var(--color-muted-foreground); }
 .desktop-card-menu {
   position: absolute;
   z-index: 3;
@@ -245,14 +268,43 @@
   background: rgb(253 253 255 / .98);
   box-shadow: 0 24px 90px rgb(28 31 44 / .14), 0 2px 8px rgb(28 31 44 / .04);
 }
-.folder-panel-heading[data-slot="dialog-header"] { position: relative; padding: 30px 56px 14px; text-align: center; align-items: center; gap: 10px; }
-.folder-panel-heading [data-slot="dialog-title"] { font-size: 24px; line-height: 32px; letter-spacing: -.02em; }
-.folder-back-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: none; color: var(--color-muted-foreground); font-size: 12px; cursor: pointer; }
-.folder-back-link:hover { color: var(--color-foreground); }
-.folder-back-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 4px; border-radius: 4px; }
-.folder-panel-body { padding: 8px 24px 24px; }
-.folder-panel-body > .library-toolbar { margin-bottom: 16px; padding: 0; background: none; }
+.folder-panel-heading[data-slot="dialog-header"] {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  text-align: left;
+  background: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
+}
+.folder-navigation { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.folder-back-link { width: 32px; height: 36px; color: var(--color-muted-foreground); }
+.folder-location { min-width: 0; }
+.folder-panel-heading [data-slot="dialog-title"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 20px;
+  line-height: 28px;
+  letter-spacing: -.02em;
+}
+.folder-path { display: flex; align-items: center; gap: 4px; overflow-x: auto; max-width: 100%; margin-bottom: 4px; color: var(--color-muted-foreground); font-size: 11px; line-height: 18px; }
+.folder-path > span { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.folder-path svg { width: 12px; height: 12px; flex-shrink: 0; }
+.folder-path button { flex-shrink: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
+.folder-path button:hover { color: var(--color-foreground); text-decoration: underline; }
+.folder-path button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; border-radius: 2px; }
+.folder-header-actions .library-toolbar { margin: 0; padding: 0; background: transparent; }
+.folder-header-actions .library-create-actions { flex-wrap: nowrap; gap: 8px; }
+.folder-header-actions .library-create-actions button { min-width: 0; }
+.folder-dismiss { width: 28px; height: 28px; color: var(--color-icon-muted); }
+.folder-panel-body { padding: 16px 24px 24px; }
 .folder-panel-body .resource-desktop { grid-template-columns: repeat(auto-fill, minmax(154px, 1fr)); gap: 16px; min-height: 180px; }
+.folder-panel-body .resource-desktop:empty { display: none; min-height: 0; }
 .folder-panel-body .pagination { margin-top: 20px; }
 .folder-parent-desktop { min-height: 300px; }
 .desktop-background-tile { pointer-events: none; }
@@ -261,12 +313,15 @@
 .desktop-return-label span { color: var(--color-muted-foreground); font-size: 12px; font-weight: 400; }
 @media (max-width: 640px) {
   .library-folder-panel[data-slot="dialog-content"] { width: calc(100% - 32px); max-height: 72dvh; border-radius: 24px; }
-  .folder-panel-heading[data-slot="dialog-header"] { padding: 22px 42px 12px; }
-  .folder-panel-heading [data-slot="dialog-title"] { font-size: 20px; line-height: 28px; }
-  .folder-panel-body { padding: 8px 12px 18px; }
+  .folder-panel-heading[data-slot="dialog-header"] { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 16px; }
+  .folder-panel-heading [data-slot="dialog-title"] { font-size: 18px; line-height: 26px; }
+  .folder-navigation { gap: 8px; }
+  .folder-header-actions { grid-row: 2; grid-column: 1 / -1; margin-left: 40px; }
+  .folder-header-actions .library-create-actions { margin-left: 0; }
+  .folder-header-actions .library-create-actions button { padding-inline: 12px; font-size: 12px; }
+  .folder-dismiss { grid-row: 1; grid-column: 2; }
+  .folder-panel-body { padding: 12px 12px 18px; }
   .folder-panel-body .resource-desktop { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 6px; }
-  .folder-panel-body .library-create-actions { gap: 6px; }
-  .folder-panel-body .library-create-actions button { padding-inline: 12px; font-size: 12px; }
 }
 
 /* A temporary destination, kept quiet until the dragged cover reaches it. */

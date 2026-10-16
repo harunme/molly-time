@@ -2,12 +2,14 @@
 
 import datetime as dt
 import hashlib
+import logging
 import os
 import shutil
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
@@ -289,11 +291,12 @@ class ResourceBody(BaseModel):
     parentId: str | None = None
     overview: str = Field(default="", max_length=10000)
     indexNumber: int | None = Field(default=None, ge=1, le=100000)
+    autoName: bool = False
 
 
 @router.post("/resources")
 def create(body: ResourceBody, user: Parent, db: DbSession):
-    serialize_sqlite_write(db)
+    lock_resource_family(db, user.family_id)
     name = body.name.strip()
     if not name:
         raise HTTPException(422, "名称不能为空")
@@ -302,9 +305,22 @@ def create(body: ResourceBody, user: Parent, db: DbSession):
         ensure_active(db, parent)
     expected = {"Season": ("Series",), "Episode": ("Series", "Season")}.get(body.type)
     if (expected and (parent is None or parent.type not in expected)) or (
-        body.type == "Series" and parent
+        parent and parent.type not in ("Series", "Season")
     ):
         raise HTTPException(422, "请先选择正确的文件夹")
+    if parent and len(ancestors(db, parent)) + 2 > 32:
+        raise HTTPException(422, "文件夹最多支持 32 层，请选择更上层的文件夹")
+    if body.autoName:
+        if body.type != "Series":
+            raise HTTPException(422, "自动命名仅适用于普通文件夹")
+        names = {row[0] for row in db.query(Item.name).filter(
+            Item.family_id == user.family_id, Item.parent_id == body.parentId,
+            Item.type == "Series",
+        ).all()}
+        name, suffix = "新建文件夹", 2
+        while name in names:
+            name = f"新建文件夹 ({suffix})"
+            suffix += 1
     duplicates = (
         db.query(Item)
         .filter(
@@ -468,19 +484,27 @@ def move_video(item_id: str, body: MoveBody, user: Parent, db: DbSession):
 
 class EditBody(BaseModel):
     name: str = Field(min_length=1, max_length=256)
-    overview: str = Field(default="", max_length=10000)
+    overview: str | None = Field(default=None, max_length=10000)
     indexNumber: int | None = Field(default=None, ge=1, le=100000)
 
 
 @router.patch("/resources/{item_id}")
 def edit(item_id: str, body: EditBody, user: Parent, db: DbSession):
-    serialize_sqlite_write(db)
+    lock_resource_family(db, user.family_id)
     item = owned(db, Item, item_id, user.family_id)
     ensure_active(db, item)
     if not body.name.strip():
         raise HTTPException(422, "名称不能为空")
+    if db.query(Item.id).filter(
+        Item.family_id == user.family_id, Item.parent_id == item.parent_id,
+        Item.type == item.type, Item.name == body.name.strip(), Item.id != item.id,
+    ).first():
+        raise HTTPException(409, "同一目录已有这个名称")
     item.name = item.sort_name = body.name.strip()
-    item.overview, item.index_number = body.overview, body.indexNumber
+    if "overview" in body.model_fields_set:
+        item.overview = body.overview or ""
+    if "indexNumber" in body.model_fields_set:
+        item.index_number = body.indexNumber
     try:
         db.commit()
     except IntegrityError as exc:
@@ -581,7 +605,10 @@ def uploads(
         .order_by(UploadSession.created_at.desc(), UploadSession.id.desc())
     )
     if pending:
-        query = query.filter(UploadSession.status.in_(["uploading", "processing", "failed"]))
+        query = query.filter(
+            UploadSession.status.in_(["uploading", "processing", "failed"]),
+            UploadSession.kind != "image",
+        )
     def preload(rows):
         keys = [row.id for row in rows]
         tasks = {row.upload_id: row for row in db.query(MediaTask).filter(MediaTask.upload_id.in_(keys)).all()}
@@ -750,6 +777,68 @@ def accept_video_metadata(row, body, *, required=False):
         raise HTTPException(422, str(error)) from error
 
 
+def complete_cover(db, row, target):
+    """Validate and publish a bounded image inline, under the upload lock."""
+    remote = bool(target and target.backend == "oss")
+    source = get_settings().data_dir / "uploads" / f"{row.id}.part"
+    root = get_settings().resolved_media_dir().resolve()
+    destination = root / "managed" / row.family_id / f"{row.id}{Path(row.filename).suffix.lower()}"
+    try:
+        with external_io(db, row, target):
+            try:
+                if remote:
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    build_storage("oss").download(target.object_key, source, row.size)
+                if not source.is_file() or source.stat().st_size != row.size:
+                    raise HTTPException(422, "封面文件缺失或大小不一致，请重新上传")
+                try:
+                    with Image.open(source) as image:
+                        mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}.get(image.format)
+                        if mime is None:
+                            raise ValueError("unsupported image format")
+                        image.verify()
+                except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
+                    raise HTTPException(422, "封面图片无效，请选择完整的 JPG、PNG 或 WebP 图片") from error
+                with source.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                if not remote:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    staging = destination.with_suffix(destination.suffix + ".tmp")
+                    shutil.copyfile(source, staging)
+                    staging.replace(destination)
+            finally:
+                if remote:
+                    source.unlink(missing_ok=True)
+        # The resource may have been archived while storage I/O was in progress.
+        item = owned(db, Item, row.item_id, row.family_id)
+        db.refresh(item)
+        ensure_active(db, item)
+        for old in db.query(MediaFile).filter_by(item_id=item.id, kind="image").all():
+            old.kind = "retired_image"
+        db.add(MediaFile(
+            id=row.id, family_id=row.family_id, item_id=item.id, kind="image",
+            storage="oss" if remote else "local",
+            path=target.object_key if remote else str(destination.relative_to(root)),
+            mime=mime, language=row.language, is_default=False, index=0,
+            size_bytes=row.size, sha256=digest,
+        ))
+        db.flush()
+        db.add(MediaOptions(media_id=row.id, retention="backup", label=row.filename))
+        item.primary_image_tag = row.id
+        row.offset, row.status, row.error = row.size, "ready", ""
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    # Keep the upload source until the catalog transaction has committed.
+    if not remote:
+        try:
+            source.unlink(missing_ok=True)
+        except OSError:
+            logging.getLogger(__name__).exception("Committed cover source cleanup failed for %s", row.id)
+    return upload_dto(db, row)
+
+
 @router.post("/uploads/{upload_id}/complete")
 def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMetadata | None = None):
     row = owned(db, UploadSession, upload_id, user.family_id)
@@ -777,6 +866,8 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMeta
                     size = store.size(target.object_key)
                 if size != row.size:
                     raise HTTPException(409, "云端文件大小不一致")
+            if row.kind == "image":
+                return complete_cover(db, row, target)
             row.offset = row.size
             row.status = "processing"
             if not db.query(MediaTask).filter(MediaTask.upload_id == row.id).first():
@@ -794,6 +885,8 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMeta
             raise HTTPException(410, "上传已过期")
         if row.status != "uploading" or row.offset != row.size:
             raise HTTPException(409, "文件尚未上传完整")
+        if row.kind == "image":
+            return complete_cover(db, row, target)
         with external_io(db, row):
             accept_video_metadata(row, body)
         row.status = "processing"

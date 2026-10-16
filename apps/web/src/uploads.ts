@@ -17,6 +17,16 @@ async function fingerprint(file: File) {
 export async function enqueue(file: File, itemId: string, kind: string, language = 'und') {
   validateUploadSize(file, kind, await getUploadLimits());
   const row = await api<Upload>('/uploads', 'POST', { itemId, filename: file.name, size: file.size, fingerprint: await fingerprint(file), kind, language });
+  if (kind === 'image') {
+    try {
+      await transfer(row.id, file);
+    } catch (error) {
+      // Inline failures belong to the cover form; release the session for a new selection.
+      await api(`/uploads/${row.id}/cancel`, 'POST').catch(() => undefined);
+      throw error;
+    }
+    return;
+  }
   files.set(row.id, file); waiting.add(row.id);
   live.set(row.id, { offset: 0, error: '', paused: false }); changed(); pump();
 }
@@ -48,8 +58,7 @@ function pump() {
     }).finally(() => { active--; running.delete(id); changed(); pump(); });
   }
 }
-async function transfer(id: string) {
-  const file = files.get(id)!;
+async function transfer(id: string, file = files.get(id)!) {
   let row = await api<Upload>(`/uploads/${id}`);
   if (row.kind === 'video') {
     live.set(id, { offset: row.offset, error: '', paused: paused.has(id), preparing: true }); changed();
@@ -76,7 +85,7 @@ async function transfer(id: string) {
         } catch (error) { if (attempt === 2) throw error; }
       }
       offset += chunk.size;
-      live.set(id, { offset, error: '', paused: paused.has(id) }); changed();
+      if (row.kind !== 'image') { live.set(id, { offset, error: '', paused: paused.has(id) }); changed(); }
     }
     if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
     return;
@@ -90,7 +99,7 @@ async function transfer(id: string) {
       catch (error) { if (attempt === 2) throw error; }
     }
     row = result!;
-    live.set(id, { offset: row.offset, error: '', paused: false }); changed();
+    if (row.kind !== 'image') { live.set(id, { offset: row.offset, error: '', paused: false }); changed(); }
   }
   if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
 }

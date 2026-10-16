@@ -162,7 +162,7 @@ test('hovering a folder opens a group, keeps its subtree and supports moving bac
     await expect(page.getByRole('menuitem', { name: '移到上一级', exact: true })).toBeVisible();
     await expect(page.getByRole('menu').locator('svg')).toHaveCount(0);
     expect((await page.getByRole('menu').boundingBox())!.width).toBeLessThanOrEqual(120);
-    expect((await page.getByRole('menuitem', { name: '编辑', exact: true }).boundingBox())!.height).toBeLessThanOrEqual(24);
+    expect((await page.getByRole('menuitem', { name: '重命名', exact: true }).boundingBox())!.height).toBeLessThanOrEqual(24);
     await page.screenshot({ path: '../../artifacts/library-compact-menu.png', fullPage: true, animations: 'disabled' });
     await page.getByRole('menuitem', { name: '移到上一级', exact: true }).click();
     await expect(page.locator('.resource-tile')).toHaveCount(0);
@@ -196,6 +196,7 @@ test('folder overlays preserve a continuous drag out, cancel, retry and drop int
   };
   const lift = async (name: string) => {
     const cover = page.getByRole('button', { name: `打开 ${name}`, exact: true });
+    await cover.hover();
     const box = (await cover.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();

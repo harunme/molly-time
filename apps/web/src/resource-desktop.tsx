@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { FileVideo, FolderOpen } from 'lucide-react';
+import { ArrowLeft, ChevronRight, FileVideo, FolderOpen, X } from 'lucide-react';
 import type { Resource } from './api';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog';
+import { Button } from './components/ui/button';
 import './styles/resource-desktop.css';
 
 type Drag = { id: string; x: number; y: number; width: number; height: number; offsetX: number; offsetY: number; keyboard?: boolean };
@@ -10,6 +11,7 @@ type FolderContext = {
   id: string; name: string; parentId: string | null; parentName: string;
   background: Resource[]; backgroundLoading: boolean; backgroundError: string;
   backgroundFooter: ReactNode; close: () => void;
+  path: { id: string; name: string }[]; open: (id: string | null) => void; dismiss: () => void;
 };
 type Props = {
   items: Resource[]; enabled: boolean; canArrange: boolean;
@@ -18,11 +20,12 @@ type Props = {
   move: (id: string, folderId: string | null) => Promise<void>;
   folder?: FolderContext;
   toolbar?: ReactNode; footer?: ReactNode; empty?: ReactNode;
+  feedback?: ReactNode;
   loading?: boolean; loadError?: string;
   suspended?: boolean;
 };
 
-export function ResourceDesktop({ items, enabled, canArrange, render, reorder, move, folder, toolbar, footer, empty, loading, loadError, suspended }: Props) {
+export function ResourceDesktop({ items, enabled, canArrange, render, reorder, move, folder, toolbar, feedback, footer, empty, loading, loadError, suspended }: Props) {
   const [order, setOrder] = useState(items);
   const [drag, setDrag] = useState<Drag>();
   const [dropId, setDropId] = useState<string>();
@@ -41,6 +44,10 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
   const [escaped, setEscaped] = useState(false);
   const escapedRef = useRef(false);
   const panel = useRef<HTMLDivElement>(null);
+  const folderPath = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (folderPath.current) folderPath.current.scrollLeft = folderPath.current.scrollWidth;
+  }, [folder?.id]);
   const sourceItems = useRef(items);
   const outsideSince = useRef<number | undefined>(undefined);
   const pending = useRef<{ id: string; x: number; y: number; pointerId: number; touch: boolean } | undefined>(undefined);
@@ -318,14 +325,15 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
       </div>
       {folder.backgroundFooter}
     </div> : <>
-      {!escaped && toolbar}
+      {!escaped && <>{toolbar}{feedback}</>}
       {escaped && <div className="desktop-return-label" role="status">{folder?.parentName}<span>{dragged?.type !== 'Series' && !folder?.parentId ? '放入文件夹' : '松开放下'}</span></div>}
       {desktop}
       {escaped ? folder?.backgroundFooter : footer}
     </>}
-    {folder && <Dialog modal={!suspended} open={!escaped} onOpenChange={open => { if (!open && !dragRef.current && !busy && !suspended) folder.close(); }}>
-      <DialogContent ref={panel} className="library-folder-panel" overlayClassName="library-folder-shade" aria-describedby={undefined}
+    {folder && <Dialog modal={!suspended} open={!escaped} onOpenChange={open => { if (!open && !dragRef.current && !busy && !suspended) folder.dismiss(); }}>
+      <DialogContent ref={panel} className="library-folder-panel" overlayClassName="library-folder-shade" aria-describedby={undefined} showCloseButton={false}
         onEscapeKeyDown={event => {
+          if (event.target instanceof Element && event.target.closest('[data-folder-rename]')) event.preventDefault();
           if (dragRef.current || busy || suspended || !(event.target instanceof Node) || !panel.current?.contains(event.target)) event.preventDefault();
         }}
         onInteractOutside={event => {
@@ -335,11 +343,24 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
         onOpenAutoFocus={event => { if (dragRef.current || suspended) event.preventDefault(); }}
         onCloseAutoFocus={event => event.preventDefault()}>
         {!escaped && <><DialogHeader className="folder-panel-heading">
-          <button className="folder-back-link" type="button" onClick={folder.close}>返回{folder.parentName}</button>
-          <DialogTitle>{folder.name}</DialogTitle>
+          <div className="folder-navigation">
+            <Button variant="ghost" size="icon" className="folder-back-link" aria-label={`返回${folder.parentName}`} title={`返回${folder.parentName}`} onClick={folder.close}><ArrowLeft /></Button>
+            <div className="folder-location">
+              <nav ref={folderPath} className="folder-path" aria-label="文件夹路径">
+                <button type="button" onClick={() => folder.open(null)}>全部文件夹</button>
+                {folder.path.map(ancestor => <span key={ancestor.id}>
+                  <ChevronRight aria-hidden="true" />
+                  <button type="button" title={ancestor.name} onClick={() => folder.open(ancestor.id)}>{ancestor.name}</button>
+                </span>)}
+              </nav>
+              <DialogTitle title={folder.name}>{folder.name}</DialogTitle>
+            </div>
+          </div>
+          <div className="folder-header-actions">{toolbar}</div>
+          <DialogClose asChild><Button variant="ghost" size="icon" className="folder-dismiss" aria-label="关闭" title="关闭文件夹，返回资源库"><X /></Button></DialogClose>
         </DialogHeader>
         <div className="folder-panel-body">
-          {toolbar}
+          {feedback}
           {desktop}
           {footer}
         </div></>}
