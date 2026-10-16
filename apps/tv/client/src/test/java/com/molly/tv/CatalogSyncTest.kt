@@ -18,7 +18,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class CatalogSyncTest {
-    @Test fun backgroundCompletesPagesWithoutScrollAndUnchangedVersionsOnlyCheckState() {
+    @Test fun backgroundCompletesPagesWithoutScrollAndUnchangedVersionsOnlyCheckState() = exerciseSync(false)
+    @Test fun missingBrowsingSnapshotResyncsEvenWhenPlaybackVersionIsCurrent() = exerciseSync(true)
+    private fun exerciseSync(missingChildren: Boolean) {
         val context = RuntimeEnvironment.getApplication()
         val requests = CopyOnWriteArrayList<String>()
         val server = MockWebServer()
@@ -49,9 +51,19 @@ class CatalogSyncTest {
         val api = MollyTimeApi(session) { "Test" }
         val sync = CatalogSync(context, session, api, CoverStore(context, session, api), { _, _ -> }, { time })
         try {
+            if (missingChildren) {
+                val store = sync.store()
+                val episodes = JSONArray().apply { for (i in 0 until 49) put(JSONObject().put("id", "e-$i").put("name", "Episode $i")) }
+                store.accept("folder:series", "s1", 1, episodes, false, JSONObject().put("total", 49))
+                assertFalse(store.needs("folder:series", "s1"))
+                assertTrue(store.needsFolder("series", "s1"))
+                assertEquals(1, store.nextFolderPage("series", "s1"))
+                assertNull(store.readPlaylist("series", 1, 24))
+            }
             repeat(6) { sync.tick(); time += 1000 }
             assertEquals(49, sync.store().rows("folder:series", 0, 100)!!.length())
             assertEquals(49, sync.store().readPlaylist("series", 1, 100)!!.getJSONArray("items").length())
+            assertFalse(sync.store().needsFolder("series", "s1"))
             assertTrue(sync.status().getBoolean("catalogComplete"))
             assertEquals(2, requests.count { it.startsWith("/api/tv/catalog/folders/") })
             val count = requests.size

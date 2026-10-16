@@ -33,6 +33,15 @@ class CatalogStore(private val context: Context, val owner: String) : SQLiteOpen
     }
     fun needs(id: String, version: String) = info(id)?.let { it.optString("active") != version || !it.optBoolean("complete") } ?: true
     fun nextPage(id: String, version: String): Int = info(id)?.let { if (it.optString("pending") == version) it.optInt("nextPage", 1) else 1 } ?: 1
+    fun needsFolder(id: String, version: String) = needs("folder:$id", version) || needs("children:$id", version)
+    fun nextFolderPage(id: String, version: String): Int {
+        val playback = nextPage("folder:$id", version)
+        val children = nextPage("children:$id", version)
+        // Both collections are one snapshot. A missing or divergent checkpoint
+        // must restart the snapshot rather than skip the missing child pages.
+        val sameCompletion = needs("folder:$id", version) == needs("children:$id", version)
+        return if (playback == children && sameCompletion) playback else 1
+    }
     fun acceptFolder(id: String, version: String, page: Int, data: JSONObject) {
         val db = writableDatabase
         db.beginTransaction()

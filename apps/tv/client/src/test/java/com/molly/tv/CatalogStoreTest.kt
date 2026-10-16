@@ -73,6 +73,13 @@ class CatalogStoreTest {
         s.folder("a", "new", 2, rows("d", "e"), false, JSONObject().put("total", 3))
         assertEquals("c", s.rows("folder:a", 0, 1)!!.getJSONObject(0).getString("id"))
     }
+    @Test fun mismatchedFolderCheckpointsRestartTogether() = store().withCatalog { s ->
+        s.accept("folder:a", "v1", 1, rows("a", "b"), false, JSONObject().put("total", 2))
+        s.accept("children:a", "v1", 1, rows("a"), true, JSONObject().put("total", 2))
+        assertEquals(s.nextPage("folder:a", "v1"), s.nextPage("children:a", "v1"))
+        assertTrue(s.needsFolder("a", "v1"))
+        assertEquals(1, s.nextFolderPage("a", "v1"))
+    }
     @Test fun homeSwitchesAtomicallyAndRejectsMixedRows() = store().withCatalog { s ->
         fun definition(version: String) = JSONObject().put("version", version).put("rows", JSONArray().put(JSONObject().put("id", "library").put("total", 1))).toString()
         s.accept("home:library", "old", 1, rows("a"), false, JSONObject().put("total", 1))

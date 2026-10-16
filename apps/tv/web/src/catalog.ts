@@ -69,7 +69,8 @@ export async function catalogRequest<T>(path: string, page = 1, rowId?: string):
       const result = await call<{ data?: T; unsupported?: boolean; pending?: boolean; offline?: boolean; message?: string }>('catalogRead', args);
       if (result.unsupported) throw new ApiError('目录服务不可用，请检查服务端');
       if (result.data) return result.data;
-      if (result.offline || performance.now() - started > 30000) throw new ApiError(result.message || '此内容尚未同步，请联网后重试');
+      if (result.offline) throw new ApiError(result.message || '当前离线，目录尚未同步，请联网后重试');
+      if (performance.now() - started > 30000) throw new ApiError(result.message || '目录同步尚未完成，请稍后重试');
       await waitForCatalog();
     }
   }

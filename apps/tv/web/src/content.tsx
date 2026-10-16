@@ -210,7 +210,7 @@ export function HomeGreeting({ name }: { name?: string }) {
 }
 
 export function DetailHeader({ series, path = [], total, loading, onBack, onDown }: {
-  series: Series; path?: Series[]; total: number; loading: boolean; onBack: () => void; onDown: () => void;
+  series: Series; path?: Series[]; total?: number; loading: boolean; onBack: () => void; onDown: () => void;
 }) {
   return <section className="detail-header" aria-label="文件夹详情">
     <div className="detail-navigation">
@@ -220,7 +220,7 @@ export function DetailHeader({ series, path = [], total, loading, onBack, onDown
       <div className="detail-context">
         <p className="folder-path" aria-label="文件夹路径">我的媒体库{path.map(parent => <span key={parent.id}> / {parent.name}</span>)}</p>
         <h1>{series.name}</h1>
-        <p className="detail-count">{loading ? '正在加载…' : `${total} 个视频`}</p>
+        <p className="detail-count">{loading ? '正在加载…' : total === undefined ? '目录暂未加载' : `${total} 个视频`}</p>
         {series.overview && <p className="detail-description">{series.overview}</p>}
       </div>
     </div>

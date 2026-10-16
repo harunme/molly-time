@@ -82,7 +82,7 @@ class CatalogSync(private val context: Context, private val session: SessionStor
         val s = store(); val manifest = s.get("manifest")?.let { JSONObject(it) } ?: return@runCatching false
         if (s.get("homeVersion") != manifest.getString("homeVersion")) return@runCatching true
         val folders = manifest.getJSONArray("folders")
-        (0 until folders.length()).any { val f = folders.getJSONObject(it); s.needs("folder:" + f.getString("id"), f.getString("version")) }
+        (0 until folders.length()).any { val f = folders.getJSONObject(it); s.needsFolder(f.getString("id"), f.getString("version")) }
     }.getOrDefault(false)
     internal fun tick() {
         if (paused || closed) return
@@ -139,7 +139,7 @@ class CatalogSync(private val context: Context, private val session: SessionStor
             val folders = manifest.getJSONArray("folders")
             val ordered = (0 until folders.length()).map { folders.getJSONObject(it) }.sortedBy { if (it.getString("id") == preferred) 0 else 1 }
             // Finish the opened folder first, then home rows, then the rest of the library.
-            val active = ordered.find { it.getString("id") == preferred && s.needs("folder:" + it.getString("id"), it.getString("version")) }
+            val active = ordered.find { it.getString("id") == preferred && s.needsFolder(it.getString("id"), it.getString("version")) }
             if (active != null) { folderStep(s, active); return }
             if (s.get("homeVersion") != homeVersion) {
                 val definition = JSONObject(s.get("homeStage") ?: "{\"rows\":[]}").getJSONArray("rows")
@@ -154,7 +154,7 @@ class CatalogSync(private val context: Context, private val session: SessionStor
                 }
                 s.publishHome(s.get("homeStage")!!, homeVersion); changed("home")
             }
-            val next = ordered.find { s.needs("folder:" + it.getString("id"), it.getString("version")) }
+            val next = ordered.find { s.needsFolder(it.getString("id"), it.getString("version")) }
             if (next != null) { folderStep(s, next); return }
             failures = 0
             if (queuedCovers.size < 64) {
@@ -186,7 +186,7 @@ class CatalogSync(private val context: Context, private val session: SessionStor
         }
     }
     private fun folderStep(s: CatalogStore, folder: JSONObject) {
-        val id = folder.getString("id"); val version = folder.getString("version"); val page = s.nextPage("folder:$id", version)
+        val id = folder.getString("id"); val version = folder.getString("version"); val page = s.nextFolderPage(id, version)
         val data = json("/api/tv/catalog/folders/$id?version=$version&page=$page&pageSize=48")
         s.acceptFolder(id, version, page, data)
         failures = 0; queueImages(data.getJSONArray("episodes")); data.optJSONArray("items")?.let { queueImages(it) }; changed("folder:$id")
@@ -231,7 +231,7 @@ class CatalogSync(private val context: Context, private val session: SessionStor
                 val id = args.getString("folderId"); require(BridgePolicy.id.matches(id)); preferred = id
                 val folders = s.get("manifest")?.let { JSONObject(it).getJSONArray("folders") }
                 if (folders != null && (0 until folders.length()).none { folders.getJSONObject(it).getString("id") == id })
-                    JSONObject().put("episodes", JSONArray()).put("total", 0).put("hasMore", false).put("hasProgress", false).put("episodeId", JSONObject.NULL).put("unavailable", true)
+                    JSONObject().put("items", JSONArray()).put("itemTotal", 0).put("itemsHasMore", false).put("episodes", JSONArray()).put("total", 0).put("hasMore", false).put("hasProgress", false).put("episodeId", JSONObject.NULL).put("unavailable", true)
                 else s.readPlaylist(id, page, size)
             }
             else -> throw IllegalArgumentException("目录类型无效")

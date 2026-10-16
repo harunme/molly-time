@@ -292,7 +292,7 @@ function App() {
     });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (playing || (busy && (!overlay || overlay === 're-pair'))) return;
     // Appending cards keeps existing DOM focus and scroll position. Do not run
     // the route-entry focus reset after every background batch.
@@ -479,7 +479,7 @@ function App() {
         <span className="topbar-brand">MollyTime</span>
         {authenticated && syncStatus?.supported !== false && syncStatus && <span className="sync-status" role="status">{syncStatus.message || (!syncStatus.online ? '离线浏览' : syncStatus.catalogComplete ? '内容已同步' : syncStatus.paused ? '同步已暂停' : '正在同步内容')}{!syncStatus.online && syncStatus.lastSync ? ` · 上次同步 ${new Date(syncStatus.lastSync).toLocaleDateString('zh-CN')}` : ''}</span>}
       </div>
-        {authenticated && (folder ? <DetailHeader series={folder} path={folderHistory.current.map(entry => entry.folder)} total={playlist?.total ?? videos.length} loading={busy} onBack={back} onDown={() => {
+        {authenticated && (folder ? <DetailHeader series={folder} path={folderHistory.current.map(entry => entry.folder)} total={playlist?.total ?? folder.episodeCount} loading={busy} onBack={back} onDown={() => {
           const saved = folderGridFocus.current;
           setFocus(entries.some(item => playlistFocus(item) === saved) ? saved : entries[0] ? playlistFocus(entries[0]) : 'folder-back');
         }} /> : <HomeGreeting />)}
