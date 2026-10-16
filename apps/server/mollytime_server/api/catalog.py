@@ -13,11 +13,10 @@ from sqlalchemy.orm import Session
 
 from ..deps import CurrentUser, DbSession
 from ..images import image_ref
-from ..management_models import WatchProgress
 from ..models import ChildProfile, Item, MediaFile
 from ..playback_settings import default_subtitle, preferred_subtitle_index
 from ..resource_policy import published_episodes, require_visible, visible
-from ..resource_tree import ancestors, descendant_ids
+from ..resource_tree import ancestors
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 
@@ -326,20 +325,6 @@ def _get_item(db: Session, item_id: str, expected_type: str, family_id: str) -> 
     return item
 
 
-def _folder_playlist(db, series_id, family_id):
-    seasons = {
-        s.id: s
-        for s in db.query(Item)
-        .filter(Item.family_id == family_id, Item.id.in_(descendant_ids(family_id, series_id)),
-                Item.type.in_(["Series", "Season"]))
-        .all()
-    }
-    seasons[series_id] = db.get(Item, series_id)
-    from .catalog_pagination import ordered_playlist
-    episodes = ordered_playlist(db, family_id, series_id)[0].all()
-    return seasons, episodes
-
-
 @router.get("/episodes/{episode_id}/next")
 def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSession):
     episode = _get_item(db, episode_id, "Episode", user.family_id)
@@ -357,7 +342,7 @@ def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSes
 @router.get("/series/{series_id}/playlist")
 def series_playlist(
     series_id: str, request: Request, user: CurrentUser, db: DbSession, childId: str | None = None,
-    page: int | None = Query(default=None, ge=1, le=2147483647),
+    page: int = Query(default=1, ge=1, le=2147483647),
     pageSize: int = Query(default=24, ge=1, le=48),
 ):
     series = db.get(Item, series_id)
@@ -371,46 +356,5 @@ def series_playlist(
             raise HTTPException(404)
     if getattr(request.state, "device_id", None):
         child_id = None
-    if page is not None:
-        from .catalog_pagination import paged_playlist
-        return paged_playlist(db, user.family_id, user.id, child_id, series, page, pageSize)
-    seasons, episodes = _folder_playlist(db, series_id, user.family_id)
-    progress = None
-    if episodes:
-        from .watch_progress import scoped_progress
-        query = scoped_progress(db, user.family_id, child_id).filter(
-            WatchProgress.item_id.in_([e.id for e in episodes]),
-        )
-        progress = query.order_by(
-            WatchProgress.session_started_at.desc(),
-            WatchProgress.session_id.desc(),
-        ).first()
-    selected = episodes[0].id if episodes else None
-    position = 0
-    if progress:
-        selected = progress.item_id
-        if progress.completed:
-            index = next(i for i, e in enumerate(episodes) if e.id == selected)
-            if index + 1 < len(episodes):
-                selected = episodes[index + 1].id
-        else:
-            position = progress.position_ms
-    return {
-        "seriesId": series.id,
-        "name": series.name,
-        "episodeId": selected,
-        "positionMs": position,
-        "hasProgress": progress is not None,
-        "episodes": [
-            {
-                "id": e.id,
-                "name": e.name,
-                "seasonName": seasons[e.parent_id].name,
-                "seasonId": e.parent_id,
-                "indexNumber": e.index_number,
-                "runtimeMs": _runtime_ms(e.runtime_ticks),
-                "image": image_ref(db, e),
-            }
-            for e in episodes
-        ],
-    }
+    from .catalog_pagination import paged_playlist
+    return paged_playlist(db, user.family_id, user.id, child_id, series, page, pageSize)

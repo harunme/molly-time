@@ -2,8 +2,8 @@ import { ApiError, call, request, type Home, type HomeRow, type Playlist, type P
 
 export const catalogPageSize = 24;
 const emptyItems: Series[] = [];
-export const playlistItems = (data?: Playlist): Series[] => data?.items ?? data?.episodes ?? emptyItems;
-export const playlistHasMore = (data?: Playlist) => data?.items ? data.itemsHasMore : data?.hasMore;
+export const playlistItems = (data?: Playlist): Series[] => data?.items ?? emptyItems;
+export const playlistHasMore = (data?: Playlist) => data?.itemsHasMore ?? false;
 export const playlistFocus = (item: { id: string; type?: string }) => `${item.type === 'folder' ? 'folder' : 'episode'}-${item.id}`;
 let localCatalog = false;
 export function configureCatalog(enabled: boolean) { localCatalog = enabled; }
@@ -41,7 +41,7 @@ export function updatePlaylistProgress(playlist: Playlist, progress: PlaybackRet
   if (progress.completed && (index < 0 || index === playlist.episodes.length - 1 && playlist.hasMore)) return;
   const resume = progress.completed && index >= 0 ? playlist.episodes[index + 1] ?? current : current;
   return { ...playlist, episodes: playlist.episodes.map((item) => withPlaybackProgress(item, progress)),
-    items: playlist.items?.map((item) => withPlaybackProgress(item, progress)),
+    items: playlist.items.map((item) => withPlaybackProgress(item, progress)),
     hasProgress: true, episodeId: resume.id, resumeEpisode: withPlaybackProgress(resume, progress) };
 }
 
@@ -60,8 +60,6 @@ export const homeOrder = (home: Home): Home => {
   return { rows: [...home.rows].sort((a, b) => order(a.title) - order(b.title)) };
 };
 
-// Older native shells reject queries at their bridge allowlist. Keep browsing
-// available until the shell is updated; old servers may return unpaged data.
 export async function catalogRequest<T>(path: string, page = 1, rowId?: string): Promise<T> {
   if (localCatalog) {
     const folder = /^\/api\/series\/([A-Za-z0-9-]+)\/playlist$/.exec(path);
@@ -69,18 +67,14 @@ export async function catalogRequest<T>(path: string, page = 1, rowId?: string):
     const started = performance.now();
     while (localCatalog) {
       const result = await call<{ data?: T; unsupported?: boolean; pending?: boolean; offline?: boolean; message?: string }>('catalogRead', args);
-      if (result.unsupported) { configureCatalog(false); break; }
+      if (result.unsupported) throw new ApiError('目录服务不可用，请检查服务端');
       if (result.data) return result.data;
       if (result.offline || performance.now() - started > 30000) throw new ApiError(result.message || '此内容尚未同步，请联网后重试');
       await waitForCatalog();
     }
   }
   const query = `page=${page}&pageSize=${catalogPageSize}${rowId ? `&rowId=${encodeURIComponent(rowId)}` : ''}`;
-  try { return await request<T>(`${path}?${query}`); }
-  catch (failure) {
-    if (page === 1 && failure instanceof Error && failure.message === '接口不允许访问') return request<T>(path);
-    throw failure;
-  }
+  return request<T>(`${path}?${query}`);
 }
 
 export function appendItems<T extends { id: string }>(items: T[], more: T[]): T[] {
@@ -106,7 +100,7 @@ export async function loadPlaylist(folderId: string, previous?: Playlist, active
   const data = await catalogRequest<Playlist>(`/api/series/${folderId}/playlist`);
   for (let page = 2; active() && playlistHasMore(data) && page <= (previous?.page ?? 1); page++) {
     const more = await catalogRequest<Playlist>(`/api/series/${folderId}/playlist`, page);
-    Object.assign(data, more, { episodes: appendItems(data.episodes, more.episodes), ...(more.items ? { items: appendItems(data.items ?? [], more.items) } : {}) });
+    Object.assign(data, more, { episodes: appendItems(data.episodes, more.episodes), items: appendItems(data.items, more.items) });
   }
   return data;
 }

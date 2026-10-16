@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-for (const local of [false, true]) test(`nested folders preserve manual order, remote focus and return path (${local ? 'offline catalog' : 'API'})`, async ({ page }) => {
-  await page.addInitScript(local => {
+for (const mode of ['API', 'offline catalog']) test(`nested folders preserve manual order, remote focus and return path (${mode})`, async ({ page }) => {
+  const local = mode === 'offline catalog';
+  await page.addInitScript(({ local, mode }) => {
     const w = window as any;
     w.played = [];
     const folder = (id: string, name: string) => ({ id, name, type: 'folder', episodeCount: 2 });
@@ -26,11 +27,13 @@ for (const local of [false, true]) test(`nested folders preserve manual order, r
           const items = children[folderId] || [];
           result = { items, itemTotal: items.length, itemsHasMore: false, episodes: [video('video-b'), video('video-a'), video('root-video')], total: 3, hasMore: false, page: 1, episodeId: 'video-b', hasProgress: false };
         }
-        if (method === 'catalogRead') result = { data: result };
+        if (method === 'catalogRead') {
+          result = { data: result };
+        }
       }
       setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
     } };
-  }, local);
+  }, { local, mode });
   await page.goto('/tv/');
   const homeFocus = local ? 'home-library-root-z' : 'series-root-z';
   await expect(page.locator(`[data-focus="${homeFocus}"]`)).toBeFocused();
@@ -38,7 +41,7 @@ for (const local of [false, true]) test(`nested folders preserve manual order, r
   await page.keyboard.press('Enter');
   await expect(page.locator('.episode-grid .card-copy strong')).toHaveText(['韵律儿歌', 'root-video']);
   await expect(page.locator('[data-focus="folder-songs"]')).toBeFocused();
-  expect((await page.locator('.detail-header').boundingBox())!.height).toBeLessThan(300);
+  expect((await page.locator('.detail-header').boundingBox())!.height).toBeGreaterThan(500);
   const brand = (await page.locator('.topbar').boundingBox())!;
   const path = (await page.getByLabel('文件夹路径').boundingBox())!;
   expect(path.y).toBeGreaterThanOrEqual(brand.y + brand.height);

@@ -17,6 +17,10 @@ class CatalogStoreTest {
     private fun CatalogStore.withCatalog(block: (CatalogStore) -> Unit) { try { block(this) } finally { close() } }
     private fun store() = CatalogStore(RuntimeEnvironment.getApplication(), "https://media.test|${UUID.randomUUID()}")
     private fun rows(vararg ids: String) = JSONArray(ids.map { JSONObject().put("id", it).put("name", it) })
+    private fun CatalogStore.folder(id: String, version: String, page: Int, values: JSONArray, more: Boolean, details: JSONObject) {
+        acceptFolder(id, version, page, JSONObject(details.toString()).put("episodes", values).put("items", values)
+            .put("itemTotal", details.getInt("total")).put("hasMore", more))
+    }
     @Test fun browsingAndPlaybackSwitchVersionsTogether() = store().withCatalog { s ->
         fun batch(episodes: JSONArray, children: JSONArray, total: Int, childTotal: Int, more: Boolean) =
             JSONObject().put("episodes", episodes).put("items", children).put("total", total)
@@ -50,23 +54,23 @@ class CatalogStoreTest {
     }
     @Test fun incompletePagesStayPendingAndResumeAfterRestart() {
         val original = store(); val owner = original.owner
-        original.accept("folder:a", "v1", 1, rows("a", "b"), true, JSONObject().put("total", 3))
+        original.folder("a", "v1", 1, rows("a", "b"), true, JSONObject().put("total", 3))
         assertNull(original.readPlaylist("a", 2, 2))
         original.close()
         store().close() // A separate binding has its own database.
         CatalogStore(RuntimeEnvironment.getApplication(), owner).withCatalog { s ->
             assertEquals(2, s.nextPage("folder:a", "v1"))
             assertEquals(2, s.readPlaylist("a", 1, 2)!!.getJSONArray("episodes").length())
-            s.accept("folder:a", "v1", 2, rows("c"), false, JSONObject().put("total", 3))
+            s.folder("a", "v1", 2, rows("c"), false, JSONObject().put("total", 3))
             assertEquals("c", s.readPlaylist("a", 2, 2)!!.getJSONArray("episodes").getJSONObject(0).getString("id"))
         }
     }
     @Test fun lastCompleteFolderSurvivesInterruptedReplacement() = store().withCatalog { s ->
-        s.accept("folder:a", "old", 1, rows("a", "b"), false, JSONObject().put("total", 2))
-        s.accept("folder:a", "new", 1, rows("c"), true, JSONObject().put("total", 3))
+        s.folder("a", "old", 1, rows("a", "b"), false, JSONObject().put("total", 2))
+        s.folder("a", "new", 1, rows("c"), true, JSONObject().put("total", 3))
         assertEquals(2, s.readPlaylist("a", 1, 24)!!.getInt("total"))
         assertEquals("a", s.rows("folder:a", 0, 1)!!.getJSONObject(0).getString("id"))
-        s.accept("folder:a", "new", 2, rows("d", "e"), false, JSONObject().put("total", 3))
+        s.folder("a", "new", 2, rows("d", "e"), false, JSONObject().put("total", 3))
         assertEquals("c", s.rows("folder:a", 0, 1)!!.getJSONObject(0).getString("id"))
     }
     @Test fun homeSwitchesAtomicallyAndRejectsMixedRows() = store().withCatalog { s ->
@@ -79,8 +83,8 @@ class CatalogStoreTest {
         assertEquals("b", s.readHome(1, 24, null)!!.getJSONArray("rows").getJSONObject(0).getJSONArray("items").getJSONObject(0).getString("id"))
     }
     @Test fun failedFinalPageDoesNotAdvanceCheckpoint() = store().withCatalog { s ->
-        s.accept("folder:a", "v1", 1, rows("a"), true, JSONObject().put("total", 3))
-        assertThrows(IllegalStateException::class.java) { s.accept("folder:a", "v1", 2, rows("b"), false, JSONObject().put("total", 3)) }
+        s.folder("a", "v1", 1, rows("a"), true, JSONObject().put("total", 3))
+        assertThrows(IllegalStateException::class.java) { s.folder("a", "v1", 2, rows("b"), false, JSONObject().put("total", 3)) }
         assertEquals(2, s.nextPage("folder:a", "v1"))
         assertEquals(1, s.rows("folder:a", 0, 24)!!.length())
     }

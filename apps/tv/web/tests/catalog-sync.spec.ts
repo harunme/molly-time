@@ -11,6 +11,7 @@ async function localCatalog(page: Page, rail = false) {
       if (method === 'catalogStatus') result = { supported: true, online: false, lastSync: 1780000000000, catalogComplete: true };
       if (method === 'catalogRead') result = { data: args.kind === 'home' ? { rows: [...(w.addRecent ? [{ id: 'recently-played', title: '最近播放', items: [{ id: 'recent', name: '最近播放的视频', type: 'episode' }], hasMore: false }] : []), { id: rail ? 'curated' : 'library', title: rail ? '推荐' : '我的媒体库', hasMore: false,
         items: Array.from({ length: w.localCount }, (_, i) => ({ id: `folder-${i}`, name: `故事 ${i}` })) }] } : { total: 960, hasMore: false, hasProgress: true, episodeId: 'e-800', resumeEpisode: { id: 'e-800', name: '视频 800' },
+          items: Array.from({ length: 960 }, (_, i) => ({ id: `e-${i}`, name: `视频 ${i}`, type: 'episode', runtimeMs: 60000 })), itemTotal: 960, itemsHasMore: false,
           episodes: Array.from({ length: 960 }, (_, i) => ({ id: `e-${i}`, name: `视频 ${i}`, runtimeMs: 60000 })) } };
       setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 1);
     } };

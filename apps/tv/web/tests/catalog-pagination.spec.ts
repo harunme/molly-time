@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function catalog(page: Page, options: { fail?: boolean; delay?: number; oldShell?: boolean } = {}) {
+async function catalog(page: Page, options: { fail?: boolean; delay?: number } = {}) {
   await page.addInitScript((options) => {
     const w = window as unknown as {
       requests: string[]; replies: string[]; played: string; pageAttempts: number;
@@ -24,14 +24,13 @@ async function catalog(page: Page, options: { fail?: boolean; delay?: number; ol
         const batch = <T,>(items: T[]) => paged ? items.slice((page - 1) * pageSize, page * pageSize) : items;
         const info = paged ? { page, pageSize, total: 60, hasMore: page * pageSize < 60 } : {};
         if (url.pathname === '/api/home') result = { rows: [{ id: 'library', title: '我的媒体库', items: batch(folders), ...info }] };
-        if (url.pathname.endsWith('/playlist')) result = { episodes: batch(episodes), episodeId: 'video-50', hasProgress: true, resumeEpisode: episodes[50], ...info };
+        if (url.pathname.endsWith('/playlist')) result = { items: batch(episodes).map(episode => ({ ...episode, type: 'episode' })), itemTotal: 60, itemsHasMore: page * pageSize < 60, episodes: batch(episodes), episodeId: 'video-50', hasProgress: true, resumeEpisode: episodes[50], ...info };
         if (url.pathname === '/api/families/me/children') result = [];
         if (page > 1) {
           delay = options.delay ?? 80;
           w.pageAttempts++;
           if (options.fail && w.pageAttempts === 1) error = { message: '加载失败，请重试', status: 503 };
         }
-        if (options.oldShell && paged) error = { message: '接口不允许访问' };
       }
       setTimeout(() => { w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result, error }) }); if (args?.path) w.replies.push(args.path); }, delay);
     } };
@@ -98,13 +97,4 @@ test('a late batch from a closed folder does not replace the home view', async (
   await expect.poll(() => page.evaluate(() => (window as unknown as { replies: string[] }).replies.some((path) => path.includes('/playlist?page=2')))).toBe(true);
   await expect(page.locator('.episode-shelf')).toHaveCount(0);
   await expect(page.locator('.library-shelf .poster')).toHaveCount(24);
-});
-
-test('older shell can browse through the unpaged fallback', async ({ page }) => {
-  await catalog(page, { oldShell: true });
-  await expect(page.locator('.poster')).toHaveCount(60);
-  await expect(page.locator('[data-focus="more-library"]')).toHaveCount(0);
-  const requests = await page.evaluate(() => (window as unknown as { requests: string[] }).requests);
-  expect(requests).toContain('/api/home?page=1&pageSize=24');
-  expect(requests).toContain('/api/home');
 });

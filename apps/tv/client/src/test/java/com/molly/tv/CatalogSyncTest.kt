@@ -35,8 +35,8 @@ class CatalogSyncTest {
                 else -> {
                     val page = if (request.requestUrl!!.queryParameter("page") == "1") 1 else 2
                     JSONObject().put("total", 49).put("hasMore", page == 1).put("episodes", JSONArray().apply {
-                        for (i in (if (page == 1) 0 else 48) until (if (page == 1) 48 else 49)) put(JSONObject().put("id", "e-$i").put("name", "Episode $i"))
-                    })
+                        for (i in (if (page == 1) 0 else 48) until (if (page == 1) 48 else 49)) put(JSONObject().put("id", "e-$i").put("name", "Episode $i").put("type", "episode"))
+                    }).also { it.put("items", it.getJSONArray("episodes")).put("itemTotal", 49).put("itemsHasMore", page == 1) }
                 }
             }.toString()
             return MockResponse().setBody(body)
@@ -51,6 +51,7 @@ class CatalogSyncTest {
         try {
             repeat(6) { sync.tick(); time += 1000 }
             assertEquals(49, sync.store().rows("folder:series", 0, 100)!!.length())
+            assertEquals(49, sync.store().readPlaylist("series", 1, 100)!!.getJSONArray("items").length())
             assertTrue(sync.status().getBoolean("catalogComplete"))
             assertEquals(2, requests.count { it.startsWith("/api/tv/catalog/folders/") })
             val count = requests.size

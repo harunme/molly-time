@@ -7,16 +7,17 @@ for (const virtual of [false, true]) {
       const w = window as any;
       const home = { rows: [{ id: 'library', title: '我的媒体库', items: [{ id: 'songs', name: '韵律儿歌', episodeCount: 180 }] }] };
       const playlist = { total: 180, hasMore: false, episodes: Array.from({ length: 180 }, (_, i) => ({ id: `e-${i}`, name: `歌曲 ${i}`, runtimeMs: 180000 })) };
+      const data = { ...playlist, items: playlist.episodes.map(episode => ({ ...episode, type: 'episode' })), itemTotal: 180, itemsHasMore: false };
       w.MollyBridge = { postMessage(raw: string) {
         const { id, method, args } = JSON.parse(raw);
         let result: unknown = { ok: true };
         if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl: 'https://media.example.test', authenticated: true, nativePlayback: true, catalogSync: virtual };
         if (method === 'catalogStatus') result = { supported: true, online: false, catalogComplete: true };
-        if (method === 'catalogRead') result = { data: args.kind === 'home' ? home : playlist };
+        if (method === 'catalogRead') result = { data: args.kind === 'home' ? home : data };
         if (method === 'request') {
           const path = args.path.split('?')[0];
           if (path === '/api/home') result = home;
-          if (path === '/api/series/songs/playlist') result = playlist;
+          if (path === '/api/series/songs/playlist') result = data;
           if (path === '/api/families/me/children') result = [];
         }
         setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 1);

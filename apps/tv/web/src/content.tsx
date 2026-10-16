@@ -221,8 +221,9 @@ export function DetailHeader({ series, path = [], total, loading, onBack, onDown
         <p className="folder-path" aria-label="文件夹路径">我的媒体库{path.map(parent => <span key={parent.id}> / {parent.name}</span>)}</p>
         <h1>{series.name}</h1>
         <p className="detail-count">{loading ? '正在加载…' : `${total} 个视频`}</p>
+        {series.overview && <p className="detail-description">{series.overview}</p>}
       </div>
     </div>
-    {series.image?.url && <div className="folder-header-cover" aria-hidden="true"><Cover item={series} /></div>}
+    {series.image?.url && <div className="detail-art" aria-hidden="true"><Cover item={series} large /></div>}
   </section>;
 }

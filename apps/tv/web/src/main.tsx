@@ -264,7 +264,7 @@ function App() {
       if (getCurrentFocusKey() === 'more-playlist' && playlistItems(more)[0]) {
         restore.current = { ...snapshot(), focus: playlistFocus(playlistItems(more)[0]) };
       }
-      const data = { ...more, episodes: appendItems(videos, more.episodes), ...(more.items ? { items: appendItems(playlist?.items ?? [], more.items) } : {}) };
+      const data = { ...more, episodes: appendItems(videos, more.episodes), items: appendItems(entries, more.items) };
       if (playlistCache.current) playlistCache.current.data = data;
       setPlaylist(data);
     }) : catalogRequest<Home>('/api/home', (current.page ?? 1) + 1, rowId).then((more) => {
@@ -450,7 +450,7 @@ function App() {
   };
   const activateCard = useCatalogCallback((item: Series) => {
     if (folder?.id === item.id) return;
-    if (item.type === 'episode' || folder && item.type !== 'folder') void play(item.id);
+    if (item.type === 'episode') void play(item.id);
     else {
       if (folder) folderHistory.current.push({ folder, snapshot: snapshot(), cache: playlistCache.current });
       else { homeSnapshot.current = snapshot(); folderHistory.current = []; }
@@ -485,7 +485,7 @@ function App() {
         }} /> : <HomeGreeting />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {refreshError && <div className="catalog-notice"><span role="status">{refreshError}</span><FocusButton focusKey="refresh-retry" onClick={() => setReload((value) => value + 1)} className="text-button">重试更新</FocusButton></div>}
-          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>请绑定家庭电视，开始观看。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? (!folder ? <HomeLoading /> : <div role="status" className="state">正在加载内容…</div>) : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title={playlist?.items ? "文件夹与视频" : "视频"} kind="episode-shelf" initialFocusKey={restore.current?.focus ?? (entries[0] ? playlistFocus(entries[0]) : undefined)} virtualize={!!capabilities?.catalogSync}>
+          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>请绑定家庭电视，开始观看。</p><FocusButton focusKey="connect-home" className="primary" onArrow={cardArrow(true)} disabled={!!overlay} onClick={() => openOverlay('pairing')}>绑定家庭媒体库</FocusButton></div> : busy ? (!folder ? <HomeLoading /> : <div role="status" className="state">正在加载内容…</div>) : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="文件夹与视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? (entries[0] ? playlistFocus(entries[0]) : undefined)} virtualize={!!capabilities?.catalogSync}>
             {entries.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={playlistFocus(item)} disabled={!!overlay}
               firstRow nearEnd={index >= entries.length - 8} rowId="playlist" playable={item.type !== 'folder'}
               subtitle={`${item.id === resumeId ? '继续观看 · ' : ''}${watchedPosition(item) || duration(item.runtimeMs)}`}

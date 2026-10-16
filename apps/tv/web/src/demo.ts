@@ -41,7 +41,9 @@ export function demoRequest(path: string, method = 'GET', body?: Record<string, 
   }
   const playlist = /^\/api\/series\/(demo-series-\d+)\/playlist$/.exec(path);
   if (playlist && folders.some((folder) => folder.id === playlist[1])) return {
-    episodes: paged ? batch(episodes(playlist[1])) : episodes(playlist[1]), episodeId: `${playlist[1]}-episode-16`, hasProgress: true,
+    items: batch(episodes(playlist[1])).map(episode => ({ ...episode, type: 'episode' })),
+    itemTotal: 80, itemsHasMore: page * pageSize < 80,
+    episodes: batch(episodes(playlist[1])), episodeId: `${playlist[1]}-episode-16`, hasProgress: true,
     resumeEpisode: episodes(playlist[1])[15], ...(paged ? { page, pageSize, total: 80, hasMore: page * pageSize < 80 } : {}),
   };
   if (path === '/api/playback/sessions') return { sessionId: 'demo-session' };

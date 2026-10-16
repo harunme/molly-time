@@ -167,7 +167,7 @@ test('remote navigation, playback return, folder restoration and durable binding
           { id: 's1', name: '动物小故事', episodeCount: 2 }, { id: 's2', name: '一起学颜色', episodeCount: 3 },
         ] }] };
         if (path === '/api/families/me/children') result = [{ id: 'c1', name: '小朋友' }];
-        if (path === '/api/series/s2/playlist') result = { episodeId: 'e1', episodes: [
+        if (path === '/api/series/s2/playlist') result = { items: [{ id: 'e1', name: '红色在哪里', type: 'episode', runtimeMs: 120000 }, { id: 'e2', name: '蓝色的天空', type: 'episode', runtimeMs: 180000 }], itemTotal: 2, itemsHasMore: false, episodeId: 'e1', episodes: [
           { id: 'e1', name: '红色在哪里', runtimeMs: 120000 }, { id: 'e2', name: '蓝色的天空', runtimeMs: 180000 },
         ] };
       }
@@ -397,7 +397,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   expect(await firstRail.evaluate((node) => node.scrollLeft)).toBe(0);
 });
 
-test('card covers and resume progress with compact folder artwork', async ({ page }) => {
+test('card covers and resume progress with folder banner artwork', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
     accessToken: 'presentation-access', refreshToken: 'presentation-refresh', deviceId: 'device', childId: 'child',
   })));
@@ -416,7 +416,7 @@ test('card covers and resume progress with compact folder artwork', async ({ pag
     const width = url.pathname.includes('/c/') ? 720 : 640;
     return route.fulfill({ contentType: 'image/svg+xml', body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="360"><rect width="100%" height="100%" fill="#446655"/></svg>` });
   });
-  await page.route('**/api/series/c/playlist**', (route) => route.fulfill({ json: { episodeId: 'ready', episodes: [
+  await page.route('**/api/series/c/playlist**', (route) => route.fulfill({ json: { items: [{ id: 'ready', name: '动物', type: 'episode', runtimeMs: 60000, image: { url: '/api/items/c/image?v=third' } }], itemTotal: 1, itemsHasMore: false, episodeId: 'ready', episodes: [
     { id: 'ready', name: '动物', runtimeMs: 60000, image: { url: '/api/items/c/image?v=third' } },
   ] } }));
   await page.goto('/tv/');
@@ -439,8 +439,9 @@ test('card covers and resume progress with compact folder artwork', async ({ pag
   await expect(page.locator('[data-focus="episode-ready"]')).toBeFocused();
   await expect(page.getByRole('region', { name: '文件夹详情' }).getByRole('heading')).toHaveText('自然课堂');
   await expect(page.locator('.detail-count')).toHaveText('1 个视频');
-  await expect.poll(() => page.locator('.folder-header-cover img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
-  expect(heroRequests).toEqual([]);
+  await page.screenshot({ path: '/tmp/molly-tv-restored-banner.png' });
+  await expect.poll(() => page.locator('.detail-art img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
+  expect(heroRequests).toEqual(['/api/items/c/image']);
   await expect(page.locator('[data-focus="season-empty"]')).toHaveCount(0);
   await expect(page.getByText('0 集', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-focus="episode-ready"] .cover img')).toBeVisible();
@@ -455,6 +456,7 @@ test('folder videos form a vertical grid with remote row navigation', async ({ p
   await page.route('**/api/families/me/children', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/home**', (route) => route.fulfill({ json: { rows: [{ title: '媒体库', items: [{ id: 'grid', name: '故事集', episodeCount: 26 }] }] } }));
   await page.route('**/api/series/grid/playlist**', (route) => route.fulfill({ json: {
+    items: Array.from({ length: 26 }, (_, index) => ({ id: `grid-${index}`, name: `第 ${index + 1} 集`, type: 'episode', runtimeMs: 300000 })), itemTotal: 26, itemsHasMore: false,
     episodes: Array.from({ length: 26 }, (_, index) => ({ id: `grid-${index}`, name: `第 ${index + 1} 集`, runtimeMs: 300000 })),
   } }));
   await page.goto('/tv/');

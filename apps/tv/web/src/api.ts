@@ -8,7 +8,7 @@ export type PageInfo = { page?: number; pageSize?: number; total?: number; hasMo
 export type HomeRow = PageInfo & { id?: string; title: string; items: Series[] };
 export type Home = { rows: HomeRow[] };
 export type PlaylistEpisode = Episode & { seasonName: string };
-export type Playlist = PageInfo & { items?: Series[]; itemTotal?: number; itemsHasMore?: boolean; unavailable?: boolean; episodes: PlaylistEpisode[]; episodeId: string | null; hasProgress: boolean; resumeEpisode?: PlaylistEpisode | null };
+export type Playlist = PageInfo & { items: Series[]; itemTotal: number; itemsHasMore: boolean; unavailable?: boolean; episodes: PlaylistEpisode[]; episodeId: string | null; hasProgress: boolean; resumeEpisode?: PlaylistEpisode | null };
 export class ApiError extends Error { constructor(message: string, public status = 0) { super(message); } }
 
 type NativePort = { postMessage: (message: string) => void; onmessage?: (event: MessageEvent<string>) => void };

@@ -45,6 +45,11 @@ def test_tv_browses_one_level_in_management_order_and_reorders_playback(parent):
     assert [item["id"] for item in result["items"]] == [direct, "series"]
     assert [item["type"] for item in result["items"]] == ["episode", "folder"]
     assert result["itemTotal"] == 2
+    default_page = parent.get(f"/api/series/{root}/playlist", headers=headers).json()
+    assert [item["id"] for item in default_page["items"]] == [direct, "series"]
+    assert default_page["itemsHasMore"] is False
+    default_nested = parent.get("/api/series/season/playlist", headers=headers).json()
+    assert [item["id"] for item in default_nested["items"]] == [songs, "e1"]
     assert [item["id"] for item in result["episodes"]] == [direct, song, "e1"]
     nested = parent.get("/api/series/season/playlist?page=1&pageSize=1", headers=headers).json()
     assert [item["id"] for item in nested["items"]] == [songs]

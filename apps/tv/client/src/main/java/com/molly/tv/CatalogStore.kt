@@ -38,11 +38,9 @@ class CatalogStore(private val context: Context, val owner: String) : SQLiteOpen
         db.beginTransaction()
         try {
             accept("folder:$id", version, page, data.getJSONArray("episodes"), data.getBoolean("hasMore"), data)
-            data.optJSONArray("items")?.let { children ->
-                // Switch browsing and playback order together after the final batch.
-                accept("children:$id", version, page, children, data.getBoolean("hasMore"),
-                    JSONObject().put("total", data.getInt("itemTotal")))
-            }
+            // Switch browsing and playback order together after the final batch.
+            accept("children:$id", version, page, data.getJSONArray("items"), data.getBoolean("hasMore"),
+                JSONObject().put("total", data.getInt("itemTotal")))
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
@@ -189,15 +187,14 @@ class CatalogStore(private val context: Context, val owner: String) : SQLiteOpen
             val result = JSONObject().put("episodes", values).put("total", state.optInt("total")).put("page", page).put("pageSize", size)
                 .put("hasMore", page * size < state.optInt("total")).put("hasProgress", resume != null)
                 .put("episodeId", resume?.optString("id") ?: first?.optString("id") ?: JSONObject.NULL).put("resumeEpisode", resume ?: JSONObject.NULL)
-            val childrenState = info("children:$id")
-            val childrenVersion = childrenState?.optString("active")?.ifEmpty { childrenState.optString("pending") }
-            if (childrenState != null && childrenVersion == stateVersion) {
-                val children = if ((page - 1) * size >= childrenState.optInt("total")) JSONArray()
-                    else rows("children:$id", (page - 1) * size, size, stateVersion) ?: return@readSnapshot null
-                for (i in 0 until children.length()) if (children.getJSONObject(i).optString("type") == "episode") overlay(children.getJSONObject(i))
-                result.put("items", children).put("itemTotal", childrenState.optInt("total"))
-                    .put("itemsHasMore", page * size < childrenState.optInt("total"))
-            }
+            val childrenState = info("children:$id") ?: return@readSnapshot null
+            val childrenVersion = childrenState.optString("active").ifEmpty { childrenState.optString("pending") }
+            if (childrenVersion != stateVersion) return@readSnapshot null
+            val children = if ((page - 1) * size >= childrenState.optInt("total")) JSONArray()
+                else rows("children:$id", (page - 1) * size, size, stateVersion) ?: return@readSnapshot null
+            for (i in 0 until children.length()) if (children.getJSONObject(i).optString("type") == "episode") overlay(children.getJSONObject(i))
+            result.put("items", children).put("itemTotal", childrenState.optInt("total"))
+                .put("itemsHasMore", page * size < childrenState.optInt("total"))
             return@readSnapshot result
         }
     }
