@@ -131,6 +131,7 @@ export function SubtitleSettings({
               }
               options={[({ value: "und", label: <> 未指定 </> }), ({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> }), !["und", "zh", "en", "zh-en"].includes(file.language) && ({ value: file.language, label: <> {file.language} </> })]} />
           </Label>
+          {(!file.language || file.language === "und") && <p className="muted">此字幕尚未指定类型，无法匹配默认字幕语言。请选择实际类型并保存，下一次播放生效。</p>}
           <Label>
             时间偏移（毫秒，正值延后）
             <Input

@@ -587,10 +587,8 @@ class PlaybackActivity : AppCompatActivity() {
     private fun applySubtitle() {
         val exo = player ?: return
         val choice = subtitleChoices().firstOrNull { it.id == selectedSubtitle }
-        val builder = exo.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, choice == null)
-        if (choice != null) builder.setOverrideForType(TrackSelectionOverride(choice.group.mediaTrackGroup, choice.index))
-        val parameters = builder.build()
+        val parameters = SubtitleSelection.parameters(exo.trackSelectionParameters, selectedSubtitle,
+            choice?.let { TrackSelectionOverride(it.group.mediaTrackGroup, it.index) })
         if (parameters != exo.trackSelectionParameters) exo.trackSelectionParameters = parameters
     }
 
@@ -605,7 +603,7 @@ class PlaybackActivity : AppCompatActivity() {
     private fun showSubtitleMenu() {
         val choices = subtitleChoices()
         val labels = arrayOf("关闭字幕", *choices.map { it.label }.toTypedArray())
-        val selected = choices.indexOfFirst { it.id == selectedSubtitle }.let { if (it < 0) 0 else it + 1 }
+        val selected = SubtitleSelection.menuIndex(selectedSubtitle, choices.map { it.id })
         playbackMenu = AlertDialog.Builder(this).setTitle(if (choices.isEmpty()) "此视频没有可用字幕" else "选择字幕")
             .setSingleChoiceItems(labels, selected) { dialog, which ->
                 selectedSubtitle = if (which == 0) "off" else choices[which - 1].id

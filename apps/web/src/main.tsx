@@ -1232,6 +1232,7 @@ function UploadDialog({
               value={language}
               onValueChange={(value) => setLanguage(value)}
               options={[({ value: "und", label: <> 未指定 </> }), ({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> })]} />
+            {language === "und" && <span className="muted">请选择字幕的实际类型；未指定类型的字幕不会自动匹配默认字幕语言。</span>}
           </Label>
         )}
         <FileUpload className="file-drop" inputLabel="选择上传文件"
