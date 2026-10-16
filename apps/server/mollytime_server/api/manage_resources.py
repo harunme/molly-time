@@ -38,6 +38,7 @@ from ..remote_uploads import (
     upload_lock,
     verified_parts,
 )
+from ..resource_order import manual_order
 from ..resource_tree import ancestors, descendant_ids
 from ..share_models import SharedOrigin
 from ..storage import build_storage
@@ -160,8 +161,7 @@ def resource_order(query, sort):
     numbered = (case((Item.index_number.is_(None), 1), else_=0),)
     if sort == "manual":
         return query.outerjoin(ResourcePosition, ResourcePosition.item_id == Item.id).order_by(
-            case((ResourcePosition.position.is_(None), 1), else_=0), ResourcePosition.position,
-            case((Item.type == "Season", 0), else_=1), *numbered, Item.index_number, *names,
+            *manual_order(),
         )
     orders = {
         "index": (*numbered, Item.index_number, *names),

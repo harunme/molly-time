@@ -257,7 +257,15 @@ def render_home(content, db, family, child=None, modern=True):
                     state = db.get(ResourceState, item.id)
                     return state.published_at if state and state.published_at else dt.datetime.min
 
-                selected = sorted(available, key=published_at, reverse=True)
+                if row.get("id") == "library":
+                    from ..management_models import ResourcePosition
+                    from ..resource_order import manual_order
+                    order = db.query(Item.id).outerjoin(ResourcePosition, ResourcePosition.item_id == Item.id).filter(
+                        Item.family_id == family, Item.parent_id.is_(None), Item.type == "Series",
+                    ).order_by(*manual_order()).all()
+                    selected = [lookup[key] for (key,) in order if key in lookup]
+                else:
+                    selected = sorted(available, key=published_at, reverse=True)
             items = [
                 SeriesSummary(
                     id=s.id,

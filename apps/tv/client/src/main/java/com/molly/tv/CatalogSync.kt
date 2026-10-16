@@ -188,8 +188,8 @@ class CatalogSync(private val context: Context, private val session: SessionStor
     private fun folderStep(s: CatalogStore, folder: JSONObject) {
         val id = folder.getString("id"); val version = folder.getString("version"); val page = s.nextPage("folder:$id", version)
         val data = json("/api/tv/catalog/folders/$id?version=$version&page=$page&pageSize=48")
-        s.accept("folder:$id", version, page, data.getJSONArray("episodes"), data.getBoolean("hasMore"), data)
-        failures = 0; queueImages(data.getJSONArray("episodes")); changed("folder:$id")
+        s.acceptFolder(id, version, page, data)
+        failures = 0; queueImages(data.getJSONArray("episodes")); data.optJSONArray("items")?.let { queueImages(it) }; changed("folder:$id")
     }
     private fun queueImages(items: JSONArray) {
         val binding = owner

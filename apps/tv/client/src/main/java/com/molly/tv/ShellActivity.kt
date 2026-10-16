@@ -253,6 +253,7 @@ class ShellActivity : AppCompatActivity() {
             result.optJSONObject("data")?.let { data ->
                 val store = app.catalog.store()
                 data.optJSONArray("episodes")?.let { app.media.decorateOffline(it, store) }
+                data.optJSONArray("items")?.let { app.media.decorateOffline(it, store) }
                 data.optJSONArray("rows")?.let { rows -> for (i in 0 until rows.length()) rows.getJSONObject(i).optJSONArray("items")?.let { app.media.decorateOffline(it, store) } }
             }
         }

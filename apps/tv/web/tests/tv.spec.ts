@@ -397,7 +397,7 @@ test('independent TV rails, remembered row focus and modal boundaries', async ({
   expect(await firstRail.evaluate((node) => node.scrollLeft)).toBe(0);
 });
 
-test('card covers and resume progress with background artwork only inside folders', async ({ page }) => {
+test('card covers and resume progress with compact folder artwork', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify({
     accessToken: 'presentation-access', refreshToken: 'presentation-refresh', deviceId: 'device', childId: 'child',
   })));
@@ -439,8 +439,8 @@ test('card covers and resume progress with background artwork only inside folder
   await expect(page.locator('[data-focus="episode-ready"]')).toBeFocused();
   await expect(page.getByRole('region', { name: '文件夹详情' }).getByRole('heading')).toHaveText('自然课堂');
   await expect(page.locator('.detail-count')).toHaveText('1 个视频');
-  await expect.poll(() => page.locator('.detail-art img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
-  expect(heroRequests).toEqual(['/api/items/c/image']);
+  await expect.poll(() => page.locator('.folder-header-cover img').evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(720);
+  expect(heroRequests).toEqual([]);
   await expect(page.locator('[data-focus="season-empty"]')).toHaveCount(0);
   await expect(page.getByText('0 集', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-focus="episode-ready"] .cover img')).toBeVisible();
@@ -585,6 +585,8 @@ test('mock preview browses 80 episodes without backend or binding changes', asyn
   await expect(recentRail.locator('.rail-direction-left')).not.toHaveClass(/available/);
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('[data-focus="series-demo-series-1-episode-2"]')).toBeFocused();
+  await expect(recentRail.locator('.rail-direction-left')).not.toHaveClass(/available/);
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
   await expect(recentRail.locator('.rail-direction-left')).toHaveClass(/available/);
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => page.locator('[data-rail="home-row-1"] .focused').count()).toBe(1);

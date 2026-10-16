@@ -191,7 +191,9 @@ export function FocusButton({ focusKey, children, onClick, className = '', disab
   return <button type="button" ref={ref} data-focus={focusKey} aria-label={ariaLabel} aria-pressed={selected}
     className={`${className} ${focused ? 'focused' : ''}`} disabled={disabled}
     onKeyDown={(event) => {
-      if (event.key.startsWith('Arrow') && event.currentTarget.closest('.episode-grid')) event.preventDefault();
+      // Spatial navigation handles these keys; native button activation/scroll
+      // would otherwise fire a second action or move the viewport afterwards.
+      if (event.key.startsWith('Arrow') || event.key === 'Enter') event.preventDefault();
     }}
     onFocus={() => { if (getCurrentFocusKey() !== focusKey) focusSelf(); }} onClick={onClick}>{children}</button>;
 }

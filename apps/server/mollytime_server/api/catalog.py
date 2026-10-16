@@ -335,16 +335,8 @@ def _folder_playlist(db, series_id, family_id):
         .all()
     }
     seasons[series_id] = db.get(Item, series_id)
-    episodes = sorted(
-        published_episodes(db, series_id, family_id),
-        key=lambda e: (
-            (seasons[e.parent_id].index_number or 0) if e.parent_id != series_id else 0,
-            seasons[e.parent_id].name,
-            e.index_number or 0,
-            e.name,
-            e.id,
-        ),
-    )
+    from .catalog_pagination import ordered_playlist
+    episodes = ordered_playlist(db, family_id, series_id)[0].all()
     return seasons, episodes
 
 
@@ -368,7 +360,9 @@ def series_playlist(
     page: int | None = Query(default=None, ge=1, le=2147483647),
     pageSize: int = Query(default=24, ge=1, le=48),
 ):
-    series = _get_item(db, series_id, "Series", user.family_id)
+    series = db.get(Item, series_id)
+    if not series or series.family_id != user.family_id or series.type not in ("Series", "Season"):
+        raise HTTPException(404)
     require_visible(db, series, request)
     child_id = childId or request.headers.get("X-Molly-Child") or None
     if child_id:

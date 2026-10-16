@@ -1,14 +1,14 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; serverUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string; catalogSync?: boolean; offlinePlayback?: boolean };
 export type ImageRef = { url: string; directUrl?: string | null };
-export type Series = { id: string; name: string; type?: 'episode'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; overview?: string; image?: ImageRef };
+export type Series = { id: string; name: string; type?: 'episode' | 'folder'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; overview?: string; image?: ImageRef };
 export type Season = { id: string; name: string; image?: ImageRef; indexNumber?: number; episodeCount?: number };
 export type Episode = { id: string; name: string; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; image?: ImageRef };
 export type PageInfo = { page?: number; pageSize?: number; total?: number; hasMore?: boolean };
 export type HomeRow = PageInfo & { id?: string; title: string; items: Series[] };
 export type Home = { rows: HomeRow[] };
 export type PlaylistEpisode = Episode & { seasonName: string };
-export type Playlist = PageInfo & { unavailable?: boolean; episodes: PlaylistEpisode[]; episodeId: string | null; hasProgress: boolean; resumeEpisode?: PlaylistEpisode | null };
+export type Playlist = PageInfo & { items?: Series[]; itemTotal?: number; itemsHasMore?: boolean; unavailable?: boolean; episodes: PlaylistEpisode[]; episodeId: string | null; hasProgress: boolean; resumeEpisode?: PlaylistEpisode | null };
 export class ApiError extends Error { constructor(message: string, public status = 0) { super(message); } }
 
 type NativePort = { postMessage: (message: string) => void; onmessage?: (event: MessageEvent<string>) => void };

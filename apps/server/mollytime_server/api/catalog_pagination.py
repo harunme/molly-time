@@ -3,22 +3,22 @@
 import datetime as dt
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, select
+from sqlalchemy import String, case, cast, func, literal, or_, select
 from sqlalchemy.orm import aliased
 
 from ..images import image_ref
-from ..management_models import ResourceState, WatchProgress
+from ..management_models import ResourcePosition, ResourceState, WatchProgress
 from ..models import Item, MediaFile
+from ..resource_order import manual_order
 from ..resource_policy import visible_item_ids
-from ..resource_tree import descendant_ids
 from .watch_progress import scoped_progress
 
 
-def episode_query(db, family):
+def episode_query(db, family, visible_ids=None):
     parent = aliased(Item)
     tree = select(Item.id.label("id"), Item.id.label("folder_id")).where(
         Item.family_id == family, Item.type == "Series", Item.parent_id.is_(None),
-    ).cte("catalog_folders", recursive=True)
+    ).cte(recursive=True)
     tree = tree.union_all(select(Item.id, tree.c.folder_id).join(tree, Item.parent_id == tree.c.id).where(
         Item.family_id == family,
     ))
@@ -26,7 +26,7 @@ def episode_query(db, family):
     query = db.query(Item).join(parent, Item.parent_id == parent.id).join(tree, Item.id == tree.c.id).filter(
         Item.family_id == family, Item.type == "Episode",
         parent.family_id == family, parent.type.in_(["Series", "Season"]),
-        Item.id.in_(visible_item_ids(family)),
+        Item.id.in_(visible_ids if visible_ids is not None else visible_item_ids(family)),
         select(MediaFile.id).where(
             MediaFile.item_id == Item.id, MediaFile.family_id == family,
             MediaFile.kind == "video",
@@ -36,12 +36,58 @@ def episode_query(db, family):
 
 
 def ordered_playlist(db, family, series_id):
-    query, parent, _folder_id = episode_query(db, family)
-    order = (
-        case((parent.id == series_id, 0), else_=func.coalesce(parent.index_number, 0)),
-        parent.name, func.coalesce(Item.index_number, 0), Item.name, Item.id,
+    query, _parent, _folder_id = episode_query(db, family)
+    siblings = select(
+        Item.id, Item.parent_id,
+        func.row_number().over(partition_by=Item.parent_id, order_by=manual_order()).label("ordinal"),
+    ).outerjoin(ResourcePosition, ResourcePosition.item_id == Item.id).where(Item.family_id == family).subquery()
+    tree = select(Item.id, cast(literal(""), String(1024)).label("path"), literal(0).label("depth")).where(
+        Item.id == series_id, Item.family_id == family,
+    ).cte("playback_order", recursive=True)
+    segment = func.substr(literal("0000000000") + cast(siblings.c.ordinal, String), -10, 10)
+    tree = tree.union_all(select(siblings.c.id, tree.c.path + segment, tree.c.depth + 1).join(
+        tree, siblings.c.parent_id == tree.c.id,
+    ).where(tree.c.depth < 32))
+    order = (tree.c.path, Item.id)
+    return query.join(tree, tree.c.id == Item.id).order_by(*order), order
+
+
+def folder_counts(db, family, visible_ids=None):
+    """Count visible playable descendants for every container, including nested seasons."""
+    playable, _, _ = episode_query(db, family, visible_ids)
+    playable = playable.with_entities(Item.id).subquery()
+    tree = select(Item.id.label("folder_id"), Item.id).where(
+        Item.family_id == family, Item.type.in_(["Series", "Season"]),
+    ).cte("folder_members", recursive=True)
+    tree = tree.union(select(tree.c.folder_id, Item.id).join(tree, Item.parent_id == tree.c.id).where(
+        Item.family_id == family,
+    ))
+    return db.query(tree.c.folder_id, func.count().label("episode_count")).join(
+        playable, playable.c.id == tree.c.id,
+    ).group_by(tree.c.folder_id).subquery()
+
+
+def folder_items(db, family, folder_id, page, page_size):
+    visible_ids = visible_item_ids(family)
+    counts = folder_counts(db, family, visible_ids)
+    playable, _, _ = episode_query(db, family, visible_ids)
+    query = db.query(Item, counts.c.episode_count).outerjoin(counts, counts.c.folder_id == Item.id).filter(
+        Item.family_id == family, Item.parent_id == folder_id,
+        Item.id.in_(visible_ids),
+        or_(counts.c.episode_count > 0, Item.id.in_(playable.with_entities(Item.id))),
     )
-    return query.filter(Item.id.in_(descendant_ids(family, series_id))).order_by(*order), order
+    total = query.count()
+    records = query.outerjoin(ResourcePosition, ResourcePosition.item_id == Item.id).order_by(
+        *manual_order(),
+    ).offset((page - 1) * page_size).limit(page_size).all()
+    items = []
+    for item, count in records:
+        if item.type == "Episode":
+            items.append({**episode_dto(db, item), "type": "episode"})
+        else:
+            items.append({"id": item.id, "name": item.name, "type": "folder",
+                          "episodeCount": count, "image": image_ref(db, item)})
+    return {"items": items, "itemTotal": total, "itemsHasMore": page * page_size < total}
 
 
 def episode_dto(db, episode):
@@ -92,6 +138,7 @@ def paged_playlist(db, family, user_id, child_id, series, page, page_size):
         "episodes": [episode_dto(db, episode) for episode in episodes],
         "page": page, "pageSize": page_size, "total": total,
         "hasMore": page * page_size < total,
+        **folder_items(db, family, series.id, page, page_size),
     }
 
 
@@ -128,7 +175,7 @@ def paged_home(content, db, family, child, page, page_size, row_id):
                     case({key: index for index, key in enumerate(ids)}, value=Item.id) if ids else Item.id,
                 )
             else:
-                selected = selected.order_by(
+                selected = selected.outerjoin(ResourcePosition, ResourcePosition.item_id == Item.id).order_by(*manual_order()) if library else selected.order_by(
                     func.coalesce(ResourceState.published_at, dt.datetime.min).desc(),
                     Item.sort_name, Item.name, Item.id,
                 )

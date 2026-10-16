@@ -17,6 +17,37 @@ class CatalogStoreTest {
     private fun CatalogStore.withCatalog(block: (CatalogStore) -> Unit) { try { block(this) } finally { close() } }
     private fun store() = CatalogStore(RuntimeEnvironment.getApplication(), "https://media.test|${UUID.randomUUID()}")
     private fun rows(vararg ids: String) = JSONArray(ids.map { JSONObject().put("id", it).put("name", it) })
+    @Test fun browsingAndPlaybackSwitchVersionsTogether() = store().withCatalog { s ->
+        fun batch(episodes: JSONArray, children: JSONArray, total: Int, childTotal: Int, more: Boolean) =
+            JSONObject().put("episodes", episodes).put("items", children).put("total", total)
+                .put("itemTotal", childTotal).put("hasMore", more)
+        s.acceptFolder("root", "old", 1, batch(rows("old-video"), rows("old-folder"), 1, 1, false))
+        val children = JSONArray().put(JSONObject().put("id", "nested").put("name", "Songs").put("type", "folder"))
+            .put(JSONObject().put("id", "b").put("name", "Video B").put("type", "episode"))
+        s.acceptFolder("root", "new", 1, batch(rows("a", "b"), children, 3, 2, true))
+        assertEquals("old-folder", s.readPlaylist("root", 1, 24)!!.getJSONArray("items").getJSONObject(0).getString("id"))
+        s.acceptFolder("root", "new", 2, batch(rows("c"), JSONArray(), 3, 2, false))
+        s.recordPosition("b", 5000, false)
+        val result = s.readPlaylist("root", 1, 24)!!
+        assertEquals(3, result.getJSONArray("episodes").length())
+        assertEquals(2, result.getJSONArray("items").length())
+        assertEquals("nested", result.getJSONArray("items").getJSONObject(0).getString("id"))
+        assertEquals(5000, result.getJSONArray("items").getJSONObject(1).getInt("positionMs"))
+        assertFalse(result.getBoolean("itemsHasMore"))
+        assertEquals("c", s.nextEpisode("b"))
+        val page = s.readPlaylist("root", 2, 1)!!
+        assertEquals("b", page.getJSONArray("items").getJSONObject(0).getString("id"))
+    }
+    @Test fun invalidBrowsingBatchRollsBackPlaybackBatch() = store().withCatalog { s ->
+        val old = JSONObject().put("episodes", rows("old")).put("items", rows("old-folder"))
+            .put("total", 1).put("itemTotal", 1).put("hasMore", false)
+        s.acceptFolder("root", "old", 1, old)
+        val invalid = JSONObject().put("episodes", rows("new")).put("items", JSONArray())
+            .put("total", 1).put("itemTotal", 1).put("hasMore", false)
+        assertThrows(IllegalStateException::class.java) { s.acceptFolder("root", "new", 1, invalid) }
+        assertEquals("old", s.readPlaylist("root", 1, 24)!!.getJSONArray("episodes").getJSONObject(0).getString("id"))
+        assertEquals("old-folder", s.readPlaylist("root", 1, 24)!!.getJSONArray("items").getJSONObject(0).getString("id"))
+    }
     @Test fun incompletePagesStayPendingAndResumeAfterRestart() {
         val original = store(); val owner = original.owner
         original.accept("folder:a", "v1", 1, rows("a", "b"), true, JSONObject().put("total", 3))

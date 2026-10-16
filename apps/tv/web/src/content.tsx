@@ -56,7 +56,7 @@ export function Icon({ name }: { name: 'home' | 'people' | 'settings' | 'back' |
 const tones = ['#526b80', '#85735e', '#5b7772', '#756782', '#7e6269'];
 export function tone(id: string) { return tones[Array.from(id).reduce((sum, c) => sum + c.charCodeAt(0), 0) % tones.length]; }
 
-export const Cover = memo(function Cover({ item, large = false, children }: { item: Series | Episode; large?: boolean; children?: ReactNode }) {
+export const Cover = memo(function Cover({ item, large = false, folder = false, children }: { item: Series | Episode; large?: boolean; folder?: boolean; children?: ReactNode }) {
   const imagePath = item.image?.url ?? '';
   const directUrl = item.image?.directUrl;
   const [loaded, setLoaded] = useState({ path: '', src: '' });
@@ -108,6 +108,7 @@ export const Cover = memo(function Cover({ item, large = false, children }: { it
     {src ? <img src={src} alt="" decoding="async" onError={() => setLoaded({ path: imagePath, src: '' })} /> : <div className="cover-fallback" aria-hidden="true">
       <span className="cover-letter">{item.name.slice(0, 2)}</span><span className="cover-name">{item.name}</span>
     </div>}
+    {folder && <span className="folder-badge">文件夹</span>}
     {item.offlineAvailable && <span className="offline-badge">可离线播放</span>}
     {children && <div className="cover-action">{children}</div>}
     {progress !== undefined && <div className="watch-progress" role="progressbar" aria-label="观看进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
@@ -128,7 +129,7 @@ export const CatalogCard = memo(function CatalogCard({ item, focusKey, disabled,
   return <FocusButton focusKey={focusKey} className="poster" disabled={disabled}
     onArrow={(direction) => onArrow(direction, firstRow)}
     onFocus={() => { onRemember(focusKey); if (nearEnd) onLoad(rowId); }} onClick={() => onActivate(item)}>
-    <Cover item={item}>{playable && <><span>{subtitle}</span><Icon name="play" /></>}</Cover>
+    <Cover item={item} folder={!playable}>{playable && <><span>{subtitle}</span><Icon name="play" /></>}</Cover>
     <div className="card-copy"><strong>{item.name}</strong>{!playable && <span>{item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}</span>}</div>
   </FocusButton>;
 });
@@ -208,16 +209,20 @@ export function HomeGreeting({ name }: { name?: string }) {
   </section>;
 }
 
-export function DetailHeader({ series, total, loading }: {
-  series: Series; total: number; loading: boolean;
+export function DetailHeader({ series, path = [], total, loading, onBack, onDown }: {
+  series: Series; path?: Series[]; total: number; loading: boolean; onBack: () => void; onDown: () => void;
 }) {
   return <section className="detail-header" aria-label="文件夹详情">
-    <div className="detail-context">
-      <p className="eyebrow">我的媒体库</p>
-      <h1>{series.name}</h1>
-      <p className="detail-count">{loading ? '正在加载…' : `${total} 个视频`}</p>
-      {series.overview && <p className="detail-description">{series.overview}</p>}
+    <div className="detail-navigation">
+      <FocusButton focusKey="folder-back" className="folder-back text-button" onClick={onBack}
+        onArrow={direction => { if (direction === 'down') onDown(); return false; }}
+        ariaLabel={`返回${path[path.length - 1]?.name ?? '媒体库'}`}><Icon name="back" /></FocusButton>
+      <div className="detail-context">
+        <p className="folder-path" aria-label="文件夹路径">我的媒体库{path.map(parent => <span key={parent.id}> / {parent.name}</span>)}</p>
+        <h1>{series.name}</h1>
+        <p className="detail-count">{loading ? '正在加载…' : `${total} 个视频`}</p>
+      </div>
     </div>
-    {series.image?.url && <div className="detail-art" aria-hidden="true"><Cover item={series} large /></div>}
+    {series.image?.url && <div className="folder-header-cover" aria-hidden="true"><Cover item={series} /></div>}
   </section>;
 }

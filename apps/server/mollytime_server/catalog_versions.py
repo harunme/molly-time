@@ -15,6 +15,7 @@ from .management_models import (
     HomeConfig,
     HomeRevision,
     MediaOptions,
+    ResourcePosition,
     ResourceState,
     WatchProgress,
 )
@@ -38,7 +39,8 @@ def version(db, family, collection):
             CatalogVersion.scope == scope(family, collection)
         )
     ).first()
-    return f"v1-{row.generation}-{row.revision}" if row else "v1-initial"
+    schema = "v2" if collection in ("catalog", "home") or collection.startswith("folder:") else "v1"
+    return f"{schema}-{row.generation}-{row.revision}" if row else f"{schema}-initial"
 
 
 def bump(db, keys):
@@ -75,7 +77,7 @@ def item_scopes(db, item):
     parents = [item.parent_id]
     if inspect(item).persistent:
         parents += list(inspect(item).attrs.parent_id.history.deleted)
-    if item.type == "Series":
+    if item.type in ("Series", "Season"):
         keys.add(scope(family, "folder:" + item.id))
     for parent_id in parents:
         visited = set()
@@ -84,7 +86,7 @@ def item_scopes(db, item):
             parent = db.get(Item, parent_id)
             if not parent or parent.family_id != family:
                 break
-            if parent.type == "Series":
+            if parent.type in ("Series", "Season"):
                 keys.add(scope(family, "folder:" + parent.id))
             parent_id = parent.parent_id
     return keys
@@ -93,7 +95,7 @@ def item_scopes(db, item):
 def changed_scopes(db, obj):
     if isinstance(obj, Item):
         return item_scopes(db, obj) if obj.id else set()
-    if isinstance(obj, (MediaFile, ResourceState)):
+    if isinstance(obj, (MediaFile, ResourceState, ResourcePosition)):
         keys = item_scopes(db, db.get(Item, obj.item_id))
         if isinstance(obj, MediaFile):
             for old in inspect(obj).attrs.item_id.history.deleted:

@@ -47,6 +47,8 @@ for (const virtual of [false, true]) {
       await expect(first).toBeFocused();
       await expect.poll(scrollTop).toBe(0);
       for (let press = 0; press < 5; press++) await page.keyboard.press('ArrowUp');
+      await expect(page.locator('[data-focus="folder-back"]')).toBeFocused();
+      await page.keyboard.press('ArrowDown');
       await expect(first).toBeFocused();
       await expect.poll(scrollTop).toBe(0);
     }

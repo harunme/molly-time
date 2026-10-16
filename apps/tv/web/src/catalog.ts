@@ -1,6 +1,10 @@
-import { ApiError, call, request, type Home, type HomeRow, type Playlist, type PlaylistEpisode } from './api';
+import { ApiError, call, request, type Home, type HomeRow, type Playlist, type PlaylistEpisode, type Series } from './api';
 
 export const catalogPageSize = 24;
+const emptyItems: Series[] = [];
+export const playlistItems = (data?: Playlist): Series[] => data?.items ?? data?.episodes ?? emptyItems;
+export const playlistHasMore = (data?: Playlist) => data?.items ? data.itemsHasMore : data?.hasMore;
+export const playlistFocus = (item: { id: string; type?: string }) => `${item.type === 'folder' ? 'folder' : 'episode'}-${item.id}`;
 let localCatalog = false;
 export function configureCatalog(enabled: boolean) { localCatalog = enabled; }
 function waitForCatalog() {
@@ -37,6 +41,7 @@ export function updatePlaylistProgress(playlist: Playlist, progress: PlaybackRet
   if (progress.completed && (index < 0 || index === playlist.episodes.length - 1 && playlist.hasMore)) return;
   const resume = progress.completed && index >= 0 ? playlist.episodes[index + 1] ?? current : current;
   return { ...playlist, episodes: playlist.episodes.map((item) => withPlaybackProgress(item, progress)),
+    items: playlist.items?.map((item) => withPlaybackProgress(item, progress)),
     hasProgress: true, episodeId: resume.id, resumeEpisode: withPlaybackProgress(resume, progress) };
 }
 
@@ -99,9 +104,9 @@ export async function loadHome(previous?: Home, active = () => true): Promise<Ho
 
 export async function loadPlaylist(folderId: string, previous?: Playlist, active = () => true): Promise<Playlist> {
   const data = await catalogRequest<Playlist>(`/api/series/${folderId}/playlist`);
-  for (let page = 2; active() && data.hasMore && page <= (previous?.page ?? 1); page++) {
+  for (let page = 2; active() && playlistHasMore(data) && page <= (previous?.page ?? 1); page++) {
     const more = await catalogRequest<Playlist>(`/api/series/${folderId}/playlist`, page);
-    Object.assign(data, more, { episodes: appendItems(data.episodes, more.episodes) });
+    Object.assign(data, more, { episodes: appendItems(data.episodes, more.episodes), ...(more.items ? { items: appendItems(data.items ?? [], more.items) } : {}) });
   }
   return data;
 }

@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from ..catalog_versions import version
 from ..config import get_settings
@@ -20,7 +20,13 @@ from ..manage_auth import aware
 from ..management_models import DeviceDownload, DeviceReminder, WatchSession
 from ..models import Item, MediaFile
 from ..resource_policy import require_visible, visible_item_ids
-from .catalog_pagination import episode_dto, episode_query, ordered_playlist, paged_home
+from .catalog_pagination import (
+    episode_dto,
+    folder_counts,
+    folder_items,
+    ordered_playlist,
+    paged_home,
+)
 from .downloads import device_id
 from .manage_home import effective_content
 from .watch import Event, report
@@ -180,11 +186,10 @@ def manifest(
     device_id(request)
     with get_session_factory()() as read:
         snapshot(read, user.family_id, "catalog", version_)
-        query, _, folder = episode_query(read, user.family_id)
-        counts = dict(query.with_entities(folder, func.count(Item.id)).group_by(folder).all())
+        counts = dict(read.query(folder_counts(read, user.family_id)).all())
         ids = list(counts)
         folders = read.scalars(
-            select(Item).where(Item.id.in_(ids), Item.family_id == user.family_id).order_by(Item.id)
+            select(Item).where(Item.id.in_(ids), Item.family_id == user.family_id).order_by(Item.parent_id.is_not(None), Item.id)
         ).all()
         return {
             "version": version_,
@@ -243,7 +248,7 @@ def folder(
     with get_session_factory()() as read:
         snapshot(read, user.family_id, "folder:" + folder_id, version_)
         item = read.get(Item, folder_id)
-        if not item or item.family_id != user.family_id or item.type != "Series":
+        if not item or item.family_id != user.family_id or item.type not in ("Series", "Season"):
             raise HTTPException(404)
         require_visible(read, item, request)
         query, _ = ordered_playlist(read, user.family_id, folder_id)
@@ -258,6 +263,7 @@ def folder(
                 "page": page,
                 "pageSize": pageSize,
                 "hasMore": page * pageSize < total,
+                **folder_items(read, user.family_id, folder_id, page, pageSize),
             },
         )
 
