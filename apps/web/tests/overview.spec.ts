@@ -22,6 +22,8 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await expect(metric.locator('.overview-metric-value')).toHaveText(`${data.devices.online} 台`);
   await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
+  await expect(page.locator('.overview-metric').filter({ hasText: '本次观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
+  await expect(page.locator('.overview-metric').filter({ hasText: '正在观看' }).locator('.overview-metric-value')).toHaveText('暂无正在观看');
   await expect(page.locator('.overview-metric').filter({ hasText: '最喜欢的视频' }).locator('.overview-metric-value')).toHaveText('暂无观看记录');
   await expect(page.getByRole('heading', { name: '观看热力图', exact: true })).toBeVisible();
   await expect(page.locator('.overview-heatmap-day')).toHaveCount(365);
@@ -66,9 +68,12 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
 test('overview shows watch durations, favorite video and heatmap intensity on desktop and mobile', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  let playing = true;
   await page.route('**/api/manage/reminders/devices', (route) => route.fulfill({ json: [
-    { id: 'living', name: '客厅电视', phase: 'idle', requestId: null, online: true },
-    { id: 'bedroom', name: '卧室电视', phase: 'idle', requestId: null, online: true },
+    { id: 'living', name: '客厅电视', phase: 'idle', requestId: null, online: true, bootPlayedMs: 20 * 60000,
+      currentWatch: playing ? { sessionId: 'current-1', name: 'Yum Yum', playedMs: 9 * 60000 } : null },
+    { id: 'bedroom', name: '卧室电视', phase: 'idle', requestId: null, online: true, bootPlayedMs: 10 * 60000,
+      currentWatch: playing ? { sessionId: 'current-2', name: '一起认识世界和新的朋友：茉莉的英语启蒙故事', playedMs: 3 * 60000 } : null },
   ] }));
   await page.route('**/api/manage/overview', async (route) => {
     const response = await route.fetch();
@@ -91,6 +96,15 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
   await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-value')).toHaveText('1 小时 15 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('8 小时 5 分钟');
   await expect(page.locator('.overview-favorite-value')).toContainText('一起认识世界和新的朋友');
+  const currentDuration = page.locator('.overview-metric').filter({ hasText: '本次观看时长' });
+  const currentVideo = page.locator('.overview-metric').filter({ hasText: '正在观看' });
+  await expect(currentDuration.locator('.overview-metric-value')).toHaveText('30 分钟');
+  await expect(currentVideo.getByRole('button')).toHaveCount(0);
+  await expect(currentDuration.getByRole('button')).toHaveCount(0);
+  await currentVideo.locator('.overview-metric-value').click();
+  await expect(page.getByRole('dialog', { name: '观看记录', exact: true })).toHaveCount(0);
+  await expect(currentVideo.locator('.overview-metric-value')).toContainText('Yum Yum');
+  await expect(currentVideo).toContainText('客厅电视 · Yum Yum');
   const cells = page.locator('.overview-heatmap-day');
   for (let level = 0; level < 5; level++) await expect(cells.nth(360 + level)).toHaveAttribute('data-level', String(level));
   await cells.nth(363).focus();
@@ -103,6 +117,9 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
   await page.locator('.overview-heatmap').scrollIntoViewIfNeeded();
   await expect(cells.last()).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('overview-watch-mobile.png'), fullPage: true, animations: 'disabled' });
+  playing = false;
+  await expect(currentVideo.locator('.overview-metric-value')).toHaveText('暂无正在观看', { timeout: 10000 });
+  await expect(currentDuration.locator('.overview-metric-value')).toHaveText('30 分钟');
   expect(errors).toEqual([]);
 });
 

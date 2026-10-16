@@ -1,6 +1,7 @@
 package com.molly.tv
 
 import android.content.Context
+import android.provider.Settings
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 
@@ -12,6 +13,11 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
 
     // New store intentionally does not inherit the previous client's credentials.
     private val prefs = context.getSharedPreferences("molly.shell.v1", Context.MODE_PRIVATE)
+    // Remains stable across app restarts and changes only when Android reboots.
+    val bootId: String? = runCatching {
+        Settings.Global.getInt(context.contentResolver, "boot_count", -1)
+            .takeIf { it >= 0 }?.let { "android:$it" }
+    }.getOrNull()
     init {
         // The server moved with its database and signing secret. Preserve the
         // existing device credentials while changing only the saved origin.

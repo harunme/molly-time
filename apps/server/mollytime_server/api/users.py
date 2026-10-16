@@ -28,7 +28,8 @@ class MeResponse(BaseModel):
 def me(request: Request, user: CurrentUser, db: DbSession):
     device_id = getattr(request.state, "device_id", None)
     if device_id:
-        touch_device(db, device_id)
+        touch_device(db, device_id, request.headers.get("X-Molly-Boot-Id"),
+                     request.headers.get("X-Molly-Boot-Elapsed-Ms"))
     fam = db.get(Family, user.family_id)
     return MeResponse(
         user=account_dto(db, user),

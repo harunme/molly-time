@@ -15,6 +15,7 @@ from mollytime_server.management_models import (
     DeviceReminder,
     FamilyReminders,
     ResourceState,
+    WatchInterval,
     WatchSession,
 )
 from mollytime_server.models import Item, MediaFile
@@ -73,6 +74,89 @@ def start(parent, tv, episode="e1"):
     )
     assert response.status_code == 200
     return response.json()["sessionId"]
+
+
+def test_current_watch_uses_actual_played_time_and_expires(parent):
+    tv, _ = seed(parent)
+    session_id = start(parent, tv)
+    with Session(db.get_engine()) as session:
+        session.add_all([
+            WatchInterval(session_id=session_id, seq=0, start_ms=0, end_ms=60000,
+                          played_ms=60000, position_ms=900000),
+            WatchInterval(session_id=session_id, seq=1, start_ms=60000, end_ms=90000,
+                          played_ms=0, position_ms=900000),
+        ])
+        session.get(WatchSession, session_id).last_reported_at = dt.datetime.now(dt.UTC)
+        session.commit()
+
+    def current():
+        return {row["id"]: row["currentWatch"] for row in
+                parent.get("/api/manage/reminders/devices").json()}
+
+    watch = current()
+    assert watch["tv1"] == {"sessionId": session_id, "name": "One", "playedMs": 60000}
+    assert watch["tv2"] is None
+    with Session(db.get_engine()) as session:
+        session.get(WatchSession, session_id).last_reported_at = (
+            dt.datetime.now(dt.UTC) - dt.timedelta(seconds=46))
+        session.commit()
+    assert current()["tv1"] is None
+    with Session(db.get_engine()) as session:
+        row = session.get(WatchSession, session_id)
+        row.last_reported_at = dt.datetime.now(dt.UTC)
+        row.ended = True
+        session.commit()
+    assert current()["tv1"] is None
+
+
+def test_boot_watch_time_survives_episode_changes_and_resets_only_on_reboot(parent):
+    tv, _ = seed(parent)
+    boot_headers = {**tv, "X-Molly-Boot-Id": "android:5",
+                    "X-Molly-Boot-Elapsed-Ms": "600000"}
+    assert parent.get("/api/me", headers=boot_headers).status_code == 200
+    at = dt.datetime.now(dt.UTC)
+    with Session(db.get_engine()) as session:
+        for key, minutes, played, purpose, device in [
+            ("previous-boot", 20, 60000, "family_watch", "tv1"),
+            ("first-episode", 5, 60000, "family_watch", "tv1"),
+            ("second-episode", 2, 30000, "family_watch", "tv1"),
+            ("paused", 1, 0, "family_watch", "tv1"),
+            ("other-device", 1, 60000, "family_watch", "tv2"),
+            ("parent-preview", 1, 60000, "parent_preview", None),
+        ]:
+            session.add(WatchSession(id=key, family_id="f1", user_id="u1", device_id=device,
+                item_id="e1", item_name="One", purpose=purpose,
+                started_at=at - dt.timedelta(minutes=minutes), ended=True))
+            session.flush()
+            session.add(WatchInterval(session_id=key, seq=0, start_ms=0, end_ms=60000,
+                played_ms=played, position_ms=900000))
+        session.commit()
+
+    def devices():
+        return {row["id"]: row for row in
+                parent.get("/api/manage/reminders/devices").json()}
+
+    assert devices()["tv1"]["bootPlayedMs"] == 90000
+    assert devices()["tv1"]["bootId"] == "android:5"
+    assert devices()["tv1"]["currentWatch"] is None
+    assert devices()["tv2"]["bootPlayedMs"] is None
+    # Same boot: restarting the app or refreshing credentials cannot clear totals.
+    parent.get("/api/me", headers={**boot_headers, "X-Molly-Boot-Elapsed-Ms": "1"})
+    assert devices()["tv1"]["bootPlayedMs"] == 90000
+    # A genuinely newer boot boundary excludes every earlier playback session.
+    parent.get("/api/me", headers={**boot_headers, "X-Molly-Boot-Id": "android:6",
+                                  "X-Molly-Boot-Elapsed-Ms": "0"})
+    assert devices()["tv1"]["bootPlayedMs"] == 0
+    assert devices()["tv1"]["bootId"] == "android:6"
+    with Session(db.get_engine()) as session:
+        old = session.get(WatchSession, "paused")
+        old.ended = False
+        old.last_reported_at = dt.datetime.now(dt.UTC)
+        session.commit()
+    assert devices()["tv1"]["currentWatch"] is None
+    # Delayed reports from an older boot cannot roll the boundary back.
+    parent.get("/api/me", headers=boot_headers)
+    assert devices()["tv1"]["bootPlayedMs"] == 0
 
 
 def test_reminder_clips_stay_out_of_resource_library(parent):

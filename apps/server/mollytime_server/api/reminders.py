@@ -5,21 +5,25 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func
 
 from ..deps import CurrentUser, DbSession
 from ..device_presence import device_online
 from ..manage_auth import Parent, aware
 from ..management_models import (
     Device,
+    DeviceBootState,
     DeviceReminder,
     FamilyReminders,
     ResourceState,
+    WatchInterval,
     WatchSession,
     uid,
 )
 from ..models import Item, MediaFile
 from ..transactions import serialize_sqlite_write
 from .playback import playback_info, stream_file
+from .watch_filters import family_watch_clause
 
 router = APIRouter(tags=["parent-reminders"])
 ClipKind = Literal["warning", "farewell"]
@@ -154,13 +158,48 @@ def reminder_devices(user: Parent, db: DbSession):
             device.id,
         )
     )
+    # Only the latest session on each device can still be current. Selecting
+    # before filtering ended sessions prevents an older session resurfacing.
+    boots = {boot.device_id: boot for boot in db.query(DeviceBootState)
+             .filter(DeviceBootState.device_id.in_([device.id for device in devices])).all()}
+    current = {}
+    for device in devices:
+        if not device_online(device, at):
+            continue
+        watch = db.query(WatchSession).filter(
+            WatchSession.family_id == user.family_id,
+            WatchSession.device_id == device.id,
+            family_watch_clause(),
+        ).order_by(WatchSession.started_at.desc(), WatchSession.id.desc()).first()
+        if (device_online(device, at) and watch and not watch.ended
+                and (device.id not in boots
+                     or aware(watch.started_at) >= aware(boots[device.id].started_at))
+                and aware(watch.last_reported_at or watch.started_at)
+                >= at - dt.timedelta(seconds=45)):
+            current[device.id] = watch
+    totals = dict(db.query(WatchInterval.session_id, func.sum(WatchInterval.played_ms))
+        .filter(WatchInterval.session_id.in_([watch.id for watch in current.values()]))
+        .group_by(WatchInterval.session_id).all())
+    boot_totals = dict(db.query(WatchSession.device_id, func.sum(WatchInterval.played_ms))
+        .join(WatchInterval, WatchInterval.session_id == WatchSession.id)
+        .join(DeviceBootState, DeviceBootState.device_id == WatchSession.device_id)
+        .filter(WatchSession.family_id == user.family_id, family_watch_clause(),
+                WatchSession.started_at >= DeviceBootState.started_at)
+        .group_by(WatchSession.device_id).all())
     return [
         {
             "id": device.id,
             "name": device.name,
             "online": device_online(device, at),
             "lastSeen": aware(device.last_seen).isoformat(),
+            "bootPlayedMs": boot_totals.get(device.id, 0) if device.id in boots else None,
+            "bootId": boots[device.id].boot_id if device.id in boots else None,
             **device_state(db, user, device.id),
+            "currentWatch": {
+                "sessionId": current[device.id].id,
+                "name": current[device.id].item_name,
+                "playedMs": totals.get(current[device.id].id, 0),
+            } if device.id in current else None,
         }
         for device in devices
     ]

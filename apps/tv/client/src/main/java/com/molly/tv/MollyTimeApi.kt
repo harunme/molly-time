@@ -1,5 +1,6 @@
 package com.molly.tv
 
+import android.os.SystemClock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -92,6 +93,10 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
                 .header("X-Molly-Client", "tv-shell/2").header("X-Molly-Home-Schema", homeSchemaVersion.toString())
             if (session.childId.isNotEmpty()) builder.header("X-Molly-Child", session.childId)
             if (authenticated) builder.header("Authorization", "Bearer $access")
+            if (authenticated && path == "/api/me") session.bootId?.let {
+                builder.header("X-Molly-Boot-Id", it)
+                    .header("X-Molly-Boot-Elapsed-Ms", SystemClock.elapsedRealtime().toString())
+            }
             when (method) {
                 "GET" -> builder.get()
                 "POST" -> builder.post((body ?: JSONObject()).toString().toRequestBody(jsonType))

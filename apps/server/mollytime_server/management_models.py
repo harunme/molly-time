@@ -164,6 +164,15 @@ class Device(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
 
 
+class DeviceBootState(Base):
+    """Latest authenticated boot boundary, independent of playback sessions."""
+
+    __tablename__ = "device_boot_states"
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    boot_id: Mapped[str] = mapped_column(String(128))
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime)
+
+
 class DeviceErrorLog(Base):
     """Bounded, structured device diagnostics. Never store request URLs or credentials."""
 

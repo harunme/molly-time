@@ -48,6 +48,18 @@ let pairingCode = '';
 let pairingAttempt = 0;
 let refreshInFlight: Promise<void> | undefined;
 let bindingVersion = 0;
+// A browser preview has a tab lifetime rather than an Android boot lifetime.
+const browserBoot = (() => {
+  if (port || demoEnabled) return undefined;
+  const fresh = { id: `browser:${Date.now()}`, startedAt: Date.now() };
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('mollytime.tv.boot.v1') || 'null');
+    if (saved && typeof saved.id === 'string' && Number.isFinite(saved.startedAt)
+      && saved.startedAt <= Date.now()) return saved as typeof fresh;
+    sessionStorage.setItem('mollytime.tv.boot.v1', JSON.stringify(fresh));
+  } catch { /* A restricted browser can still track this page lifetime. */ }
+  return fresh;
+})();
 const bindingKey = 'mollytime.tv.binding.v1';
 function saveBinding() {
   localStorage.setItem(bindingKey, JSON.stringify({ accessToken: access, refreshToken: refresh, deviceId }));
@@ -69,7 +81,9 @@ if (!port && !demoEnabled) {
 async function fetchApi(path: string, method = 'GET', body?: unknown, retry = true): Promise<unknown> {
   const version = bindingVersion;
   const response = await fetch(path, {
-    method, headers: { 'Content-Type': 'application/json', 'X-Molly-Home-Schema': '2', ...(access ? { Authorization: `Bearer ${access}` } : {}) },
+    method, headers: { 'Content-Type': 'application/json', 'X-Molly-Home-Schema': '2', ...(access ? { Authorization: `Bearer ${access}` } : {}),
+      ...(path === '/api/me' && browserBoot ? { 'X-Molly-Boot-Id': browserBoot.id,
+        'X-Molly-Boot-Elapsed-Ms': String(Math.max(0, Date.now() - browserBoot.startedAt)) } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (version !== bindingVersion) throw new ApiError('请求已取消');

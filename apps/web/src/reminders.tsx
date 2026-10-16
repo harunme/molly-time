@@ -13,10 +13,10 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 
 type Kind = 'warning' | 'farewell';
 type Clip = { itemId: string | null; ready: boolean; name: string; previewUrl: string | null; };
-type Device = { id: string; name: string; phase: string; requestId: string | null; online: boolean; lastSeen: string; };
+type Device = { id: string; name: string; phase: string; requestId: string | null; online: boolean; lastSeen: string; bootId?: string | null; bootPlayedMs?: number | null; currentWatch?: { sessionId: string; name: string; playedMs: number; } | null; };
 type Settings = { enabled: boolean; warning: Clip; farewell: Clip; };
 
-export function useReminderData(includeDevices = false) {
+export function useReminderData(includeDevices = false, enabled = true) {
   const [settings, setSettings] = useState<Settings>();
   const [devices, setDevices] = useState<Device[]>();
   const [error, setError] = useState('');
@@ -31,11 +31,12 @@ export function useReminderData(includeDevices = false) {
     } catch (failure) { if (alive.current) setError((failure as Error).message); }
   };
   useEffect(() => {
+    if (!enabled) { setSettings(undefined); setDevices(undefined); setError(''); return; }
     alive.current = true;
     void reload();
     const timer = setInterval(() => { void reload(); }, 5000);
     return () => { alive.current = false; clearInterval(timer); };
-  }, [includeDevices]);
+  }, [includeDevices, enabled]);
   return { settings, devices, error, reload };
 }
 

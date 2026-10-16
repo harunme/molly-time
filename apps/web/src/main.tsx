@@ -22,7 +22,8 @@ import { ShareClaimDialog, ShareDialog, ShareReceive } from "./shares";
 import { PairingDialog } from "./pairing";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
-import { ParentReminders } from "./reminders";
+import { ParentReminders, useReminderData } from "./reminders";
+import { DeviceNotifications } from "./device-notifications";
 import { DeviceErrorLogs } from "./device-error-logs";
 import { Pagination, ResourcePicker, useDebounced, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
@@ -198,6 +199,7 @@ function App() {
   const page = location.pathname.split("/")[1];
   const [session, updateSession] = useState<Session>(),
     [checking, setChecking] = useState(true);
+  const reminders = useReminderData(true, !!session?.user.email);
   const [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   useEffect(() => {
@@ -331,6 +333,7 @@ function App() {
           ))}
         </nav>
         <div className="brandbar-identity">
+          <DeviceNotifications key={session.family.id} familyId={session.family.id} devices={reminders.devices} />
           <a className="brandbar-tv-link" href="/tv/" target="_blank" rel="noreferrer" aria-label="打开 TV 网页">
             <ExternalLink className="size-3.5" />
             <span>打开 TV 网页</span>
@@ -390,7 +393,7 @@ function App() {
           )}
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
-            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} />} />
+            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} reminders={reminders} />} />
             <Route path="library" element={<Library run={run} readonly={readonly} session={session} />} />
             <Route path="share" element={<ShareReceive session={session} readonly={readonly} />} />
             <Route path="trash" element={<Trash readonly={readonly} />} />

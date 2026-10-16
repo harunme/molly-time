@@ -2,7 +2,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Clock, Heart, Monitor, UploadCloud } from "lucide-react";
+import { ArrowRight, Clock, Heart, Monitor, Play, UploadCloud } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -101,9 +101,10 @@ function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen:
   </div>;
 }
 
-export function Overview({ familyName, navigate, run, readonly, notify }: {
+export function Overview({ familyName, navigate, run, readonly, notify, reminders }: {
   familyName: string; navigate: (page: Destination) => void;
   run: Run; readonly: boolean; notify: (value: string) => void;
+  reminders: ReturnType<typeof useReminderData>;
 }) {
   const location = useLocation();
   const routerNavigate = useNavigate();
@@ -115,8 +116,11 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const loading = !data && busy;
-  const reminders = useReminderData(true);
   const onlineCount = reminders.devices?.filter((device) => device.online).length ?? data?.devices.online;
+  const watching = reminders.devices?.filter((device) => device.online && device.currentWatch) ?? [];
+  const onlineDevices = reminders.devices?.filter((device) => device.online) ?? [];
+  const bootKnown = onlineDevices.every((device) => typeof device.bootPlayedMs === "number");
+  const liveDetail = watching.map((device) => `${device.name} · ${device.currentWatch!.name}`).join("；");
   const uploads = usePagedData<Upload>("/uploads", 0, 5);
   const devices = usePagedData<{ id: string; name: string; lastSeen: string; }>(
     "/devices?activeOnly=true", 0, 5,
@@ -150,10 +154,20 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
   };
   const metrics = [
     { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "family" },
+    { label: "本次观看时长", value: reminders.devices && bootKnown ? duration(onlineDevices.reduce((sum, device) => sum + (device.bootPlayedMs ?? 0), 0)) : "—", detail: !bootKnown ? "请更新电视客户端，以统计本次开机观看时长" : onlineDevices.length > 1 ? `${onlineDevices.length} 台电视本次开机观看合计 · 每 5 秒更新` : "本次开机累计观看 · 切换视频继续累计", icon: Clock, page: "watch" },
+    { label: "正在观看", value: reminders.devices ? watching.map((device) => device.currentWatch!.name).join("、") || "暂无正在观看" : "—", detail: liveDetail || "电视播放后显示 · 每 5 秒更新", icon: Play, page: "watch" },
     { label: "今日观看时长", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
     { label: "本周观看时长", value: data ? duration(data.watch.weekPlayedMs) : "—", detail: "本周一至现在", icon: Clock, page: "watch" },
     { label: "最喜欢的视频", value: data ? data.watch.favoriteVideo?.name ?? "暂无观看记录" : "—", detail: data?.watch.favoriteVideo ? `累计观看 ${duration(data.watch.favoriteVideo.playedMs)}` : "按累计观看时长排名", icon: Heart, page: "watch" },
   ] as const;
+  const renderMetric = (metric: typeof metrics[number]) => <div className={`overview-metric ${metric.label === "正在观看" ? "overview-now" : metric.label === "本次观看时长" ? "overview-session" : metric.label === "在线设备" ? "overview-online" : "overview-stat"}`} key={metric.label}>
+        <div className="overview-metric-label"><span>{metric.label}</span><metric.icon className="size-4" /></div>
+        <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : metric.label === "正在观看" ? " overview-current-value" : ""}`} title={metric.value}>
+          {(metric.label === "本次观看时长" || metric.label === "正在观看" ? !reminders.devices && !reminders.error : loading && !(metric.label === "在线设备" && onlineCount !== undefined)) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "最喜欢的视频" || metric.label === "正在观看" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
+        </strong>
+        <div className="overview-metric-bottom"><span title={metric.detail}>{metric.detail}</span>{metric.label !== "正在观看" && metric.label !== "本次观看时长" && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => metric.page === "watch" ? openWatch(metric.label === "今日观看时长" ? today : undefined) : navigate(metric.page)}><ArrowRight className="size-4" /></Button>}</div>
+        {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
+      </div>;
   return <>
     <WatchHistoryDialog open={watchOpen} onClose={closeWatch} today={today} watch={data?.watch}
       start={parseDateKey(params.get("start") ?? "") ? params.get("start")! : undefined}
@@ -165,14 +179,14 @@ export function Overview({ familyName, navigate, run, readonly, notify }: {
     {error && <Alert variant="destructive" role="alert" className="banner error"><AlertDescription>{error}</AlertDescription></Alert>}
     {loading && <p role="status" className="sr-only">正在加载概览…</p>}
     <div className="overview-metrics" aria-busy={loading}>
-      {metrics.map((metric) => <Card className="overview-metric" key={metric.label}>
-        <div className="overview-metric-label"><span>{metric.label}</span><metric.icon className="size-4" /></div>
-        <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : ""}`} title={metric.value}>
-          {loading && !(metric.label === "在线设备" && onlineCount !== undefined) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "最喜欢的视频" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
-        </strong>
-        <div className="overview-metric-bottom"><span>{metric.detail}</span><Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => metric.page === "watch" ? openWatch(metric.label === "今日观看时长" ? today : undefined) : navigate(metric.page)}><ArrowRight className="size-4" /></Button></div>
-        {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
-      </Card>)}
+      <Card className="overview-live">
+        {renderMetric(metrics[2])}
+        {renderMetric(metrics[1])}
+        {renderMetric(metrics[0])}
+      </Card>
+      <Card className="overview-summary">
+        {metrics.slice(3).map(renderMetric)}
+      </Card>
     </div>
     <Card className="overview-panel overview-heatmap" ref={heatmap} aria-busy={loading}>
       <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" disabled={!data} onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
