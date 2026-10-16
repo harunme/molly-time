@@ -13,7 +13,7 @@ async function login(page: Page, path = '/manage/#/library') {
 const task = (index: number): Upload => ({ id: `task-${index}`, itemId: 'episode', filename: `英语启蒙故事-第${index + 1}集.mp4`,
   size: 1024, offset: 1024, status: 'ready', fingerprint: 'fixture', kind: 'video', error: '', taskId: null, taskStatus: null });
 
-test('task modal preserves folder filters and selection and supports browser history', async ({ page }) => {
+test('task modal preserves the current folder and supports browser history', async ({ page }) => {
   await page.route('**/api/manage/uploads?*', (route) => route.fulfill({ json: { items: [{ ...task(0), status: 'uploading', offset: 0 }], total: 1, page: 1, pageSize: Number(new URL(route.request().url()).searchParams.get('pageSize')) } }));
   await login(page);
   const navigation = page.getByRole('navigation', { name: '管理导航' });
@@ -21,23 +21,18 @@ test('task modal preserves folder filters and selection and supports browser his
   await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
   await page.getByRole('button', { name: '第 1 季', exact: true }).click();
   await expect(page.getByRole('heading', { name: '第 1 季', exact: true })).toBeVisible();
-  const search = page.getByRole('textbox', { name: '搜索资源', exact: true });
-  await search.fill('Hello');
-  await expect(page.locator('.resource-row')).toHaveCount(1);
-  await page.getByRole('checkbox', { name: '选择 Hello', exact: true }).check();
+  await expect(page.locator('.resource-tile')).toHaveCount(3);
   let requests = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/manage/uploads') requests++; });
   const trigger = page.getByRole('button', { name: '上传任务', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '上传任务', exact: true });
   await expect(dialog).toBeVisible();
-  await expect(page.locator('input[aria-label="搜索资源"]')).toHaveValue('Hello');
   await expect(page).toHaveURL(/\/library\/season\?uploads=1$/);
   await expect.poll(() => requests).toBeGreaterThanOrEqual(1);
   await page.goBack();
   await expect(dialog).not.toBeVisible();
-  await expect(search).toHaveValue('Hello');
-  await expect(page.getByRole('checkbox', { name: '选择 Hello', exact: true })).toBeChecked();
+  await expect(page.getByRole('heading', { name: '第 1 季', exact: true })).toBeVisible();
   await page.goForward();
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');

@@ -105,9 +105,9 @@ def test_parent_creates_folder_upload_target_and_moves_existing_video(parent):  
         == 404
     )
     assert (
-        parent.post("/api/manage/resources/e1/move", json={"folderId": "season"}).status_code == 422
+        parent.post("/api/manage/resources/e1/move", json={"folderId": "season"}).status_code == 200
     )
-    assert parent.get("/api/episodes/e1", headers=native_token()).json()["seriesId"] == folder["id"]
+    assert parent.get("/api/episodes/e1", headers=native_token()).json()["seriesId"] == "series"
 
 
 def test_next_episode_order_visibility_last_and_family_boundary(parent):  # noqa: F811

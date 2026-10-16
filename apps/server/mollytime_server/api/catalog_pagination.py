@@ -10,13 +10,20 @@ from ..images import image_ref
 from ..management_models import ResourceState, WatchProgress
 from ..models import Item, MediaFile
 from ..resource_policy import visible_item_ids
+from ..resource_tree import descendant_ids
 from .watch_progress import scoped_progress
 
 
 def episode_query(db, family):
     parent = aliased(Item)
-    folder_id = case((parent.type == "Series", parent.id), else_=parent.parent_id)
-    query = db.query(Item).join(parent, Item.parent_id == parent.id).filter(
+    tree = select(Item.id.label("id"), Item.id.label("folder_id")).where(
+        Item.family_id == family, Item.type == "Series", Item.parent_id.is_(None),
+    ).cte("catalog_folders", recursive=True)
+    tree = tree.union_all(select(Item.id, tree.c.folder_id).join(tree, Item.parent_id == tree.c.id).where(
+        Item.family_id == family,
+    ))
+    folder_id = tree.c.folder_id
+    query = db.query(Item).join(parent, Item.parent_id == parent.id).join(tree, Item.id == tree.c.id).filter(
         Item.family_id == family, Item.type == "Episode",
         parent.family_id == family, parent.type.in_(["Series", "Season"]),
         Item.id.in_(visible_item_ids(family)),
@@ -29,12 +36,12 @@ def episode_query(db, family):
 
 
 def ordered_playlist(db, family, series_id):
-    query, parent, folder_id = episode_query(db, family)
+    query, parent, _folder_id = episode_query(db, family)
     order = (
-        case((parent.type == "Series", 0), else_=func.coalesce(parent.index_number, 0)),
+        case((parent.id == series_id, 0), else_=func.coalesce(parent.index_number, 0)),
         parent.name, func.coalesce(Item.index_number, 0), Item.name, Item.id,
     )
-    return query.filter(folder_id == series_id).order_by(*order), order
+    return query.filter(Item.id.in_(descendant_ids(family, series_id))).order_by(*order), order
 
 
 def episode_dto(db, episode):

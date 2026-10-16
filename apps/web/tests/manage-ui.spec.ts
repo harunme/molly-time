@@ -46,7 +46,10 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
     animations: "disabled",
   });
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "上传文件 · Hello", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "第 1 季", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "返回英语启蒙", exact: true }).click();
+  await page.getByRole("button", { name: "返回全部文件夹", exact: true }).click();
   await page
     .getByRole("navigation")
     .getByRole("link", { name: "家庭设置" })

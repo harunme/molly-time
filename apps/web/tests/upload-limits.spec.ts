@@ -26,16 +26,11 @@ test('oversize videos are rejected before resources or upload sessions are creat
   });
   const navigation = page.getByRole('navigation', { name: '管理导航' });
   await navigation.getByRole('link', { name: '资源库', exact: true }).click();
-  await page.getByRole('button', { name: '＋ 上传资源', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '上传资源', exact: true });
-  const upload = dialog.getByLabel('选择上传文件', { exact: true });
-  await expect(upload).toBeEnabled();
-  await expect(dialog.getByText('单个文件上限：500.0 MB')).toBeVisible();
+  const upload = page.getByLabel('选择上传视频', { exact: true });
+  await expect(upload).toBeAttached();
   await selectOversizeFile(upload, limits.video + 1);
-  await expect(dialog.getByRole('alert')).toContainText('超过单个视频上限 500.0 MB');
-  await expect(dialog.getByRole('button', { name: '开始上传', exact: true })).toBeDisabled();
+  await expect(page.getByRole('alert')).toContainText('超过单个视频上限 500.0 MB');
   expect(created).toEqual([]);
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
 
   await navigation.getByRole('link', { name: '家庭设置', exact: true }).click();
   await expect(page.getByText('单个视频上限：500.0 MB', { exact: true })).toBeVisible();

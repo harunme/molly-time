@@ -153,17 +153,18 @@ def build_snapshot(db, user, resource_id, share_id):
     if not episodes:
         raise HTTPException(409, "没有已发布且处理完成的视频可分享")
     selected = {item.id: item}
-    seasons = {row.id: row for row in db.query(Item).filter(
-        Item.id.in_({ep.parent_id for ep in episodes} - {item.id}),
-        Item.family_id == user.family_id,
-    ).all()}
     for ep in episodes:
         selected[ep.id] = ep
-        if item.type == "Series" and ep.parent_id != item.id:
-            season = seasons.get(ep.parent_id)
-            if season is None:
-                raise HTTPException(409, "分享目录结构无效")
-            selected[season.id] = season
+        if item.type == "Series":
+            current, seen = ep, set()
+            while current.id != item.id:
+                if current.id in seen or current.parent_id is None:
+                    raise HTTPException(409, "分享目录结构无效")
+                seen.add(current.id)
+                current = db.get(Item, current.parent_id)
+                if current is None or current.family_id != user.family_id:
+                    raise HTTPException(409, "分享目录结构无效")
+                selected[current.id] = current
     files = (
         db.query(MediaFile)
         .filter(MediaFile.item_id.in_(selected), MediaFile.kind.in_(["video", "subtitle", "image"]))

@@ -91,7 +91,8 @@ test('admin and TV share defaults while remote playback choices stay local to th
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
     await page.getByRole('button', { name: '第 1 季', exact: true }).click();
-    await page.locator('article').filter({ has: page.getByRole('button', { name: 'Browser fixture', exact: true }) }).getByRole('button', { name: '编辑', exact: true }).click();
+    await page.getByRole('button', { name: '更多操作 Browser fixture', exact: true }).click();
+    await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
     await expect(page.getByRole('heading', { name: '字幕资源' })).toBeVisible();
     await expect(page.getByText('默认字幕', { exact: true })).toHaveCount(0);
     await expect(page.getByLabel('字幕类型').nth(2)).toHaveAttribute('data-value', 'zh-en');

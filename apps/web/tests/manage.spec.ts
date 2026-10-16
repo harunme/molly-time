@@ -1,4 +1,3 @@
-import { chooseSelect } from "./select";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -49,9 +48,7 @@ test("real upload, parent preview and resource publication", async ({
     await page
       .getByRole("button", { name: "＋ 上传资源", exact: true })
       .click();
-    await page.getByLabel("新文件夹名称").fill("自然与发现");
-    await page.getByLabel("选择上传文件").setInputFiles(file);
-    await page.getByRole("button", { name: "开始上传 1 个文件" }).click();
+    await page.getByLabel("选择上传视频", { exact: true }).setInputFiles(file);
     await expect(page.getByRole("dialog", { name: "上传资源", exact: true })).not.toBeVisible();
     const tasks = page.getByRole("dialog", { name: "上传任务", exact: true });
     await expect(tasks).toBeVisible();
@@ -63,18 +60,21 @@ test("real upload, parent preview and resource publication", async ({
       return data.items.find((item: { filename: string; status: string }) => item.filename === '自然小故事.mp4')?.status;
     }, { timeout: 20000 }).toBe('ready');
     await expect(page.getByRole("button", { name: "上传任务", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "自然与发现", exact: true }).click();
+    await page.getByRole("button", { name: "未整理", exact: true }).click();
     await page.getByRole("button", { name: "自然小故事", exact: true }).click();
     await expect(
       page.getByText("预览不计入家庭观看时长，也不修改电视续播位置。"),
     ).toBeVisible();
     await expect(page.locator("video")).toHaveAttribute("src", /mediaId=/);
-    await page.getByRole("button", { name: "关闭", exact: true }).click();
-    await page.getByRole("button", { name: "发布", exact: true }).click();
-    await expect(page.locator(".badge.published")).toBeVisible();
-    await page.getByRole("button", { name: "全部文件夹", exact: true }).click();
+    await page.getByRole("dialog", { name: "家长预览 · 自然小故事", exact: true }).getByRole("button", { name: "关闭", exact: true }).click();
+    await page.getByRole("button", { name: "更多操作 自然小故事", exact: true }).click();
+    await page.getByRole("menuitem", { name: "发布", exact: true }).click();
+    await page.getByRole("button", { name: "更多操作 自然小故事", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "下架", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "返回全部文件夹", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "自然与发现", exact: true }),
+      page.getByRole("button", { name: "未整理", exact: true }),
     ).toBeVisible();
     await page.screenshot({
       path: "../../artifacts/parent-resources.png",
@@ -86,7 +86,7 @@ test("real upload, parent preview and resource publication", async ({
   }
 });
 
-test("parents create learning folders and move videos without uploading them again", async ({
+test("parents group existing folders without uploading videos again", async ({
   page,
 }) => {
   await login(page);
@@ -96,17 +96,17 @@ test("parents create learning folders and move videos without uploading them aga
     .getByLabel("名称", { exact: true })
     .fill("小动物学习");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByRole("button", { name: "自然与发现", exact: true }).click();
-  await page.getByRole("checkbox", { name: "选择 自然小故事" }).check();
-  await chooseSelect(page.getByLabel("移动到文件夹"), { label: "小动物学习" });
-  await expect(
-    page.getByRole("button", { name: "自然小故事", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "全部文件夹" }).click();
-  await page.getByRole("button", { name: "小动物学习", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "自然小故事", exact: true }),
-  ).toBeVisible();
+  const from = (await page.getByRole('button', { name: '打开 未整理', exact: true }).boundingBox())!;
+  const to = (await page.getByRole('button', { name: '打开 小动物学习', exact: true }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+  await expect(page.locator('.is-drop-target')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByRole('button', { name: '未整理', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '小动物学习', exact: true }).click();
+  await page.getByRole('button', { name: '未整理', exact: true }).click();
+  await expect(page.getByRole('button', { name: '自然小故事', exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "新建季", exact: true }),
   ).toBeVisible();

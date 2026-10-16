@@ -104,9 +104,6 @@
 .paged-picker .pagination { @apply my-0 gap-1; }
 .paged-picker .pagination button { @apply h-7 px-2 text-footnote; }
 .paged-picker .pagination-total { @apply hidden; }
-.selection-bar .paged-picker { @apply w-full rounded-ui bg-card p-2 text-foreground sm:w-80; }
-.selection-bar .paged-picker [data-slot="select-field"] { @apply w-full; }
-.selection-bar .pagination button { @apply text-foreground; }
 .toolbar > .pagination { @apply my-0; }
 .report-section > .pagination { @apply mb-0; }
 .overview-metrics { @apply mb-6 grid gap-4; }
@@ -269,10 +266,10 @@
 
 
 .breadcrumbs {
-  @apply mb-4 flex items-center gap-1 text-xs text-muted-foreground;
+  @apply mb-4 flex flex-wrap items-center gap-1 text-xs text-muted-foreground;
 }
 .breadcrumbs button {
-  @apply h-6 border-0 bg-transparent px-0 text-xs font-normal shadow-none hover:bg-transparent hover:text-foreground;
+  @apply h-auto min-h-6 max-w-full whitespace-normal break-words border-0 bg-transparent px-0 text-left text-xs font-normal shadow-none hover:bg-transparent hover:text-foreground;
 }
 .resource-list {
   @apply overflow-hidden;
@@ -285,15 +282,6 @@
 }
 .library-create-actions {
   @apply ml-auto;
-}
-.library-summary {
-  @apply relative;
-}
-.library-summary:has(.library-upload-status) {
-  @apply sm:pr-64;
-}
-.library-upload-status {
-  @apply sm:absolute sm:right-6 sm:top-1/2 sm:-translate-y-1/2;
 }
 .share-landing {
   @apply min-h-dvh bg-background px-5 py-8 sm:py-12;
@@ -379,30 +367,6 @@
 .share-error {
   @apply mx-6 mb-6 w-auto sm:mx-8;
 }
-.resource-list-heading {
-  @apply hidden h-control items-center rounded-full bg-muted px-3 text-footnote font-semibold text-foreground sm:flex;
-}
-.resource-list-heading span:first-child {
-  @apply flex-1 pl-9;
-}
-.resource-list-heading span:nth-child(2) {
-  @apply w-[110px];
-}
-.resource-list-heading span:last-child {
-  @apply w-[170px] text-right;
-}
-.resource-row {
-  @apply flex min-w-0 flex-wrap items-center gap-3 px-3 py-4 transition-colors hover:bg-muted/25 sm:flex-nowrap;
-}
-.thumbnail {
-  @apply relative grid h-[44px] w-[68px] shrink-0 place-items-center overflow-hidden rounded-ui bg-muted text-muted-foreground;
-}
-.thumbnail img {
-  @apply absolute inset-0 z-10 size-full object-cover;
-}
-.folder-thumbnail {
-  @apply h-[44px] w-[52px] bg-muted text-muted-foreground;
-}
 .resource-name {
   @apply min-w-0 flex-1;
 }
@@ -444,15 +408,6 @@
 }
 .row-actions button {
   @apply h-control-sm min-w-0 px-2 text-sm;
-}
-.selection-bar {
-  @apply sticky bottom-4 z-20 mt-4 flex flex-wrap items-center gap-2 rounded-ui bg-foreground px-4 py-3 text-xs text-white shadow-lg;
-}
-.selection-bar button {
-  @apply h-7;
-}
-.selection-bar [data-variant="ghost"] {
-  @apply text-white hover:bg-card/10;
 }
 .empty {
   @apply flex flex-col items-center justify-center gap-2 rounded-card bg-card px-6 py-8 text-center text-sm text-muted-foreground;
@@ -1020,9 +975,6 @@ td small {
   }
   .page-title .actions button {
     flex: 1;
-  }
-  .resource-row {
-    gap: 10px;
   }
   .row-actions {
     width: 100%;

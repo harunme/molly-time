@@ -87,6 +87,12 @@ class ResourceState(Base):
     published_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ResourcePosition(Base):
+    __tablename__ = "resource_positions"
+    item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer)
+
+
 class TrashEntry(Base):
     __tablename__ = "trash_entries"
     item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), primary_key=True)

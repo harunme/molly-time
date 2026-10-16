@@ -15,8 +15,9 @@ from ..deps import CurrentUser, DbSession
 from ..images import image_ref
 from ..management_models import WatchProgress
 from ..models import ChildProfile, Item, MediaFile
-from ..resource_policy import published_episodes, require_visible, visible
 from ..playback_settings import default_subtitle, preferred_subtitle_index
+from ..resource_policy import published_episodes, require_visible, visible
+from ..resource_tree import ancestors, descendant_ids
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 
@@ -296,13 +297,8 @@ def episode_detail(episode_id: str, request: Request, user: CurrentUser, db: DbS
 
 
 def _series_id(db: Session, episode: Item) -> str:
-    """Walk parent chain: episode → season → series."""
-    if episode.parent_id is None:
-        return ""
-    season = db.get(Item, episode.parent_id)
-    if season is None:
-        return ""
-    return season.id if season.type == "Series" else season.parent_id or ""
+    """Resolve the enclosing root collection, including nested groups."""
+    return next((row.id for row in ancestors(db, episode) if row.type == "Series"), "")
 
 
 def _season_episodes(db, season_id, family_id, request):
@@ -334,7 +330,8 @@ def _folder_playlist(db, series_id, family_id):
     seasons = {
         s.id: s
         for s in db.query(Item)
-        .filter(Item.family_id == family_id, Item.parent_id == series_id, Item.type == "Season")
+        .filter(Item.family_id == family_id, Item.id.in_(descendant_ids(family_id, series_id)),
+                Item.type.in_(["Series", "Season"]))
         .all()
     }
     seasons[series_id] = db.get(Item, series_id)

@@ -5,6 +5,7 @@ from sqlalchemy import or_, select
 
 from .management_models import ResourceState
 from .models import Item, MediaFile
+from .resource_tree import descendant_ids
 
 
 def visible_item_ids(family_id):
@@ -64,7 +65,7 @@ def require_visible(db, item, request):
 def published_series(db, family_id):
     series = (
         db.query(Item)
-        .filter(Item.family_id == family_id, Item.type == "Series")
+        .filter(Item.family_id == family_id, Item.type == "Series", Item.parent_id.is_(None))
         .order_by(Item.sort_name, Item.name)
         .all()
     )
@@ -74,16 +75,13 @@ def published_series(db, family_id):
 
 
 def published_episodes(db, series_id, family_id):
-    seasons = db.query(Item.id).filter(
-        Item.family_id == family_id, Item.parent_id == series_id, Item.type == "Season"
-    )
     episodes = (
         db.query(Item)
         .join(MediaFile, MediaFile.item_id == Item.id)
         .filter(
             Item.family_id == family_id,
             Item.type == "Episode",
-            or_(Item.parent_id == series_id, Item.parent_id.in_(seasons)),
+            Item.id.in_(descendant_ids(family_id, series_id)),
             MediaFile.kind == "video",
         )
         .distinct()

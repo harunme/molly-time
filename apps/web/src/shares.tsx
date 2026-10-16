@@ -195,14 +195,6 @@ function ShareLoginDialog({ close, loggedIn }: { close: () => void; loggedIn: (s
   </Dialog>;
 }
 
-export function ShareClaimDialog({ session, initialFolder, close, received }: { session: Session; initialFolder?: Resource; close: () => void; received: () => void }) {
-  return <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
-    <DialogContent><DialogHeader><DialogTitle>领取分享</DialogTitle><DialogDescription>粘贴分享链接或输入口令，加入自己的内容库。</DialogDescription></DialogHeader>
-      <DialogBody><ShareReceive session={session} readonly={false} modal initialFolderId={initialFolder?.id} initialFolder={initialFolder} received={received} /></DialogBody>
-    </DialogContent>
-  </Dialog>;
-}
-
 export function ShareReceive({ session, readonly, standalone = false, modal = false, initialFolderId = "", initialFolder, received, onSession }: { session?: Session; readonly: boolean; standalone?: boolean; modal?: boolean; initialFolderId?: string; initialFolder?: Resource; received?: () => void; onSession?: (value: Session) => void }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);

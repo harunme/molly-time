@@ -86,7 +86,6 @@ def item_scopes(db, item):
                 break
             if parent.type == "Series":
                 keys.add(scope(family, "folder:" + parent.id))
-                break
             parent_id = parent.parent_id
     return keys
 

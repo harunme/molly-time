@@ -69,7 +69,7 @@ test("share collection, login through link, receive draft and publish independen
   } finally { await context.close(); }
 });
 
-test("single video is received via code into a chosen collection", async ({ page, browser }) => {
+test("single video share links work without any claim entry in the library", async ({ page, browser }) => {
   await page.goto("/manage/");
   await login(page, "parent");
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
@@ -79,34 +79,24 @@ test("single video is received via code into a chosen collection", async ({ page
   await page.getByRole("menuitem", { name: "分享内容" }).click();
   const dialog = page.getByRole("dialog", { name: "分享 · Hello" });
   await dialog.getByRole("button", { name: "生成分享", exact: true }).click();
-  const code = await dialog.getByLabel("分享口令").inputValue();
+  const url = await dialog.getByLabel("分享链接").inputValue();
   const context = await browser.newContext();
   try {
     const receiving = await context.newPage();
     await receiving.goto("/manage/");
     await login(receiving, "receiver");
     await receiving.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
-    const toolbar = receiving.locator(".library-toolbar");
-    const receiveButton = toolbar.getByRole("button", { name: "领取分享", exact: true });
-    await expect(receiveButton).toBeVisible();
-    await expect(toolbar.getByRole("button", { name: "新建动画片", exact: true })).toBeVisible();
-    expect(await toolbar.locator("button").evaluateAll((buttons) => {
-      const labels = buttons.map((button) => button.textContent?.trim());
-      return labels.indexOf("领取分享") < labels.indexOf("新建动画片");
-    })).toBe(true);
-    await receiveButton.click();
-    const claimDialog = receiving.getByRole("dialog", { name: "领取分享", exact: true });
-    await expect(claimDialog).toBeVisible();
+    await expect(receiving.getByRole("button", { name: "领取分享", exact: true })).toHaveCount(0);
+    await receiving.goto('/manage/#/share');
     await expect(receiving).toHaveURL(/#\/library$/);
-    await claimDialog.getByLabel("分享链接或口令").fill(code);
-    await claimDialog.getByRole("button", { name: "查看分享", exact: true }).click();
-    await expect(claimDialog.getByRole("heading", { name: "Hello", exact: true })).toBeVisible();
-    await expect(claimDialog.getByRole("button", { name: "加入我的内容库" })).toBeDisabled();
+    await receiving.goto(url);
+    await expect(receiving.getByRole("heading", { name: "Hello", exact: true })).toBeVisible();
+    await expect(receiving.getByRole("button", { name: "加入我的内容库" })).toBeDisabled();
     await receiving.getByRole("combobox", { name: "接收合集" }).click();
     await receiving.getByRole("option", { name: "我的收藏", exact: true }).click();
     await receiving.getByRole("button", { name: "加入我的内容库" }).click();
-    await expect(claimDialog).toHaveCount(0);
-    await expect(receiving).toHaveURL(/#\/library$/);
+    await expect(receiving.getByText("已加入我的内容库，发布后可在电视上观看。")).toBeVisible();
+    await receiving.goto("/manage/#/library");
     await receiving.getByRole("button", { name: "我的收藏", exact: true }).click();
     await expect(receiving.getByRole("button", { name: "Hello", exact: true })).toBeVisible();
   } finally { await context.close(); }

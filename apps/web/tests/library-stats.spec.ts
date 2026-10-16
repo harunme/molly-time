@@ -1,36 +1,29 @@
 import { expect, test } from '@playwright/test';
 
-test('library statistics switch between all resources and the current folder', async ({ page }) => {
-  await page.goto('/manage/');
+test('library keeps navigation and actions without overview statistics or filters', async ({ page }) => {
+  const statsRequests: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/manage/resources/stats') statsRequests.push(request.url());
+  });
+  await page.goto('/manage/#/library');
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
-  const session = await (await page.request.get('/api/manage/auth/session')).json();
-  const headers = { 'X-CSRF-Token': session.csrfToken };
-  const folderResponse = await page.request.post('/api/manage/resources', {
-    headers, data: { type: 'Series', name: '文件夹统计检查' },
-  });
-  expect(folderResponse.ok()).toBeTruthy();
-  const folder = await folderResponse.json();
-  try {
-    await page.goto(`/manage/#/library/${folder.id}`);
-    const summary = page.locator('.library-summary');
-    await expect(summary).toContainText('当前文件夹内容');
-    await expect(summary).toContainText('0 个视频');
-    const videoResponse = await page.request.post('/api/manage/resources', {
-      headers, data: { type: 'Episode', name: '统计视频', parentId: folder.id },
-    });
-    expect(videoResponse.ok()).toBeTruthy();
-    await page.reload();
-    await expect(summary).toContainText('1 个视频');
-    await expect(summary).toContainText('已发布 0%');
-    await page.getByRole('button', { name: '全部文件夹', exact: true }).click();
-    const all = await (await page.request.get('/api/manage/resources/stats')).json();
-    expect(all.videoCount).toBeGreaterThan(1);
-    await expect(summary).toContainText('资源库内容');
-    await expect(summary).toContainText(`${all.videoCount} 个视频`);
-  } finally {
-    await page.request.post(`/api/manage/resources/${folder.id}/archive`, { headers });
-  }
+  await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
+  await expect(page.locator('.resource-desktop')).toBeVisible();
+  await expect(page.getByRole('button', { name: '领取分享', exact: true })).toHaveCount(0);
+  await expect(page.locator('.library-summary')).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '搜索资源', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+  await expect(page.locator('.desktop-instructions')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeVisible();
+  await page.screenshot({ path: '../../artifacts/library-simple.png', fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '英语启蒙', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '领取分享', exact: true })).toHaveCount(0);
+  await expect(page.locator('.library-summary')).toHaveCount(0);
+  expect(statsRequests).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '../../artifacts/library-simple-mobile.png', fullPage: true, animations: 'disabled' });
 });

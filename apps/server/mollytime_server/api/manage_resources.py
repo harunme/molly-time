@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
@@ -21,11 +21,12 @@ from ..management_models import (
     FamilyReminders,
     MediaOptions,
     MediaTask,
+    ResourcePosition,
     ResourceState,
     UploadSession,
     UploadTarget,
 )
-from ..models import Item, MediaFile
+from ..models import Family, Item, MediaFile
 from ..remote_uploads import (
     PART_SIZE,
     check_target,
@@ -35,6 +36,7 @@ from ..remote_uploads import (
     upload_lock,
     verified_parts,
 )
+from ..resource_tree import ancestors, descendant_ids
 from ..share_models import SharedOrigin
 from ..storage import build_storage
 from ..storage.settings import get_storage_settings
@@ -154,6 +156,11 @@ def resource_order(query, sort):
     # Keep ordering in SQL so pagination and filtering use the same full result set.
     names = (Item.sort_name, Item.name, Item.id)
     numbered = (case((Item.index_number.is_(None), 1), else_=0),)
+    if sort == "manual":
+        return query.outerjoin(ResourcePosition, ResourcePosition.item_id == Item.id).order_by(
+            case((ResourcePosition.position.is_(None), 1), else_=0), ResourcePosition.position,
+            case((Item.type == "Season", 0), else_=1), *numbered, Item.index_number, *names,
+        )
     orders = {
         "index": (*numbered, Item.index_number, *names),
         "index-desc": (*numbered, Item.index_number.desc(), *names),
@@ -181,7 +188,7 @@ def resources(
     status: str = Query(default="", pattern="^(|draft|published|archived)$"),
     summary: bool = False, ids: str = Query(default="", max_length=4000),
     resourceType: str = Query(default="", pattern="^(|Season|Episode)$"),
-    sort: str = Query(default="index", pattern="^(index|index-desc|name|name-desc|published|duration)$"),
+    sort: str = Query(default="index", pattern="^(manual|index|index-desc|name|name-desc|published|duration)$"),
 ):
     query = db.query(Item).filter(Item.family_id == user.family_id)
     private_ids = reminder_resource_ids(db, user.family_id)
@@ -191,7 +198,7 @@ def resources(
         ensure_active(db, owned(db, Item, parentId, user.family_id))
         query = query.filter(Item.parent_id == parentId)
     else:
-        query = query.filter(Item.type == "Series")
+        query = query.filter(Item.parent_id.is_(None), Item.type.in_(["Series", "Season"]))
     if private_ids:
         query = query.filter(Item.id.notin_(private_ids))
     if ids:
@@ -225,14 +232,7 @@ def resource_stats(user: Parent, db: DbSession, folderId: str | None = None):
         ensure_active(db, folder)
         if folder.type not in ("Series", "Season"):
             raise HTTPException(422, "请选择文件夹")
-        seasons = db.query(Item.id).filter(
-            Item.family_id == user.family_id, Item.parent_id == folder.id, Item.type == "Season",
-        )
-        query = query.filter(or_(
-            Item.id == folder.id,
-            Item.parent_id == folder.id,
-            Item.parent_id.in_(seasons),
-        ))
+        query = query.filter(Item.id.in_(descendant_ids(user.family_id, folder.id)))
     if private_ids:
         query = query.filter(Item.id.notin_(private_ids))
     active = query.all()
@@ -273,12 +273,9 @@ def folder_videos(
     ensure_active(db, folder)
     if folder.type != "Series":
         raise HTTPException(422, "请选择文件夹")
-    seasons = db.query(Item.id).filter(
-        Item.family_id == user.family_id, Item.parent_id == folder.id, Item.type == "Season"
-    )
     query = db.query(Item).filter(
         Item.family_id == user.family_id, Item.type == "Episode",
-        or_(Item.parent_id == folder.id, Item.parent_id.in_(seasons)),
+        Item.id.in_(descendant_ids(user.family_id, folder.id)),
     )
     query = resource_filters(query, q, status)
     return paginate(query.order_by(Item.index_number, Item.name, Item.id),
@@ -345,43 +342,127 @@ def create(body: ResourceBody, user: Parent, db: DbSession):
 
 @router.get("/resources/{item_id}")
 def detail(item_id: str, user: Parent, db: DbSession):
-    return dto(db, owned(db, Item, item_id, user.family_id))
+    item = owned(db, Item, item_id, user.family_id)
+    return {**dto(db, item), "ancestors": [
+        {"id": row.id, "name": row.name, "type": row.type} for row in ancestors(db, item)
+    ]}
 
 
 class MoveBody(BaseModel):
-    folderId: str
+    folderId: str | None
+
+
+class PositionBody(BaseModel):
+    beforeId: str | None = Field(default=None, min_length=1, max_length=64)
+    afterId: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+def lock_resource_family(db, family_id):
+    serialize_sqlite_write(db)
+    if db.bind.dialect.name != "sqlite":
+        # Discard authentication's read snapshot before waiting for the family
+        # lock, so a second reorder sees the first one's committed positions.
+        db.rollback()
+    db.query(Family).filter(Family.id == family_id).with_for_update().one()
+
+
+@router.put("/resources/{item_id}/position")
+def position_resource(item_id: str, body: PositionBody, user: Parent, db: DbSession):
+    # Serialize sibling reorders, including root collections, on both databases.
+    lock_resource_family(db, user.family_id)
+    item = owned(db, Item, item_id, user.family_id)
+    ensure_active(db, item)
+    private_ids = reminder_resource_ids(db, user.family_id)
+    if item.id in private_ids or item.type not in ("Series", "Season", "Episode"):
+        raise HTTPException(404, "内容不存在")
+    query = db.query(Item).filter(
+        Item.family_id == user.family_id, Item.parent_id == item.parent_id,
+        Item.type.in_(["Series", "Season", "Episode"]),
+    )
+    if private_ids:
+        query = query.filter(Item.id.notin_(private_ids))
+    siblings = resource_order(resource_filters(query, "", ""), "manual").all()
+    keys = [row.id for row in siblings if row.id != item.id]
+    if body.beforeId and body.afterId:
+        raise HTTPException(422, "请选择一个排列位置")
+    if body.beforeId == item.id or body.afterId == item.id:
+        return {"ok": True}
+    anchor = body.beforeId or body.afterId
+    if anchor is not None and anchor not in keys:
+        raise HTTPException(422, "只能在同一目录中排列资源，请刷新后重试")
+    index = keys.index(body.beforeId) if body.beforeId else keys.index(body.afterId) + 1 if body.afterId else len(keys)
+    keys.insert(index, item.id)
+    positions = {row.item_id: row for row in db.query(ResourcePosition).filter(ResourcePosition.item_id.in_(keys)).all()}
+    for index, key in enumerate(keys):
+        row = positions.get(key)
+        if row is None:
+            db.add(ResourcePosition(item_id=key, position=index))
+        else:
+            row.position = index
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/resources/{item_id}/move")
 def move_video(item_id: str, body: MoveBody, user: Parent, db: DbSession):
-    serialize_sqlite_write(db)
+    lock_resource_family(db, user.family_id)
     item = owned(db, Item, item_id, user.family_id)
-    folder = owned(db, Item, body.folderId, user.family_id)
+    folder = owned(db, Item, body.folderId, user.family_id) if body.folderId else None
     ensure_active(db, item)
-    ensure_active(db, folder)
-    if item.type != "Episode" or folder.type not in ("Series", "Season"):
-        raise HTTPException(422, "只能把视频移到动画片或季")
-    if folder.id in reminder_resource_ids(db, user.family_id):
+    private_ids = reminder_resource_ids(db, user.family_id)
+    if item.id in private_ids or (folder and folder.id in private_ids):
         raise HTTPException(404, "内容不存在")
+    if item.type not in ("Series", "Season", "Episode"):
+        raise HTTPException(422, "请选择视频或文件夹")
+    if folder:
+        ensure_active(db, folder)
+        if folder.type not in ("Series", "Season"):
+            raise HTTPException(422, "只能移入文件夹")
+        parents = ancestors(db, folder)
+        if any(row.id in private_ids for row in parents):
+            raise HTTPException(404, "内容不存在")
+        if item.id == folder.id or any(row.id == item.id for row in parents):
+            raise HTTPException(422, "不能把文件夹移入自己或其子文件夹")
+        # Bound both the destination chain and the source subtree, without
+        # changing animation/season/episode identities or their numbering.
+        source = db.query(Item.id, Item.parent_id).filter(
+            Item.family_id == user.family_id, Item.id.in_(descendant_ids(user.family_id, item.id)),
+        ).all()
+        children = {}
+        for key, parent_id in source:
+            children.setdefault(parent_id, []).append(key)
+        pending = [(item.id, 1)]
+        while pending:
+            key, depth = pending.pop()
+            if len(parents) + 1 + depth > 32:
+                raise HTTPException(422, "文件夹最多支持 32 层，请选择更上层的文件夹")
+            pending.extend((child, depth + 1) for child in children.get(key, []))
+    elif item.type != "Series":
+        raise HTTPException(422, "季和视频需要放在动画片文件夹中")
+    target_id = folder.id if folder else None
     duplicate = (
         db.query(Item)
         .filter(
             Item.family_id == user.family_id,
-            Item.parent_id == folder.id,
-            Item.type == "Episode",
+            Item.parent_id == target_id,
+            Item.type == item.type,
             Item.name == item.name,
             Item.id != item.id,
         )
         .first()
     )
     if duplicate:
-        raise HTTPException(409, "文件夹已有同名视频")
-    item.parent_id = folder.id
+        raise HTTPException(409, "文件夹已有同名内容")
+    if item.parent_id != target_id:
+        position = db.get(ResourcePosition, item.id)
+        if position:
+            db.delete(position)
+    item.parent_id = target_id
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "文件夹已有同名视频") from exc
+        raise HTTPException(409, "文件夹已有同名内容") from exc
     return dto(db, item)
 
 
