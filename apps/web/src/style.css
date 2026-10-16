@@ -130,7 +130,8 @@
 .overview-duration-stats .overview-metric-label button { @apply -ml-1 size-6 shrink-0 text-muted-foreground; }
 .overview-duration-stats .overview-metric-bottom { @apply mt-1 pt-0; }
 .overview-duration-stats .overview-metric-value { @apply mt-2 text-3xl; }
-.overview-duration-stats .overview-metric { @apply justify-start p-0 sm:justify-center; }
+.overview-duration-stats .overview-metric { @apply justify-start p-0; }
+.overview-summary .overview-metric-label { @apply min-h-control-sm; }
 .overview-summary .overview-metric-value { @apply text-4xl leading-tight; }
 .overview-metric-label { @apply flex items-center justify-between gap-3 text-sm text-muted-foreground; }
 .overview-metric-label svg { @apply text-icon-subtle; }
@@ -162,12 +163,12 @@
 .overview-heatmap-summary .overview-empty-note { @apply basis-full p-0 text-xs leading-5; }
 .overview-heatmap-visual { @apply w-full min-w-0 max-w-full; }
 .overview-heatmap-scroll { @apply overflow-x-auto p-1; }
-.overview-heatmap-grid { display: grid; grid-template-rows: 20px repeat(7, var(--spacing-heatmap-cell)); gap: var(--spacing-heatmap-gap); width: max-content; }
+.overview-heatmap-grid { display: grid; grid-template-rows: 20px repeat(7, auto); gap: var(--spacing-heatmap-gap); width: 100%; }
 .overview-heatmap-month, .overview-heatmap-weekday { @apply text-tiny text-muted-foreground; }
 .overview-heatmap-month { @apply truncate; }
 .overview-heatmap-weekday { @apply self-center; }
 .overview-heatmap-day, .overview-heatmap-swatch { --heatmap-fill: var(--color-heatmap-empty); background: var(--heatmap-fill); border: 0; border-radius: var(--radius-heatmap); }
-.overview-heatmap-day { @apply h-full w-full min-w-0 border-0 p-0; }
+.overview-heatmap-day { @apply aspect-square h-auto w-full min-w-0 border-0 p-0; }
 .overview-heatmap-day[data-level="1"], .overview-heatmap-swatch[data-level="1"] { --heatmap-fill: var(--color-heatmap-1); }
 .overview-heatmap-day[data-level="2"], .overview-heatmap-swatch[data-level="2"] { --heatmap-fill: var(--color-heatmap-2); }
 .overview-heatmap-day[data-level="3"], .overview-heatmap-swatch[data-level="3"] { --heatmap-fill: var(--color-heatmap-3); }

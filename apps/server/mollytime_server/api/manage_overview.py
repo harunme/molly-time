@@ -67,7 +67,7 @@ def watch_summary(db, family, zone, now):
             Item.id == favorite["id"], Item.family_id == family,
         ).scalar()
         favorite["name"] = current_name or favorite["name"]
-    ranked_ids = sorted(contents, key=lambda key: (-len(plays[key]), key))[:5]
+    ranked_ids = sorted(contents, key=lambda key: (-len(plays[key]), key))[:6]
     parent = aliased(Item)
     grandparent = aliased(Item)
     series_name = case(

@@ -67,7 +67,7 @@ function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen:
     </div>
     <div className="overview-heatmap-visual">
     <div className="overview-heatmap-scroll" ref={scroll}>
-      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击查看当天记录，用方向键选择日期，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, var(--spacing-heatmap-cell))` }}>
+      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击查看当天记录，用方向键选择日期，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, minmax(var(--spacing-heatmap-cell), 1fr))`, minWidth: `calc(28px + ${columns} * (var(--spacing-heatmap-cell) + var(--spacing-heatmap-gap)))` }}>
         {months.map((month) => <span className="overview-heatmap-month" key={month.key} style={{ gridColumn: `${month.column} / span ${Math.min(4, columns + 2 - month.column)}`, gridRow: 1 }}>{month.label}</span>)}
         {["一", "二", "三", "四", "五", "六", "日"].map((day, index) => <span className="overview-heatmap-weekday" key={day} style={{ gridRow: index + 2, gridColumn: 1 }}>{index % 2 === 0 ? day : ""}</span>)}
         {days.map((day, index) => {

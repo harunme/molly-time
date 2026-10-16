@@ -42,7 +42,7 @@ for (const width of [390, 1280, 1920]) {
       if (route === 'overview') {
         const cell = await page.locator('.overview-heatmap-day').last().boundingBox();
         expect(cell!.width).toBeCloseTo(cell!.height, 1);
-        expect(cell!.width).toBe(12);
+        expect(cell!.width).toBeGreaterThanOrEqual(12);
         expect((await page.locator('.overview-heatmap').boundingBox())!.height).toBeLessThan(width < 1440 ? 380 : 300);
         await expect(page.locator('.overview-summary .overview-heatmap')).toHaveCount(1);
       }

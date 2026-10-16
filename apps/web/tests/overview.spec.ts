@@ -118,6 +118,12 @@ test('overview shows watch durations, video play counts and heatmap intensity on
   await cells.nth(363).focus();
   await expect(page.locator('.overview-heatmap-footer p')).toContainText('观看 30 分钟');
   await page.screenshot({ path: testInfo.outputPath('overview-watch-desktop.png'), fullPage: true, animations: 'disabled' });
+  await page.setViewportSize({ width: 2560, height: 1200 });
+  const heatmapScroll = await page.locator('.overview-heatmap-scroll').boundingBox();
+  const latestCell = await cells.last().boundingBox();
+  expect(latestCell!.width).toBeCloseTo(latestCell!.height, 1);
+  expect(latestCell!.x + latestCell!.width).toBeCloseTo(heatmapScroll!.x + heatmapScroll!.width - 4, 0);
+  await page.screenshot({ path: testInfo.outputPath('overview-watch-wide.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await expect(page.locator('.overview-ranking')).toBeVisible();
