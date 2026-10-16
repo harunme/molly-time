@@ -1,6 +1,6 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ChartColumn, Clock, Monitor, Play } from "lucide-react";
+import { ArrowRight, Clock, Monitor, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "./api";
@@ -19,7 +19,7 @@ export type OverviewData = {
   storageBytes: number;
   watch: {
     last7DaysSessions: number; timezone: string; todayPlayedMs: number; weekPlayedMs: number;
-    weekStart: string; mostPlayedVideos: { id: string; name: string; playCount: number; }[];
+    weekStart: string; mostPlayedVideos: { id: string; name: string; seriesName?: string | null; playCount: number; }[];
     days: { date: string; playedMs: number; }[];
   };
 };
@@ -95,16 +95,13 @@ function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen:
   </div>;
 }
 
-function MostPlayedChart({ videos }: { videos: OverviewData["watch"]["mostPlayedVideos"]; }) {
+function MostPlayedList({ videos }: { videos: OverviewData["watch"]["mostPlayedVideos"]; }) {
   if (!videos.length) return <p className="overview-empty-note">暂无观看记录</p>;
-  const peak = Math.max(1, ...videos.map((video) => video.playCount));
-  return <div className="overview-ranking" role="img" aria-label={videos.map((video) => `${video.name}：${video.playCount} 次`).join("；")}>
+  const label = (video: typeof videos[number]) => video.seriesName ? `${video.seriesName} · ${video.name}` : video.name;
+  return <div className="overview-ranking" role="img" aria-label={videos.map((video) => `${label(video)}：${video.playCount} 次`).join("；")}>
     {videos.map((video) => <div className="overview-ranking-item" key={video.id}>
-      <span className="overview-ranking-name" title={video.name}>{video.name}</span>
-      <div className="overview-ranking-measure">
-        <span className="overview-ranking-track"><span className="overview-ranking-bar" style={{ width: `${video.playCount / peak * 100}%` }} /></span>
-        <span className="overview-ranking-count">{video.playCount} 次</span>
-      </div>
+      <span className="overview-ranking-name" title={label(video)}>{video.seriesName && <span className="overview-ranking-series">{video.seriesName} · </span>}{video.name}</span>
+      <span className="overview-ranking-count">{video.playCount} 次</span>
     </div>)}
   </div>;
 }
@@ -160,15 +157,17 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "family" },
     { label: "本次观看时长", value: reminders.devices && bootKnown ? duration(onlineDevices.reduce((sum, device) => sum + (device.bootPlayedMs ?? 0), 0)) : "—", detail: !bootKnown ? "请更新电视客户端，以统计本次开机观看时长" : onlineDevices.length > 1 ? `${onlineDevices.length} 台电视本次开机观看合计 · 每 5 秒更新` : "本次开机累计观看 · 切换视频继续累计", icon: Clock, page: "watch" },
     { label: "正在观看", value: reminders.devices ? watching.map((device) => device.currentWatch!.name).join("、") || "暂无正在观看" : "—", detail: liveDetail || "电视播放后显示 · 每 5 秒更新", icon: Play, page: "watch" },
-    { label: "今日观看时长", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
-    { label: "本周观看时长", value: data ? duration(data.watch.weekPlayedMs) : "—", detail: "本周一至现在", icon: Clock, page: "watch" },
+    { label: "今日观看", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
+    { label: "本周观看", value: data ? duration(data.watch.weekPlayedMs) : "—", detail: "本周一至现在", icon: Clock, page: "watch" },
   ] as const;
   const renderMetric = (metric: typeof metrics[number]) => <div className={`overview-metric ${metric.label === "正在观看" ? "overview-now" : metric.label === "本次观看时长" ? "overview-session" : metric.label === "在线设备" ? "overview-online" : "overview-stat"}`} key={metric.label}>
-        <div className="overview-metric-label"><span>{metric.label}</span><metric.icon className="size-4" /></div>
+        <div className="overview-metric-label"><span>{metric.label}</span>{metric.label !== "今日观看" && metric.label !== "本周观看" && <metric.icon className="size-4" />}
+          {(metric.label === "今日观看" || metric.label === "本周观看") && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => openWatch(metric.label === "今日观看" ? today : undefined)}><ArrowRight className="size-3.5" /></Button>}
+        </div>
         <strong className={`overview-metric-value${metric.label === "正在观看" ? " overview-current-value" : ""}`} title={metric.value}>
           {(metric.label === "本次观看时长" || metric.label === "正在观看" ? !reminders.devices && !reminders.error : loading && !(metric.label === "在线设备" && onlineCount !== undefined)) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "正在观看" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
         </strong>
-        <div className="overview-metric-bottom"><span title={metric.detail}>{metric.detail}</span>{metric.label !== "正在观看" && metric.label !== "本次观看时长" && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => metric.page === "watch" ? openWatch(metric.label === "今日观看时长" ? today : undefined) : navigate(metric.page)}><ArrowRight className="size-4" /></Button>}</div>
+        <div className="overview-metric-bottom"><span title={metric.detail}>{metric.detail}</span>{metric.label === "在线设备" && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button>}</div>
         {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
       </div>;
   return <>
@@ -186,7 +185,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       <dl className="overview-resource-counts">
         {([
           ["series", "动画片", "部"], ["episodes", "已发布视频", "集"], ["subtitles", "字幕", "个"],
-        ] as const).map(([key, label, unit]) => <div key={key}><dt>{label}</dt><dd>{loading ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : <><strong>{data?.resources[key].toLocaleString("zh-CN") ?? "—"}</strong><span>{unit}</span></>}</dd></div>)}
+        ] as const).map(([key, label, unit]) => <div key={key}><dt>{label}</dt><dd>{loading ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : <><strong>{data?.resources[key].toLocaleString("zh-CN") ?? "—"}</strong><span className="overview-metric-unit">{unit}</span></>}</dd></div>)}
       </dl>
     </Card>
     <div className="overview-metrics" aria-busy={loading}>
@@ -196,22 +195,21 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
         {renderMetric(metrics[0])}
       </Card>
       <Card className="overview-summary">
-        {metrics.slice(3).map(renderMetric)}
-        <div className="overview-metric overview-most-played" aria-label="播放次数最多的视频">
-          <div className="overview-metric-label"><span>播放次数最多的视频</span><ChartColumn className="size-4" /></div>
+        <div className="overview-duration-stats">{metrics.slice(3).map(renderMetric)}</div>
+        <div className="overview-metric overview-most-played" aria-label="视频播放排行">
+          <div className="overview-metric-label"><span>视频播放排行</span></div>
           {loading ? <span className="overview-skeleton overview-ranking-skeleton" aria-hidden="true" />
-            : data ? <MostPlayedChart videos={data.watch.mostPlayedVideos ?? []} /> : <p className="overview-empty-note">播放次数加载失败</p>}
+            : data ? <MostPlayedList videos={data.watch.mostPlayedVideos ?? []} /> : <p className="overview-empty-note">播放次数加载失败</p>}
         </div>
+        <section className="overview-panel overview-heatmap" ref={heatmap} aria-busy={loading}>
+          <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" disabled={!data} onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
+          {data ? <WatchHeatmap watch={data.watch} onOpen={(date) => openWatch(date, date)} /> : loading ? <div className="overview-heatmap-body" aria-hidden="true">
+            <div className="overview-heatmap-summary"><span className="overview-skeleton h-5 w-32" /><span className="overview-skeleton h-5 w-24" /><span className="overview-skeleton h-4 w-48" /></div>
+            <div className="overview-skeleton overview-heatmap-skeleton" />
+          </div> : <p className="overview-empty-note">观看热力图加载失败，请重新进入概览。</p>}
+          {data && <p className="overview-watch-note">时区 {data.watch.timezone} · 每格一天 · 不含家长预览</p>}
+        </section>
       </Card>
     </div>
-    <Card className="overview-panel overview-heatmap" ref={heatmap} aria-busy={loading}>
-      <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" disabled={!data} onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
-      {data ? <WatchHeatmap watch={data.watch} onOpen={(date) => openWatch(date, date)} /> : loading ? <div className="overview-heatmap-body" aria-hidden="true">
-        <div className="overview-heatmap-summary"><span className="overview-skeleton h-5 w-32" /><span className="overview-skeleton h-5 w-24" /><span className="overview-skeleton h-4 w-48" /></div>
-        <div className="overview-skeleton overview-heatmap-skeleton" />
-      </div> : <p className="overview-empty-note">观看热力图加载失败，请重新进入概览。</p>}
-      {data && <p className="overview-watch-note">时区 {data.watch.timezone} · 每格一天 · 不含家长预览</p>}
-    </Card>
-
   </>;
 }

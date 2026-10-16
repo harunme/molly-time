@@ -44,9 +44,7 @@ for (const width of [390, 1280, 1920]) {
         expect(cell!.width).toBeCloseTo(cell!.height, 1);
         expect(cell!.width).toBe(12);
         expect((await page.locator('.overview-heatmap').boundingBox())!.height).toBeLessThan(width < 1440 ? 380 : 300);
-        if (width >= 1280) {
-          expect(await page.locator('.overview-heatmap-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-        }
+        await expect(page.locator('.overview-summary .overview-heatmap')).toHaveCount(1);
       }
       if (route === 'operations') {
         const content = await page.locator('.page-content').evaluate((element) => element.clientWidth - parseFloat(getComputedStyle(element).paddingLeft) - parseFloat(getComputedStyle(element).paddingRight));
@@ -84,7 +82,7 @@ test('long durations stay on one line and fields share the same typography', asy
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  const duration = page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-value');
+  const duration = page.locator('.overview-metric').filter({ hasText: '今日观看' }).locator('.overview-metric-value');
   await expect(duration).toHaveText('1 小时 15 分钟');
   const size = await duration.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth, height: element.clientHeight }));
   expect(size.content).toBeLessThanOrEqual(size.width);

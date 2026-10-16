@@ -117,7 +117,8 @@
 .overview-now .overview-metric-label { @apply justify-start gap-2 text-foreground; }
 .overview-now .overview-metric-label svg { @apply text-foreground; }
 .overview-session { @apply justify-between p-6 sm:p-8; }
-.overview-session .overview-metric-value { @apply my-5 whitespace-normal leading-none; font-size: clamp(2.75rem, 4.5vw, 4.5rem); letter-spacing: -0.065em; }
+.overview-session .overview-metric-value { @apply my-5 whitespace-normal leading-none; }
+.overview-session .overview-metric-value, .overview-resource-counts strong { font-size: clamp(2.25rem, 3.5vw, 3.5rem); letter-spacing: -0.065em; }
 .overview-session .overview-metric-unit { @apply mx-1 text-base font-medium tracking-normal sm:text-lg; }
 .overview-online { @apply grid items-center gap-x-4 gap-y-1 px-6 py-4 sm:col-span-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:px-8; }
 .overview-online .overview-metric-label { @apply justify-start gap-2; }
@@ -125,7 +126,14 @@
 .overview-online .overview-metric-bottom { @apply m-0 pt-0; }
 .overview-online .overview-playback-control { @apply col-span-full mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-0 pt-3; }
 .overview-online .overview-playback-control > p { @apply m-0; }
-.overview-summary { @apply grid border-0 gap-0 sm:grid-cols-3; }
+.overview-summary { @apply grid border-0 gap-0 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] xl:grid-cols-[12rem_minmax(16rem,0.8fr)_minmax(0,1.5fr)]; }
+.overview-duration-stats { @apply grid min-w-0 grid-cols-2 content-start gap-6 p-card-padding sm:grid-cols-1 sm:grid-rows-2 sm:content-stretch sm:gap-7; }
+.overview-duration-stats .overview-metric-label { @apply justify-start gap-2; }
+.overview-duration-stats .overview-metric-label > span { @apply font-medium text-foreground; }
+.overview-duration-stats .overview-metric-label button { @apply -ml-1 size-6 shrink-0 text-muted-foreground; }
+.overview-duration-stats .overview-metric-bottom { @apply mt-1 pt-0; }
+.overview-duration-stats .overview-metric-value { @apply mt-2 text-3xl; }
+.overview-duration-stats .overview-metric { @apply justify-start p-0 sm:justify-center; }
 .overview-summary .overview-metric-value { @apply text-4xl leading-tight; }
 .overview-metric-label { @apply flex items-center justify-between gap-3 text-sm text-muted-foreground; }
 .overview-metric-label svg { @apply text-icon-subtle; }
@@ -143,18 +151,19 @@
 .overview-resource-counts { @apply grid grid-cols-3 gap-4; }
 .overview-resource-counts dt { @apply mb-3 text-sm text-muted-foreground; }
 .overview-resource-counts dd { @apply flex items-baseline gap-1.5 tabular-nums; }
-.overview-resource-counts strong { @apply text-3xl font-semibold tracking-tight sm:text-4xl; }
-.overview-resource-counts dd > span { @apply text-sm text-muted-foreground; }
+.overview-resource-counts strong { @apply leading-none font-semibold; }
+.overview-resource-counts .overview-metric-unit { @apply sm:text-lg; }
 .overview-empty-note { @apply py-3 text-sm leading-relaxed text-muted-foreground; }
 .overview-watch-note { @apply mt-3 text-xs leading-5 text-muted-foreground; }
 .overview-current-value { @apply line-clamp-2 whitespace-normal text-lg leading-7; overflow-wrap: anywhere; }
-.overview-heatmap { @apply mb-6; }
-.overview-heatmap-body { @apply grid min-w-0 gap-3 wide:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]; }
-.overview-heatmap-summary { @apply flex flex-wrap items-center gap-x-4 gap-y-1 text-sm leading-6 text-muted-foreground wide:flex-col wide:items-start wide:gap-2; }
+.overview-heatmap { @apply sm:col-span-2 xl:col-span-1; }
+.overview-heatmap .section-heading h2 { @apply text-sm font-medium; }
+.overview-heatmap-body { @apply grid min-w-0 gap-3; }
+.overview-heatmap-summary { @apply flex flex-wrap items-center gap-x-4 gap-y-1 text-sm leading-6 text-muted-foreground; }
 .overview-heatmap-summary strong { @apply font-medium text-foreground tabular-nums; }
-.overview-heatmap-summary > span:last-of-type { @apply whitespace-nowrap text-xs tabular-nums; }
+.overview-heatmap-summary > span:last-of-type { @apply hidden; }
 .overview-heatmap-summary .overview-empty-note { @apply basis-full p-0 text-xs leading-5; }
-.overview-heatmap-visual { @apply min-w-0 max-w-full justify-self-start wide:justify-self-end; width: fit-content; }
+.overview-heatmap-visual { @apply w-full min-w-0 max-w-full; }
 .overview-heatmap-scroll { @apply overflow-x-auto p-1; }
 .overview-heatmap-grid { display: grid; grid-template-rows: 20px repeat(7, var(--spacing-heatmap-cell)); gap: var(--spacing-heatmap-gap); width: max-content; }
 .overview-heatmap-month, .overview-heatmap-weekday { @apply text-tiny text-muted-foreground; }
@@ -176,14 +185,13 @@
 .overview-heatmap-footer strong { @apply ml-2 font-medium text-foreground; }
 .overview-heatmap-legend { @apply flex items-center gap-1.5; }
 .overview-heatmap-swatch { width: var(--spacing-heatmap-cell); height: var(--spacing-heatmap-cell); }
-.overview-most-played { --watch-accent: #007aff; }
-.overview-ranking { @apply mt-4 grid min-w-0 gap-3; }
-.overview-ranking-item { @apply grid min-w-0 gap-1.5; }
-.overview-ranking-name { @apply line-clamp-2 text-xs leading-5; overflow-wrap: anywhere; }
-.overview-ranking-measure { @apply flex items-center gap-3; }
-.overview-ranking-track { @apply block h-2 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted; }
-.overview-ranking-bar { @apply block h-full rounded-sm; background: var(--watch-accent); }
-.overview-ranking-count { @apply w-12 shrink-0 text-right text-xs text-muted-foreground tabular-nums; }
+.overview-most-played > .overview-metric-label { @apply justify-start; }
+.overview-most-played > .overview-metric-label > span { @apply font-medium text-foreground; }
+.overview-ranking { @apply mt-3 grid min-w-0 gap-1; }
+.overview-ranking-item { @apply grid min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-1; }
+.overview-ranking-name { @apply line-clamp-2 text-sm leading-5; overflow-wrap: anywhere; }
+.overview-ranking-series { @apply text-muted-foreground; }
+.overview-ranking-count { @apply shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground tabular-nums; }
 .overview-ranking-skeleton { @apply mt-6 h-20 w-full; }
 @media (prefers-reduced-motion: no-preference) {
   /* Translating this viewport-height container briefly overflows the document. */

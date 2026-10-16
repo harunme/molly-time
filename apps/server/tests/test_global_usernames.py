@@ -13,7 +13,7 @@ from mollytime_server.scripts.create_admin import main as create_admin
 
 @pytest.fixture
 def database(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "_settings", config.Settings(data_dir=tmp_path, initial_admin_email="bootstrap@example.test"))
+    monkeypatch.setattr(config, "_settings", config.Settings(db_url=f"sqlite:///{tmp_path / 'server.db'}", data_dir=tmp_path, initial_admin_email="bootstrap@example.test"))
     monkeypatch.setattr(db, "_engine", None)
     monkeypatch.setattr(db, "_SessionLocal", None)
     engine = db.get_engine()

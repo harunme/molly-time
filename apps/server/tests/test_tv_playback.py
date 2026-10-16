@@ -12,7 +12,7 @@ from mollytime_server.storage.local import LocalStorage
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    settings = config.Settings(data_dir=tmp_path, media_dir=tmp_path, tv_web_dir=tmp_path / "web", media_worker_enabled=False)
+    settings = config.Settings(db_url=f"sqlite:///{tmp_path / 'server.db'}", data_dir=tmp_path, media_dir=tmp_path, tv_web_dir=tmp_path / "web", media_worker_enabled=False)
     settings.tv_web_dir.mkdir()
     (settings.tv_web_dir / "index.html").write_text("<html>TV</html>")
     (settings.tv_web_dir / "assets").mkdir()

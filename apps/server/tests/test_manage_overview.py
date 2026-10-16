@@ -88,7 +88,7 @@ def test_overview_aggregates_only_the_current_family_and_real_watch_sessions(par
     assert watch["todayPlayedMs"] == 3000 and watch["weekPlayedMs"] == 3000
     assert watch["weekStart"] == "2026-10-12"
     assert watch["favoriteVideo"] == {"id": "e1", "name": "One", "playedMs": 5000}
-    assert watch["mostPlayedVideo"] == {"id": "e1", "name": "One", "playCount": 4}
+    assert watch["mostPlayedVideo"] == {"id": "e1", "name": "One", "seriesName": "Stories", "playCount": 4}
     assert len(watch["days"]) == 365
     assert sum(day["playedMs"] for day in watch["days"]) == 5000
     with Session(db.get_engine()) as session:
@@ -189,7 +189,7 @@ def test_overview_query_count_stays_constant_as_media_grows(parent):
 def test_overview_ranks_play_count_instead_of_duration(parent):
     now = dt.datetime.now(dt.UTC)
     with Session(db.get_engine()) as session:
-        session.add(Item(id="frequent", family_id="f1", type="Episode", name="Frequent"))
+        session.add(Item(id="frequent", family_id="f1", type="Episode", name="Frequent", parent_id="series"))
         for index, (item_id, length) in enumerate([("e1", 60000), ("frequent", 1000), ("frequent", 1000)]):
             session.add(WatchSession(id=f"rank-{index}", family_id="f1", user_id="u1",
                 item_id=item_id, item_name="Recorded", started_at=now - dt.timedelta(minutes=5),
@@ -202,11 +202,16 @@ def test_overview_ranks_play_count_instead_of_duration(parent):
         session.commit()
     watch = parent.get("/api/manage/overview").json()["watch"]
     assert watch["favoriteVideo"]["id"] == "e1"
-    assert watch["mostPlayedVideo"] == {"id": "frequent", "name": "Frequent", "playCount": 2}
+    assert watch["mostPlayedVideo"] == {"id": "frequent", "name": "Frequent", "seriesName": "Stories", "playCount": 2}
     assert watch["mostPlayedVideos"] == [
-        {"id": "frequent", "name": "Frequent", "playCount": 2},
-        {"id": "e1", "name": "One", "playCount": 1},
+        {"id": "frequent", "name": "Frequent", "seriesName": "Stories", "playCount": 2},
+        {"id": "e1", "name": "One", "seriesName": "Stories", "playCount": 1},
     ]
+    with Session(db.get_engine()) as session:
+        session.get(Item, "frequent").parent_id = None
+        session.commit()
+    assert parent.get("/api/manage/overview").json()["watch"]["mostPlayedVideos"][0]["seriesName"] is None
+
 
 
 def test_resource_overview_counts_only_published_playable_content(parent):

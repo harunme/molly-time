@@ -20,8 +20,8 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await expect(navigation.getByRole('button', { name: '首页编排', exact: true })).toHaveCount(0);
   const metric = page.locator('.overview-metric').filter({ hasText: '在线设备' });
   await expect(metric.locator('.overview-metric-value')).toHaveText(`${data.devices.online} 台`);
-  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
-  await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
+  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看' }).locator('.overview-metric-value')).toHaveText('0 分钟');
+  await expect(page.locator('.overview-metric').filter({ hasText: '本周观看' }).locator('.overview-metric-value')).toHaveText('0 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '本次观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '正在观看' }).locator('.overview-metric-value')).toHaveText('暂无正在观看');
   await expect(page.locator('.overview-most-played')).toContainText('暂无观看记录');
@@ -49,7 +49,7 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await navigation.getByRole('link', { name: '资源库', exact: true }).click();
   await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
   await navigation.getByRole('link', { name: '概览', exact: true }).click();
-  await page.getByRole('button', { name: '查看本周观看时长', exact: true }).click();
+  await page.getByRole('button', { name: '查看本周观看', exact: true }).click();
   await expect(page.getByRole('heading', { name: '观看记录', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '播放控制', exact: true })).toHaveCount(0);
   await page.reload();
@@ -86,7 +86,7 @@ test('overview shows watch durations, video play counts and heatmap intensity on
     await route.fulfill({ json: {
       ...data, devices: { ...data.devices, online: 2, active: 3 },
       watch: { ...data.watch, days, todayPlayedMs: 75 * 60000, weekPlayedMs: 485 * 60000,
-        mostPlayedVideos: [{ id: 'episode', name: '茉莉最喜欢看的英语启蒙故事：一起认识世界和新的朋友', playCount: 12 }, { id: 'second', name: 'Yum Yum', playCount: 6 }] },
+        mostPlayedVideos: [{ id: 'episode', name: '茉莉最喜欢看的英语启蒙故事：一起认识世界和新的朋友', playCount: 12 }, { id: 'second', name: 'Yum Yum', seriesName: '英语启蒙', playCount: 6 }, { id: 'third', name: 'Muddy Puddles', seriesName: '小猪佩奇', playCount: 5 }, { id: 'fourth', name: 'Who are You', seriesName: '英语启蒙', playCount: 4 }, { id: 'fifth', name: '一起探索大自然：小朋友们的周末冒险', playCount: 3 }] },
     } });
   });
   await page.goto('/manage/');
@@ -94,13 +94,16 @@ test('overview shows watch durations, video play counts and heatmap intensity on
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.overview-metric').filter({ hasText: '在线设备' }).locator('.overview-metric-value')).toHaveText('2 台');
-  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-value')).toHaveText('1 小时 15 分钟');
-  await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('8 小时 5 分钟');
+  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看' }).locator('.overview-metric-value')).toHaveText('1 小时 15 分钟');
+  await expect(page.locator('.overview-metric').filter({ hasText: '本周观看' }).locator('.overview-metric-value')).toHaveText('8 小时 5 分钟');
   await expect(page.locator('.overview-ranking')).toHaveAttribute('aria-label', /一起认识世界和新的朋友：12 次.*Yum Yum：6 次/);
+  await expect(page.locator('.overview-ranking-name').nth(2)).toHaveText('小猪佩奇 · Muddy Puddles');
   await expect(page.locator('.overview-most-played').getByRole('button')).toHaveCount(0);
-  const bars = page.locator('.overview-ranking-bar');
-  const widths = await bars.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
-  expect(widths[0]).toBeCloseTo(widths[1] * 2, 0);
+  await expect(page.locator('.overview-ranking-count').first()).toHaveText('12 次');
+  await expect(page.locator('.overview-ranking-count').nth(1)).toHaveText('6 次');
+  await expect(page.locator('.overview-ranking-bar')).toHaveCount(0);
+  await expect(page.locator('.overview-summary .overview-heatmap')).toHaveCount(1);
+  await expect(page.locator('.overview-heatmap[data-slot="card"]')).toHaveCount(0);
   const currentDuration = page.locator('.overview-metric').filter({ hasText: '本次观看时长' });
   const currentVideo = page.locator('.overview-metric').filter({ hasText: '正在观看' });
   await expect(currentDuration.locator('.overview-metric-value')).toHaveText('30 分钟');
@@ -143,7 +146,7 @@ test('overview keeps loading inside widgets and clears it after success or failu
   const heatmap = page.locator('.overview-heatmap');
   await expect(metrics).toHaveAttribute('aria-busy', 'true');
   await expect(page.getByRole('status').filter({ hasText: '正在加载概览' })).toHaveClass('sr-only');
-  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-skeleton')).toBeVisible();
+  await expect(page.locator('.overview-metric').filter({ hasText: '今日观看' }).locator('.overview-metric-skeleton')).toBeVisible();
   await expect(heatmap.locator('.overview-heatmap-skeleton')).toBeVisible();
   await expect(heatmap.getByRole('button', { name: '查看明细' })).toBeDisabled();
   await page.setViewportSize({ width: 390, height: 844 });

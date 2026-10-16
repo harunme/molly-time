@@ -68,11 +68,23 @@ def watch_summary(db, family, zone, now):
         ).scalar()
         favorite["name"] = current_name or favorite["name"]
     ranked_ids = sorted(contents, key=lambda key: (-len(plays[key]), key))[:5]
-    current_names = dict(db.query(Item.id, Item.name).filter(
-        Item.id.in_(ranked_ids), Item.family_id == family,
-    ).all()) if ranked_ids else {}
+    parent = aliased(Item)
+    grandparent = aliased(Item)
+    series_name = case(
+        (parent.type == "Series", parent.name),
+        ((parent.type == "Season") & (grandparent.type == "Series"), grandparent.name),
+    )
+    current_videos = {
+        item_id: (name, series)
+        for item_id, name, series in db.query(Item.id, Item.name, series_name).outerjoin(
+            parent, (parent.id == Item.parent_id) & (parent.family_id == family),
+        ).outerjoin(
+            grandparent, (grandparent.id == parent.parent_id) & (grandparent.family_id == family),
+        ).filter(Item.id.in_(ranked_ids), Item.family_id == family).all()
+    } if ranked_ids else {}
     most_played_videos = [
-        {"id": item_id, "name": current_names.get(item_id) or contents[item_id]["name"],
+        {"id": item_id, "name": current_videos.get(item_id, (None, None))[0] or contents[item_id]["name"],
+         "seriesName": current_videos.get(item_id, (None, None))[1],
          "playCount": len(plays[item_id])}
         for item_id in ranked_ids
     ]
