@@ -28,6 +28,7 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
     animations: "disabled",
   });
   await page.getByRole("button", { name: "英语启蒙", exact: true }).click();
+  await page.getByRole("button", { name: "第 1 季", exact: true }).click();
   await page
     .getByRole("button", { name: "更多操作 Hello", exact: true })
     .click();

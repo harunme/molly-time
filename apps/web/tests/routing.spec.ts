@@ -62,10 +62,10 @@ test("folder URLs restore the folder after refresh and browser back returns to t
   await login(page);
   await page.getByRole("button", { name: "英语启蒙", exact: true }).click();
   await expect(page).toHaveURL(/\/manage\/#\/library\/series$/);
-  await expect(page.getByRole("button", { name: "Hello", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "第 1 季", exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "英语启蒙", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Hello", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "第 1 季", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/manage\/#\/library$/);
   await expect(page.getByRole("heading", { name: "资源库", exact: true })).toBeVisible();

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
@@ -150,6 +150,21 @@ def resource_summary(db, item):
             "status": state.status if state else "published"}
 
 
+def resource_order(query, sort):
+    # Keep ordering in SQL so pagination and filtering use the same full result set.
+    names = (Item.sort_name, Item.name, Item.id)
+    numbered = (case((Item.index_number.is_(None), 1), else_=0),)
+    orders = {
+        "index": (*numbered, Item.index_number, *names),
+        "index-desc": (*numbered, Item.index_number.desc(), *names),
+        "name": names,
+        "name-desc": (Item.sort_name.desc(), Item.name.desc(), Item.id),
+        "published": (case((ResourceState.published_at.is_(None), 1), else_=0), ResourceState.published_at.desc(), *names),
+        "duration": (func.coalesce(Item.runtime_ticks, 0).desc(), *names),
+    }
+    return query.order_by(case((Item.type == "Season", 0), else_=1), *orders[sort])
+
+
 def reminder_resource_ids(db, family_id):
     reminders = db.get(FamilyReminders, family_id)
     if reminders is None:
@@ -165,6 +180,8 @@ def resources(
     q: str = Query(default="", max_length=256),
     status: str = Query(default="", pattern="^(|draft|published|archived)$"),
     summary: bool = False, ids: str = Query(default="", max_length=4000),
+    resourceType: str = Query(default="", pattern="^(|Season|Episode)$"),
+    sort: str = Query(default="index", pattern="^(index|index-desc|name|name-desc|published|duration)$"),
 ):
     query = db.query(Item).filter(Item.family_id == user.family_id)
     private_ids = reminder_resource_ids(db, user.family_id)
@@ -182,8 +199,10 @@ def resources(
         if len(keys) > 100:
             raise HTTPException(422, "单次最多查询 100 个资源")
         query = query.filter(Item.id.in_(keys))
+    if resourceType:
+        query = query.filter(Item.type == resourceType)
     query = resource_filters(query, q, status)
-    return paginate(query.order_by(Item.index_number, Item.sort_name, Item.name, Item.id),
+    return paginate(resource_order(query, sort),
                     page, pageSize, lambda item: resource_summary(db, item) if summary else dto(db, item, page is None),
                     lambda rows: prime_resources(db, rows, summary or page is not None))
 
@@ -204,7 +223,7 @@ def resource_stats(user: Parent, db: DbSession, folderId: str | None = None):
         if folder.id in private_ids:
             raise HTTPException(404, "内容不存在")
         ensure_active(db, folder)
-        if folder.type != "Series":
+        if folder.type not in ("Series", "Season"):
             raise HTTPException(422, "请选择文件夹")
         seasons = db.query(Item.id).filter(
             Item.family_id == user.family_id, Item.parent_id == folder.id, Item.type == "Season",
@@ -340,8 +359,10 @@ def move_video(item_id: str, body: MoveBody, user: Parent, db: DbSession):
     folder = owned(db, Item, body.folderId, user.family_id)
     ensure_active(db, item)
     ensure_active(db, folder)
-    if item.type != "Episode" or folder.type != "Series":
-        raise HTTPException(422, "只能把视频移到文件夹")
+    if item.type != "Episode" or folder.type not in ("Series", "Season"):
+        raise HTTPException(422, "只能把视频移到动画片或季")
+    if folder.id in reminder_resource_ids(db, user.family_id):
+        raise HTTPException(404, "内容不存在")
     duplicate = (
         db.query(Item)
         .filter(

@@ -19,7 +19,8 @@ test('task modal preserves folder filters and selection and supports browser his
   const navigation = page.getByRole('navigation', { name: '管理导航' });
   await expect(navigation.getByRole('link', { name: '上传任务', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '英语启蒙', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '第 1 季', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '第 1 季', exact: true })).toBeVisible();
   const search = page.getByRole('textbox', { name: '搜索资源', exact: true });
   await search.fill('Hello');
   await expect(page.locator('.resource-row')).toHaveCount(1);
@@ -31,7 +32,7 @@ test('task modal preserves folder filters and selection and supports browser his
   const dialog = page.getByRole('dialog', { name: '上传任务', exact: true });
   await expect(dialog).toBeVisible();
   await expect(page.locator('input[aria-label="搜索资源"]')).toHaveValue('Hello');
-  await expect(page).toHaveURL(/\/library\/series\?uploads=1$/);
+  await expect(page).toHaveURL(/\/library\/season\?uploads=1$/);
   await expect.poll(() => requests).toBeGreaterThanOrEqual(1);
   await page.goBack();
   await expect(dialog).not.toBeVisible();
@@ -42,7 +43,7 @@ test('task modal preserves folder filters and selection and supports browser his
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
-  await expect(page).toHaveURL(/\/library\/series$/);
+  await expect(page).toHaveURL(/\/library\/season$/);
 });
 
 test('legacy task links and refreshed modal links return to the resource library', async ({ page }) => {
@@ -170,9 +171,9 @@ test('completed uploads are hidden and create actions sit in the list toolbar', 
   await login(page);
   await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
   const toolbar = page.locator('.resource-library-card .library-toolbar');
-  await expect(toolbar.getByRole('button', { name: '新建文件夹', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: '新建动画片', exact: true })).toBeVisible();
   await expect(toolbar.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeVisible();
-  await expect(page.locator('.page-title').getByRole('button', { name: '新建文件夹', exact: true })).toHaveCount(0);
+  await expect(page.locator('.page-title').getByRole('button', { name: '新建动画片', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '../../artifacts/manage-library-actions-desktop.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

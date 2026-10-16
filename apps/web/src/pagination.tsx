@@ -65,16 +65,16 @@ export function Pagination({ page, pageSize = 20, total, setPage, loading = fals
   </PaginationRoot>;
 }
 
-export function ResourcePicker({ value = '', onChange, placeholder, label, exclude = [], initial }: {
+export function ResourcePicker({ value = '', onChange, placeholder, label, exclude = [], initial, parentId, resourceType }: {
   value?: string; onChange: (id: string, item?: ResourceOption) => void; placeholder: string; label: string;
-  exclude?: string[]; initial?: ResourceOption;
+  exclude?: string[]; initial?: ResourceOption; parentId?: string; resourceType?: "Season";
 }) {
   const [search, setSearch] = useState('');
   const query = useDebounced(search);
-  const list = usePagedData<ResourceOption>(`/resources?summary=true&q=${encodeURIComponent(query)}`, 0, 20, true, true);
+  const list = usePagedData<ResourceOption>(`/resources?summary=true&q=${encodeURIComponent(query)}${parentId ? `&parentId=${encodeURIComponent(parentId)}` : ""}${resourceType ? `&resourceType=${resourceType}` : ""}`, 0, 20, true, true);
   const selected = list.known[value] ?? (initial?.id === value ? initial : undefined);
   return <div className="paged-picker">
-    <Input aria-label="检索候选名称" placeholder="搜索文件夹名称…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
+    <Input aria-label="检索候选名称" placeholder={resourceType === "Season" ? "搜索季名称…" : "搜索动画片名称…"} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
     <SelectField aria-label={label} value={value} disabled={list.loading} onValueChange={(value) => onChange(value, list.known[value])} options={[({ value: "", label: <> {placeholder} </> }), selected && !list.data.some((item) => item.id === value) && ({ value: value, label: <> {selected.name} </> }), list.data.filter((item) => !exclude.includes(item.id) || item.id === value).map((item) => ({ value: item.id, label: <> {item.name}{item.status !== 'published' ? '（未发布）' : ''} </> }))]} />
     {list.error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{list.error}</AlertDescription></Alert>}
     <Pagination {...list} loading={list.refreshing} label="候选资源分页" />

@@ -61,6 +61,7 @@ test("share collection, login through link, receive draft and publish independen
     });
     expect(published).toBe(true);
     await receiving.goto(`/manage/#/library/${folderId}`);
+    await receiving.getByRole("button", { name: "第 1 季", exact: true }).click();
     await receiving.getByRole("button", { name: "更多操作 Hello" }).click();
     await expect(receiving.getByRole("menuitem", { name: "分享内容" })).toHaveCount(0);
     await receiving.getByRole("menuitem", { name: "预览视频" }).click();
@@ -73,6 +74,7 @@ test("single video is received via code into a chosen collection", async ({ page
   await login(page, "parent");
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
   await page.getByRole("button", { name: "英语启蒙", exact: true }).click();
+  await page.getByRole("button", { name: "第 1 季", exact: true }).click();
   await page.getByRole("button", { name: "更多操作 Hello" }).click();
   await page.getByRole("menuitem", { name: "分享内容" }).click();
   const dialog = page.getByRole("dialog", { name: "分享 · Hello" });
@@ -87,10 +89,10 @@ test("single video is received via code into a chosen collection", async ({ page
     const toolbar = receiving.locator(".library-toolbar");
     const receiveButton = toolbar.getByRole("button", { name: "领取分享", exact: true });
     await expect(receiveButton).toBeVisible();
-    await expect(toolbar.getByRole("button", { name: "新建文件夹", exact: true })).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: "新建动画片", exact: true })).toBeVisible();
     expect(await toolbar.locator("button").evaluateAll((buttons) => {
       const labels = buttons.map((button) => button.textContent?.trim());
-      return labels.indexOf("领取分享") < labels.indexOf("新建文件夹");
+      return labels.indexOf("领取分享") < labels.indexOf("新建动画片");
     })).toBe(true);
     await receiveButton.click();
     const claimDialog = receiving.getByRole("dialog", { name: "领取分享", exact: true });

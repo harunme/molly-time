@@ -9,6 +9,7 @@ test("preview distinguishes codec failures from network failures", async ({ page
   await page.getByRole("navigation", { name: "管理导航" })
     .getByRole("link", { name: "资源库", exact: true }).click();
   await page.getByRole("button", { name: "英语启蒙", exact: true }).click();
+  await page.getByRole("button", { name: "第 1 季", exact: true }).click();
   await page.getByRole("button", { name: "Hello", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "家长预览 · Hello" });
   const video = preview.locator("video");

@@ -96,6 +96,7 @@ function useData<T>(path: string, initial: T, serial = 0) {
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   useEffect(() => {
+    if (!path) { setLoading(false); return; }
     let alive = true;
     const controller = new AbortController();
     setLoading(true);
@@ -540,7 +541,7 @@ function FolderLibrary({ run, readonly, session }: { run: Run; readonly: boolean
   if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
   if (folder.loading || folder.data?.id !== folderId) return <State loading />;
   if (folder.data.status === "archived") return <Navigate to="/trash" replace />;
-  if (folder.data.type !== "Series") return <Navigate to="/library" replace />;
+  if (folder.data.type !== "Series" && folder.data.type !== "Season") return <Navigate to="/library" replace />;
   return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} session={session} />;
 }
 
@@ -550,7 +551,11 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
   const tasksOpen = new URLSearchParams(location.search).get("uploads") === "1";
   const [serial, refresh] = useState(0),
     [search, setSearch] = useState(""),
-    [status, setStatus] = useState("");
+    [status, setStatus] = useState(""),
+    [sort, setSort] = useState("index");
+  const [newType, setNewType] = useState<"Series" | "Season" | "Episode">("Series");
+  const series = useData<Resource | undefined>(parent?.type === "Season" ? `/resources/${parent.parentId}` : "", undefined);
+  const seriesId = parent?.type === "Season" ? parent.parentId : parent?.id;
   const [edit, setEdit] = useState<Resource | "new">(),
     [upload, setUpload] = useState<Resource | "new">(),
     [preview, setPreview] = useState<Resource>();
@@ -578,11 +583,10 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
   };
   const query = useDebounced(search);
   const list = usePagedData<Resource>(
-    `${parent ? `/folders/${parent.id}/videos` : "/resources"}?q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}`,
+    `/resources?${parent ? `parentId=${encodeURIComponent(parent.id)}&` : ""}q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}&sort=${sort}`,
     serial,
   );
   const pendingUploads = usePendingUploads(serial, 1);
-  const kind = !parent ? "Series" : "Episode";
   const filtered = list.data;
   const stats = useData<{ videoCount: number; folderCount: number; subtitleCount: number; publishedVideoCount: number; readyVideoCount: number; subtitleVideoCount: number; durationMs: number } | undefined>(parent ? `/resources/stats?folderId=${encodeURIComponent(parent.id)}` : "/resources/stats", undefined, serial);
   const ratio = (value: number, total: number) => total ? `${Math.round(value * 100 / total)}%` : "—";
@@ -590,7 +594,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
     const minutes = Math.round(value / 60000);
     return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
   };
-  useEffect(() => { setSelected([]); }, [parent?.id, query, status, list.page]);
+  useEffect(() => { setSelected([]); }, [parent?.id, query, status, sort, list.page]);
   const changed = () => {
     refresh((v) => v + 1);
     setSelected([]);
@@ -617,7 +621,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
       <div className="page-title">
         <div>
           <h1>{parent?.name || "资源库"}</h1>
-          <p>先整理和预览，发布后在电视上观看。</p>
+          <p>{parent?.type === "Season" ? "按集数整理本季视频，发布后按顺序观看。" : "按动画片、季、集整理资源，预览后发布到电视。"}</p>
         </div>
       </div>
       <div className="breadcrumbs">
@@ -630,6 +634,10 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
         >
           全部文件夹
         </Button>
+        {parent?.type === "Season" && series.data && <>
+          <span> / </span>
+          <Button variant="bordered" onClick={() => navigate(`/library/${encodeURIComponent(series.data!.id)}`)}>{series.data.name}</Button>
+        </>}
         {parent && (
           <React.Fragment>
             <span> / </span>
@@ -673,10 +681,23 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
             value={status}
             onValueChange={(value) => setStatus(value)}
             options={[({ value: "", label: <> 全部状态 </> }), ({ value: "published", label: <> 已发布 </> }), ({ value: "draft", label: <> 草稿 </> })]} />
+          <SelectField
+            aria-label="资源排序"
+            value={sort}
+            onValueChange={setSort}
+            options={[
+              { value: "index", label: parent ? "季 / 集数从小到大" : "默认顺序（名称）" },
+              parent && { value: "index-desc", label: "季 / 集数从大到小" },
+              { value: "name", label: "名称升序" },
+              { value: "name-desc", label: "名称降序" },
+              { value: "published", label: "最近发布" },
+              parent && { value: "duration", label: "时长从长到短" },
+            ]} />
           {!readonly && <div className="actions library-create-actions">
-              <Button variant="bordered" onClick={() => setClaimOpen(true)}>领取分享</Button>
-              <Button variant="bordered" onClick={() => setEdit("new")}>
-                新建{kind === "Series" ? "文件夹" : "视频"}
+              {parent?.type !== "Season" && <Button variant="bordered" onClick={() => setClaimOpen(true)}>领取分享</Button>}
+              {parent?.type === "Series" && <Button variant="bordered" onClick={() => { setNewType("Season"); setEdit("new"); }}>新建季</Button>}
+              <Button variant="bordered" onClick={() => { setNewType(parent ? "Episode" : "Series"); setEdit("new"); }}>
+                新建{parent ? "视频" : "动画片"}
               </Button>
               <Button
                 variant="default"
@@ -718,7 +739,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
                 )}
                 <div
                   className={
-                    item.type === "Series"
+                    item.type !== "Episode"
                       ? "thumbnail folder-thumbnail"
                       : "thumbnail"
                   }
@@ -733,7 +754,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
                     }}
                   />
                   <span>
-                    {item.type === "Series" ? (
+                    {item.type !== "Episode" ? (
                       <FolderOpen className="size-6" />
                     ) : (
                       <FileVideo className="size-5" />
@@ -754,8 +775,8 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
                   </Button>
                   <small>
                     {item.type === "Episode"
-                      ? `${item.indexNumber ? `第 ${item.indexNumber} 集 · ` : ""}${item.runtimeMs ? minutes(item.runtimeMs) : "待检查文件"}`
-                      : "文件夹 · 打开查看视频"}
+                      ? `${parent?.type === "Series" ? "未分季 · " : ""}${item.indexNumber ? `第 ${item.indexNumber} 集 · ` : "未填写集数 · "}${item.runtimeMs ? minutes(item.runtimeMs) : "待检查文件"}`
+                      : item.type === "Season" ? `${item.indexNumber ? `第 ${item.indexNumber} 季 · ` : ""}打开查看分集` : "动画片 · 打开整理季与集"}
                   </small>
                 </div>
                 <div className="resource-state">
@@ -801,7 +822,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {item.status === "published" && !item.shared && <DropdownMenuItem onSelect={() => setShare(item)}>分享内容</DropdownMenuItem>}
+                          {item.status === "published" && !item.shared && item.type !== "Season" && <DropdownMenuItem onSelect={() => setShare(item)}>分享内容</DropdownMenuItem>}
                           {item.type === "Episode" && (
                             <>
                               <DropdownMenuItem
@@ -836,7 +857,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
                             onSelect={async () => {
                               if (
                                 await confirmAction(
-                                  `将“${item.name}”移入回收站？${item.type === "Series" ? "文件夹内的所有内容也会移入回收站。" : ""}电视将无法开始播放此内容。保留期内可恢复，到期后按回收站策略彻底删除文件。`,
+                                  `将“${item.name}”移入回收站？${item.type !== "Episode" ? "其中的所有内容也会移入回收站。" : ""}电视将无法开始播放此内容。保留期内可恢复，到期后按回收站策略彻底删除文件。`,
                                 )
                               )
                                 action([item.id], "archive");
@@ -861,7 +882,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
               <p>
                 {search || status
                   ? "试试其他名称或状态。"
-                  : "上传视频，检查完成后预览并发布。"}
+                  : parent?.type === "Series" ? "先新建季，再进入季上传分集；已有视频可批量移入季。" : "上传视频，填写集数，检查完成后预览并发布。"}
               </p>
             </Empty>
           )}
@@ -872,7 +893,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
       {!!selected.length && (
         <div className="selection-bar">
           已选 {selected.length} 项
-          {parent && (
+          {parent && selected.every((id) => list.data.find((item) => item.id === id)?.type === "Episode") && (
             <ResourcePicker
               label="移动到文件夹"
               placeholder="移动到文件夹…"
@@ -894,6 +915,25 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
               }}
             />
           )}
+          {seriesId && selected.every((id) => list.data.find((item) => item.id === id)?.type === "Episode") && <ResourcePicker
+            label="移入季"
+            placeholder="移入本动画片的季…"
+            parentId={seriesId}
+            resourceType="Season"
+            exclude={parent?.type === "Season" ? [parent.id] : []}
+            onChange={(folderId) => {
+              if (!folderId) return;
+              void run(async () => {
+                const errors: string[] = [];
+                for (const id of selected) {
+                  try { await api(`/resources/${id}/move`, "POST", { folderId }); }
+                  catch (error) { errors.push((error as Error).message); }
+                }
+                changed();
+                if (errors.length) throw new Error(errors.join("；"));
+              });
+            }}
+          />}
           <Button variant="bordered" onClick={() => action(selected, "publish")}>
             批量发布
           </Button>
@@ -915,7 +955,7 @@ function Library({ run, readonly, parent, session }: { run: Run; readonly: boole
       {edit && (
         <ResourceEditor
           item={edit === "new" ? undefined : edit}
-          type={kind}
+          type={newType}
           parentId={parent?.id}
           readonly={readonly}
           close={() => setEdit(undefined)}
@@ -985,7 +1025,7 @@ function ResourceEditor({
       title={
         item
           ? `${readonly ? "资源详情" : "编辑"} · ${item.name}`
-          : `新建${type === "Series" ? "文件夹" : "视频"}`
+          : `新建${type === "Series" ? "动画片" : type === "Season" ? "季" : "视频"}`
       }
       close={close}
     >
@@ -1021,7 +1061,7 @@ function ResourceEditor({
         </Label>
         {(item?.type || type) !== "Series" && (
           <Label>
-            排序序号
+            {(item?.type || type) === "Season" ? "第几季" : "第几集"}
             <Input
               type="number"
               min="1"
@@ -1123,6 +1163,7 @@ function UploadDialog({
     parent?.type === "Series" ? parent.id : "",
   ),
     [newSeries, setNewSeries] = useState("");
+  const [seasonId, setSeasonId] = useState("");
   const [kind, setKind] = useState(
     item?.type === "Episode" || !item ? initialKind : "image",
   ),
@@ -1156,6 +1197,7 @@ function UploadDialog({
         }
         target = sid;
       }
+      if (!item && seasonId) target = seasonId;
       for (const row of rows) {
         const id =
           item?.id ||
@@ -1199,7 +1241,7 @@ function UploadDialog({
                 label="文件夹"
                 value={seriesId}
                 placeholder="新建文件夹"
-                onChange={setSeriesId}
+                onChange={(id) => { setSeriesId(id); setSeasonId(""); }}
               />
             </div>
             {!seriesId && (
@@ -1214,6 +1256,12 @@ function UploadDialog({
             )}
           </div>
         )}
+        {!item && parent?.type !== "Season" && (parent?.id || seriesId) && <div className="picker-field">
+          <span>所属季</span>
+          <ResourcePicker label="所属季" value={seasonId} parentId={parent?.id || seriesId} resourceType="Season"
+            placeholder="暂不分季" onChange={setSeasonId} />
+        </div>}
+        {!item && parent?.type === "Season" && <p className="muted">上传到 {parent.name}，请为视频填写集数。</p>}
         {item && (
           <Label>
             文件用途
@@ -1299,10 +1347,11 @@ function UploadDialog({
                   }
                 />
                 <Input
-                  aria-label={`排序序号 ${index + 1}`}
-                  placeholder="排序"
+                  aria-label={`第几集 ${index + 1}`}
+                  placeholder="集数"
                   type="number"
                   min="1"
+                  max="100000"
                   value={row.index}
                   onChange={(e) =>
                     setRows(

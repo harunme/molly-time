@@ -90,7 +90,7 @@ test("parents create learning folders and move videos without uploading them aga
   page,
 }) => {
   await login(page);
-  await page.getByRole("button", { name: "新建文件夹", exact: true }).click();
+  await page.getByRole("button", { name: "新建动画片", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByLabel("名称", { exact: true })
@@ -109,7 +109,7 @@ test("parents create learning folders and move videos without uploading them aga
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "新建季", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });
 
 test("real device telemetry, reports, child management and mobile layout", async ({

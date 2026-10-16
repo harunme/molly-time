@@ -16,7 +16,7 @@ test("global Tailwind tokens update inputs, buttons, select fields and cards tog
   });
   const search = page.locator('[data-slot="input-group"]').first();
   const filter = page.getByRole("combobox", { name: "资源状态" });
-  const action = page.getByRole("button", { name: "新建文件夹", exact: true });
+  const action = page.getByRole("button", { name: "新建动画片", exact: true });
   for (const control of [search, filter, action]) {
     await expect(control).toHaveCSS("height", "52px");
     await expect(control).toHaveCSS("background-color", "rgb(240, 245, 250)");
