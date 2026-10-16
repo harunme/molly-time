@@ -15,7 +15,9 @@ for (const width of [390, 1440]) {
     await page.route('**/api/manage/reports/watch-time?*', async (route) => {
       const response = await route.fetch();
       const data = await response.json();
-      await route.fulfill({ json: { ...data, totalPlayedMs: 485 * 60000, episodeCount: 3,
+      const query = new URL(route.request().url()).searchParams;
+      const totalPlayedMs = (query.get("start") === query.get("end") ? 75 : 485) * 60000;
+      await route.fulfill({ json: { ...data, totalPlayedMs, episodeCount: 3,
         statisticsSince: '2026-10-01T04:00:00Z', lastSync: '2026-10-13T04:00:00Z',
         days: data.days.map((day: { date: string }, i: number) => ({ ...day, playedMs: (i % 5 + 1) * 60000 })),
         contents: [{ id: 'series', name: '一起认识世界和新的朋友：英语启蒙故事', playedMs: 485 * 60000 }], contentTotal: 1,
@@ -40,6 +42,7 @@ for (const width of [390, 1440]) {
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('.watch-history-stats')).toContainText('1 小时 15 分钟');
     await expect(dialog.getByRole('button', { name: '开始日期' })).toHaveCount(0);
+    await dialog.getByText('播放明细', { exact: true }).click();
     await expect(dialog.getByText('客厅电视', { exact: true })).toBeVisible();
     const box = (await dialog.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
@@ -48,14 +51,12 @@ for (const width of [390, 1440]) {
     await page.screenshot({ path: testInfo.outputPath(`watch-dialog-${width}.png`), animations: 'disabled' });
     await dialog.getByText('内容分布', { exact: true }).click();
     await expect(dialog.getByText('一起认识世界和新的朋友：英语启蒙故事', { exact: true })).toHaveCount(2);
-    await dialog.getByRole('button', { name: '全部记录', exact: true }).click();
-    await expect(dialog.locator('.watch-history-bars button')).toHaveCount(31);
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
     await expect(latest).toBeFocused();
     await expect(page).toHaveURL(/#\/overview$/);
     await page.getByRole('button', { name: '查看明细', exact: true }).click();
-    await expect(dialog.locator('.watch-history-bars button')).toHaveCount(31);
+    await expect(dialog.locator('.watch-history-bars > div')).toHaveCount(31);
     await page.screenshot({ path: testInfo.outputPath(`watch-panel-${width}.png`), animations: 'disabled' });
     await page.reload();
     await expect(dialog).toBeVisible();

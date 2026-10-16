@@ -78,7 +78,7 @@ test('long durations stay on one line and fields share the same typography', asy
   await page.route('**/api/manage/overview', async (route) => {
     const data = await (await route.fetch()).json();
     await route.fulfill({ json: { ...data, watch: { ...data.watch, todayPlayedMs: 75 * 60000, weekPlayedMs: 485 * 60000,
-      favoriteVideo: { id: 'long-name', name: '一起认识世界和新的朋友：茉莉最喜欢看的英语启蒙故事', playedMs: 1200 * 60000 } } } });
+      mostPlayedVideos: [{ id: 'long-name', name: '一起认识世界和新的朋友：茉莉最喜欢看的英语启蒙故事', playCount: 12 }] } } });
   });
   await page.goto('/manage/');
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');

@@ -111,24 +111,22 @@
 .report-section > .pagination { @apply mb-0; }
 .overview-metrics { @apply mb-6 grid gap-4; }
 .overview-metric { @apply flex min-w-0 flex-col gap-0 p-card-padding; }
-.overview-live { @apply grid gap-0 overflow-hidden sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]; }
+.overview-live { @apply grid border-0 gap-0 overflow-hidden sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]; }
 .overview-now { @apply p-6 sm:p-8; }
 .overview-now .overview-current-value { @apply my-5 text-2xl leading-snug sm:text-3xl; letter-spacing: -0.035em; }
 .overview-now .overview-metric-label { @apply justify-start gap-2 text-foreground; }
 .overview-now .overview-metric-label svg { @apply text-foreground; }
-.overview-session { @apply justify-between border-t p-6 sm:border-t-0 sm:border-l sm:p-8; }
+.overview-session { @apply justify-between p-6 sm:p-8; }
 .overview-session .overview-metric-value { @apply my-5 whitespace-normal leading-none; font-size: clamp(2.75rem, 4.5vw, 4.5rem); letter-spacing: -0.065em; }
 .overview-session .overview-metric-unit { @apply mx-1 text-base font-medium tracking-normal sm:text-lg; }
-.overview-online { @apply grid items-center gap-x-4 gap-y-1 border-t px-6 py-4 sm:col-span-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:px-8; }
+.overview-online { @apply grid items-center gap-x-4 gap-y-1 px-6 py-4 sm:col-span-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:px-8; }
 .overview-online .overview-metric-label { @apply justify-start gap-2; }
 .overview-online .overview-metric-value { @apply m-0 text-2xl leading-8; }
 .overview-online .overview-metric-bottom { @apply m-0 pt-0; }
-.overview-online .overview-playback-control { @apply col-span-full mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t pt-3; }
+.overview-online .overview-playback-control { @apply col-span-full mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-0 pt-3; }
 .overview-online .overview-playback-control > p { @apply m-0; }
-.overview-summary { @apply grid gap-0 sm:grid-cols-3; }
-.overview-summary .overview-stat + .overview-stat { @apply border-t sm:border-t-0 sm:border-l; }
+.overview-summary { @apply grid border-0 gap-0 sm:grid-cols-3; }
 .overview-summary .overview-metric-value { @apply text-4xl leading-tight; }
-.overview-summary .overview-favorite-value { @apply text-lg leading-7; }
 .overview-metric-label { @apply flex items-center justify-between gap-3 text-sm text-muted-foreground; }
 .overview-metric-label svg { @apply text-icon-subtle; }
 .overview-metric-value { @apply mt-3 block whitespace-nowrap text-metric leading-9 font-semibold tracking-tight tabular-nums; }
@@ -139,35 +137,17 @@
 .overview-metric-bottom { @apply mt-auto flex min-w-0 items-center justify-between gap-1 pt-3 text-footnote text-muted-foreground; }
 .overview-metric-bottom > span { @apply min-w-0 leading-5 line-clamp-2; }
 .overview-metric-bottom button { @apply -mr-2 shrink-0; }
-.overview-panels { @apply grid items-start gap-card-gap xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]; }
 .overview-panel { @apply gap-0 min-w-0 p-card-padding; }
 .overview-panel > .section-heading { @apply mb-4; }
-.overview-panel > .pagination { @apply mt-4 mb-0; }
-.overview-uploads .empty { @apply min-h-40 border-0 py-6; }
-.overview-upload-table { @apply table-fixed; }
-.overview-upload-table th { @apply text-foreground; }
-.overview-upload-table th:first-child { @apply w-[50%]; }
-.overview-upload-table th:nth-child(2) { @apply w-[30%]; }
-.overview-upload-table th:last-child { @apply w-[20%]; }
-.overview-upload-table td:first-child { @apply max-w-72; }
-.overview-upload-table td:first-child strong { @apply block truncate font-medium; }
-.overview-upload-table td:last-child { @apply whitespace-nowrap text-footnote text-muted-foreground tabular-nums; }
-.overview-side { @apply grid min-w-0 gap-card-gap; }
-.overview-resource-status { @apply grid gap-4; }
-.overview-resource-status > div { @apply flex items-center justify-between gap-3; }
-.overview-resource-status dd { @apply text-base font-semibold tabular-nums; }
-.overview-resource-status dd > span { @apply ml-1 text-xs font-normal text-muted-foreground; }
-.overview-storage { @apply mt-5 flex items-center justify-between gap-3 pt-4 text-xs text-muted-foreground; }
-.overview-storage strong { @apply font-medium text-foreground; }
-.overview-devices { @apply grid; }
-.overview-devices > div { @apply flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0; }
-.overview-devices > div > svg { @apply mt-0.5 shrink-0 text-muted-foreground; }
-.overview-devices span { @apply min-w-0; }
-.overview-devices strong { @apply block truncate text-sm font-medium; }
-.overview-devices small { @apply mt-1 block text-footnote; }
+.overview-resources { @apply mb-6; }
+.overview-resource-counts { @apply grid grid-cols-3 gap-4; }
+.overview-resource-counts dt { @apply mb-3 text-sm text-muted-foreground; }
+.overview-resource-counts dd { @apply flex items-baseline gap-1.5 tabular-nums; }
+.overview-resource-counts strong { @apply text-3xl font-semibold tracking-tight sm:text-4xl; }
+.overview-resource-counts dd > span { @apply text-sm text-muted-foreground; }
 .overview-empty-note { @apply py-3 text-sm leading-relaxed text-muted-foreground; }
 .overview-watch-note { @apply mt-3 text-xs leading-5 text-muted-foreground; }
-.overview-favorite-value, .overview-current-value { @apply line-clamp-2 whitespace-normal text-lg leading-7; overflow-wrap: anywhere; }
+.overview-current-value { @apply line-clamp-2 whitespace-normal text-lg leading-7; overflow-wrap: anywhere; }
 .overview-heatmap { @apply mb-6; }
 .overview-heatmap-body { @apply grid min-w-0 gap-3 wide:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]; }
 .overview-heatmap-summary { @apply flex flex-wrap items-center gap-x-4 gap-y-1 text-sm leading-6 text-muted-foreground wide:flex-col wide:items-start wide:gap-2; }
@@ -196,6 +176,15 @@
 .overview-heatmap-footer strong { @apply ml-2 font-medium text-foreground; }
 .overview-heatmap-legend { @apply flex items-center gap-1.5; }
 .overview-heatmap-swatch { width: var(--spacing-heatmap-cell); height: var(--spacing-heatmap-cell); }
+.overview-most-played { --watch-accent: #007aff; }
+.overview-ranking { @apply mt-6 min-w-0; }
+.overview-most-played .overview-ranking-bars { @apply h-16 gap-3; }
+.overview-most-played .overview-ranking-bars > div { @apply relative w-10 flex-none justify-center; }
+.overview-ranking-bars .watch-history-stack { @apply w-6 shrink-0; }
+.overview-ranking-count { @apply absolute -top-5 left-0 w-full truncate text-center text-tiny text-muted-foreground tabular-nums; }
+.overview-ranking-labels { @apply mt-2 flex gap-3 text-tiny text-muted-foreground; }
+.overview-ranking-labels > span { @apply w-10 min-w-0 flex-none truncate text-center; }
+.overview-ranking-skeleton { @apply mt-6 h-20 w-full; }
 @media (prefers-reduced-motion: no-preference) {
   /* Translating this viewport-height container briefly overflows the document. */
   .page-content { animation: workspace-fade-in 180ms ease-out; }

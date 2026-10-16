@@ -88,6 +88,7 @@ def test_overview_aggregates_only_the_current_family_and_real_watch_sessions(par
     assert watch["todayPlayedMs"] == 3000 and watch["weekPlayedMs"] == 3000
     assert watch["weekStart"] == "2026-10-12"
     assert watch["favoriteVideo"] == {"id": "e1", "name": "One", "playedMs": 5000}
+    assert watch["mostPlayedVideo"] == {"id": "e1", "name": "One", "playCount": 4}
     assert len(watch["days"]) == 365
     assert sum(day["playedMs"] for day in watch["days"]) == 5000
     with Session(db.get_engine()) as session:
@@ -155,6 +156,8 @@ def test_overview_empty_watch_history(parent):
     assert data["devices"]["online"] == 0
     assert data["watch"]["todayPlayedMs"] == data["watch"]["weekPlayedMs"] == 0
     assert data["watch"]["favoriteVideo"] is None
+    assert data["watch"]["mostPlayedVideo"] is None
+    assert data["watch"]["mostPlayedVideos"] == []
     assert len(data["watch"]["days"]) == 365
     assert all(day["playedMs"] == 0 for day in data["watch"]["days"])
 
@@ -181,3 +184,59 @@ def test_overview_query_count_stays_constant_as_media_grows(parent):
         assert not any("SELECT items.id," in statement for statement in statements)
     finally:
         event.remove(engine, "before_cursor_execute", capture)
+
+
+def test_overview_ranks_play_count_instead_of_duration(parent):
+    now = dt.datetime.now(dt.UTC)
+    with Session(db.get_engine()) as session:
+        session.add(Item(id="frequent", family_id="f1", type="Episode", name="Frequent"))
+        for index, (item_id, length) in enumerate([("e1", 60000), ("frequent", 1000), ("frequent", 1000)]):
+            session.add(WatchSession(id=f"rank-{index}", family_id="f1", user_id="u1",
+                item_id=item_id, item_name="Recorded", started_at=now - dt.timedelta(minutes=5),
+                purpose="family_watch"))
+            session.flush()
+            for seq in range(2):
+                session.add(WatchInterval(session_id=f"rank-{index}", seq=seq,
+                    start_ms=seq * length, end_ms=(seq + 1) * length,
+                    played_ms=length, position_ms=0))
+        session.commit()
+    watch = parent.get("/api/manage/overview").json()["watch"]
+    assert watch["favoriteVideo"]["id"] == "e1"
+    assert watch["mostPlayedVideo"] == {"id": "frequent", "name": "Frequent", "playCount": 2}
+    assert watch["mostPlayedVideos"] == [
+        {"id": "frequent", "name": "Frequent", "playCount": 2},
+        {"id": "e1", "name": "One", "playCount": 1},
+    ]
+
+
+def test_resource_overview_counts_only_published_playable_content(parent):
+    with Session(db.get_engine()) as session:
+        session.add_all([
+            Item(id="empty-series", family_id="f1", type="Series", name="Empty"),
+            Item(id="draft-series", family_id="f1", type="Series", name="Draft only"),
+            Item(id="hidden-series", family_id="f1", type="Series", name="Hidden"),
+            Item(id="season-two", family_id="f1", type="Season", name="Season two", parent_id="series"),
+        ])
+        session.flush()
+        session.add(ResourceState(item_id="hidden-series", status="draft", ready=True))
+        cases = [
+            ("direct", "series", "published"), ("second-season", "season-two", "published"),
+            ("draft", "draft-series", "draft"), ("archived", "series", "archived"),
+            ("deleted", "series", "deleted"), ("hidden", "hidden-series", "published"),
+        ]
+        for key, parent_id, status in cases:
+            session.add(Item(id=key, family_id="f1", type="Episode", name=key, parent_id=parent_id))
+            session.flush()
+            session.add(ResourceState(item_id=key, status=status, ready=True))
+            for kind in ["video", "subtitle"]:
+                session.add(MediaFile(id=f"{key}-{kind}", family_id="f1", item_id=key,
+                    kind=kind, storage="local", path=f"{key}-{kind}"))
+        # Multiple video files still represent one episode, and unpublished or
+        # missing video files must not inflate either the episode or series count.
+        session.add(MediaFile(id="extra-video", family_id="f1", item_id="direct",
+            kind="video", storage="local", path="extra.mp4"))
+        session.add(Item(id="no-video", family_id="f1", type="Episode", name="No file", parent_id="empty-series"))
+        session.commit()
+    assert parent.get("/api/manage/overview").json()["resources"] == {
+        "series": 1, "episodes": 3, "subtitles": 3,
+    }

@@ -1,13 +1,9 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Empty } from "@/components/ui/empty";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Clock, Heart, Monitor, Play, UploadCloud } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ArrowRight, ChartColumn, Clock, Monitor, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { api, bytes, dateTime, type Upload } from "./api";
-import { Pagination, usePagedData } from "./pagination";
+import { api } from "./api";
 import { ParentReminderActions, useReminderData } from "./reminders";
 import type { Run } from "./main";
 import { useLocation, useNavigate } from "react-router";
@@ -16,21 +12,19 @@ import { WatchHistoryDialog } from "./watch-history";
 
 export type OverviewData = {
   media: { folders: number; videos: number; published: number; draft: number; archived: number; };
+  resources: { series: number; episodes: number; subtitles: number; };
   uploads: { active: number; failed: number; ready: number; };
   devices: { active: number; revoked: number; online: number; };
   children: number;
   storageBytes: number;
   watch: {
     last7DaysSessions: number; timezone: string; todayPlayedMs: number; weekPlayedMs: number;
-    weekStart: string; favoriteVideo: { id: string; name: string; playedMs: number; } | null;
+    weekStart: string; mostPlayedVideos: { id: string; name: string; playCount: number; }[];
     days: { date: string; playedMs: number; }[];
   };
 };
 
 type Destination = "library" | "upload" | "watch" | "family";
-const uploadNames: Record<string, string> = {
-  uploading: "上传中", processing: "检查中", ready: "文件就绪", failed: "检查失败", cancelled: "已取消",
-};
 
 function duration(value: number) {
   if (value === 0) return "0 分钟";
@@ -101,6 +95,20 @@ function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen:
   </div>;
 }
 
+function MostPlayedChart({ videos }: { videos: OverviewData["watch"]["mostPlayedVideos"]; }) {
+  if (!videos.length) return <p className="overview-empty-note">暂无观看记录</p>;
+  const peak = Math.max(1, ...videos.map((video) => video.playCount));
+  return <div className="overview-ranking" role="img" aria-label={videos.map((video) => `${video.name}：${video.playCount} 次`).join("；")}>
+    <div className="watch-history-bars overview-ranking-bars">
+      {videos.map((video) => <div key={video.id} data-active="true" title={`${video.name} · 累计播放 ${video.playCount} 次`}>
+        <span className="overview-ranking-count">{video.playCount} 次</span>
+        <span className="watch-history-stack" style={{ height: `${video.playCount / peak * 100}%` }} />
+      </div>)}
+    </div>
+    <div className="overview-ranking-labels">{videos.map((video) => <span key={video.id} title={video.name}>{video.name}</span>)}</div>
+  </div>;
+}
+
 export function Overview({ familyName, navigate, run, readonly, notify, reminders }: {
   familyName: string; navigate: (page: Destination) => void;
   run: Run; readonly: boolean; notify: (value: string) => void;
@@ -121,10 +129,6 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
   const onlineDevices = reminders.devices?.filter((device) => device.online) ?? [];
   const bootKnown = onlineDevices.every((device) => typeof device.bootPlayedMs === "number");
   const liveDetail = watching.map((device) => `${device.name} · ${device.currentWatch!.name}`).join("；");
-  const uploads = usePagedData<Upload>("/uploads", 0, 5);
-  const devices = usePagedData<{ id: string; name: string; lastSeen: string; }>(
-    "/devices?activeOnly=true", 0, 5,
-  );
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true); setError("");
@@ -158,12 +162,11 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     { label: "正在观看", value: reminders.devices ? watching.map((device) => device.currentWatch!.name).join("、") || "暂无正在观看" : "—", detail: liveDetail || "电视播放后显示 · 每 5 秒更新", icon: Play, page: "watch" },
     { label: "今日观看时长", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
     { label: "本周观看时长", value: data ? duration(data.watch.weekPlayedMs) : "—", detail: "本周一至现在", icon: Clock, page: "watch" },
-    { label: "最喜欢的视频", value: data ? data.watch.favoriteVideo?.name ?? "暂无观看记录" : "—", detail: data?.watch.favoriteVideo ? `累计观看 ${duration(data.watch.favoriteVideo.playedMs)}` : "按累计观看时长排名", icon: Heart, page: "watch" },
   ] as const;
   const renderMetric = (metric: typeof metrics[number]) => <div className={`overview-metric ${metric.label === "正在观看" ? "overview-now" : metric.label === "本次观看时长" ? "overview-session" : metric.label === "在线设备" ? "overview-online" : "overview-stat"}`} key={metric.label}>
         <div className="overview-metric-label"><span>{metric.label}</span><metric.icon className="size-4" /></div>
-        <strong className={`overview-metric-value${metric.label === "最喜欢的视频" ? " overview-favorite-value" : metric.label === "正在观看" ? " overview-current-value" : ""}`} title={metric.value}>
-          {(metric.label === "本次观看时长" || metric.label === "正在观看" ? !reminders.devices && !reminders.error : loading && !(metric.label === "在线设备" && onlineCount !== undefined)) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "最喜欢的视频" || metric.label === "正在观看" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
+        <strong className={`overview-metric-value${metric.label === "正在观看" ? " overview-current-value" : ""}`} title={metric.value}>
+          {(metric.label === "本次观看时长" || metric.label === "正在观看" ? !reminders.devices && !reminders.error : loading && !(metric.label === "在线设备" && onlineCount !== undefined)) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "正在观看" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
         </strong>
         <div className="overview-metric-bottom"><span title={metric.detail}>{metric.detail}</span>{metric.label !== "正在观看" && metric.label !== "本次观看时长" && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => metric.page === "watch" ? openWatch(metric.label === "今日观看时长" ? today : undefined) : navigate(metric.page)}><ArrowRight className="size-4" /></Button>}</div>
         {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
@@ -178,6 +181,14 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     </div>
     {error && <Alert variant="destructive" role="alert" className="banner error"><AlertDescription>{error}</AlertDescription></Alert>}
     {loading && <p role="status" className="sr-only">正在加载概览…</p>}
+    <Card className="overview-panel overview-resources" aria-busy={loading}>
+      <div className="section-heading"><h2>资源概览</h2><Button variant="ghost" size="sm" onClick={() => navigate("library")}>资源库<ArrowRight className="size-3.5" /></Button></div>
+      <dl className="overview-resource-counts">
+        {([
+          ["series", "动画片", "部"], ["episodes", "已发布视频", "集"], ["subtitles", "字幕", "个"],
+        ] as const).map(([key, label, unit]) => <div key={key}><dt>{label}</dt><dd>{loading ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : <><strong>{data?.resources[key].toLocaleString("zh-CN") ?? "—"}</strong><span>{unit}</span></>}</dd></div>)}
+      </dl>
+    </Card>
     <div className="overview-metrics" aria-busy={loading}>
       <Card className="overview-live">
         {renderMetric(metrics[2])}
@@ -186,6 +197,11 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       </Card>
       <Card className="overview-summary">
         {metrics.slice(3).map(renderMetric)}
+        <div className="overview-metric overview-most-played" aria-label="播放次数最多的视频">
+          <div className="overview-metric-label"><span>播放次数最多的视频</span><ChartColumn className="size-4" /></div>
+          {loading ? <span className="overview-skeleton overview-ranking-skeleton" aria-hidden="true" />
+            : data ? <MostPlayedChart videos={data.watch.mostPlayedVideos ?? []} /> : <p className="overview-empty-note">播放次数加载失败</p>}
+        </div>
       </Card>
     </div>
     <Card className="overview-panel overview-heatmap" ref={heatmap} aria-busy={loading}>
@@ -196,29 +212,6 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       </div> : <p className="overview-empty-note">观看热力图加载失败，请重新进入概览。</p>}
       {data && <p className="overview-watch-note">时区 {data.watch.timezone} · 每格一天 · 不含家长预览</p>}
     </Card>
-    <div className="overview-panels">
-      <Card className="overview-panel overview-uploads">
-        <div className="section-heading"><h2>最近上传</h2><Button variant="ghost" size="sm" onClick={() => navigate("upload")}>全部任务<ArrowRight className="size-3.5" /></Button></div>
-        {uploads.error ? <Alert variant="destructive" role="alert" className="error"><AlertDescription>{uploads.error}</AlertDescription></Alert> : uploads.loading ? <Empty role="status" className="empty">正在加载上传记录…</Empty> : uploads.data.length ?
-          <div className="table-scroll"><Table className="overview-upload-table"><TableHeader><TableRow><TableHead scope="col">文件</TableHead><TableHead scope="col">状态</TableHead><TableHead scope="col">大小</TableHead></TableRow></TableHeader><TableBody>
-            {uploads.data.map((item) => <TableRow key={item.id}><TableCell><strong title={item.filename}>{item.filename}</strong><small>{item.kind === "video" ? "视频" : item.kind === "subtitle" ? "字幕" : "封面"}</small></TableCell><TableCell><Badge variant="secondary" className={`badge ${item.status}`}>{uploadNames[item.status] ?? item.status}</Badge></TableCell><TableCell>{bytes(item.size)}</TableCell></TableRow>)}
-          </TableBody></Table></div> : <Empty className="empty"><UploadCloud className="size-7" /><h3>还没有上传记录</h3><p>进入资源库，上传视频并整理到文件夹中。</p><Button variant="bordered" onClick={() => navigate("library")}>打开资源库</Button></Empty>}
-      </Card>
-      <div className="overview-side">
-        <Card className="overview-panel">
-          <div className="section-heading"><h2>资源状态</h2><Button variant="ghost" size="sm" onClick={() => navigate("library")}>查看<ArrowRight className="size-3.5" /></Button></div>
-          <dl className="overview-resource-status">
-            {([['published', '已发布'], ['draft', '草稿'], ['archived', '已归档']] as const).map(([status, label]) => <div key={status}><dt><Badge variant="secondary" className={`badge ${status}`}>{label}</Badge></dt><dd>{data?.media[status]?.toLocaleString("zh-CN") ?? "—"}<span> 个视频</span></dd></div>)}
-          </dl>
-          <p className="overview-storage">媒体用量 <strong>{data ? bytes(data.storageBytes) : "—"}</strong></p>
-        </Card>
-        <Card className="overview-panel">
-          <div className="section-heading"><h2>电视设备</h2><Button variant="ghost" size="sm" onClick={() => navigate("family")}>家庭设置<ArrowRight className="size-3.5" /></Button></div>
-          {devices.error ? <Alert variant="destructive" role="alert" className="error"><AlertDescription>{devices.error}</AlertDescription></Alert> : devices.loading ? <p role="status" className="muted">正在加载设备…</p> : devices.data.length ?
-            <div className="overview-devices">{devices.data.map((device) => <div key={device.id}><Monitor className="size-4" /><span><strong>{device.name}</strong><small>最近连接：{dateTime(device.lastSeen)}</small></span></div>)}</div> : <p className="overview-empty-note">还没有绑定电视。可在家庭设置中绑定。</p>}
-          <Pagination {...devices} loading={devices.refreshing} label="概览设备分页" />
-        </Card>
-      </div>
-    </div>
+
   </>;
 }

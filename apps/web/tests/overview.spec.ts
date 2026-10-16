@@ -24,7 +24,8 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '本次观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '正在观看' }).locator('.overview-metric-value')).toHaveText('暂无正在观看');
-  await expect(page.locator('.overview-metric').filter({ hasText: '最喜欢的视频' }).locator('.overview-metric-value')).toHaveText('暂无观看记录');
+  await expect(page.locator('.overview-most-played')).toContainText('暂无观看记录');
+  await expect(page.locator('.overview-most-played').getByRole('button')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '观看热力图', exact: true })).toBeVisible();
   await expect(page.locator('.overview-heatmap-day')).toHaveCount(365);
   await expect(page.getByText('近一年还没有观看记录，电视播放后会在这里显示。')).toBeVisible();
@@ -36,9 +37,13 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await page.keyboard.press('End');
   await expect(latest).toBeFocused();
   await expect(page.getByRole('navigation', { name: '概览上传分页', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: '概览设备分页', exact: true })).toBeVisible();
-  expect(requests.filter((url) => ['/api/manage/uploads', '/api/manage/devices'].includes(url.pathname)).every((url) => url.searchParams.get('pageSize') === '5' && url.searchParams.has('page'))).toBeTruthy();
-  expect(requests.some((url) => url.pathname.includes('home-config') || url.pathname === '/api/manage/resources')).toBeFalsy();
+  await expect(page.getByRole('heading', { name: '最近上传', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '电视设备', exact: true })).toHaveCount(0);
+  const resources = page.locator('.overview-resources');
+  for (const [label, key] of [['动画片', 'series'], ['已发布视频', 'episodes'], ['字幕', 'subtitles']]) {
+    await expect(resources.locator('dl > div').filter({ hasText: label }).locator('strong')).toHaveText(String(data.resources[key]));
+  }
+  expect(requests.some((url) => ['/api/manage/uploads', '/api/manage/devices', '/api/manage/resources'].includes(url.pathname))).toBeFalsy();
   await page.screenshot({ path: '../../artifacts/manage-overview-desktop.png', fullPage: true, animations: 'disabled' });
   await expect(page.getByRole('button', { name: '管理资源', exact: true })).toHaveCount(0);
   await navigation.getByRole('link', { name: '资源库', exact: true }).click();
@@ -51,11 +56,7 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await expect(page.getByRole('heading', { name: '观看记录', exact: true })).toBeVisible();
   await page.getByRole('dialog', { name: '观看记录', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '全部任务', exact: true }).click();
-  const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
-  await expect(tasks).toBeVisible();
-  await expect(page).toHaveURL(/\/library\?uploads=1$/);
-  await tasks.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.locator('.overview-resources').getByRole('button', { name: '资源库', exact: true }).click();
   await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
   await navigation.getByRole('link', { name: '概览', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -65,7 +66,7 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   expect(errors).toEqual([]);
 });
 
-test('overview shows watch durations, favorite video and heatmap intensity on desktop and mobile', async ({ page }, testInfo) => {
+test('overview shows watch durations, video play counts and heatmap intensity on desktop and mobile', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   let playing = true;
@@ -85,7 +86,7 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
     await route.fulfill({ json: {
       ...data, devices: { ...data.devices, online: 2, active: 3 },
       watch: { ...data.watch, days, todayPlayedMs: 75 * 60000, weekPlayedMs: 485 * 60000,
-        favoriteVideo: { id: 'episode', name: '茉莉最喜欢看的英语启蒙故事：一起认识世界和新的朋友', playedMs: 1200 * 60000 } },
+        mostPlayedVideos: [{ id: 'episode', name: '茉莉最喜欢看的英语启蒙故事：一起认识世界和新的朋友', playCount: 12 }, { id: 'second', name: 'Yum Yum', playCount: 6 }] },
     } });
   });
   await page.goto('/manage/');
@@ -95,7 +96,11 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
   await expect(page.locator('.overview-metric').filter({ hasText: '在线设备' }).locator('.overview-metric-value')).toHaveText('2 台');
   await expect(page.locator('.overview-metric').filter({ hasText: '今日观看时长' }).locator('.overview-metric-value')).toHaveText('1 小时 15 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '本周观看时长' }).locator('.overview-metric-value')).toHaveText('8 小时 5 分钟');
-  await expect(page.locator('.overview-favorite-value')).toContainText('一起认识世界和新的朋友');
+  await expect(page.locator('.overview-ranking')).toHaveAttribute('aria-label', /一起认识世界和新的朋友：12 次.*Yum Yum：6 次/);
+  await expect(page.locator('.overview-most-played').getByRole('button')).toHaveCount(0);
+  const bars = page.locator('.overview-ranking .watch-history-stack');
+  const heights = await bars.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+  expect(heights[0]).toBeCloseTo(heights[1] * 2, 0);
   const currentDuration = page.locator('.overview-metric').filter({ hasText: '本次观看时长' });
   const currentVideo = page.locator('.overview-metric').filter({ hasText: '正在观看' });
   await expect(currentDuration.locator('.overview-metric-value')).toHaveText('30 分钟');
@@ -112,7 +117,7 @@ test('overview shows watch durations, favorite video and heatmap intensity on de
   await page.screenshot({ path: testInfo.outputPath('overview-watch-desktop.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-  await expect(page.locator('.overview-favorite-value')).toBeVisible();
+  await expect(page.locator('.overview-ranking')).toBeVisible();
   await expect.poll(() => page.locator('.overview-heatmap-scroll').evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   await page.locator('.overview-heatmap').scrollIntoViewIfNeeded();
   await expect(cells.last()).toBeInViewport();
