@@ -147,29 +147,26 @@ class PlaybackActivity : AppCompatActivity() {
         val current = ++loadGeneration
         val loadingEpisode = episodeId
         status.text = "正在加载视频…"
-        val availability = app.catalog.status()
-        val local = availability.optBoolean("supported") && !availability.optBoolean("online")
-        (if (local) app.catalog.reads else app.playbackIo).execute {
+        app.playbackIo.execute {
             runCatching {
-                if (local) return@runCatching offlineLoad(loadingEpisode)
-                try {
-                val reminder = reminderState()
-                if (reminder.optString("phase") == "pending" &&
-                    (reminder.isNull("episodeId") || reminder.optString("episodeId") == loadingEpisode) &&
-                    reminder.optString("requestId") != reminderRequestId) {
-                    return@runCatching Triple(JSONObject().put("parentReminder", reminder), JSONObject(), "")
-                }
-                val detail = app.api.json("GET", "/api/episodes/$loadingEpisode")
-                val resume = app.api.json("GET", app.api.progressPath(loadingEpisode, child))
-                val body = JSONObject().put("episodeId", loadingEpisode)
-                if (child.isNotEmpty()) body.put("childId", child)
-                val watch = app.api.json("POST", "/api/playback/sessions", body)
-                val sessionId = watch.getString("sessionId")
-                val mediaId = Uri.parse(detail.getJSONArray("sources").optJSONObject(0)?.optString("url") ?: "").getQueryParameter("mediaId")
-                val info = app.api.json("GET", "/api/episodes/$loadingEpisode/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
-                detail.put("playback", info)
-                Triple(detail, resume, sessionId)
-                } catch (error: java.io.IOException) { offlineLoad(loadingEpisode) }
+                PlaybackAccess.load(online = online@{
+                    val reminder = reminderState()
+                    if (reminder.optString("phase") == "pending" &&
+                        (reminder.isNull("episodeId") || reminder.optString("episodeId") == loadingEpisode) &&
+                        reminder.optString("requestId") != reminderRequestId) {
+                        return@online Triple(JSONObject().put("parentReminder", reminder), JSONObject(), "")
+                    }
+                    val detail = app.api.json("GET", "/api/episodes/$loadingEpisode")
+                    val resume = app.api.json("GET", app.api.progressPath(loadingEpisode, child))
+                    val body = JSONObject().put("episodeId", loadingEpisode)
+                    if (child.isNotEmpty()) body.put("childId", child)
+                    val watch = app.api.json("POST", "/api/playback/sessions", body)
+                    val sessionId = watch.getString("sessionId")
+                    val mediaId = Uri.parse(detail.getJSONArray("sources").optJSONObject(0)?.optString("url") ?: "").getQueryParameter("mediaId")
+                    val info = app.api.json("GET", "/api/episodes/$loadingEpisode/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
+                    detail.put("playback", info)
+                    Triple(detail, resume, sessionId)
+                }, offline = { offlineLoad(loadingEpisode) })
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
                 if (active && current == loadGeneration && !isDestroyed && !isFinishing) {
                     if (detail.has("parentReminder")) {

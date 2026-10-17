@@ -464,13 +464,25 @@ function App() {
   useLayoutEffect(() => { cardArrowRef.current = cardArrow; });
   const navigateCard = useCallback((direction: string, firstRow: boolean) => cardArrowRef.current(firstRow)(direction), []);
 
-  const updateDetails = <div className="client-update-panel">
+  const updateDetails = <div className="client-update-panel" data-phase={clientUpdate?.phase}>
     {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
-    <p role="status">{clientUpdate?.message ?? '正在检查更新…'}</p>
-    {overlay === 'client-update' && <p>当前版本 {capabilities?.shellVersion}</p>}
-    {clientUpdate?.release && <><p>新版本 {clientUpdate.release.versionName} · {Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</p><p>{clientUpdate.release.notes}</p></>}
-    {updateActionable && <FocusButton focusKey="client-update-action" className="primary" onClick={() => { void updateClient(); }}>{updateActionLabel}</FocusButton>}
+    <div className="update-state-line">
+      <p role="status" className="update-state">{clientUpdate?.message ?? '正在检查更新…'}</p>
+      {clientUpdate?.release && <span className="update-package">{clientUpdate.phase !== 'available' && `版本 ${clientUpdate.release.versionName} · `}{Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</span>}
+    </div>
+    {['downloading', 'preparing'].includes(clientUpdate?.phase ?? '') && <div className="update-progress" role="progressbar" aria-label="更新下载进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={clientUpdate?.percent ?? 0}>
+      <span style={{ width: `${clientUpdate?.percent ?? 0}%` }} />
+    </div>}
+    {clientUpdate?.release?.notes && <div className="update-notes"><h3>本次更新</h3><p>{clientUpdate.release.notes}</p></div>}
+    {updateActionable && <FocusButton focusKey="client-update-action" className="update-action" onClick={() => { void updateClient(); }}>{updateActionLabel}</FocusButton>}
   </div>;
+  const updateCard = <section className="update-card" aria-label="软件更新">
+    <div className="update-card-heading">
+      <div><h2>软件更新</h2><p className="update-current">当前版本 {capabilities?.shellVersion}</p></div>
+      {overlay === 'settings' && <FocusButton focusKey="check-update" ariaLabel="检查客户端更新" className="update-check" onClick={() => { void checkClientUpdate(); }}>检查更新</FocusButton>}
+    </div>
+    {(clientUpdate || overlay === 'client-update') && updateDetails}
+  </section>;
 
   return <FocusRegion focusKey="screen" className="app">
     <main ref={motion.homeRef} className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
@@ -521,11 +533,8 @@ function App() {
             {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
             <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
               <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
-          </div> : overlay === 'client-update' ? updateDetails : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
-            {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && <>
-              <FocusButton focusKey="check-update" className="settings-item" onClick={() => { void checkClientUpdate(); }}><Icon name="settings" /><span><strong>检查客户端更新</strong><small>当前版本 {capabilities.shellVersion}</small></span></FocusButton>
-              {clientUpdate && updateDetails}
-            </>}
+          </div> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
+            {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && updateCard}
             {authenticated && <PlaybackSettings />}
             {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
           </div>}

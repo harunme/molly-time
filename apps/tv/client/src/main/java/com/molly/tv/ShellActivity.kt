@@ -317,9 +317,10 @@ class ShellActivity : AppCompatActivity() {
         "playEpisode" -> {
             val id = args.getString("episodeId")
             require(BridgePolicy.id.matches(id)) { "无效的剧集 ID" }
-            if (app.catalog.status().optBoolean("supported") && !app.catalog.status().optBoolean("online")) app.media.offline(id, app.catalog.store())
-            else try { app.api.json("GET", "/api/episodes/$id") }
-            catch (failure: java.io.IOException) { app.media.offline(id, app.catalog.store()) }
+            PlaybackAccess.load(
+                online = { app.api.json("GET", "/api/episodes/$id") },
+                offline = { app.media.offline(id, app.catalog.store()) },
+            )
             runOnUiThread {
                 if (!playing && !isDestroyed && generation == current) {
                     playing = true

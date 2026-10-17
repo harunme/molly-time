@@ -31,9 +31,9 @@ export function PlaybackSettings() {
     finally { saving.current = false; setBusy(false); }
   };
   return <section className="subtitle-preference" aria-label="默认字幕">
-    <h2>默认字幕</h2>
-    <p>与管理后台同步，下次播放生效。没有匹配字幕时关闭；中英文需要双语字幕文件。</p>
-    <FocusSelect focusKey="subtitle-default" label="默认字幕" value={value} options={choices} disabled={!value} onChange={(next) => { void save(next); }} />
+    <div className="subtitle-preference-heading"><div><h2>默认字幕</h2><p>与管理后台同步，下次播放生效</p></div>
+    <FocusSelect focusKey="subtitle-default" label="默认字幕" value={value} options={choices} disabled={!value} onChange={(next) => { void save(next); }} /></div>
+    <p className="subtitle-help">没有匹配字幕时关闭；中英文需提供双语字幕文件。</p>
     {busy && <p role="status">正在保存…</p>}
     {error && <><p role="alert" className="error">{error}</p><FocusButton focusKey="subtitle-settings-retry" onClick={() => setReload((v) => v + 1)}>重新加载字幕设置</FocusButton></>}
   </section>;

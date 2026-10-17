@@ -3,7 +3,7 @@ import { call } from './api';
 
 type Release = { versionName: string; size: number; notes: string };
 type Phase = 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'ready' | 'installing' | 'installed' | 'error';
-type Update = { phase: Phase; message: string; release?: Release; retry?: 'check' | 'download' | 'install' };
+type Update = { phase: Phase; message: string; percent?: number; release?: Release; retry?: 'check' | 'download' | 'install' };
 type Progress = { state: string; received?: number; total?: number; message?: string; phase?: Phase };
 
 // Older shells send installation messages as state. Keep that compatibility at
@@ -12,9 +12,9 @@ function progressUpdate(current: Update | undefined, detail: Progress): Update {
   const base = { ...current };
   if (detail.state === 'downloading') {
     const percent = Math.min(100, Math.max(0, Math.floor((detail.received ?? 0) * 100 / Math.max(1, detail.total ?? 1))));
-    return { ...base, phase: percent === 100 ? 'preparing' : 'downloading', message: percent === 100 ? '正在准备安装…' : `正在下载 ${percent}%` };
+    return { ...base, phase: percent === 100 ? 'preparing' : 'downloading', percent, message: percent === 100 ? '正在准备安装…' : `正在下载 ${percent}%` };
   }
-  if (detail.state === 'downloaded') return { ...base, phase: 'ready', message: '更新已准备好', retry: undefined };
+  if (detail.state === 'downloaded') return { ...base, phase: 'ready', percent: 100, message: '更新已准备好', retry: undefined };
   if (detail.state === 'error') return { ...base, phase: 'error', message: detail.message ?? '更新失败，请重试', retry: 'download' };
   const phase = detail.phase ?? (detail.state === '请在系统安装界面确认更新' ? 'installing'
     : detail.state === '更新已安装，请重新打开 MollyTime' ? 'installed' : 'ready');
@@ -43,7 +43,7 @@ export function useClientUpdate() {
     if (!previous || ['checking', 'downloading', 'preparing', 'installing', 'installed'].includes(previous.phase)) return;
     if (previous.retry === 'check' || !previous.release) { await check(); return; }
     const install = previous.phase === 'ready' || previous.retry === 'install';
-    commit({ ...previous, phase: install ? 'installing' : 'downloading', message: install ? '正在准备安装…' : '正在下载 0%' });
+    commit({ ...previous, phase: install ? 'installing' : 'downloading', percent: install ? 100 : 0, message: install ? '正在准备安装…' : '正在下载 0%' });
     try { await call(install ? 'installUpdate' : 'downloadUpdate'); }
     catch (failure) {
       commit({ ...previous, phase: 'error', message: failure instanceof Error ? failure.message : '更新失败，请重试', retry: install ? 'install' : 'download' });

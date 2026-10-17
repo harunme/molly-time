@@ -138,7 +138,6 @@ footer { display: flex; flex-shrink: 0; align-items: center; gap: 1.6rem; paddin
 .overlay-panel { max-height: calc(100vh - 4rem); overflow-y: auto; background: #24282e; border: 1px solid #ffffff14; border-radius: var(--panel-radius); padding: 2.8rem; box-shadow: 0 1rem 4rem #0005; }
 .overlay-panel h1 { font-size: 2.3rem; }
 .overlay-page > .text-button { margin-top: .6rem; color: #d0d7ee; }
-.settings-panel { width: 31rem; }
 .settings-list { display: flex; flex-direction: column; gap: 1rem; margin: 1.6rem 0; }
 .subtitle-preference h2 { font-size: 1.2rem; margin: .4rem 0; }
 .subtitle-preference p { font-size: .85rem; line-height: 1.6; color: var(--muted); }
@@ -167,11 +166,53 @@ footer { display: flex; flex-shrink: 0; align-items: center; gap: 1.6rem; paddin
 label { display: flex; flex-direction: column; gap: .5rem; font-size: 1rem; }
 input { width: 100%; padding: .85rem; color: var(--white); border: 2px solid #556183; background: #292d33; border-radius: .5rem; font-size: 1.15rem; }
 input:focus { outline: .2rem solid var(--white); border-color: transparent; }
-.connection-form, .client-update-panel { display: grid; gap: 1rem; width: min(100%, 42rem); margin: 0 auto; }
+.connection-form { display: grid; gap: 1rem; width: min(100%, 42rem); margin: 0 auto; }
 .connection-form label { color: var(--muted); font-size: 1rem; }
 .connection-form input { min-height: 3.6rem; }
-.connection-form p, .client-update-panel p { color: var(--muted); line-height: 1.55; }
-.client-update-panel .primary, .connection-form .primary { justify-self: start; min-width: 12rem; }
+.connection-form p { color: var(--muted); line-height: 1.55; }
+.connection-form .primary { justify-self: start; min-width: 12rem; }
+/* Settings read as one compact sheet; software release notes stay inside
+   their own surface, separate from playback controls. */
+.settings-panel {
+  --settings-surface: #1c222a;
+  --settings-control: #303b49;
+  --settings-line: #465160;
+  --settings-muted: #b1bbc9;
+  width: min(42rem, 100%); padding: 2rem 2.2rem;
+}
+.settings-panel h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -.04rem; }
+.settings-list { gap: 1.3rem; margin: 1.5rem 0 1rem; }
+.update-card { padding: 1.2rem 1.3rem; background: var(--settings-surface); border: 1px solid var(--settings-line); border-radius: 1rem; }
+.update-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.update-card h2, .subtitle-preference h2 { margin: 0; font-size: 1.1rem; line-height: 1.4; font-weight: 650; }
+.update-current { margin: .25rem 0 0; color: var(--settings-muted); font-size: .8rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.update-check { padding: .6rem .85rem; background: var(--settings-control); border: .1rem solid var(--settings-line); border-radius: .65rem; font-size: .9rem; font-weight: 600; white-space: nowrap; }
+.client-update-panel { display: flex; flex-direction: column; gap: .85rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--settings-line); }
+.update-state-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .3rem 1rem; }
+.update-state { margin: 0; font-size: 1.15rem; font-weight: 650; line-height: 1.45; color: var(--white); }
+.update-package { color: var(--settings-muted); font-size: .8rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.update-notes h3 { margin: 0 0 .25rem; font-size: .75rem; font-weight: 600; color: var(--settings-muted); line-height: 1.5; }
+.update-notes p { margin: 0; color: #dbe1e9; font-size: .95rem; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+.update-progress { height: .35rem; border-radius: 1rem; background: #39434f; overflow: hidden; }
+.update-progress > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .2s ease; }
+.update-action { align-self: stretch; min-width: 11rem; padding: .8rem 1.6rem; background: var(--settings-control); color: var(--white); border: .12rem solid var(--settings-line); border-radius: .7rem; font-size: 1.05rem; line-height: 1.4; font-weight: 700; text-align: center; }
+/* Share the standard button focus treatment, including controls whose
+   resting borders are declared inside the settings panel. */
+.settings-panel button.focused, .settings-panel button:focus-visible {
+  border-color: var(--focus); box-shadow: 0 .3rem 1rem #0004;
+}
+.subtitle-preference { padding: 0 .2rem; }
+.subtitle-preference-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.subtitle-preference-heading p { margin: .25rem 0 0; font-size: .8rem; color: var(--settings-muted); }
+.subtitle-preference-heading .focus-select { width: 11rem; flex-shrink: 0; }
+.subtitle-preference .subtitle-help { margin: .55rem 0 0; font-size: .75rem; color: var(--settings-muted); }
+.settings-panel .settings-item { min-height: 4.2rem; padding: .8rem 1rem; border: .1rem solid var(--settings-line); background: transparent; border-radius: .7rem; }
+.settings-panel .settings-item strong { font-size: 1.05rem; }
+.settings-panel .settings-item small { margin-top: .2rem; font-size: .8rem; }
+.settings-panel .settings-item > .icon { width: 1.3rem; height: 1.3rem; }
+.settings-panel .overlay-page > .text-button { margin-top: .25rem; color: var(--settings-muted); font-size: .9rem; }
+.settings-panel .client-update-panel[data-phase="error"] .update-state { color: #ffc3b6; }
+.settings-panel .overlay-page > .update-card { margin-top: 1.5rem; }
 @media (max-width: 700px) and (orientation: portrait) {
   :root { font-size: 12px; }
   .topbar { padding: 0 1.5rem; }

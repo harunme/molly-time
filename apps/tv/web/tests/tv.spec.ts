@@ -30,7 +30,7 @@ for (const supported of [true, false]) {
     await expect(page.locator(`[data-focus="${supported ? 'check-update' : 're-pair'}"]`)).toBeFocused();
     await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
     if (supported) {
-      await expect(page.locator('[data-focus="check-update"]')).toContainText('当前版本 0.4.0');
+      await expect(page.getByRole('region', { name: '软件更新' })).toContainText('当前版本 0.4.0');
       await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
       await page.keyboard.press('Enter');
       await expect.poll(() => page.evaluate(() => (window as unknown as { updateChecks: number }).updateChecks)).toBe(1);
@@ -167,7 +167,7 @@ test('remote navigation, playback return, folder restoration and durable binding
           { id: 's1', name: '动物小故事', episodeCount: 2 }, { id: 's2', name: '一起学颜色', episodeCount: 3 },
         ] }] };
         if (path === '/api/families/me/children') result = [{ id: 'c1', name: '小朋友' }];
-        if (path === '/api/series/s2/playlist') result = { items: [{ id: 'e1', name: '红色在哪里', type: 'episode', runtimeMs: 120000 }, { id: 'e2', name: '蓝色的天空', type: 'episode', runtimeMs: 180000 }], itemTotal: 2, itemsHasMore: false, episodeId: 'e1', episodes: [
+        if (path === '/api/series/s2/playlist') result = { total: 2, items: [{ id: 'e1', name: '红色在哪里', type: 'episode', runtimeMs: 120000 }, { id: 'e2', name: '蓝色的天空', type: 'episode', runtimeMs: 180000 }], itemTotal: 2, itemsHasMore: false, episodeId: 'e1', episodes: [
           { id: 'e1', name: '红色在哪里', runtimeMs: 120000 }, { id: 'e2', name: '蓝色的天空', runtimeMs: 180000 },
         ] };
       }
