@@ -1,3 +1,4 @@
+import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -80,7 +81,7 @@ export function ClientReleases() {
     </div>
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
     {!!data?.invalidRecords && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{data.invalidRecords} 条版本记录无法读取，请恢复版本记录备份后重新进入此页。</AlertDescription></Alert>}
-    {loading ? <Empty role="status" className="empty">正在加载安装包…</Empty> : data && !data.items.length ?
+    {loading ? <Loading variant="table" label="正在加载安装包…" /> : data && !data.items.length ?
       <Empty className="empty">{data.total ? "本页没有安装包，请返回上一页。" : "暂无安装包。发布客户端版本后，安装包会显示在这里。"}</Empty> : data &&
       <div className="table-scroll"><Table className="client-releases-table"><TableHeader><TableRow>
         <TableHead scope="col">版本</TableHead><TableHead scope="col">渠道</TableHead><TableHead scope="col">发布状态</TableHead><TableHead scope="col">发布时间</TableHead><TableHead scope="col">大小</TableHead><TableHead scope="col">存储位置</TableHead><TableHead scope="col">操作</TableHead>

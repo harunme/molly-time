@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, FileVideo, FolderOpen, X } from 'lucide-react'
 import type { Resource } from './api';
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog';
 import { Button } from './components/ui/button';
+import { Skeleton } from './components/ui/skeleton';
 import './styles/resource-desktop.css';
 
 type Drag = { id: string; x: number; y: number; width: number; height: number; offsetX: number; offsetY: number; keyboard?: boolean };
@@ -286,14 +287,19 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
     if (touch) pressTimer.current = setTimeout(() => activateTouch.current?.(), 320);
   };
   const dragged = sourceItems.current.find((item) => item.id === drag?.id);
+  const loadingCards = Array.from({ length: 4 }, (_, index) => <div className="resource-skeleton-tile" key={`skeleton-${index}`} aria-hidden="true">
+    <div className="desktop-cover"><Skeleton className="h-full w-full rounded-[14px]" /></div>
+    <Skeleton className="mx-auto mt-3.5 h-4 w-2/3" />
+  </div>);
   const desktop = <>
     {input}
     {error && <p role="alert" className="error">{error}</p>}
     {loadError && <p role="alert" className="error">{loadError}</p>}
-    {loading && <p role="status" className="muted">正在打开…</p>}
     {!loading && !loadError && !order.length && !leadingTile && empty}
-    <div ref={grid} className="resource-desktop" aria-label="资源卡片" aria-busy={busy} data-dragging={!!drag}>
+    {loading && <span className="sr-only" role="status">正在打开…</span>}
+    <div ref={grid} className="resource-desktop" aria-label="资源卡片" aria-busy={busy || loading} data-dragging={!!drag}>
       {escaped ? folder?.backgroundLeadingTile : leadingTile}
+      {loading && loadingCards}
       {order.map((item) => <article key={item.id} data-resource-id={item.id} className={`resource-tile${drag?.id === item.id ? ' is-dragging' : ''}${dropId === item.id ? ' is-drop-target' : ''}${hoverId === item.id ? ' is-group-pending' : ''}`}
         onPointerDown={(event) => start(event, item)}
         onContextMenu={(event) => { if (pending.current?.touch || dragRef.current) event.preventDefault(); }}
@@ -321,10 +327,10 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
   return <>
     {folder && !escaped ? <div className="folder-parent-desktop" aria-hidden="true" inert>
       {folder.backgroundToolbar}
-      {folder.backgroundLoading && <p className="muted">正在打开…</p>}
       {folder.backgroundError && <p className="error">{folder.backgroundError}</p>}
       <div className="desktop-background-grid">
         {folder.backgroundLeadingTile}
+        {folder.backgroundLoading && loadingCards}
         {folder.background.map(item => <article key={item.id} className="desktop-background-tile">{render(item)}</article>)}
       </div>
       {folder.backgroundFooter}

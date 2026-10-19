@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { Loading } from "@/components/ui/loading";
 import { Empty } from "@/components/ui/empty";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { bytes, dateTime } from "./api";
@@ -30,6 +31,7 @@ export function DeviceErrorLogs() {
     <h2>设备错误日志</h2>
     <p className="muted">最近 30 天的播放错误，不包含视频地址和登录信息。</p>
     {logs.error && <Alert variant="destructive"><AlertDescription>{logs.error}</AlertDescription></Alert>}
+    {logs.loading && <Loading variant="list" label="正在加载设备错误日志…" />}
     {!logs.loading && !logs.error && logs.data.length === 0 && <Empty className="empty">暂无设备错误</Empty>}
     <div className="grid gap-3">
       {logs.data.map((log) => <div key={log.id} className="rounded-lg border border-border p-3 text-sm">

@@ -1,3 +1,4 @@
+import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { useEffect, useRef, useState } from 'react';
@@ -129,7 +130,7 @@ export function ParentReminders({ readonly, run, notify }: {
     {uploadPolicy.limits && <p className="muted">单个视频上限：{bytes(uploadPolicy.limits.video)}</p>}
     {uploadPolicy.error && <Alert variant="destructive" role="alert"><AlertDescription>{uploadPolicy.error}</AlertDescription></Alert>}
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
-    {!settings && !error && <p role="status">正在加载…</p>}
+    {!settings && !error && <Loading variant="form" label="正在加载提醒设置…" />}
     {settings && <>
       {(['warning', 'farewell'] as const).map((kind) => <div className="reminder-clip" key={kind}>
         <Label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '休息提醒视频'}</Label>

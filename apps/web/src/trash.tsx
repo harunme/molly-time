@@ -50,11 +50,11 @@ export function TrashRetentionSettings({ readonly, run, notify }: { readonly: bo
   return <Card className="settings-card">
     <div className="flex items-center gap-2"><Clock3 className="size-4 text-muted-foreground" /><h2 className="mb-0">回收站自动删除</h2></div>
     <p className="muted">内容移入回收站后按此策略自动清理，彻底删除会清理 OSS 和本地文件，无法恢复。</p>
-    <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    {loading ? <Loading variant="form" rows={1} label="正在加载回收站保留策略…" /> : <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <Label htmlFor="trash-retention">保留时间</Label>
       <SelectField id="trash-retention" aria-label="回收站保留时间" value={retentionDays} onValueChange={setRetentionDays} disabled={readonly || loading || busy} options={options} />
       {!readonly && <Button className="mt-3" variant="bordered" type="submit" disabled={loading || busy || Number(retentionDays) === savedDays}>{busy ? '保存中…' : '保存策略'}</Button>}
-    </form>
+    </form>}
   </Card>;
 }
 
@@ -93,9 +93,10 @@ export function Trash({ readonly }: { readonly: boolean }) {
     >
         {summary.storage.unknownSizeCount > 0 && <p className="text-sm text-destructive">{summary.storage.unknownSizeCount} 个文件大小未确认，当前统计不完整。</p>}
     </ResourceSummary>}
+    {!summary && list.loading && <Card className="trash-summary mb-6 p-6"><Loading variant="detail" rows={1} label="正在加载回收站占用…" /></Card>}
     <Card className="settings-card trash-list-card">
       <div className="trash-list-body">
-      {list.loading ? <Loading className="min-h-0 flex-1" label="正在加载回收站…" /> : !list.error && <>
+      {list.loading ? <Loading variant="table" className="min-h-0 flex-1 overflow-hidden" label="正在加载回收站…" /> : !list.error && <>
         {!!list.data.length &&
         <Table className="trash-table min-w-256">
           <TableHeader><TableRow><TableHead>名称</TableHead><TableHead>占用空间</TableHead><TableHead>移入时间</TableHead><TableHead>自动删除时间</TableHead><TableHead>操作</TableHead></TableRow></TableHeader>

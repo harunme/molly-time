@@ -1,3 +1,4 @@
+import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -56,7 +57,7 @@ export function Invitations() {
     </div>}
     {error && <Alert variant="destructive" className="error" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
     <h3>邀请记录</h3>
-    {loading ? <p role="status">正在加载邀请记录…</p> : !data?.items.length ? <Empty className="empty">还没有邀请，生成邀请码邀请第一位用户。</Empty> : <>
+    {loading ? <Loading variant="table" label="正在加载邀请记录…" /> : !data?.items.length ? <Empty className="empty">还没有邀请，生成邀请码邀请第一位用户。</Empty> : <>
       <div className="table-scroll"><Table className="invitations-table"><TableHeader><TableRow><TableHead>邀请码</TableHead><TableHead>创建时间</TableHead><TableHead>注册邮箱</TableHead><TableHead>家庭</TableHead><TableHead>状态</TableHead><TableHead>有效至</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>
         {data.items.map((row) => <TableRow key={row.id}><TableCell><span className="invitation-table-code">{row.code || "不可查看"}</span>{!row.code && <small>请生成新邀请码</small>}</TableCell><TableCell>{dateTime(row.createdAt)}</TableCell><TableCell>{row.email || "尚未注册"}</TableCell><TableCell>{row.familyName || "—"}</TableCell><TableCell>{status[row.status]}</TableCell><TableCell>{dateTime(row.expiresAt)}</TableCell><TableCell><div className="invitation-row-actions">{row.code && <Button variant="ghost" className="invitation-copy-action" onClick={() => {
           void copyCode(row.code!);

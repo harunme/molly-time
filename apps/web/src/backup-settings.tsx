@@ -1,9 +1,9 @@
+import { Loading } from "@/components/ui/loading";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "./api";
@@ -50,7 +50,7 @@ export function BackupSettings({ notify }: { notify: (message: string) => void }
       setBusy(false);
     }
   };
-  if (!data || !config) return error ? <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert> : <Empty>正在加载备份设置…</Empty>;
+  if (!data || !config) return error ? <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert> : <Loading variant="form" label="正在加载备份设置…" className="rounded-card bg-card p-6" />;
   const checked = data.status.last_checked_at ? Date.parse(data.status.last_checked_at) : 0;
   const schedulerActive = checked > Date.now() - 5 * 60_000;
   const result = data.status.last_result;

@@ -1,3 +1,5 @@
+import { Loading } from "@/components/ui/loading";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import { ChevronRight, Monitor } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -120,8 +122,8 @@ function WatchHistory({ today, watch, initialDate }: { today: string; watch?: Ov
     </DialogHeader>
     <div className="watch-history-body">
       {(selectedDate || selectedDevice) && <dl className="watch-history-stats">
-        <div><dt>{selectedDate ? "当天观看时长" : "最近 31 天观看时长"}</dt><dd><strong>{data ? duration(data.totalPlayedMs) : "—"}</strong><span>{selectedDate ?? "最近 31 天"}{selectedDevice ? ` · ${selectedDevice.name}` : ""}</span></dd></div>
-        <div><dt>观看视频</dt><dd><strong>{data ? `${data.episodeCount} 个` : "—"}</strong><span>{selectedDate ? "当天" : "这段时间"}实际播放</span></dd></div>
+        <div><dt>{selectedDate ? "当天观看时长" : "最近 31 天观看时长"}</dt><dd><strong>{data ? duration(data.totalPlayedMs) : result.loading ? <Skeleton className="h-7 w-20" /> : "—"}</strong><span>{selectedDate ?? "最近 31 天"}{selectedDevice ? ` · ${selectedDevice.name}` : ""}</span></dd></div>
+        <div><dt>观看视频</dt><dd><strong>{data ? `${data.episodeCount} 个` : result.loading ? <Skeleton className="h-7 w-16" /> : "—"}</strong><span>{selectedDate ? "当天" : "这段时间"}实际播放</span></dd></div>
       </dl>}
       {selectedDate && chartData?.hours?.length === 24 && <section className="watch-history-hourly" aria-label="当天每小时观看时长">
         <div className="watch-history-hourly-bars">
@@ -137,6 +139,7 @@ function WatchHistory({ today, watch, initialDate }: { today: string; watch?: Ov
         {legend}
         {chartDetail && <p className="watch-history-chart-detail" aria-live="polite">{chartDetail}</p>}
       </section>}
+      {selectedDate && !chartData && result.loading && <Loading variant="chart" label="正在加载当天观看趋势…" />}
       {!selectedDate && <>{!selectedDevice && <dl className="watch-history-stats">
         {stats.map((stat) => <div key={stat.label}><dt>{stat.label}</dt><dd><strong>{stat.value === undefined ? "—" : duration(stat.value)}</strong><span>{stat.detail}</span></dd></div>)}
       </dl>}
@@ -157,12 +160,12 @@ function WatchHistory({ today, watch, initialDate }: { today: string; watch?: Ov
       </section></>}
       <div className="watch-history-scope"><span>{selectedDate ? <strong>{selectedDate}</strong> : "最近 31 天"}{selectedDevice && ` · ${selectedDevice.name}`}</span>{selectedDevice && <Button variant="ghost" size="sm" onClick={() => selectDevice()}>全部设备</Button>}</div>
       {result.error && <Alert variant="destructive" role="alert"><AlertDescription>{result.error}</AlertDescription><Button variant="ghost" size="sm" onClick={() => setRetry((value) => value + 1)}>重试</Button></Alert>}
-      {selectedDate && result.loading && <p className="watch-history-note" role="status">正在加载当天记录…</p>}
+      {selectedDate && result.loading && <Loading variant="list" size="sm" label="正在加载当天记录…" />}
       {selectedDate && data?.totalPlayedMs === 0 && <div className="watch-history-empty">当天没有观看记录</div>}
       {(!selectedDate || data && data.totalPlayedMs > 0) && <>
       <details className="watch-history-detail" open={sessionsOpen} onToggle={(event) => setSessionsOpen(event.currentTarget.open)}>
         <summary>播放明细<ChevronRight className="size-4" /></summary>
-        {result.loading ? <p className="watch-history-note" role="status">正在加载观看记录…</p> : data && <>
+        {result.loading ? <Loading variant="list" size="sm" label="正在加载观看记录…" /> : data && <>
           {data.sessions.length ? <ul className="watch-history-list">{data.sessions.map((session) => <li key={session.id}>
             <div className="watch-history-row-title"><strong>{session.name}</strong><span>{duration(session.playedMs)}</span></div>
             <div className="watch-history-row-meta"><span><Monitor className="size-3" />{session.deviceName}</span><time dateTime={session.startedAt}>{localTime(session.startedAt, data.timezone)}</time><span>{session.ended ? "正常结束" : "播放中或未正常结束"}</span></div>
@@ -172,7 +175,7 @@ function WatchHistory({ today, watch, initialDate }: { today: string; watch?: Ov
       </details>
       <details className="watch-history-detail">
         <summary>内容分布<ChevronRight className="size-4" /></summary>
-        {result.loading ? <p className="watch-history-note" role="status">正在加载观看记录…</p> : data && <>
+        {result.loading ? <Loading variant="list" size="sm" label="正在加载观看记录…" /> : data && <>
           {data.contents.length ? <ul className="watch-history-list">{data.contents.map((content) => <li key={content.id}>
             <div className="watch-history-row-title"><strong>{content.name}</strong><span>{duration(content.playedMs)}</span></div>
           </li>)}</ul> : <p className="watch-history-note">这段时间还没有观看记录。</p>}

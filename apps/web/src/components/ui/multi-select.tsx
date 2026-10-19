@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { LoadingText } from "@/components/ui/loading";
+import { Loading } from "@/components/ui/loading";
 
 export type MultiSelectOption = {
   label: string;
@@ -139,13 +139,7 @@ function MultiSelect({
             className="min-h-0 flex-1 overscroll-contain"
           >
             {loading ? (
-              <div
-                className="flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground"
-                role="status"
-              >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <LoadingText label={loadingText} />
-              </div>
+              <Loading size="sm" rows={3} variant="list" label={loadingText} className="px-3" />
             ) : (
               <>
                 <CommandEmpty>{emptyText}</CommandEmpty>

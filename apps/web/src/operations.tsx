@@ -1,5 +1,5 @@
+import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Empty } from "@/components/ui/empty";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { SelectField } from "@/components/ui/select";
@@ -102,7 +102,7 @@ export function Operations({ notify }: { notify: (message: string) => void; }) {
             </AlertDescription></Alert>
           )}
           {!form ? (
-            <Empty className="empty">正在加载存储配置…</Empty>
+            !error && <Loading variant="form" label="正在加载存储配置…" className="rounded-card bg-card p-6" />
           ) : (
             <Card className="settings-card operations-card">
               <h2>文件存储</h2>

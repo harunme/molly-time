@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import { api, ApiError, bytes, dateTime, setSession, type Resource, type Session } from "./api";
 import { ResourcePicker } from "./pagination";
+import { Loading } from "@/components/ui/loading";
 import { Check, Clock3, Copy, Film } from "lucide-react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
@@ -285,7 +286,8 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
           <Button className="shrink-0" disabled={busy} type="submit">{busy ? "正在加载…" : "查看分享"}</Button>
         </div>
       </form>}
-      {code && !share && <Button variant="bordered" disabled={busy} onClick={() => void load({ code })}>{busy ? "正在加载…" : "重新加载分享"}</Button>}
+      {busy && !share && <Loading variant="detail" label="正在读取分享内容…" />}
+      {code && !share && !busy && <Button variant="bordered" onClick={() => void load({ code })}>重新加载分享</Button>}
       {share && <>
         {modal ? <div className="space-y-2"><h3>{share.name}</h3><p className="text-sm text-muted-foreground">{share.videoCount} 个视频 · {bytes(share.sizeBytes)}</p><ul className="max-h-40 overflow-auto space-y-1 text-sm">{share.items.filter((item) => item.type === "Episode").map((item) => <li key={item.id}>{item.name}</li>)}</ul></div> : <SummaryDetails share={share} code={credential?.code || code}>{claimPanel}</SummaryDetails>}
         {modal && claimPanel}

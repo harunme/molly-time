@@ -1,3 +1,4 @@
+import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -50,7 +51,7 @@ export function FamilyUsage() {
   return <Card className="settings-card">
     <div className="section-heading"><h2>家庭用量</h2></div>
     <Label>用量月份<MonthPicker aria-label="用量月份" value={month} onValueChange={setMonth} /></Label>
-    {error ? <Alert variant="destructive" className="error" role="alert"><AlertDescription>{error}</AlertDescription></Alert> : !row ? <Empty className="empty">正在加载家庭用量…</Empty> : <>
+    {error ? <Alert variant="destructive" className="error" role="alert"><AlertDescription>{error}</AlertDescription></Alert> : !row ? <Loading variant="detail" label="正在加载家庭用量…" /> : <>
       <p>当前文件占用 <strong title={exactBytes(row.storage.usedBytes)}>{bytes(row.storage.usedBytes)}</strong> · 待处理上传 {bytes(row.storage.pendingBytes)}</p>
       <p>本月已统计流量 <strong title={exactBytes(row.traffic.totalBytes)}>{bytes(row.traffic.totalBytes)}</strong></p>
       <p className="muted">服务器下行 {bytes(row.traffic.localBytes)} · OSS 公网下行 {bytes(row.traffic.ossBytes)}<br />计量启用时间：{dateTime(row.statisticsSince)}</p>
@@ -75,7 +76,7 @@ export function OperationsUsage() {
       <Label>搜索家庭或账号<Input placeholder="家庭名称、家庭 ID、邮箱或账号 ID" value={search} onChange={(event) => setSearch(event.target.value)} /></Label>
     </div>
     {list.error && <Alert variant="destructive" className="error" role="alert"><AlertDescription>{list.error}</AlertDescription></Alert>}
-    {list.loading ? <Empty className="empty">正在加载家庭用量…</Empty> : !list.error && <>
+    {list.loading ? <Loading variant="table" label="正在加载家庭用量…" /> : !list.error && <>
       <div className="table-scroll"><Table className="family-usage-table">
         <TableHeader><TableRow><TableHead>家庭</TableHead><TableHead>当前存储</TableHead><TableHead>待处理上传</TableHead><TableHead>所选月份流量</TableHead></TableRow></TableHeader>
         <TableBody>{list.data.map((row) => <TableRow key={row.id}>

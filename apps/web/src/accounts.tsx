@@ -1,3 +1,4 @@
+import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
@@ -34,7 +35,7 @@ export function InviteActivation({ token, login }: { token: string; login: (emai
       <div className="account-summary"><span>邮箱</span><strong>{result.email}</strong><span>账号 ID</span><strong className="account-number">{result.accountId}</strong></div>
       <p className="muted">请保存账号 ID。登录时仍需输入密码。</p>
       <Button className="primary" onClick={() => login(result.email)}>前往登录</Button>
-    </> : loading ? <p role="status">正在确认邀请…</p> : preview ? <>
+    </> : loading ? <Loading variant="form" label="正在确认邀请…" /> : preview ? <>
       <p>邀请已确认。填写邮箱并设置密码，创建自己的家庭放映室。</p>
       <form onSubmit={(event) => {
         event.preventDefault(); setError("");

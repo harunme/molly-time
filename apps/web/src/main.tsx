@@ -4,7 +4,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loading } from "@/components/ui/loading";
+import { Loading, type LoadingVariant } from "@/components/ui/loading";
 import { FileUpload, FileUploadField } from "@/components/ui/upload";
 import { Toaster } from "@/components/ui/sonner";
 import { FeedbackDialogs, confirmAction, promptText } from "./feedback";
@@ -170,9 +170,9 @@ function Modal({
   );
 }
 
-function State({ loading, error }: { loading?: boolean; error?: string; }) {
+function State({ loading, error, variant = "list" }: { loading?: boolean; error?: string; variant?: LoadingVariant; }) {
   if (error) return <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>;
-  return loading ? <Loading size="sm" className="min-h-32" /> : null;
+  return loading ? <Loading variant={variant} size="sm" /> : null;
 }
 function Badge({ value }: { value: string; }) {
   const names: Record<string, string> = {
@@ -256,7 +256,7 @@ function App() {
       );
     }
   };
-  if (checking) return <Loading className="min-h-dvh" label="正在打开家庭媒体库…" />;
+  if (checking) return <Loading variant="page" label="正在打开家庭媒体库…" />;
   if (/^\/share\/[^/]+$/.test(location.pathname))
     return <ShareReceive session={session} onSession={(value) => { setSession(value); updateSession(value); }} readonly={!!session && !["admin", "superadmin"].includes(session.user.role)} standalone />;
   if (location.pathname === "/invite")
@@ -545,7 +545,7 @@ function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
   const cached = [...(libraryData?.pages.values() ?? [])].flatMap(page => page.items).find(item => item.id === folderId);
   const current = folder.data?.id === folderId ? folder.data : cached;
   if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
-  if (!current) return <State loading />;
+  if (!current) return <Loading variant="cards" label="正在打开文件夹…" />;
   if (current.status === "archived") return <Navigate to="/trash" replace />;
   if (current.type !== "Series" && current.type !== "Season") return <Navigate to="/library" replace />;
   return <Library key={folderId} run={run} readonly={readonly} parent={current} />;
@@ -1024,7 +1024,7 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
         {uploadPolicy.limits && <p className="muted">
           单个文件上限：{bytes(uploadPolicy.limits[kind as keyof typeof uploadPolicy.limits])}
         </p>}
-        {!uploadPolicy.limits && !uploadPolicy.error && <p role="status">正在加载上传限制…</p>}
+        {!uploadPolicy.limits && !uploadPolicy.error && <Loading variant="inline" size="sm" label="正在加载上传限制…" />}
         {uploadPolicy.error && <Alert variant="destructive" role="alert"><AlertDescription>{uploadPolicy.error}</AlertDescription></Alert>}
         {rows.map((row, index) => (
           <div className="upload-plan" key={index}>
@@ -1317,7 +1317,7 @@ function Family({
           <FamilyUsage />
           <Card className="settings-card">
             <h2>播放偏好</h2>
-            <State loading={settings.loading} error={settings.error} />
+            <State loading={settings.loading && !settings.data} error={settings.error} variant="form" />
             {settings.data && <form onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
@@ -1334,7 +1334,7 @@ function Family({
           </Card>
           <Card className="settings-card">
             <h2>时区与存储</h2>
-            <State error={settings.error} />
+            <State loading={settings.loading && !settings.data} error={settings.error} variant="detail" />
             {settings.data && (
               <>
                 <p>
@@ -1390,7 +1390,7 @@ function Family({
             <p className="muted">
               扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。
             </p>
-            <State loading={devices.loading} error={devices.error} />
+            <State loading={devices.loading && !devices.data.length} error={devices.error} variant="list" />
             {devices.data.length ? (
               devices.data.map((d) => (
                 <div className="device-row" key={d.id}>

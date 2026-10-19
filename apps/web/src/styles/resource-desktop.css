@@ -19,6 +19,7 @@
 }
 .resource-tile:hover, .resource-tile:focus-within { background: var(--color-surface-subtle); }
 .desktop-add-tile { min-width: 0; padding: 12px; border: 1px solid transparent; }
+.resource-skeleton-tile { min-width: 0; padding: 12px; border: 1px solid transparent; }
 .desktop-add-trigger { display: flex; flex-direction: column; width: 100%; padding: 0; border: 0; background: transparent; color: var(--color-icon-muted); font: inherit; text-align: center; border-radius: 14px; }
 .desktop-add-cover { display: grid; width: 100%; aspect-ratio: 16 / 11; padding-top: 10px; }
 .desktop-add-art {
@@ -199,6 +200,7 @@ button.desktop-add-trigger:focus-visible .desktop-add-art { outline: 2px solid v
   .resource-desktop, .desktop-background-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 8px; }
   .resource-tile, .desktop-background-tile { padding: 7px; border-radius: 14px; }
   .desktop-add-tile { padding: 7px; }
+  .resource-skeleton-tile { padding: 7px; }
   .desktop-add-cover { aspect-ratio: 1.18; }
   .desktop-cover { aspect-ratio: 1.18; }
   :is(.resource-tile, .desktop-background-tile) .resource-name .name-button { font-size: 12px; line-height: 18px; }
