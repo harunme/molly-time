@@ -203,7 +203,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       <Card className="overview-summary">
         <div className="overview-duration-stats">{metrics.slice(3).map(renderMetric)}</div>
         <div className="overview-metric overview-most-played" aria-label="视频播放排行">
-          <div className="overview-metric-label"><span>视频播放排行</span></div>
+          <div className="overview-metric-label"><span>视频播放排行 · 全部时间</span></div>
           {loading ? <span className="overview-skeleton overview-ranking-skeleton" aria-hidden="true" />
             : data ? <MostPlayedList videos={data.watch.mostPlayedVideos ?? []} /> : <p className="overview-empty-note">播放次数加载失败</p>}
         </div>

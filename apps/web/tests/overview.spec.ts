@@ -25,6 +25,7 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await expect(page.locator('.overview-metric').filter({ hasText: '本次观看时长' }).locator('.overview-metric-value')).toHaveText('0 分钟');
   await expect(page.locator('.overview-metric').filter({ hasText: '正在观看' }).locator('.overview-metric-value')).toHaveText('暂无正在观看');
   await expect(page.locator('.overview-most-played')).toContainText('暂无观看记录');
+  await expect(page.locator('.overview-most-played .overview-metric-label')).toHaveText('视频播放排行 · 全部时间');
   await expect(page.locator('.overview-most-played').getByRole('button')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '观看热力图', exact: true })).toBeVisible();
   await expect(page.locator('.overview-heatmap-day')).toHaveCount(365);
