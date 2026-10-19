@@ -45,9 +45,8 @@ test("real upload, parent preview and resource publication", async ({
   try {
     await login(page);
     expect(await page.evaluate(() => crypto.subtle)).toBeUndefined();
-    await page
-      .getByRole("button", { name: "＋ 上传资源", exact: true })
-      .click();
+    await page.getByRole('button', { name: '添加内容', exact: true }).click();
+    await page.getByRole('menuitem', { name: '上传视频', exact: true }).click();
     await page.getByLabel("选择上传视频", { exact: true }).setInputFiles(file);
     await expect(page.getByRole("dialog", { name: "上传资源", exact: true })).not.toBeVisible();
     const tasks = page.getByRole("dialog", { name: "上传任务", exact: true });
@@ -90,7 +89,8 @@ test("parents group existing folders without uploading videos again", async ({
   page,
 }) => {
   await login(page);
-  await page.getByRole("button", { name: "新建文件夹", exact: true }).click();
+  await page.getByRole('button', { name: '添加内容', exact: true }).click();
+  await page.getByRole('menuitem', { name: '新建文件夹', exact: true }).click();
   const folderName = page.getByRole('textbox', { name: '文件夹名称', exact: true });
   await folderName.fill('小动物学习');
   await folderName.press('Enter');
@@ -106,7 +106,7 @@ test("parents group existing folders without uploading videos again", async ({
   await page.getByRole('button', { name: '未整理', exact: true }).click();
   await expect(page.getByRole('button', { name: '自然小故事', exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "新建文件夹", exact: true }),
+    page.getByRole("button", { name: "添加内容", exact: true }),
   ).toBeVisible();
 });
 

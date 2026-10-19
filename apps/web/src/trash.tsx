@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Clock3, FileVideo, FolderOpen, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Clock3, FileVideo, FolderOpen, RotateCcw, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Empty } from '@/components/ui/empty';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import { SelectField } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api, bytes as largeBytes, dateTime, type Page } from './api';
 import { confirmAction } from './feedback';
-import { Pagination, useDebounced, usePagedData } from './pagination';
+import { Pagination, usePagedData } from './pagination';
 import { ResourceSummary } from './resource-summary';
 
 type Storage = { usedBytes: number; reclaimableBytes: number; ossBytes: number; localBytes: number; unknownSizeCount: number };
@@ -60,12 +59,11 @@ export function TrashRetentionSettings({ readonly, run, notify }: { readonly: bo
 }
 
 export function Trash({ readonly }: { readonly: boolean }) {
-  const [search, setSearch] = useState(''), [serial, refresh] = useState(0);
+  const [serial, refresh] = useState(0);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [deleting, setDeleting] = useState<TrashItem>();
-  const query = useDebounced(search);
-  const list = usePagedData<TrashItem, TrashPage>(`/trash?q=${encodeURIComponent(query)}`, serial);
+  const list = usePagedData<TrashItem, TrashPage>('/trash', serial);
   const [summary, setSummary] = useState<TrashPage>();
   useEffect(() => { if (list.response) setSummary(list.response); }, [list.response]);
   const mutate = async (key: string, action: () => Promise<unknown>, message: string) => {
@@ -95,30 +93,30 @@ export function Trash({ readonly }: { readonly: boolean }) {
     >
         {summary.storage.unknownSizeCount > 0 && <p className="text-sm text-destructive">{summary.storage.unknownSizeCount} 个文件大小未确认，当前统计不完整。</p>}
     </ResourceSummary>}
-    <Card className="settings-card">
-      <div className="toolbar">
-        <InputGroup className="search-field"><InputGroupAddon><Search /></InputGroupAddon><InputGroupInput aria-label="搜索回收站" placeholder="搜索回收站名称…" value={search} onChange={(event) => setSearch(event.target.value)} /></InputGroup>
-      </div>
-      {list.loading ? <Loading className="min-h-48" label="正在加载回收站…" /> : !list.error && <>
+    <Card className="settings-card trash-list-card">
+      <div className="trash-list-body">
+      {list.loading ? <Loading className="min-h-0 flex-1" label="正在加载回收站…" /> : !list.error && <>
+        {!!list.data.length &&
         <Table className="trash-table min-w-256">
           <TableHeader><TableRow><TableHead>名称</TableHead><TableHead>占用空间</TableHead><TableHead>移入时间</TableHead><TableHead>自动删除时间</TableHead><TableHead>操作</TableHead></TableRow></TableHeader>
           <TableBody>{list.data.map((row) => <TableRow key={row.id}>
-            <TableCell className="max-w-72"><div className="flex items-start gap-3">{row.type === 'Episode' ? <FileVideo className="mt-1 size-5 shrink-0 text-muted-foreground" /> : <FolderOpen className="mt-1 size-5 shrink-0 text-muted-foreground" />}<div>
-              <strong className="block break-words font-medium">{row.name}</strong>
-              <p className="mt-1 text-xs text-muted-foreground">{row.type === 'Episode' ? '视频' : `文件夹 · ${row.videoCount} 个视频`}</p>
-              {row.error && <p className="mt-2 text-xs text-destructive">{row.error}</p>}
-            </div></div></TableCell>
-            <TableCell><span className="tabular-nums" title={`${row.storage.usedBytes} 字节`}>{bytes(row.storage.usedBytes)}</span><p className="mt-1 text-xs text-muted-foreground">可释放 {bytes(row.storage.reclaimableBytes)}</p></TableCell>
+            <TableCell><div className="flex items-center gap-2.5">{row.type === 'Episode' ? <FileVideo className="size-4 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-4 shrink-0 text-muted-foreground" />}
+              <strong className="max-w-48 truncate font-medium" title={row.name}>{row.name}</strong>
+              <span className="shrink-0 text-xs text-muted-foreground">{row.type === 'Episode' ? '视频' : `文件夹 · ${row.videoCount} 个视频`}</span>
+              {row.error && <span className="max-w-40 truncate text-xs text-destructive" title={row.error}>{row.error}</span>}
+            </div></TableCell>
+            <TableCell><div className="flex items-center gap-3 tabular-nums"><span title={`${row.storage.usedBytes} 字节`}>{bytes(row.storage.usedBytes)}</span><span className="text-xs text-muted-foreground">可释放 {bytes(row.storage.reclaimableBytes)}</span></div></TableCell>
             <TableCell className="whitespace-nowrap">{dateTime(row.archivedAt)}</TableCell>
             <TableCell className="whitespace-nowrap">{row.deleting ? '已开始删除，无法恢复' : row.deleteAt ? dateTime(row.deleteAt) : '不自动删除'}</TableCell>
-            <TableCell><div className="flex gap-1">{!readonly && <>
+            <TableCell><div className="trash-row-actions">{!readonly && <>
               <Button variant="ghost" disabled={!!busy || row.deleting} onClick={() => { void mutate(row.id, () => api(`/trash/${row.id}/restore`, 'POST'), '已恢复到资源库，沿用移入前的发布状态。').catch(() => {}); }}><RotateCcw className="size-3.5" />恢复</Button>
               <Button variant="ghost" className="text-destructive" disabled={!!busy} onClick={() => setDeleting(row)}><Trash2 className="size-3.5" />{row.deleting ? '重试删除' : '立即删除'}</Button>
             </>}</div></TableCell>
           </TableRow>)}</TableBody>
-        </Table>
-        {!list.data.length && <Empty className="empty py-16"><Trash2 className="size-8 text-muted-foreground" /><h3>{search ? '没有匹配的内容' : '回收站是空的'}</h3><p>{search ? '试试其他名称。' : '资源库中移入回收站的内容会显示在这里。'}</p></Empty>}
+        </Table>}
+        {!list.data.length && <Empty className="empty py-16"><Trash2 className="size-8 text-muted-foreground" /><h3>回收站是空的</h3><p>资源库中移入回收站的内容会显示在这里。</p></Empty>}
       </>}
+      </div>
       <Pagination {...list} loading={list.refreshing} label="回收站分页" />
     </Card>
     <ConfirmDialog open={!!deleting} onOpenChange={(open) => { if (!open) setDeleting(undefined); }} title="彻底删除内容" confirmLabel="彻底删除" destructive

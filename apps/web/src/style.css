@@ -202,11 +202,11 @@
 }
 .overview-most-played > .overview-metric-label { @apply justify-start; }
 .overview-most-played > .overview-metric-label > span { @apply font-medium text-foreground; }
-.overview-ranking { @apply mt-3 grid min-w-0 gap-1; }
-.overview-ranking-item { @apply grid min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-1; }
+.overview-ranking { @apply mt-3 grid min-w-0 items-center gap-x-4 gap-y-1; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; }
+.overview-ranking-item { display: contents; }
 .overview-ranking-name { @apply line-clamp-2 text-sm leading-5; overflow-wrap: anywhere; }
 .overview-ranking-series { @apply text-muted-foreground; }
-.overview-ranking-count { @apply shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground tabular-nums; }
+.overview-ranking-count { @apply flex min-h-9 items-center justify-end whitespace-nowrap text-right text-xs text-muted-foreground tabular-nums; }
 .overview-ranking-skeleton { @apply mt-6 h-20 w-full; }
 @media (prefers-reduced-motion: no-preference) {
   /* Translating this viewport-height container briefly overflows the document. */
@@ -293,13 +293,42 @@
   @apply overflow-hidden;
 }
 .resource-library-card {
-  @apply overflow-hidden rounded-card border border-card-border bg-card p-card-padding shadow-card;
+  @apply flex flex-col overflow-hidden rounded-card border border-card-border bg-card p-card-padding shadow-card;
+  flex: 1 0 auto;
 }
-.resource-library-card > .library-toolbar {
+.resource-library-card > .pagination,
+.folder-parent-desktop > .pagination,
+.settings-card.trash-list-card > .pagination { margin-top: auto; padding-top: 16px; }
+.trash-list-card { flex: 1 0 auto; }
+.trash-list-card > .empty { flex: 1; }
+/* List pages own the remaining viewport height; only their contents scroll. */
+.workspace:has(.resource-library-card, .trash-list-card) { height: 100dvh; min-height: 0; }
+.workspace:has(.resource-library-card, .trash-list-card) .manage-sidebar { flex-shrink: 0; }
+.workspace:has(.resource-library-card, .trash-list-card) .manage-main,
+.page-content:has(> .resource-library-card, > .trash-list-card) { min-height: 0; }
+.page-content:has(> .resource-library-card, > .trash-list-card) > :is(.page-title, .manage-footer, .trash-summary, [role="alert"], [role="status"]) { flex-shrink: 0; }
+.resource-library-card,
+.settings-card.trash-list-card { flex: 1 1 0; min-height: 0; }
+.resource-library-card > .resource-desktop,
+.folder-parent-desktop > .desktop-background-grid { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
+.resource-library-card > :is(.pagination, .library-toolbar),
+.folder-parent-desktop > :is(.pagination, .library-toolbar),
+.trash-list-card > :is(.pagination, .toolbar) { flex-shrink: 0; }
+.trash-list-body { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; }
+.trash-list-body > [data-slot="table-container"] { flex-shrink: 0; }
+.trash-list-body > .empty { flex: 1; }
+.trash-table [data-slot="table-cell"] { height: 48px; padding-block: 4px; white-space: nowrap; }
+.trash-row-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: -8px; }
+.trash-row-actions > button { min-width: 0; justify-content: flex-start; border: 0; padding-inline: 8px; }
+@media (max-width: 640px) {
+  .trash-summary { padding: 16px; margin-bottom: 16px; }
+  .trash-summary > div { --tw-space-y-reverse: 0; }
+  .trash-summary > div > :not(:last-child) { margin-bottom: 8px; }
+  .trash-list-card .empty { padding-block: 12px; }
+}
+.resource-library-card > .library-toolbar,
+.resource-library-card > .folder-parent-desktop > .library-toolbar {
   @apply mb-5 rounded-none border-0 bg-transparent p-0;
-}
-.library-create-actions {
-  @apply ml-auto;
 }
 .share-landing {
   @apply min-h-dvh bg-background px-5 py-8 sm:py-12;

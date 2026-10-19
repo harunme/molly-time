@@ -16,6 +16,8 @@ import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
 import { ResourceDesktop } from "./resource-desktop";
+import { LibraryDataProvider, useLibraryData } from "./library-data";
+import { LibraryAddTile } from "./library-add-tile";
 import { queueVideoFiles, type VideoUploadBatch } from "./video-upload";
 import { MediaPreview, SubtitleSettings } from "./media";
 import { ShareDialog, ShareReceive } from "./shares";
@@ -394,10 +396,12 @@ function App() {
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
             <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} reminders={reminders} />} />
-            <Route path="library" element={<Library run={run} readonly={readonly} />} />
+            <Route path="library" element={<LibraryDataProvider key={`${session.user.id}:${session.family.id}`} />}>
+              <Route index element={<Library run={run} readonly={readonly} />} />
+              <Route path=":folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
+            </Route>
             <Route path="share" element={<Navigate to="/library" replace />} />
             <Route path="trash" element={<Trash readonly={readonly} />} />
-            <Route path="library/:folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
             <Route path="upload" element={<Navigate to="/library?uploads=1" replace />} />
             <Route path="watch" element={<Navigate to="/overview?watch=1" replace />} />
             <Route path="operations/*" element={session.user.role === "superadmin"
@@ -536,15 +540,19 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
 
 function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
   const { folderId = "" } = useParams();
+  const libraryData = useLibraryData();
   const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined);
+  const cached = [...(libraryData?.pages.values() ?? [])].flatMap(page => page.items).find(item => item.id === folderId);
+  const current = folder.data?.id === folderId ? folder.data : cached;
   if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
-  if (folder.loading || folder.data?.id !== folderId) return <State loading />;
-  if (folder.data.status === "archived") return <Navigate to="/trash" replace />;
-  if (folder.data.type !== "Series" && folder.data.type !== "Season") return <Navigate to="/library" replace />;
-  return <Library key={folderId} run={run} readonly={readonly} parent={folder.data} />;
+  if (!current) return <State loading />;
+  if (current.status === "archived") return <Navigate to="/trash" replace />;
+  if (current.type !== "Series" && current.type !== "Season") return <Navigate to="/library" replace />;
+  return <Library key={folderId} run={run} readonly={readonly} parent={current} />;
 }
 
 function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource; }) {
+  const libraryData = useLibraryData();
   const navigate = useNavigate();
   const location = useLocation();
   const tasksOpen = new URLSearchParams(location.search).get("uploads") === "1";
@@ -599,11 +607,11 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   };
   const list = usePagedData<Resource>(
     `/resources?${parent ? `parentId=${encodeURIComponent(parent.id)}&` : ""}sort=manual`,
-    serial,
+    serial, 20, true, false, libraryData,
   );
   const backgroundList = usePagedData<Resource>(
     `/resources?${parent?.parentId ? `parentId=${encodeURIComponent(parent.parentId)}&` : ""}sort=manual`,
-    serial, 20, !!parent,
+    serial, 20, !!parent, false, libraryData,
   );
   const parentName = parent?.ancestors?.[parent.ancestors.length - 1]?.name || "全部文件夹";
   const closeFolder = () => navigate(parent?.parentId ? `/library/${encodeURIComponent(parent.parentId)}` : "/library");
@@ -688,34 +696,17 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       <Button variant="ghost" size="sm" disabled={quickBusy} onClick={() => void uploadVideos()}>重试上传</Button>}
     </AlertDescription>
   </Alert>;
-    const toolbar = (
-<div className="toolbar library-toolbar">
-          {!parent && pendingUploads.total > 0 && <Button variant="bordered" aria-label="上传任务" onClick={() => setTasksOpen(true)}>
-              <ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务
-            </Button>}
-          {!readonly && <div className="actions library-create-actions">
-              <Button variant="bordered" disabled={folderCreating || !!renaming} onClick={() => void createFolder()}>
-                {folderCreating ? "正在新建…" : "新建文件夹"}
-              </Button>
-              <Button
-                variant="default"
-                aria-label="＋ 上传资源"
-                className="primary"
-                disabled={quickBusy}
-                onClick={() => videoInput.current?.click()}
-              >
-                <UploadCloud className="size-4" />
-                {quickBusy ? "正在加入…" : "上传资源"}
-              </Button>
-              <input ref={videoInput} type="file" accept=".mp4,video/mp4" multiple hidden aria-label="选择上传视频"
-                disabled={quickBusy} onChange={event => {
-                  const files = Array.from(event.currentTarget.files || []);
-                  event.currentTarget.value = '';
-                  if (files.length) void uploadVideos(files);
-                }} />
-          </div>}
-        </div>
-  );
+  const videoPicker = <input ref={videoInput} type="file" accept=".mp4,video/mp4" multiple hidden aria-label="选择上传视频"
+    disabled={readonly || quickBusy} onChange={event => {
+      const files = Array.from(event.currentTarget.files || []);
+      event.currentTarget.value = '';
+      if (files.length) void uploadVideos(files);
+    }} />;
+  const toolbar = !parent && pendingUploads.total > 0 && <div className="toolbar library-toolbar">
+    <Button variant="bordered" aria-label="上传任务" onClick={() => setTasksOpen(true)}>
+      <ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务
+    </Button>
+  </div>;
   return (
     <Dialog open={tasksOpen} onOpenChange={setTasksOpen}>
       <div className="page-title">
@@ -726,6 +717,8 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       </div>
       <div className="resource-library-card">
             <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing && !renaming} canArrange
+              input={videoPicker}
+              leadingTile={!readonly ? <LibraryAddTile onCreate={() => void createFolder()} onUpload={() => videoInput.current?.click()} creating={folderCreating || !!renaming} uploading={quickBusy} /> : undefined}
               toolbar={toolbar} feedback={<>{quickFeedback}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
               suspended={!!(upload || preview || share || subtitleSettings || tasksOpen)}
               loading={list.loading} loadError={list.error}
@@ -733,7 +726,11 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
               empty={<Empty className="empty"><FolderOpen className="size-9" /><h3>还没有内容</h3><p>新建文件夹或上传视频。</p></Empty>}
               folder={parent ? {
                 id: parent.id, name: parent.name, parentId: parent.parentId, parentName,
-                background: backgroundList.data, backgroundLoading: backgroundList.loading || backgroundList.refreshing,
+                background: backgroundList.data, backgroundLoading: backgroundList.loading,
+                backgroundLeadingTile: !readonly ? <LibraryAddTile /> : undefined,
+                backgroundToolbar: !parent.parentId && pendingUploads.total > 0 && <div className="toolbar library-toolbar">
+                  <Button variant="bordered"><ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务</Button>
+                </div>,
                 backgroundError: backgroundList.error,
                 backgroundFooter: <Pagination {...backgroundList} loading={backgroundList.refreshing} label="上级文件夹分页" />,
                 close: closeFolder,
@@ -905,7 +902,8 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       )}
       <DialogContent className="upload-tasks-dialog" onCloseAutoFocus={event => {
         event.preventDefault();
-        document.querySelector<HTMLButtonElement>(parent ? 'button[aria-label="＋ 上传资源"]' : 'button[aria-label="上传任务"]')?.focus();
+        (document.querySelector<HTMLButtonElement>(parent ? '.folder-panel-body button[aria-label="添加内容"]' : 'button[aria-label="上传任务"]')
+          ?? document.querySelector<HTMLButtonElement>('.resource-desktop button[aria-label="添加内容"]'))?.focus();
       }}>
         <DialogHeader>
           <DialogTitle>上传任务</DialogTitle>

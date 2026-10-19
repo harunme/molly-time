@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 test("global Tailwind tokens update inputs, buttons and cards together", async ({ page }) => {
+  await page.route('**/api/manage/uploads?*', route => route.fulfill({ json: { items: [], total: 1, page: 1, pageSize: 20 } }));
   await page.goto("/manage/");
   await page.getByLabel("账号", { exact: true }).fill("parent@example.test");
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
-  await expect(page.getByRole("button", { name: "新建文件夹", exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加内容', exact: true })).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(() => {
     const theme = document.documentElement.style;
@@ -14,12 +15,13 @@ test("global Tailwind tokens update inputs, buttons and cards together", async (
     theme.setProperty("--radius-ui", "1rem");
     theme.setProperty("--color-card", "rgb(240, 245, 250)");
   });
-  const action = page.locator('.library-create-actions').getByRole("button", { name: "新建文件夹", exact: true });
+  const action = page.getByRole('button', { name: '上传任务', exact: true });
   await expect(action).toHaveCSS("height", "52px");
   await expect(action).toHaveCSS("background-color", "rgb(240, 245, 250)");
   expect(await action.evaluate((element) => parseFloat(getComputedStyle(element).borderTopLeftRadius) >= element.clientHeight / 2)).toBe(true);
   const created = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/manage/resources');
-  await action.click();
+  await page.getByRole('button', { name: '添加内容', exact: true }).click();
+  await page.getByRole('menuitem', { name: '新建文件夹', exact: true }).click();
   const folder = await (await created).json();
   const input = page.getByRole('textbox', { name: '文件夹名称', exact: true });
   await expect(input).toBeFocused();

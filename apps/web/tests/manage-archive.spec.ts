@@ -66,7 +66,7 @@ test('recycle bin supports archive, storage totals, restore, retention and perma
     await expect(page).toHaveURL(/#\/trash$/);
     await page.reload();
     await expect(page.getByRole('heading', { name: '回收站', exact: true })).toBeVisible();
-    await page.getByRole('textbox', { name: '搜索回收站' }).fill('回收站检查20');
+    await expect(page.getByRole('textbox', { name: '搜索回收站' })).toHaveCount(0);
     const row = page.getByRole('row').filter({ hasText: '回收站检查20' });
     await expect(row).toContainText('1 个视频');
     await expect(page.getByTestId('trash-used')).toHaveText(`${subtitle.length} B`);

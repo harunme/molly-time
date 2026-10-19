@@ -87,7 +87,7 @@ test('task modal preserves the current folder and supports browser history', asy
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: '添加内容', exact: true })).toBeFocused();
   await expect(page).toHaveURL(/\/library\/season$/);
 });
 
@@ -207,7 +207,7 @@ test('pausing, resuming and closing the task modal preserve background upload', 
 });
 
 
-test('completed uploads are hidden and create actions sit in the list toolbar', async ({ page }) => {
+test('completed uploads are hidden and the add tile opens creation actions', async ({ page }) => {
   await page.route('**/api/manage/uploads?*', (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get('pending')).toBe('true');
@@ -215,9 +215,15 @@ test('completed uploads are hidden and create actions sit in the list toolbar', 
   });
   await login(page);
   await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
-  const toolbar = page.locator('.resource-library-card .library-toolbar');
-  await expect(toolbar.getByRole('button', { name: '新建文件夹', exact: true })).toBeVisible();
-  await expect(toolbar.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeVisible();
+  const add = page.getByRole('button', { name: '添加内容', exact: true });
+  await expect(add).toBeVisible();
+  await expect(page.locator('.resource-library-card > .library-toolbar')).toHaveCount(0);
+  await add.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('menuitem', { name: '新建文件夹', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '上传视频', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(add).toBeFocused();
   await expect(page.locator('.page-title').getByRole('button', { name: '新建文件夹', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '../../artifacts/manage-library-actions-desktop.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });

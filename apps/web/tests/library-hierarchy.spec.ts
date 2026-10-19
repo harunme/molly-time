@@ -43,7 +43,8 @@ test('organize a cartoon into seasons, sort episodes and move existing videos', 
     await name.press('Enter');
     await expect(page.locator('.resource-tile').filter({ hasText: '第十集 · 新名字' })).toContainText('EP 10');
     const picker = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: '＋ 上传资源', exact: true }).click();
+    await page.getByRole('button', { name: '添加内容', exact: true }).click();
+    await page.getByRole('menuitem', { name: '上传视频', exact: true }).click();
     await (await picker).setFiles([]);
     await expect(page.getByRole('dialog', { name: '上传资源', exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -52,7 +53,8 @@ test('organize a cartoon into seasons, sort episodes and move existing videos', 
     await page.screenshot({ path: '../../artifacts/library-hierarchy-mobile.png', fullPage: true });
     const uploadPicker = page.waitForEvent('filechooser');
     const created = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/manage/resources' && response.request().method() === 'POST');
-    await page.getByRole('button', { name: '＋ 上传资源', exact: true }).click();
+    await page.getByRole('button', { name: '添加内容', exact: true }).click();
+    await page.getByRole('menuitem', { name: '上传视频', exact: true }).click();
     await (await uploadPicker).setFiles({ name: '季内新集.mp4', mimeType: 'video/mp4', buffer: mp4Fixture() });
     const episode = await (await created).json();
     expect(episode.parentId).toBe(season.id);

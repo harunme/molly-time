@@ -14,10 +14,18 @@ export function useDebounced(value: string, delay = 300) {
   return settled;
 }
 
-export function usePagedData<T extends { id: string; }, Response extends Page<T> = Page<T>>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false) {
-  const [position, setPosition] = useState({ path, page: 1 });
+export type PagedDataCache<T, Response extends Page<T> = Page<T>> = {
+  pages: Map<string, Response>;
+  positions: Map<string, number>;
+};
+
+export function usePagedData<T extends { id: string; }, Response extends Page<T> = Page<T>>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false, cache?: PagedDataCache<T, Response>) {
+  const [position, setPosition] = useState(() => ({ path, page: cache?.positions.get(path) ?? 1 }));
   const page = position.path === path ? position.page : 1;
-  const setPage = (next: number) => setPosition({ path, page: next });
+  const setPage = (next: number) => {
+    cache?.positions.set(path, next);
+    setPosition({ path, page: next });
+  };
   const key = `${path}|${page}|${pageSize}`;
   const [result, setResult] = useState<{ key: string; value: Response; }>();
   const [error, setError] = useState('');
@@ -37,15 +45,16 @@ export function usePagedData<T extends { id: string; }, Response extends Page<T>
           throw new Error('列表加载失败，请稍后重新进入此页。');
         }
         const last = Math.max(1, Math.ceil(value.total / pageSize));
-        if (page > last) { setPosition({ path, page: last }); return; }
+        if (page > last) { cache?.positions.set(path, last); setPosition({ path, page: last }); return; }
+        cache?.pages.set(key, value);
         setResult({ key, value });
         if (remember) setKnown((current) => ({ ...current, ...Object.fromEntries(value.items.map((item) => [item.id, item])) }));
       })
       .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setRefreshing(false); });
     return () => controller.abort();
-  }, [path, page, pageSize, serial, key, enabled, remember]);
-  const current = result?.key === key ? result.value : undefined;
+  }, [path, page, pageSize, serial, key, enabled, remember, cache]);
+  const current = result?.key === key ? result.value : cache?.pages.get(key);
   return {
     response: current, data: current?.items ?? [], total: current?.total ?? 0, page, pageSize, setPage,
     known, error, loading: enabled && !current && !error, refreshing: enabled && refreshing

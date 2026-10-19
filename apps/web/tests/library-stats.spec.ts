@@ -16,7 +16,7 @@ test('library keeps navigation and actions without overview statistics or filter
   await expect(page.getByRole('textbox', { name: '搜索资源', exact: true })).toHaveCount(0);
   await expect(page.getByRole('combobox')).toHaveCount(0);
   await expect(page.locator('.desktop-instructions')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '＋ 上传资源', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加内容', exact: true })).toBeVisible();
   await page.screenshot({ path: '../../artifacts/library-simple.png', fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '英语启蒙', exact: true })).toBeVisible();

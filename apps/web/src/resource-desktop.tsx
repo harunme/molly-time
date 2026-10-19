@@ -10,7 +10,7 @@ type Drag = { id: string; x: number; y: number; width: number; height: number; o
 type FolderContext = {
   id: string; name: string; parentId: string | null; parentName: string;
   background: Resource[]; backgroundLoading: boolean; backgroundError: string;
-  backgroundFooter: ReactNode; close: () => void;
+  backgroundToolbar: ReactNode; backgroundLeadingTile?: ReactNode; backgroundFooter: ReactNode; close: () => void;
   path: { id: string; name: string }[]; open: (id: string | null) => void; dismiss: () => void;
 };
 type Props = {
@@ -19,13 +19,13 @@ type Props = {
   reorder: (id: string, beforeId: string | null, afterId: string | null) => Promise<void>;
   move: (id: string, folderId: string | null) => Promise<void>;
   folder?: FolderContext;
-  toolbar?: ReactNode; footer?: ReactNode; empty?: ReactNode;
+  toolbar?: ReactNode; input?: ReactNode; leadingTile?: ReactNode; footer?: ReactNode; empty?: ReactNode;
   feedback?: ReactNode;
   loading?: boolean; loadError?: string;
   suspended?: boolean;
 };
 
-export function ResourceDesktop({ items, enabled, canArrange, render, reorder, move, folder, toolbar, feedback, footer, empty, loading, loadError, suspended }: Props) {
+export function ResourceDesktop({ items, enabled, canArrange, render, reorder, move, folder, toolbar, input, leadingTile, feedback, footer, empty, loading, loadError, suspended }: Props) {
   const [order, setOrder] = useState(items);
   const [drag, setDrag] = useState<Drag>();
   const [dropId, setDropId] = useState<string>();
@@ -287,11 +287,13 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
   };
   const dragged = sourceItems.current.find((item) => item.id === drag?.id);
   const desktop = <>
+    {input}
     {error && <p role="alert" className="error">{error}</p>}
     {loadError && <p role="alert" className="error">{loadError}</p>}
     {loading && <p role="status" className="muted">正在打开…</p>}
-    {!loading && !loadError && !order.length && empty}
+    {!loading && !loadError && !order.length && !leadingTile && empty}
     <div ref={grid} className="resource-desktop" aria-label="资源卡片" aria-busy={busy} data-dragging={!!drag}>
+      {escaped ? folder?.backgroundLeadingTile : leadingTile}
       {order.map((item) => <article key={item.id} data-resource-id={item.id} className={`resource-tile${drag?.id === item.id ? ' is-dragging' : ''}${dropId === item.id ? ' is-drop-target' : ''}${hoverId === item.id ? ' is-group-pending' : ''}`}
         onPointerDown={(event) => start(event, item)}
         onContextMenu={(event) => { if (pending.current?.touch || dragRef.current) event.preventDefault(); }}
@@ -318,9 +320,11 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
   </>;
   return <>
     {folder && !escaped ? <div className="folder-parent-desktop" aria-hidden="true" inert>
+      {folder.backgroundToolbar}
       {folder.backgroundLoading && <p className="muted">正在打开…</p>}
       {folder.backgroundError && <p className="error">{folder.backgroundError}</p>}
       <div className="desktop-background-grid">
+        {folder.backgroundLeadingTile}
         {folder.background.map(item => <article key={item.id} className="desktop-background-tile">{render(item)}</article>)}
       </div>
       {folder.backgroundFooter}
@@ -356,7 +360,6 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
               <DialogTitle title={folder.name}>{folder.name}</DialogTitle>
             </div>
           </div>
-          <div className="folder-header-actions">{toolbar}</div>
           <DialogClose asChild><Button variant="ghost" size="icon" className="folder-dismiss" aria-label="关闭" title="关闭文件夹，返回资源库"><X /></Button></DialogClose>
         </DialogHeader>
         <div className="folder-panel-body">

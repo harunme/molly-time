@@ -13,7 +13,8 @@ async function login(page: Page) {
 const video = (name: string) => ({ name, mimeType: 'video/mp4', buffer: mp4Fixture() });
 async function choose(page: Page, names: string[]) {
   const picker = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: '＋ 上传资源', exact: true }).click();
+  await page.getByRole('button', { name: '添加内容', exact: true }).click();
+  await page.getByRole('menuitem', { name: '上传视频', exact: true }).click();
   const chooser = await picker;
   expect(chooser.isMultiple()).toBe(true);
   await chooser.setFiles(names.map(video));

@@ -87,7 +87,7 @@ test('overview shows watch durations, video play counts and heatmap intensity on
     await route.fulfill({ json: {
       ...data, devices: { ...data.devices, online: 2, active: 3 },
       watch: { ...data.watch, days, todayPlayedMs: 75 * 60000, weekPlayedMs: 485 * 60000,
-        mostPlayedVideos: [{ id: 'episode', name: '茉莉最喜欢看的英语启蒙故事：一起认识世界和新的朋友', playCount: 12 }, { id: 'second', name: 'Yum Yum', seriesName: '英语启蒙', playCount: 6 }, { id: 'third', name: 'Muddy Puddles', seriesName: '小猪佩奇', playCount: 5 }, { id: 'fourth', name: 'Who are You', seriesName: '英语启蒙', playCount: 4 }, { id: 'fifth', name: '一起探索大自然：小朋友们的周末冒险', playCount: 3 }] },
+        mostPlayedVideos: [{ id: 'episode', name: '茉莉最喜欢看的英语启蒙故事：一起认识世界和新的朋友', playCount: 12 }, { id: 'second', name: 'Yum Yum', seriesName: '英语启蒙', playCount: 6 }, { id: 'third', name: 'Muddy Puddles', seriesName: '小猪佩奇', playCount: 5 }, { id: 'fourth', name: 'Who are You', seriesName: '英语启蒙', playCount: 4 }, { id: 'fifth', name: '一起探索大自然：小朋友们的周末冒险', playCount: 3 }, { id: 'sixth', name: 'Go Away Shadow', seriesName: '古力小超人', playCount: 2 }, { id: 'seventh', name: 'Wake Up', seriesName: '古力小超人', playCount: 1 }] },
     } });
   });
   await page.goto('/manage/');
@@ -102,6 +102,7 @@ test('overview shows watch durations, video play counts and heatmap intensity on
   await expect(page.locator('.overview-most-played').getByRole('button')).toHaveCount(0);
   await expect(page.locator('.overview-ranking-count').first()).toHaveText('12 次');
   await expect(page.locator('.overview-ranking-count').nth(1)).toHaveText('6 次');
+  await expect(page.locator('.overview-ranking-item')).toHaveCount(7);
   await expect(page.locator('.overview-ranking-bar')).toHaveCount(0);
   await expect(page.locator('.overview-summary .overview-heatmap')).toHaveCount(1);
   await expect(page.locator('.overview-heatmap[data-slot="card"]')).toHaveCount(0);
@@ -134,7 +135,7 @@ test('overview shows watch durations, video play counts and heatmap intensity on
   expect(latestCell!.width).toBeCloseTo(latestCell!.height, 1);
   expect(latestCell!.width).toBe(12);
   expect(latestCell!.x + latestCell!.width).toBeCloseTo(heatmapScroll!.x + heatmapScroll!.width - 4, 0);
-  await page.screenshot({ path: testInfo.outputPath('overview-watch-wide.png'), fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: '../../artifacts/overview-watch-wide.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await expect(page.locator('.overview-ranking')).toBeVisible();
