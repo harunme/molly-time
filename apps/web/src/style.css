@@ -117,10 +117,10 @@
 .overview-session .overview-metric-value { @apply my-5 whitespace-normal leading-none; }
 .overview-session .overview-metric-value, .overview-resource-counts strong { font-size: clamp(2.25rem, 3.5vw, 3.5rem); letter-spacing: -0.065em; }
 .overview-session .overview-metric-unit { @apply mx-1 text-base font-medium tracking-normal sm:text-lg; }
-.overview-online { @apply grid items-baseline gap-x-4 gap-y-1 px-6 py-4 sm:col-span-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:px-8; }
+.overview-online { @apply grid items-center gap-x-4 gap-y-1 px-6 py-4 sm:col-span-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:px-8; }
 .overview-online .overview-metric-label { @apply justify-start gap-2; }
-.overview-online .overview-metric-value { @apply m-0 text-xl leading-7; }
-.overview-online .overview-metric-unit { @apply text-sm font-medium; }
+.overview-online .overview-metric-value { @apply m-0 inline-flex items-center text-sm leading-5; }
+.overview-online .overview-metric-unit { @apply text-sm leading-5 font-medium; }
 .overview-online .overview-metric-bottom { @apply m-0 justify-start gap-2 pt-0 text-sm leading-5; }
 .overview-online .overview-playback-control { @apply col-span-full mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-0 pt-3; }
 .overview-online .overview-playback-control > p { @apply m-0; }
@@ -180,14 +180,28 @@
 .overview-heatmap-day[data-level="2"], .overview-heatmap-swatch[data-level="2"] { --heatmap-fill: var(--color-heatmap-2); }
 .overview-heatmap-day[data-level="3"], .overview-heatmap-swatch[data-level="3"] { --heatmap-fill: var(--color-heatmap-3); }
 .overview-heatmap-day[data-level="4"], .overview-heatmap-swatch[data-level="4"] { --heatmap-fill: var(--color-heatmap-4); }
-.overview-heatmap-day:hover, .overview-heatmap-day:focus-visible, .overview-heatmap-day[aria-pressed="true"] {
+.overview-heatmap-day:hover, .overview-heatmap-day:focus-visible {
   background: var(--heatmap-fill);
   outline: 1px solid var(--color-muted-foreground);
   outline-offset: 1px;
   box-shadow: none;
   z-index: 1;
 }
+.overview-heatmap-day[aria-pressed="true"] { outline: none; z-index: 1; }
+.overview-heatmap-day[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 1px solid var(--color-heatmap-4);
+  border-radius: calc(var(--radius-heatmap) + 2px);
+  pointer-events: none;
+  opacity: .7;
+}
 .overview-heatmap-day:focus-visible { outline: 2px solid var(--color-heatmap-4); }
+@keyframes heatmap-selected-breathe {
+  0%, 100% { opacity: .35; box-shadow: 0 0 0 0 rgb(0 122 255 / .2); }
+  50% { opacity: 1; box-shadow: 0 0 0 1.5px rgb(0 122 255 / .12); }
+}
 .overview-heatmap-footer { @apply mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground; }
 .overview-heatmap-footer p { @apply m-0 tabular-nums; }
 .overview-heatmap-footer strong { @apply ml-2 font-medium text-foreground; }
@@ -198,10 +212,15 @@
 .overview-heatmap-tooltip > strong { @apply font-medium; }
 .overview-heatmap-tooltip [data-slot="tooltip-arrow"] { @apply fill-card; }
 @media (prefers-reduced-motion: no-preference) {
+  .overview-heatmap-day[aria-pressed="true"]::after { animation: heatmap-selected-breathe 2.4s ease-in-out infinite; }
   .overview-heatmap-day { transition: outline-color 120ms ease, box-shadow 120ms ease; }
 }
-.overview-most-played > .overview-metric-label { @apply justify-start; }
-.overview-most-played > .overview-metric-label > span { @apply font-medium text-foreground; }
+.overview-most-played .overview-metric-label { @apply justify-start; }
+.overview-most-played .overview-metric-label > span { @apply font-medium text-foreground; }
+.overview-ranking-content { min-width: 0; }
+@media (min-width: 1280px) {
+  .overview-ranking-content { width: fit-content; max-width: 100%; margin-inline: auto; }
+}
 .overview-ranking { @apply mt-3 grid min-w-0 items-center gap-x-4 gap-y-1; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; }
 .overview-ranking-item { display: contents; }
 .overview-ranking-name { @apply line-clamp-2 text-sm leading-5; overflow-wrap: anywhere; }

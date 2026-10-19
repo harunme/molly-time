@@ -1,5 +1,41 @@
 import { test, expect } from '@playwright/test';
 
+test('wide overview centers ranking in its column and preserves heatmap proportions', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.route('**/api/manage/overview', async route => {
+    const data = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...data, watch: { ...data.watch, mostPlayedVideos:
+      ['Yum Yum', 'Ball', 'Who are You', 'Muddy puddles', 'Go Away Shadow', '视频', 'Mr dinosaur is lost'].map((name, index) => ({
+        id: `rank-${index}`, name, seriesName: index === 5 ? null : '古力小超人', playCount: 10 - index,
+      })),
+    } } });
+  });
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.locator('.overview-ranking-item')).toHaveCount(7);
+  for (const width of [1280, 1920, 2560]) {
+    await page.setViewportSize({ width, height: 1080 });
+    const geometry = await page.locator('.overview-summary').evaluate(el => {
+      const summary = el.getBoundingClientRect();
+      const panel = el.querySelector('.overview-most-played')!.getBoundingClientRect();
+      const content = el.querySelector('.overview-ranking-content')!.getBoundingClientRect();
+      const stats = el.querySelector('.overview-duration-stats')!.getBoundingClientRect();
+      const heatmap = el.querySelector('.overview-heatmap')!.getBoundingClientRect();
+      return {
+        centerOffset: content.left + content.width / 2 - panel.left - panel.width / 2,
+        heatmapWidth: heatmap.width,
+        expectedHeatmapWidth: (summary.width - stats.width) * 1.5 / 2.3,
+      };
+    });
+    expect(Math.abs(geometry.centerOffset)).toBeLessThan(1);
+    expect(Math.abs(geometry.heatmapWidth - geometry.expectedHeatmapWidth)).toBeLessThan(1);
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.screenshot({ path: '../../artifacts/overview-ranking-balanced.png', animations: 'disabled' });
+});
+
 test('overview is the default home, uses aggregates and compact widgets, and links to management pages', async ({ page }) => {
   const errors: string[] = [];
   const requests: URL[] = [];

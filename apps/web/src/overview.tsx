@@ -203,9 +203,11 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       <Card className="overview-summary">
         <div className="overview-duration-stats">{metrics.slice(3).map(renderMetric)}</div>
         <div className="overview-metric overview-most-played" aria-label="视频播放排行">
+          <div className="overview-ranking-content">
           <div className="overview-metric-label"><span>视频播放排行 · 全部时间</span></div>
           {loading ? <span className="overview-skeleton overview-ranking-skeleton" aria-hidden="true" />
             : data ? <MostPlayedList videos={data.watch.mostPlayedVideos ?? []} /> : <p className="overview-empty-note">播放次数加载失败</p>}
+          </div>
         </div>
         <section className="overview-panel overview-heatmap" ref={heatmap} aria-busy={loading}>
           <div className="section-heading"><h2>观看热力图</h2><Button variant="ghost" size="sm" disabled={!data} onClick={() => openWatch()}>查看明细<ArrowRight className="size-3.5" /></Button></div>
