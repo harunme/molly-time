@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Clock, Monitor, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "./api";
 import { ParentReminderActions, useReminderData } from "./reminders";
 import type { Run } from "./main";
@@ -62,19 +63,22 @@ function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen:
     ? [{ label: `${Number(day.date.slice(5, 7))}月`, column: Math.floor((index + offset) / 7) + 2, key: day.date }] : [])
     .filter((month, index, labels) => !labels[index + 1] || labels[index + 1].column - month.column >= 3);
   return <div className="overview-heatmap-body">
-    <div className="overview-heatmap-summary"><span>近一年 <strong>{activeDays}</strong> 天有观看</span><span>共 <strong>{duration(total)}</strong></span><span>{firstDate} 至 {days[days.length - 1].date}</span>
+    <div className="overview-heatmap-summary">
+      <div className="overview-heatmap-active"><span>近一年观看</span><p><strong>{activeDays}</strong><span>天</span></p></div>
+      <div className="overview-heatmap-total"><span>累计时长</span><strong>{duration(total)}</strong></div>
       {!activeDays && <p className="overview-empty-note">近一年还没有观看记录，电视播放后会在这里显示。</p>}
     </div>
     <div className="overview-heatmap-visual">
     <div className="overview-heatmap-scroll" ref={scroll}>
-      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击查看当天记录，用方向键选择日期，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, minmax(var(--spacing-heatmap-cell), 1fr))`, minWidth: `calc(28px + ${columns} * (var(--spacing-heatmap-cell) + var(--spacing-heatmap-gap)))` }}>
+      <div className="overview-heatmap-grid" role="group" aria-label="每日观看热力图" aria-description="每格代表一天，点击查看当天记录，用方向键选择日期，左右滑动可查看全年。" style={{ gridTemplateColumns: `28px repeat(${columns}, var(--spacing-heatmap-cell))`, minWidth: `calc(28px + ${columns} * (var(--spacing-heatmap-cell) + var(--spacing-heatmap-gap)))` }}>
+        <span className="overview-heatmap-axis-corner" aria-hidden="true" style={{ gridColumn: 1, gridRow: 1 }} />
         {months.map((month) => <span className="overview-heatmap-month" key={month.key} style={{ gridColumn: `${month.column} / span ${Math.min(4, columns + 2 - month.column)}`, gridRow: 1 }}>{month.label}</span>)}
         {["一", "二", "三", "四", "五", "六", "日"].map((day, index) => <span className="overview-heatmap-weekday" key={day} style={{ gridRow: index + 2, gridColumn: 1 }}>{index % 2 === 0 ? day : ""}</span>)}
         {days.map((day, index) => {
           const label = `${day.date} · ${day.playedMs ? duration(day.playedMs) : "未观看"}`;
-          return <Button variant="ghost" size="icon" type="button" key={day.date} className="overview-heatmap-day" data-level={heatLevel(day.playedMs)}
+          return <Tooltip key={day.date}><TooltipTrigger asChild><Button variant="ghost" size="icon" type="button" className="overview-heatmap-day" data-level={heatLevel(day.playedMs)}
             style={{ gridColumn: Math.floor((index + offset) / 7) + 2, gridRow: (index + offset) % 7 + 2 }}
-            aria-label={label} title={label} aria-pressed={selected.date === day.date} tabIndex={selected.date === day.date ? 0 : -1}
+            aria-label={label} aria-pressed={selected.date === day.date} tabIndex={selected.date === day.date ? 0 : -1}
             onClick={() => { setSelectedDate(day.date); onOpen(day.date); }} onFocus={() => setSelectedDate(day.date)}
             onKeyDown={(event) => {
               const change = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[event.key];
@@ -83,7 +87,9 @@ function WatchHeatmap({ watch, onOpen }: { watch: OverviewData["watch"]; onOpen:
               const next = event.key === "Home" ? 0 : event.key === "End" ? days.length - 1 : Math.max(0, Math.min(days.length - 1, index + change!));
               const cells = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(".overview-heatmap-day");
               cells?.[next]?.focus();
-            }} />;
+            }} /></TooltipTrigger><TooltipContent className="overview-heatmap-tooltip" sideOffset={7}>
+              <span>{day.date}</span><strong>{day.playedMs ? `观看 ${duration(day.playedMs)}` : "未观看"}</strong>
+            </TooltipContent></Tooltip>;
         })}
       </div>
     </div>

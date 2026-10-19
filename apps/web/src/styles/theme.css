@@ -27,11 +27,11 @@
   --color-icon-subtle: #94949f;
   --color-published-surface: #e9f3ec;
   --color-published-foreground: #347553;
-  --color-heatmap-empty: #eff1f0;
-  --color-heatmap-1: #c6e6cf;
-  --color-heatmap-2: #7ec997;
-  --color-heatmap-3: #39965d;
-  --color-heatmap-4: #1b643b;
+  --color-heatmap-empty: #f0f1f4;
+  --color-heatmap-1: #dbeaff;
+  --color-heatmap-2: #a4caff;
+  --color-heatmap-3: #5c9ef5;
+  --color-heatmap-4: #007aff;
   --color-black: #000;
 
   --font-sans: "Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -95,13 +95,13 @@
   --radius-ui: 0.5rem;
   --radius-card: 1.5rem;
   --radius-popover: 1rem;
-  --radius-heatmap: 0.1875rem;
+  --radius-heatmap: 0.25rem;
   --radius-control-mark: 0.25rem;
   --radius-dialog: 1rem;
   --spacing-card-padding: 1.5rem;
   --spacing-card-gap: 1.5rem;
   --spacing-heatmap-cell: 0.75rem;
-  --spacing-heatmap-gap: 0.125rem;
+  --spacing-heatmap-gap: 0.1875rem;
   --blur-dialog: 0.25rem;
   --spacing-control: 2.5rem;
   --spacing-control-sm: 2rem;
