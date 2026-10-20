@@ -24,9 +24,10 @@ type Props = {
   feedback?: ReactNode;
   loading?: boolean; loadError?: string;
   suspended?: boolean;
+  exitSelection?: () => void;
 };
 
-export function ResourceDesktop({ items, enabled, canArrange, render, reorder, move, folder, toolbar, input, leadingTile, feedback, footer, empty, loading, loadError, suspended }: Props) {
+export function ResourceDesktop({ items, enabled, canArrange, render, reorder, move, folder, toolbar, input, leadingTile, feedback, footer, empty, loading, loadError, suspended, exitSelection }: Props) {
   const [order, setOrder] = useState(items);
   const [drag, setDrag] = useState<Drag>();
   const [dropId, setDropId] = useState<string>();
@@ -297,7 +298,8 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
     {loadError && <p role="alert" className="error">{loadError}</p>}
     {!loading && !loadError && !order.length && !leadingTile && empty}
     {loading && <span className="sr-only" role="status">正在打开…</span>}
-    <div ref={grid} className="resource-desktop" aria-label="资源卡片" aria-busy={busy || loading} data-dragging={!!drag}>
+    <div ref={grid} className="resource-desktop" aria-label="资源卡片" aria-busy={busy || loading} data-dragging={!!drag}
+      onKeyDown={event => { if (event.key === 'Escape' && exitSelection) { event.preventDefault(); event.stopPropagation(); exitSelection(); } }}>
       {escaped ? folder?.backgroundLeadingTile : leadingTile}
       {loading && loadingCards}
       {order.map((item) => <article key={item.id} data-resource-id={item.id} className={`resource-tile${drag?.id === item.id ? ' is-dragging' : ''}${dropId === item.id ? ' is-drop-target' : ''}${hoverId === item.id ? ' is-group-pending' : ''}`}
@@ -343,6 +345,7 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
     {folder && <Dialog modal={!suspended} open={!escaped} onOpenChange={open => { if (!open && !dragRef.current && !busy && !suspended) folder.dismiss(); }}>
       <DialogContent ref={panel} className="library-folder-panel" overlayClassName="library-folder-shade" aria-describedby={undefined} showCloseButton={false}
         onEscapeKeyDown={event => {
+          if (exitSelection) { event.preventDefault(); exitSelection(); return; }
           if (event.target instanceof Element && event.target.closest('[data-folder-rename]')) event.preventDefault();
           if (dragRef.current || busy || suspended || !(event.target instanceof Node) || !panel.current?.contains(event.target)) event.preventDefault();
         }}
@@ -369,6 +372,7 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
           <DialogClose asChild><Button variant="ghost" size="icon" className="folder-dismiss" aria-label="关闭" title="关闭文件夹，返回资源库"><X /></Button></DialogClose>
         </DialogHeader>
         <div className="folder-panel-body">
+          {toolbar}
           {feedback}
           {desktop}
           {footer}

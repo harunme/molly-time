@@ -67,7 +67,7 @@ test("real upload, parent preview and resource publication", async ({
     await expect(page.locator("video")).toHaveAttribute("src", /mediaId=/);
     await page.getByRole("dialog", { name: "家长预览 · 自然小故事", exact: true }).getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("button", { name: "更多操作 自然小故事", exact: true }).click();
-    await page.getByRole("menuitem", { name: "发布", exact: true }).click();
+    await page.getByRole("menuitem", { name: "上架", exact: true }).click();
     await page.getByRole("button", { name: "更多操作 自然小故事", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "下架", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");

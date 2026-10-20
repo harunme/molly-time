@@ -7,6 +7,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from PIL import Image, UnidentifiedImageError
@@ -44,7 +45,7 @@ from ..share_models import SharedOrigin
 from ..storage import build_storage
 from ..storage.settings import get_storage_settings
 from ..transactions import external_io, serialize_sqlite_write
-from ..trash import archive, ensure_active
+from ..trash import archive, archived_ancestor, ensure_active
 from ..upload_metadata import VideoMetadata, save_metadata
 from .pagination import paginate
 
@@ -88,6 +89,14 @@ def resource_state(db, item):
     return cached[item.id] if item.id in cached else db.get(ResourceState, item.id)
 
 
+def hidden_folder(db, item):
+    for parent in ancestors(db, item):
+        state = db.get(ResourceState, parent.id)
+        if state and (state.status != "published" or not state.ready):
+            return {"id": parent.id, "name": parent.name}
+    return None
+
+
 def dto(db, item, include_files=True):
     state = resource_state(db, item)
     media = db.info.get("manage_files", {}).get(item.id) if include_files else []
@@ -109,6 +118,7 @@ def dto(db, item, include_files=True):
         "indexNumber": item.index_number,
         "status": state.status if state else "published",
         "legacy": state is None,
+        "hiddenByFolder": hidden_folder(db, item),
         "shared": db.get(SharedOrigin, item.id) is not None,
         "ready": state.ready if state else True,
         "runtimeMs": (item.runtime_ticks or 0) // 10000,
@@ -513,6 +523,66 @@ def edit(item_id: str, body: EditBody, user: Parent, db: DbSession):
     return dto(db, item)
 
 
+class PublicationBody(BaseModel):
+    action: Literal["publish", "unpublish"]
+    ids: list[str] = Field(default_factory=list, max_length=200)
+    folderId: str | None = None
+
+
+def publishable(db, item, state):
+    return state.ready and (item.type != "Episode" or db.query(MediaFile.id).filter(
+        MediaFile.item_id == item.id, MediaFile.kind == "video",
+    ).first() is not None)
+
+
+def set_publication(db, item, state, action):
+    state.status = "published" if action == "publish" else "draft"
+    if action == "publish":
+        state.published_at = state.published_at or dt.datetime.now(dt.UTC)
+        for parent in ancestors(db, item):
+            parent_state = state_for(db, parent)
+            parent_state.published_at = parent_state.published_at or state.published_at
+
+
+@router.post("/resources/publication")
+def bulk_publication(body: PublicationBody, user: Parent, db: DbSession):
+    if bool(body.ids) == bool(body.folderId):
+        raise HTTPException(422, "请选择视频或一个文件夹")
+    serialize_sqlite_write(db)
+    if body.folderId:
+        folder = owned(db, Item, body.folderId, user.family_id)
+        ensure_active(db, folder)
+        if folder.type not in ("Series", "Season"):
+            raise HTTPException(422, "请选择文件夹")
+        items = db.query(Item).filter(
+            Item.id.in_(descendant_ids(user.family_id, folder.id)), Item.type == "Episode",
+        ).order_by(Item.id).all()
+        items = [item for item in items if not archived_ancestor(db, item)]
+    else:
+        # Validate the whole selection before any publication changes.
+        items = [owned(db, Item, key, user.family_id) for key in dict.fromkeys(body.ids)]
+        for item in items:
+            ensure_active(db, item)
+            if item.type != "Episode":
+                raise HTTPException(422, "批量上下架仅支持视频")
+    changed, unchanged, skipped, hidden = 0, 0, [], 0
+    target = "published" if body.action == "publish" else "draft"
+    for item in items:
+        state = state_for(db, item)
+        if body.action == "publish" and not publishable(db, item, state):
+            skipped.append({"id": item.id, "name": item.name, "reason": "文件检查完成后才能上架"})
+            continue
+        if state.status == target:
+            unchanged += 1
+        else:
+            set_publication(db, item, state, body.action)
+            changed += 1
+        if body.action == "publish" and hidden_folder(db, item):
+            hidden += 1
+    db.commit()
+    return {"changed": changed, "unchanged": unchanged, "skipped": skipped, "hidden": hidden}
+
+
 @router.post("/resources/{item_id}/{action}")
 def transition(item_id: str, action: str, user: Parent, db: DbSession):
     if action not in ("publish", "unpublish", "archive"):
@@ -525,23 +595,9 @@ def transition(item_id: str, action: str, user: Parent, db: DbSession):
         return dto(db, item)
     ensure_active(db, item)
     state = state_for(db, item)
-    if action == "publish":
-        if not state.ready or (
-            item.type == "Episode"
-            and not db.query(MediaFile)
-            .filter(MediaFile.item_id == item.id, MediaFile.kind == "video")
-            .first()
-        ):
-            raise HTTPException(409, "文件检查完成后才能发布")
-        state.status = "published"
-        state.published_at = state.published_at or dt.datetime.now(dt.UTC)
-        ancestor = db.get(Item, item.parent_id) if item.parent_id else None
-        while ancestor and ancestor.family_id == user.family_id:
-            parent_state = state_for(db, ancestor)
-            parent_state.published_at = parent_state.published_at or state.published_at
-            ancestor = db.get(Item, ancestor.parent_id) if ancestor.parent_id else None
-    else:
-        state.status = "draft"
+    if action == "publish" and not publishable(db, item, state):
+        raise HTTPException(409, "文件检查完成后才能发布")
+    set_publication(db, item, state, action)
     db.commit()
     return dto(db, item)
 

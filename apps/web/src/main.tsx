@@ -15,6 +15,7 @@ import { SelectField } from "@/components/ui/select";
 import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
+import { publicationLabel, useLibraryPublication } from "./library-publication";
 import { ResourceDesktop } from "./resource-desktop";
 import { LibraryDataProvider, useLibraryData } from "./library-data";
 import { LibraryAddTile } from "./library-add-tile";
@@ -541,17 +542,18 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
 function FolderLibrary({ run, readonly }: { run: Run; readonly: boolean; }) {
   const { folderId = "" } = useParams();
   const libraryData = useLibraryData();
-  const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined);
+  const [serial, refresh] = useState(0);
+  const folder = useData<Resource | undefined>(`/resources/${encodeURIComponent(folderId)}`, undefined, serial);
   const cached = [...(libraryData?.pages.values() ?? [])].flatMap(page => page.items).find(item => item.id === folderId);
   const current = folder.data?.id === folderId ? folder.data : cached;
   if (folder.error) return <><State error={folder.error} /><Button asChild variant="bordered"><Link to="/library">全部文件夹</Link></Button></>;
   if (!current) return <Loading variant="cards" label="正在打开文件夹…" />;
   if (current.status === "archived") return <Navigate to="/trash" replace />;
   if (current.type !== "Series" && current.type !== "Season") return <Navigate to="/library" replace />;
-  return <Library key={folderId} run={run} readonly={readonly} parent={current} />;
+  return <Library key={folderId} run={run} readonly={readonly} parent={current} parentChanged={() => refresh(value => value + 1)} />;
 }
 
-function Library({ run, readonly, parent }: { run: Run; readonly: boolean; parent?: Resource; }) {
+function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly: boolean; parent?: Resource; parentChanged?: () => void; }) {
   const libraryData = useLibraryData();
   const navigate = useNavigate();
   const location = useLocation();
@@ -625,6 +627,15 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
   useEffect(() => { setCreatedFolder(undefined); setRenaming(undefined); }, [list.page]);
   const changed = () => {
     refresh((v) => v + 1);
+  };
+  const publication = useLibraryPublication({
+    items: filtered, parent, scope: `${parent?.id || "root"}:${list.page}`, readonly,
+    refreshing: list.refreshing, changed: () => { changed(); parentChanged?.(); },
+  });
+  const openItem = (item: Resource) => {
+    if (publication.selecting && item.type === "Episode") { publication.toggle(item.id); return; }
+    if (item.type === "Episode") setPreview(item);
+    else navigate(`/library/${encodeURIComponent(item.id)}`);
   };
   const saveFolderName = async () => {
     if (!renaming || folderRenameLock.current) return;
@@ -702,35 +713,38 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
       event.currentTarget.value = '';
       if (files.length) void uploadVideos(files);
     }} />;
-  const toolbar = !parent && pendingUploads.total > 0 && <div className="toolbar library-toolbar">
+  const toolbar = <>{publication.toolbar}{!parent && pendingUploads.total > 0 && <div className="toolbar library-toolbar">
     <Button variant="bordered" aria-label="上传任务" onClick={() => setTasksOpen(true)}>
       <ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务
     </Button>
-  </div>;
+  </div>}</>;
   return (
     <Dialog open={tasksOpen} onOpenChange={setTasksOpen}>
       <div className="page-title">
         <div>
           <h1>{parent?.ancestors?.[parent.ancestors.length - 1]?.name || "资源库"}</h1>
-          <p>{parent?.type === "Season" ? "按集数整理本季视频，发布后按顺序观看。" : "按动画片、季、集整理资源，预览后发布到电视。"}</p>
+          <p>{parent?.type === "Season" ? "按集数整理本季视频，上架后按顺序观看。" : "整理文件夹，挑选视频，留给下一次观看。"}</p>
         </div>
       </div>
       <div className="resource-library-card">
-            <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing && !renaming} canArrange
+            <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing && !renaming && !publication.selecting && !publication.busy} canArrange
               input={videoPicker}
-              leadingTile={!readonly ? <LibraryAddTile onCreate={() => void createFolder()} onUpload={() => videoInput.current?.click()} creating={folderCreating || !!renaming} uploading={quickBusy} /> : undefined}
-              toolbar={toolbar} feedback={<>{quickFeedback}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
-              suspended={!!(upload || preview || share || subtitleSettings || tasksOpen)}
+              exitSelection={publication.selecting ? publication.exit : undefined}
+              leadingTile={!readonly && !publication.selecting ? <LibraryAddTile onCreate={() => void createFolder()} onUpload={() => videoInput.current?.click()} creating={folderCreating || !!renaming} uploading={quickBusy} /> : undefined}
+              toolbar={toolbar} feedback={<>{publication.feedback}{quickFeedback}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
+              suspended={!!(upload || preview || share || subtitleSettings || tasksOpen || publication.busy)}
               loading={list.loading} loadError={list.error}
-              footer={<Pagination {...list} loading={list.refreshing} label="资源库分页" />}
+              footer={<Pagination {...list} loading={list.refreshing || publication.busy} label="资源库分页" />}
               empty={<Empty className="empty"><FolderOpen className="size-9" /><h3>还没有内容</h3><p>新建文件夹或上传视频。</p></Empty>}
               folder={parent ? {
                 id: parent.id, name: parent.name, parentId: parent.parentId, parentName,
                 background: backgroundList.data, backgroundLoading: backgroundList.loading,
                 backgroundLeadingTile: !readonly ? <LibraryAddTile /> : undefined,
-                backgroundToolbar: !parent.parentId && pendingUploads.total > 0 && <div className="toolbar library-toolbar">
+                backgroundToolbar: !parent.parentId && <>
+                  <div className="library-publication-controls"><div className="library-selection-toolbar"><span className="library-selection-hint">目录管理电视可见性，视频按需上架。</span></div></div>
+                  {pendingUploads.total > 0 && <div className="toolbar library-toolbar">
                   <Button variant="bordered"><ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务</Button>
-                </div>,
+                </div>}</>,
                 backgroundError: backgroundList.error,
                 backgroundFooter: <Pagination {...backgroundList} loading={backgroundList.refreshing} label="上级文件夹分页" />,
                 close: closeFolder,
@@ -748,10 +762,11 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
               }}
               render={(item) => <>
 
-                <div className="desktop-cover-wrap">
+                <div className="desktop-cover-wrap" data-selected={publication.selecting && publication.selected.includes(item.id)}>
                 <button type="button" data-drag-surface className={`desktop-cover ${item.type !== "Episode" ? "desktop-folder" : "desktop-video"}`}
-                  aria-label={`打开 ${item.name}`}
-                  onClick={() => item.type === "Episode" ? setPreview(item) : navigate(`/library/${encodeURIComponent(item.id)}`)}>
+                  aria-label={publication.selecting && item.type === "Episode" ? `切换选择 ${item.name}` : `打开 ${item.name}`}
+                  disabled={publication.busy}
+                  onClick={() => openItem(item)}>
                   <span className="desktop-cover-art">
                     <img key={item.imageUrl} src={item.imageUrl} alt="" loading="lazy" draggable={false}
                       onLoad={event => { event.currentTarget.dataset.loaded = "true"; }}
@@ -763,8 +778,9 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                     {coverUploading === item.id && <span className="desktop-cover-status" role="status">正在上传封面…</span>}
                   </span>
                 </button>
+                {publication.selector(item)}
                 <div className="desktop-card-menu">
-                  {!readonly && (
+                  {!readonly && !publication.selecting && (
                     <>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -790,10 +806,11 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                           {parent && (parent.parentId || item.type === "Series") && <DropdownMenuItem onSelect={() => {
                             void run(async () => { await api(`/resources/${item.id}/move`, "POST", { folderId: parent.parentId }); changed(); });
                           }}>移到上一级</DropdownMenuItem>}
-                          <DropdownMenuItem disabled={item.status !== "published" && !item.ready}
-                            onSelect={() => action(item.id, item.status === "published" ? "unpublish" : "publish")}>
-                            {item.status === "published" ? "下架" : "发布"}
+                          <DropdownMenuItem disabled={publication.busy || (item.status !== "published" && !item.ready)}
+                            onSelect={() => void publication.changeItem(item)}>
+                            {item.type === "Episode" ? (item.status === "published" ? "下架" : "上架") : (item.status === "published" ? "从电视隐藏" : "显示到电视")}
                           </DropdownMenuItem>
+                          {item.type !== "Episode" && <DropdownMenuItem disabled={publication.busy} onSelect={() => void publication.publishFolder(item)}>上架目录内全部视频</DropdownMenuItem>}
                           <DropdownMenuSeparator />
                           {item.status === "published" && !item.shared && item.type !== "Season" && <DropdownMenuItem onSelect={() => setShare(item)}>分享内容</DropdownMenuItem>}
                           {item.type === "Episode" && (
@@ -864,15 +881,15 @@ function Library({ run, readonly, parent }: { run: Run; readonly: boolean; paren
                   <Button
                     variant="bordered"
                     className="name-button"
-                    onClick={() =>
-                      item.type === "Episode"
-                        ? setPreview(item)
-                        : navigate(`/library/${encodeURIComponent(item.id)}`)
-                    }
+                    onClick={() => openItem(item)}
                   >
                     {item.name}
                   </Button>}
                 </div>
+                <p className="library-item-status" data-published={item.status === "published" && item.ready}>
+                  <span>{publicationLabel(item)}</span>
+                  {item.hiddenByFolder && <span className="library-item-blocked" title={`上级目录“${item.hiddenByFolder.name}”已隐藏`}> · 目录已隐藏</span>}
+                </p>
                 {coverError?.id === item.id && <p className="desktop-cover-error" role="alert">{coverError.message}</p>}
               </>}
             />
