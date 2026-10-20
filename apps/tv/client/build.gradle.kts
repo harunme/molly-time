@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation("androidx.webkit:webkit:1.14.0")
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("androidx.media3:media3-database:1.8.0")
     implementation(libs.androidx.media3.datasource.okhttp)

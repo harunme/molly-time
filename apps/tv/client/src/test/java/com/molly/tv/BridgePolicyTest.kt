@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BridgePolicyTest {
+    @Test fun liveTvIsReadOnlyAndCannotExposeOperatorApis() {
+        assertTrue(BridgePolicy.allows("GET", "/api/live-tv"))
+        for (method in listOf("POST", "PUT", "DELETE")) assertFalse(BridgePolicy.allows(method, "/api/live-tv"))
+        assertFalse(BridgePolicy.allows("POST", "/api/manage/operations/live-tv/import"))
+        assertFalse(BridgePolicy.allows("GET", "/api/manage/operations/live-tv"))
+        assertFalse(BridgePolicy.allows("GET", "/api/live-tv?token=secret"))
+    }
     @Test fun signedOssCoversAreTheOnlyExternalImagesAllowed() {
         val cover = "https://covers.oss-cn-test.aliyuncs.com/cover.jpg?OSSAccessKeyId=id&Expires=1&Signature=sig"
         assertTrue(BridgePolicy.allowsOssImage(cover))

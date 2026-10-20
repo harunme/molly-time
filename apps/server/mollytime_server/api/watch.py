@@ -10,6 +10,7 @@ from ..deps import CurrentUser, DbSession
 from ..manage_auth import aware
 from ..management_models import Device, DeviceReminder, WatchInterval, WatchProgress, WatchSession
 from ..resource_policy import require_visible
+from ..models import Item
 from ..transactions import serialize_sqlite_write
 from .playback import _child, _episode
 
@@ -149,7 +150,10 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
         key = f"{user.family_id}:{scope}:{row.item_id}"
         progress = db.get(WatchProgress, key)
         # Newer session wins. Late events from old sessions cannot roll progress back.
-        if progress is None:
+        is_live = db.get(Item, row.item_id).type == "LiveChannel"
+        if is_live:
+            pass  # Live control events never contribute episode resume progress or watch statistics.
+        elif progress is None:
             progress = WatchProgress(
                 id=key,
                 family_id=user.family_id,

@@ -36,7 +36,7 @@ class TvWebFiles(StaticFiles):
         connect_source = storage_connect_source()
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            f"img-src 'self' blob:; connect-src 'self'{connect_source}; media-src 'self' https:; frame-src 'none'; "
+            f"img-src 'self' blob:; connect-src 'self'{connect_source} https: http:; media-src 'self' blob: https: http:; frame-src 'none'; "
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
         )
         return response

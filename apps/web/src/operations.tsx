@@ -10,6 +10,7 @@ import { ClientReleases } from "./client-releases";
 import { Invitations } from "./invitations";
 import { OperationsUsage } from "./usage";
 import { BackupSettings } from "./backup-settings";
+import { LiveTvOperations } from "./live-tv";
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { api } from "./api";
@@ -31,7 +32,7 @@ type Form = StorageConfig & {
 export function Operations({ notify }: { notify: (message: string) => void; }) {
   const tab = useParams()["*"] || "";
   const navigate = useNavigate();
-  const validTab = ["storage", "backups", "client-releases", "invitations", "usage"].includes(tab);
+  const validTab = ["storage", "backups", "client-releases", "invitations", "usage", "live-tv"].includes(tab);
   const [form, setForm] = useState<Form>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -94,7 +95,9 @@ export function Operations({ notify }: { notify: (message: string) => void; }) {
           <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
           <TabsTrigger value="invitations">用户邀请</TabsTrigger>
           <TabsTrigger value="usage">家庭用量</TabsTrigger>
+          <TabsTrigger value="live-tv">电视直播</TabsTrigger>
         </TabsList>
+        <TabsContent value="live-tv"><LiveTvOperations notify={notify} /></TabsContent>
         <TabsContent value="storage">
           {error && (
             <Alert variant="destructive" className="error" role="alert"><AlertDescription>

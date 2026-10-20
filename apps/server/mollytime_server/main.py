@@ -20,6 +20,7 @@ from .api import (
     client_updates,
     device_error_logs,
     downloads,
+    live_tv,
     manage_client_releases,
     manage_family,
     manage_home,
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(playback.router)
     app.include_router(playback_settings.router)
+    app.include_router(live_tv.router)
     app.include_router(reminders.router)
     app.include_router(manage_auth.router)
     app.include_router(downloads.router)

@@ -11,6 +11,9 @@ importers:
       '@noriginmedia/norigin-spatial-navigation':
         specifier: 2.3.0
         version: 2.3.0(react@19.1.1)
+      hls.js:
+        specifier: 1.6.13
+        version: 1.6.13
       react:
         specifier: 19.1.1
         version: 19.1.1
@@ -385,6 +388,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  hls.js@1.6.13:
+    resolution: {integrity: sha512-hNEzjZNHf5bFrUNvdS4/1RjIanuJ6szpWNfTaX5I6WfGynWXGT7K/YQLYtemSvFExzeMdgdE4SsyVLJbd5PcZA==}
+
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
@@ -701,6 +707,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  hls.js@1.6.13: {}
 
   lodash@4.18.1: {}
 

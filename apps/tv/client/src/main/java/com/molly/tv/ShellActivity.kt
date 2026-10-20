@@ -55,6 +55,11 @@ class ShellActivity : AppCompatActivity() {
     private val player = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         playing = false
         app.catalog.resume()
+        if (livePlaying) {
+            livePlaying = false
+            dispatch("molly:livePlaybackClosed", JSONObject())
+            return@registerForActivityResult
+        }
         val data = JSONObject().put("episodeId", result.data?.getStringExtra("episodeId") ?: "")
             .put("positionMs", result.data?.getLongExtra("positionMs", 0) ?: 0)
             .put("completed", result.data?.getBooleanExtra("completed", false) ?: false)
@@ -63,6 +68,7 @@ class ShellActivity : AppCompatActivity() {
         web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('molly:playbackClosed',{detail:$data}))", null)
         pendingClientRelease?.let { pendingClientRelease = null; dispatch("molly:clientUpdateAvailable", it.json()) }
     }
+    private var livePlaying = false
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -248,7 +254,7 @@ class ShellActivity : AppCompatActivity() {
             .put("catalogSync", true).put("offlinePlayback", true)
             .put("serverUrl", app.session.server).put("webVersion", app.webBundles.selectedVersion()).put("authenticated", app.session.refresh.isNotEmpty())
             .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
-            .put("clientUpdates", true)
+            .put("clientUpdates", true).put("liveTv", true)
         "catalogRead" -> app.catalog.read(args).also { result ->
             result.optJSONObject("data")?.let { data ->
                 val store = app.catalog.store()
@@ -313,6 +319,20 @@ class ShellActivity : AppCompatActivity() {
             if (path.substringBefore('?') == "/api/home") app.api.homeSchemaVersion = args.optInt("homeSchemaVersion", 1).coerceIn(1, 2)
             val result = org.json.JSONTokener(app.api.text(verb, path, args.optJSONObject("body"))).nextValue()
             result
+        }
+        "playLiveChannel" -> {
+            val id = args.getString("channelId")
+            require(id.matches(Regex("[a-f0-9]{32}"))) { "无效的频道 ID" }
+            require(app.session.access.isNotEmpty()) { "请先绑定电视" }
+            runOnUiThread {
+                if (!playing && !isDestroyed && generation == current) {
+                    playing = true
+                    livePlaying = true
+                    app.catalog.pause()
+                    player.launch(Intent(this, LiveTvActivity::class.java).putExtra("channelId", id))
+                }
+            }
+            JSONObject().put("ok", true)
         }
         "playEpisode" -> {
             val id = args.getString("episodeId")

@@ -56,6 +56,17 @@ class PlaybackSettings(Base):
     default_subtitle: Mapped[str] = mapped_column(String(16), default="zh")
 
 
+class LiveTvSettings(Base):
+    """Platform-operated opt-in playlist; no media is stored here."""
+
+    __tablename__ = "live_tv_settings"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default="platform")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    channels: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
+
+
 class FamilyReminders(Base):
     """Private parent clips; a separate table keeps existing databases additive."""
 

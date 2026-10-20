@@ -213,6 +213,22 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .settings-panel .overlay-page > .text-button { margin-top: .25rem; color: var(--settings-muted); font-size: .9rem; }
 .settings-panel .client-update-panel[data-phase="error"] .update-state { color: #ffc3b6; }
 .settings-panel .overlay-page > .update-card { margin-top: 1.5rem; }
+
+.live-help { color: var(--muted); font-size: .85rem; line-height: 1.6; }
+.live-toolbar { display: flex; align-items: center; gap: .8rem; margin: 1rem 0; }
+.live-toolbar > button { padding: .6rem 1rem; }
+.live-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
+.live-channel { min-width: 0; padding: .8rem 1rem; text-align: left; background: var(--settings-control); border: .1rem solid var(--settings-line); border-radius: .7rem; }
+.live-channel strong, .live-channel small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-channel strong { font-size: 1rem; }
+.live-channel small { margin-top: .3rem; color: var(--muted); font-size: .75rem; }
+.live-player { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: #000; color: #fff; }
+.live-player video { width: 100%; flex: 1; min-height: 0; object-fit: contain; }
+.live-player-controls { display: flex; gap: .7rem; align-items: center; padding: 1rem 2rem; background: #1c222a; }
+.live-player-controls > div { flex: 1; min-width: 0; }
+.live-player-controls p { font-size: .8rem; color: #b1bbc9; margin: .4rem 0; }
+.live-player-controls button { padding: .7rem 1rem; border: 2px solid #465160; border-radius: .5rem; }
+.live-player-controls button:focus { outline: 3px solid white; outline-offset: 2px; }
 @media (max-width: 700px) and (orientation: portrait) {
   :root { font-size: 12px; }
   .topbar { padding: 0 1.5rem; }
