@@ -392,11 +392,6 @@ button.desktop-add-trigger:focus-visible .desktop-add-art { outline: 2px solid v
 
 /* Publication controls follow the folder, while selection stays a deliberate mode. */
 .library-publication-controls { flex-shrink: 0; margin-bottom: 12px; }
-.folder-visibility { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 4px 0 18px; border-bottom: 1px solid var(--color-border); }
-.folder-visibility-copy { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
-.folder-visibility-copy > svg { width: 18px; height: 18px; margin-top: 2px; color: var(--color-muted-foreground); flex-shrink: 0; }
-.folder-visibility-copy span { font-size: 13px; font-weight: 550; }
-.folder-visibility-copy p { margin: 4px 0 0; color: var(--color-muted-foreground); font-size: 12px; line-height: 1.6; }
 .library-visibility-note { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; color: var(--color-muted-foreground); font-size: 12px; line-height: 1.7; }
 .library-visibility-note svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 3px; }
 .library-selection-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 44px; padding-block: 10px 2px; }
@@ -413,17 +408,22 @@ button.desktop-add-trigger:focus-visible .desktop-add-art { outline: 2px solid v
 .library-publication-feedback ul { margin: 6px 0 0; padding-left: 18px; }
 .library-item-status { margin: 3px 0 0; text-align: center; font-size: 11px; line-height: 18px; color: var(--color-muted-foreground); }
 .library-item-status[data-published="true"] > span:first-child { color: var(--color-published-foreground); }
-.library-item-blocked { color: var(--color-muted-foreground); }
-.library-video-selector { position: absolute; z-index: 4; top: 0; right: 0; display: grid; place-items: start end; width: 44px; height: 44px; padding: 4px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
-.library-video-selector > span { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--color-muted-foreground); border-radius: 50%; background: var(--color-card); box-shadow: 0 1px 5px rgb(0 0 0 / .12); color: var(--color-card); }
+.library-publication-menu-label { display: flex; flex-direction: column; gap: 3px; }
+.library-publication-menu-label small { color: var(--color-muted-foreground); font-size: 11px; line-height: 1.5; font-weight: 400; }
+.library-video-selector { position: absolute; z-index: 4; top: 10px; right: 0; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 14px; background: transparent; cursor: pointer; }
+.library-video-selector > span { display: grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid rgb(255 255 255 / .95); border-radius: 50%; background: rgb(28 28 32 / .18); box-shadow: 0 1px 3px rgb(0 0 0 / .16); color: white; transition: background-color 150ms, border-color 150ms; }
 .library-video-selector[aria-checked="true"] > span { background: var(--color-foreground); border-color: var(--color-foreground); }
-.library-video-selector svg { width: 15px; height: 15px; stroke-width: 2.5; }
-.library-video-selector:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: 2px; }
+.library-video-selector svg { width: 13px; height: 13px; stroke-width: 2.5; }
+.library-video-selector:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: -4px; }
 .library-video-selector:disabled { cursor: wait; opacity: .5; }
-.desktop-cover-wrap[data-selected="true"] .desktop-cover { outline: 2px solid var(--color-foreground); outline-offset: 5px; border-radius: 12px; }
+.resource-tile:has(.desktop-cover-wrap[data-selected="true"]) { background: var(--color-muted); border-color: rgb(46 46 56 / .12); }
+.desktop-cover-wrap:has(.library-video-selector) .desktop-cover { cursor: pointer; }
+.library-selection-toolbar[data-selecting="true"] { padding: 8px 10px; margin-top: 12px; border-radius: 12px; background: var(--color-muted); }
+.library-selection-toolbar[data-selecting="true"] .library-selection-count { font-size: 12px; font-weight: 500; color: var(--color-muted-foreground); }
+.library-selection-toolbar .library-selection-publish:not(:disabled) { border-color: var(--color-foreground); background: var(--color-foreground); color: var(--color-card); box-shadow: none; }
+.library-selection-toolbar .library-selection-publish:disabled { background: transparent; }
+@media (prefers-reduced-motion: reduce) { .library-video-selector > span { transition: none; } }
 @media (max-width: 640px) {
-  .folder-visibility { padding-bottom: 14px; gap: 12px; }
-  .folder-visibility-copy { gap: 8px; }
   .library-selection-hint { flex-basis: 100%; margin-bottom: 2px; }
   .library-selection-toolbar { gap: 6px; }
   .library-selection-actions { gap: 4px; }

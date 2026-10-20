@@ -741,7 +741,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                 background: backgroundList.data, backgroundLoading: backgroundList.loading,
                 backgroundLeadingTile: !readonly ? <LibraryAddTile /> : undefined,
                 backgroundToolbar: !parent.parentId && <>
-                  <div className="library-publication-controls"><div className="library-selection-toolbar"><span className="library-selection-hint">目录管理电视可见性，视频按需上架。</span></div></div>
+                  <div className="library-publication-controls"><div className="library-selection-toolbar"><span className="library-selection-hint">上架后可在电视观看。</span></div></div>
                   {pendingUploads.total > 0 && <div className="toolbar library-toolbar">
                   <Button variant="bordered"><ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务</Button>
                 </div>}</>,
@@ -807,8 +807,12 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                             void run(async () => { await api(`/resources/${item.id}/move`, "POST", { folderId: parent.parentId }); changed(); });
                           }}>移到上一级</DropdownMenuItem>}
                           <DropdownMenuItem disabled={publication.busy || (item.status !== "published" && !item.ready)}
+                            aria-label={item.type === "Episode" ? (item.status === "published" ? "下架" : "上架") : (item.status === "published" ? "下架目录" : "上架目录")}
                             onSelect={() => void publication.changeItem(item)}>
-                            {item.type === "Episode" ? (item.status === "published" ? "下架" : "上架") : (item.status === "published" ? "从电视隐藏" : "显示到电视")}
+                            {item.type === "Episode" ? (item.status === "published" ? "下架" : "上架") : <span className="library-publication-menu-label">
+                              <span>{item.status === "published" ? "下架目录" : "上架目录"}</span>
+                              <small>{item.status === "published" ? "整个目录暂时不可观看，保留视频状态" : "恢复观看其中已上架的视频"}</small>
+                            </span>}
                           </DropdownMenuItem>
                           {item.type !== "Episode" && <DropdownMenuItem disabled={publication.busy} onSelect={() => void publication.publishFolder(item)}>上架目录内全部视频</DropdownMenuItem>}
                           <DropdownMenuSeparator />
@@ -886,9 +890,9 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                     {item.name}
                   </Button>}
                 </div>
-                <p className="library-item-status" data-published={item.status === "published" && item.ready}>
+                <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
+                  title={item.hiddenByFolder ? `上级目录“${item.hiddenByFolder.name}”已下架` : undefined}>
                   <span>{publicationLabel(item)}</span>
-                  {item.hiddenByFolder && <span className="library-item-blocked" title={`上级目录“${item.hiddenByFolder.name}”已隐藏`}> · 目录已隐藏</span>}
                 </p>
                 {coverError?.id === item.id && <p className="desktop-cover-error" role="alert">{coverError.message}</p>}
               </>}

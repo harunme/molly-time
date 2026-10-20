@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, CheckCheck, LoaderCircle, Monitor, MonitorOff, X } from 'lucide-react';
+import { Check, LoaderCircle, MonitorOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { api, type Resource } from './api';
 import { confirmAction } from './feedback';
 
@@ -9,9 +8,10 @@ type Result = { changed: number; unchanged: number; hidden: number; skipped: { i
 type Mode = 'publish' | 'unpublish';
 
 export function publicationLabel(item: Resource) {
-  if (item.type !== 'Episode') return item.status === 'published' ? '电视可见' : '电视已隐藏';
   if (!item.ready) return '待就绪';
-  return item.status === 'published' ? '已上架' : '未上架';
+  if (item.status === 'published' && item.hiddenByFolder) return '随目录下架';
+  if (item.type !== 'Episode') return item.status === 'published' ? '目录已上架' : '目录已下架';
+  return item.status === 'published' ? '已上架' : '已下架';
 }
 
 export function useLibraryPublication({ items, parent, scope, readonly, refreshing, changed }: {
@@ -20,6 +20,7 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [batchMode, setBatchMode] = useState<Mode>();
   const lock = useRef(false);
   const selectButton = useRef<HTMLButtonElement>(null);
   const firstSelector = useRef<HTMLButtonElement>(null);
@@ -45,18 +46,19 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
     lock.current = true; setBusy(true); setError(''); setNotice(''); setSkipped([]);
     try { await operation(); changed(); }
     catch (failure) { setError((failure as Error).message); }
-    finally { lock.current = false; setBusy(false); }
+    finally { lock.current = false; setBusy(false); setBatchMode(undefined); }
   };
   const batch = async (action: Mode, folderId?: string) => {
     const ids = selection.map(item => item.id);
     if (!folderId && !ids.length) return;
     await perform(async () => {
+      setBatchMode(action);
       const result = await api<Result>('/resources/publication', 'POST', { action, ...(folderId ? { folderId } : { ids }) });
       const verb = action === 'publish' ? '上架' : '下架';
       const parts = [`已${verb} ${result.changed} 个视频`];
       if (result.unchanged) parts.push(`${result.unchanged} 个已是此状态`);
       if (result.skipped.length) parts.push(`${result.skipped.length} 个尚未就绪，已跳过`);
-      if (result.hidden) parts.push(`${result.hidden} 个受上级目录隐藏影响，暂不在电视显示`);
+      if (result.hidden) parts.push(`${result.hidden} 个因上级目录已下架，暂不在电视显示`);
       setNotice(parts.join('。') + '。'); setSkipped(result.skipped);
       // Keep skipped videos selected so their remaining work stays discoverable.
       setSelected(result.skipped.map(item => item.id));
@@ -64,7 +66,7 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
   };
   const publishFolder = async (folder: Resource) => {
     if (disabled || lock.current) return;
-    if (await confirmAction({ title: "上架目录内全部视频？", description: "包含所有子目录，尚未就绪的视频会跳过。隐藏的目录仍保持隐藏。", detail: { label: "目录", value: folder.name }, confirmText: "上架全部视频" })) {
+    if (await confirmAction({ title: "上架目录内全部视频？", description: "包含所有子目录，尚未就绪的视频会跳过。已下架的目录不会自动上架。", detail: { label: "目录", value: folder.name }, confirmText: "上架全部视频" })) {
       await batch('publish', folder.id);
     }
   };
@@ -73,36 +75,29 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
     const updated = await api<Resource>(`/resources/${item.id}/${published ? 'unpublish' : 'publish'}`, 'POST');
     const text = item.type === 'Episode'
       ? `“${item.name}”已${published ? '下架' : '上架'}。`
-      : `“${item.name}”已${published ? '从电视隐藏' : '设为电视可见'}，其中视频的上架状态已保留。`;
-    setNotice((item.type === 'Episode' ? text : '') + (!published && updated.hiddenByFolder ? `上级目录“${updated.hiddenByFolder.name}”已隐藏，暂不在电视显示。` : ''));
+      : `“${item.name}”已${published ? '下架' : '上架'}，其中视频的上架状态已保留。`;
+    setNotice((item.type === 'Episode' ? text : '') + (!published && updated.hiddenByFolder ? `上级目录“${updated.hiddenByFolder.name}”已下架，暂不在电视显示。` : ''));
   });
   const exit = () => { if (!busy) { setSelecting(false); setSelected([]); } };
   const toolbar = <div className="library-publication-controls">
-    {parent && <div className="folder-visibility">
-      <div className="folder-visibility-copy">
-        {parent.status === 'published' ? <Monitor aria-hidden="true" /> : <MonitorOff aria-hidden="true" />}
-        <div><span id="folder-visibility-label">在电视上显示此目录</span><p>隐藏目录会一起隐藏其中内容，保留视频的上架状态。</p></div>
-      </div>
-      {!readonly && <Switch aria-labelledby="folder-visibility-label" checked={parent.status === 'published'} disabled={disabled || !parent.ready} onCheckedChange={() => void changeItem(parent)} />}
-    </div>}
     {(parent?.hiddenByFolder || parent?.status !== 'published' && parent) && <p className="library-visibility-note">
-      <MonitorOff aria-hidden="true" />{parent.hiddenByFolder ? `上级目录“${parent.hiddenByFolder.name}”已隐藏。` : '此目录已从电视隐藏。'}视频上架后仍不会出现在电视。
+      <MonitorOff aria-hidden="true" />{parent.hiddenByFolder ? `上级目录“${parent.hiddenByFolder.name}”已下架。` : '此目录已下架。'}请先上架目录，才能在电视观看其中已上架的视频。
     </p>}
-    {!readonly && <div className="library-selection-toolbar" role="group" aria-label="视频批量操作" aria-busy={busy}>
+    {!readonly && <div className="library-selection-toolbar" data-selecting={selecting} role="group" aria-label="视频批量操作" aria-busy={busy}>
       {selecting ? <>
         <span className="library-selection-count">已选 {selection.length} 个视频</span>
         <Button variant="ghost" size="sm" disabled={disabled || !videos.length} onClick={() => setSelected(selection.length === videos.length ? [] : videos.map(item => item.id))}>
           {selection.length === videos.length && videos.length ? '取消全选' : '全选当前页'}
         </Button>
         <div className="library-selection-actions">
-          <Button variant="bordered" size="sm" disabled={disabled || !selection.some(item => item.status === 'published')} onClick={() => void batch('unpublish')}>下架</Button>
-          <Button size="sm" disabled={disabled || !selection.some(item => item.ready && item.status !== 'published')} onClick={() => void batch('publish')}>
-            {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <CheckCheck className="size-3.5" />}上架
+          <Button variant="bordered" size="sm" disabled={disabled || !selection.some(item => item.status === 'published')} onClick={() => void batch('unpublish')}>{batchMode === 'unpublish' && <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />}下架</Button>
+          <Button variant="bordered" className="library-selection-publish" size="sm" disabled={disabled || !selection.some(item => item.ready && item.status !== 'published')} onClick={() => void batch('publish')}>
+            {batchMode === 'publish' && <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />}上架
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={exit}>完成</Button>
         </div>
       </> : <>
-        <span className={`library-selection-hint${parent ? ' is-folder-label' : ''}`}>{parent ? '视频' : '目录管理电视可见性，视频按需上架。'}</span>
+        <span className={`library-selection-hint${parent ? ' is-folder-label' : ''}`}>{parent ? '视频' : '上架后可在电视观看。'}</span>
         {parent && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void publishFolder(parent)}>上架目录内全部视频</Button>}
         {videos.length > 0 && <Button ref={selectButton} variant="bordered" size="sm" disabled={disabled} onClick={() => setSelecting(true)}>选择视频</Button>}
       </>}

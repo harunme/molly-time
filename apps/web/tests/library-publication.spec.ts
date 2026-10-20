@@ -13,7 +13,7 @@ test('publication separates folder visibility, supports selection and explains s
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();
     await page.getByRole('button', { name: '第 1 季', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '第 1 季', exact: true });
-    await expect(dialog.getByRole('switch', { name: '在电视上显示此目录' })).toBeChecked();
+    await expect(dialog.getByRole('switch')).toHaveCount(0);
     await dialog.getByRole('button', { name: '选择视频', exact: true }).click();
     await dialog.getByRole('button', { name: '全选当前页', exact: true }).click();
     await expect(dialog.getByRole('checkbox')).toHaveCount(4);
@@ -37,11 +37,13 @@ test('publication separates folder visibility, supports selection and explains s
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('button', { name: '选择视频', exact: true })).toBeFocused();
-    await dialog.getByRole('switch', { name: '在电视上显示此目录' }).click();
-    await expect(dialog.getByRole('switch')).not.toBeChecked();
-    await expect(dialog.getByText('此目录已从电视隐藏。视频上架后仍不会出现在电视。', { exact: true })).toBeVisible();
-    await expect(dialog.locator('.library-item-status').filter({ hasText: '已上架' })).toHaveCount(3);
-    await expect(dialog.locator('.library-item-blocked')).toHaveCount(4);
+    await dialog.getByRole('button', { name: '返回英语启蒙', exact: true }).click();
+    await page.getByRole('button', { name: '更多操作 第 1 季', exact: true }).click();
+    await page.getByRole('menuitem', { name: '下架目录', exact: true }).click();
+    await page.getByRole('button', { name: '第 1 季', exact: true }).click();
+    await expect(dialog.getByText('此目录已下架。请先上架目录，才能在电视观看其中已上架的视频。', { exact: true })).toBeVisible();
+    await expect(dialog.locator('.library-item-status').filter({ hasText: '随目录下架' })).toHaveCount(3);
+    await expect(dialog.locator('.library-item-status[data-published="true"]')).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: '../../artifacts/library-publication-mobile.png', animations: 'disabled' });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -49,10 +51,12 @@ test('publication separates folder visibility, supports selection and explains s
     expect(await toolbar.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await dialog.getByRole('button', { name: '上架目录内全部视频', exact: true }).click();
     await page.getByRole('button', { name: '上架全部视频', exact: true }).click();
-    await expect(dialog.getByRole('status').filter({ hasText: '3 个受上级目录隐藏影响' })).toBeVisible();
-    await dialog.getByRole('switch').click();
-    await expect(dialog.getByRole('switch')).toBeChecked();
-    await expect(dialog.locator('.library-item-blocked')).toHaveCount(0);
+    await expect(dialog.getByRole('status').filter({ hasText: '3 个因上级目录已下架' })).toBeVisible();
+    await dialog.getByRole('button', { name: '返回英语启蒙', exact: true }).click();
+    await page.getByRole('button', { name: '更多操作 第 1 季', exact: true }).click();
+    await page.getByRole('menuitem', { name: '上架目录', exact: true }).click();
+    await page.getByRole('button', { name: '第 1 季', exact: true }).click();
+    await expect(dialog.locator('.library-item-status[data-published="true"]')).toHaveCount(3);
   } finally {
     await page.request.post('/api/manage/resources/season/publish', { headers });
     await page.request.post('/api/manage/resources/publication', { headers, data: { action: 'publish', ids: ['episode', 'browser-episode', 'browser-next'] } });

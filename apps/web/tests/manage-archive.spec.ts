@@ -100,7 +100,7 @@ test('recycle bin supports archive, storage totals, restore, retention and perma
     await page.getByRole('button', { name: '回收站检查容器', exact: true }).click();
     await pagination.getByRole('button', { name: /下一页/ }).click();
     await page.getByRole('button', { name: '更多操作 回收站检查20', exact: true }).click();
-    await expect(page.getByRole('menuitem', { name: '从电视隐藏', exact: true })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: '下架目录', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     expect((await page.request.post(`/api/manage/resources/${folders[20]}/archive`, { headers })).ok()).toBeTruthy();
     await page.getByRole('button', { name: '返回全部文件夹', exact: true }).click();
