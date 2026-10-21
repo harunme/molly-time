@@ -1,3 +1,4 @@
+import { BrowserWatchGuard } from './watch-control';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
@@ -93,6 +94,7 @@ function BrowserLive({ channel, channels, switchChannel, close }: { channel: Cha
   }, []);
   useEffect(() => {
     const media = video.current!;
+    const guard = new BrowserWatchGuard();
     let disposed = false, session = '', origin = performance.now(), last = 0, seq = 0, playing = false;
     let destroy = () => {}, deadline: ReturnType<typeof setTimeout> | undefined;
     let chain = Promise.resolve(), checking = false;
@@ -106,6 +108,7 @@ function BrowserLive({ channel, channels, switchChannel, close }: { channel: Cha
           if (edge === end) break;
         }
       }
+      guard.sample(next);
       playing = next;
     };
     const changed = () => sample(!disposed && !media.paused && media.readyState >= 3 && !document.hidden && !media.ended);
@@ -115,6 +118,7 @@ function BrowserLive({ channel, channels, switchChannel, close }: { channel: Cha
     media.addEventListener('error', failed); document.addEventListener('visibilitychange', changed);
     setError(''); setStatus('正在连接频道…');
     void browserRequest<Session>(`/api/live-tv/channels/${channel.id}/sessions`, 'POST').then(async source => {
+      await guard.open();
       session = source.sessionId; origin = performance.now(); last = 0;
       if (disposed) { sample(false, true); return; }
       deadline = setTimeout(() => closeRef.current(), source.limitMs);
@@ -133,8 +137,10 @@ function BrowserLive({ channel, channels, switchChannel, close }: { channel: Cha
         await media.play().catch(() => { if (!disposed) setStatus('按播放按钮开始观看'); });
       } catch { if (!disposed) failed(); }
     }).catch(e => { if (!disposed) setError(e instanceof Error ? e.message : '频道加载失败'); });
+    const watchTimer = setInterval(() => { if (!guard.sample(playing && !document.hidden)) closeRef.current(); }, 100);
     const timer = setInterval(() => {
       sample(playing);
+      void guard.sync().catch(() => {});
       if (!session || checking) return;
       checking = true;
       void browserRequest(`/api/live-tv/sessions/${session}`).catch(e => {
@@ -143,7 +149,7 @@ function BrowserLive({ channel, channels, switchChannel, close }: { channel: Cha
       }).finally(() => { checking = false; });
     }, 5000);
     return () => {
-      disposed = true; sample(false, true); clearInterval(timer); clearTimeout(deadline);
+      disposed = true; sample(false, true); void guard.sync().catch(() => {}); clearInterval(watchTimer); clearInterval(timer); clearTimeout(deadline);
       events.forEach(name => media.removeEventListener(name, changed)); media.removeEventListener('error', failed);
       document.removeEventListener('visibilitychange', changed); media.pause(); destroy(); media.removeAttribute('src'); media.load();
     };

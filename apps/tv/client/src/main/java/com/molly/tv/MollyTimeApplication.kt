@@ -12,6 +12,7 @@ class MollyTimeApplication : Application() {
     lateinit var errorLogQueue: ErrorLogQueue
     lateinit var updates: ClientUpdates
     lateinit var webBundles: WebBundleStore
+    lateinit var watchControl: WatchControl
     lateinit var catalog: CatalogSync
     var catalogListener: ((String, org.json.JSONObject) -> Unit)? = null
     val webUpdateExecutor = Executors.newSingleThreadExecutor()
@@ -25,6 +26,7 @@ class MollyTimeApplication : Application() {
         // Upgrade legacy parent-token TV sessions to revocable device credentials at next login.
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
         api = MollyTimeApi(session) { DeviceName.read(this) }
+        watchControl = WatchControl(this, session, api)
         val covers = CoverStore(this, session, api)
         catalog = CatalogSync(this, session, api, covers, emit = { name, detail ->
             android.os.Handler(android.os.Looper.getMainLooper()).post { catalogListener?.invoke(name, detail) }

@@ -1,3 +1,5 @@
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { WatchControls } from "./watch-control";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -411,7 +413,7 @@ function App() {
             <Route path="logs" element={session.user.role === "superadmin"
               ? <DeviceErrorLogs />
               : <Navigate to="/overview" replace />} />
-            <Route path="family" element={<Family
+            <Route path="family/*" element={<Family
               run={run}
               readonly={readonly}
               notify={setNotice}
@@ -420,7 +422,7 @@ function App() {
                 ...current, family: { ...current.family, name },
               })}
             />} />
-            <Route path="pair" element={<Navigate to={`/family?${new URLSearchParams({ pair: "1", code: pairCode })}`} replace />} />
+            <Route path="pair" element={<Navigate to={`/family/devices?${new URLSearchParams({ pair: "1", code: pairCode })}`} replace />} />
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Routes>
           <footer className="manage-footer">
@@ -1256,7 +1258,9 @@ function Family({
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
-  const pairingOpen = params.get("pair") === "1";
+  const tab = location.pathname.split("/")[2] || (params.get("pair") === "1" ? "devices" : "general");
+  const validTab = ["general", "devices", "watching", "security"].includes(tab);
+  const pairingOpen = tab === "devices" && params.get("pair") === "1";
   const pairCode = params.get("code") || "";
   const setPairingOpen = (open: boolean) => {
     const backgroundParams = new URLSearchParams(location.search);
@@ -1305,16 +1309,19 @@ function Family({
       setDefaultSubtitle(settings.data.defaultSubtitle ?? "zh");
     }
   }, [settings.data]);
-  return (
-    <>
-      <div className="page-title">
-        <div>
-          <h1>家庭设置</h1>
-          <p>电视设备、播放偏好与家庭用量。</p>
-        </div>
-      </div>
-      <div className="settings-grid">
-        <div className="settings-column">
+  if (!validTab || location.pathname === "/family" || location.pathname === "/family/") {
+    return <Navigate to={`/family/${validTab ? tab : "general"}${location.search}`} replace />;
+  }
+  return <>
+    <div className="page-title"><div><h1>家庭设置</h1><p>管理家庭资料、电视设备、观看安排和账号安全。</p></div></div>
+    <Tabs className="operations-tabs family-settings-tabs" value={tab} activationMode="manual" onValueChange={value => navigate(`/family/${value}`)}>
+      <TabsList aria-label="家庭设置分类">
+        <TabsTrigger value="general">家庭信息</TabsTrigger>
+        <TabsTrigger value="devices">电视设备</TabsTrigger>
+        <TabsTrigger value="watching">观看管理</TabsTrigger>
+        <TabsTrigger value="security">账号安全</TabsTrigger>
+      </TabsList>
+      <TabsContent value="general"><div className="settings-grid"><div className="settings-column">
           <Card className="settings-card">
             <h2>家庭信息</h2>
             <form onSubmit={(e) => {
@@ -1336,23 +1343,7 @@ function Family({
             </form>
           </Card>
           <FamilyUsage />
-          <Card className="settings-card">
-            <h2>播放偏好</h2>
-            <State loading={settings.loading && !settings.data} error={settings.error} variant="form" />
-            {settings.data && <form onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                await api("/settings", "PUT", { defaultSubtitle });
-                refresh((v) => v + 1);
-                notify("默认字幕已更新，下一次播放生效。");
-              });
-            }}>
-              <Label htmlFor="default-subtitle">默认字幕</Label>
-              <SelectField id="default-subtitle" value={defaultSubtitle} onValueChange={(value) => setDefaultSubtitle(value)} disabled={readonly} options={[({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> }), ({ value: "off", label: <> 关闭字幕 </> })]} />
-              <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
-              {!readonly && <Button variant="bordered">保存默认字幕</Button>}
-            </form>}
-          </Card>
+      </div><div className="settings-column">
           <Card className="settings-card">
             <h2>时区与存储</h2>
             <State loading={settings.loading && !settings.data} error={settings.error} variant="detail" />
@@ -1395,8 +1386,8 @@ function Family({
             )}
           </Card>
           <TrashRetentionSettings readonly={readonly} run={run} notify={notify} />
-        </div>
-        <div className="settings-column">
+      </div></div></TabsContent>
+      <TabsContent value="devices">
           <Card className="settings-card">
             <div className="section-heading">
               <h2>TV 设备</h2>
@@ -1463,7 +1454,30 @@ function Family({
             )}
             <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
           </Card>
-          <ParentReminders readonly={readonly} run={run} notify={notify} />
+      </TabsContent>
+      <TabsContent value="watching">
+        <WatchControls readonly={readonly} />
+        <div className="settings-grid"><div className="settings-column">
+          <Card className="settings-card">
+            <h2>播放偏好</h2>
+            <State loading={settings.loading && !settings.data} error={settings.error} variant="form" />
+            {settings.data && <form onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                await api("/settings", "PUT", { defaultSubtitle });
+                refresh((v) => v + 1);
+                notify("默认字幕已更新，下一次播放生效。");
+              });
+            }}>
+              <Label htmlFor="default-subtitle">默认字幕</Label>
+              <SelectField id="default-subtitle" value={defaultSubtitle} onValueChange={(value) => setDefaultSubtitle(value)} disabled={readonly} options={[({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> }), ({ value: "off", label: <> 关闭字幕 </> })]} />
+              <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
+              {!readonly && <Button variant="bordered">保存默认字幕</Button>}
+            </form>}
+          </Card>
+        </div><div className="settings-column"><ParentReminders readonly={readonly} run={run} notify={notify} /></div></div>
+      </TabsContent>
+      <TabsContent value="security"><div className="settings-column">
           {!readonly && (
             <Card className="settings-card">
               <h2>修改密码</h2>
@@ -1506,10 +1520,10 @@ function Family({
               </form>
             </Card>
           )}
-        </div>
-      </div>
-    </>
-  );
+        {readonly && <p className="muted">修改账号密码需要管理员账号。</p>}
+      </div></TabsContent>
+    </Tabs>
+  </>;
 }
 
 // Normalize previously issued entry links before HashRouter reads the location.

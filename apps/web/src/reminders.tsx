@@ -14,7 +14,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 
 type Kind = 'warning' | 'farewell';
 type Clip = { itemId: string | null; ready: boolean; name: string; previewUrl: string | null; };
-type Device = { id: string; name: string; phase: string; requestId: string | null; online: boolean; lastSeen: string; bootId?: string | null; bootPlayedMs?: number | null; currentWatch?: { sessionId: string; name: string; playedMs: number; } | null; };
+type Device = { watchManagement?: boolean; id: string; name: string; phase: string; requestId: string | null; online: boolean; lastSeen: string; bootId?: string | null; bootPlayedMs?: number | null; currentWatch?: { sessionId: string; name: string; playedMs: number; } | null; };
 type Settings = { enabled: boolean; warning: Clip; farewell: Clip; };
 
 export function useReminderData(includeDevices = false, enabled = true) {
@@ -36,7 +36,9 @@ export function useReminderData(includeDevices = false, enabled = true) {
     alive.current = true;
     void reload();
     const timer = setInterval(() => { void reload(); }, 5000);
-    return () => { alive.current = false; clearInterval(timer); };
+    const changed = () => { void reload(); };
+    window.addEventListener('molly:watch-controlChanged', changed);
+    return () => { alive.current = false; clearInterval(timer); window.removeEventListener('molly:watch-controlChanged', changed); };
   }, [includeDevices, enabled]);
   return { settings, devices, error, reload };
 }
@@ -50,7 +52,7 @@ export function ParentReminderActions({ data, readonly, run, notify }: {
   data: ReturnType<typeof useReminderData>; readonly: boolean; run: Run; notify: (value: string) => void;
 }) {
   const { settings, devices, error, reload } = data;
-  const online = devices?.filter((device) => device.online) ?? [];
+  const online = devices?.filter((device) => device.online && !device.watchManagement) ?? [];
   const [action, setAction] = useState<'remind' | 'restore'>();
   const [busy, setBusy] = useState(false);
   const clipsReady = !!settings?.warning.ready && !!settings?.farewell.ready;
@@ -86,7 +88,7 @@ export function ParentReminderActions({ data, readonly, run, notify }: {
       <Button type="button" size="sm" title="提醒后只看完当前这一集，结束时播放休息提醒视频并停止" disabled={busy || !!error || !online.some((device) => eligible(device, 'remind'))} onClick={() => start('remind')}>发起提醒</Button>
       <Button type="button" size="sm" variant="bordered" disabled={busy || !!error || !online.some((device) => eligible(device, 'restore'))} onClick={() => start('restore')}>恢复播放</Button>
     </div>}
-    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family">家庭设置</Link>上传剩余集数提醒和休息提醒视频。</p>}
+    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family/watching">观看管理</Link>上传剩余集数提醒和休息提醒视频。</p>}
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(undefined); }}>
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>
@@ -126,7 +128,7 @@ export function ParentReminders({ readonly, run, notify }: {
   };
   return <Card className="settings-card parent-reminders">
     <h2>家长视频提醒</h2>
-    <p className="muted">上传剩余集数提醒与休息提醒视频，可在这里预览。需要发起提醒或恢复播放时，请前往<Link to="/overview">概览</Link>。</p>
+    <p className="muted">上传最后一集与休息提醒视频，观看时自动提示，也可在这里预览。未开启观看管理的电视可在<Link to="/overview">概览</Link>手动发起提醒。</p>
     {uploadPolicy.limits && <p className="muted">单个视频上限：{bytes(uploadPolicy.limits.video)}</p>}
     {uploadPolicy.error && <Alert variant="destructive" role="alert"><AlertDescription>{uploadPolicy.error}</AlertDescription></Alert>}
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -134,7 +136,7 @@ export function ParentReminders({ readonly, run, notify }: {
     {settings && <>
       {(['warning', 'farewell'] as const).map((kind) => <div className="reminder-clip" key={kind}>
         <Label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '休息提醒视频'}</Label>
-        <p className="muted">{settings[kind].ready ? '视频已就绪' : '请上传视频，等待处理完成'} · {kind === 'warning' ? '后台发起后主动出现' : '最后一集看完后出现，随后停止播放'}</p>
+        <p className="muted">{settings[kind].ready ? '视频已就绪' : '请上传视频，等待处理完成'} · {kind === 'warning' ? '最后一集开始时出现，也支持后台手动发起' : '最后一集看完后出现，随后停止播放'}</p>
         {!readonly && <FileUploadField className="rounded-full" inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={busy || !uploadPolicy.limits}
           inputLabel={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传休息提醒视频'} placeholder="选择 MP4 视频"
           onFileSelect={(file) => { void upload(kind, file); }} />}
@@ -143,7 +145,7 @@ export function ParentReminders({ readonly, run, notify }: {
         </Button>}
         {preview === kind && settings[kind].previewUrl && <video key={settings[kind].previewUrl} src={settings[kind].previewUrl!} controls autoPlay aria-label="家长提醒预览" />}
       </div>)}
-      <p className="muted">上传 MP4 视频，可在资源库的上传任务中查看进度或重试。两段视频就绪后，可在概览中发起提醒或恢复播放。提醒不计入观看记录。</p>
+      <p className="muted">上传 MP4 视频，可在资源库的上传任务中查看进度或重试。不上传也能按观看安排休息；未开启观看管理的电视需两段视频就绪后才能手动提醒。提醒不计入观看记录。</p>
     </>}
   </Card>;
 }

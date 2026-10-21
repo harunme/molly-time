@@ -15,6 +15,8 @@ object BridgePolicy {
             parameters.containsAll(setOf("OSSAccessKeyId", "Signature", "Expires"))
     }.getOrDefault(false)
     fun allows(method: String, path: String): Boolean {
+        if (method == "GET" && path == "/api/watch-control") return true
+        if (method == "POST" && path in setOf("/api/watch-control/commands", "/api/watch-control/pin")) return true
         if (method == "GET" && path == "/api/live-tv") return true
         if (method == "GET" && path.contains('?')) {
             val route = path.substringBefore('?')

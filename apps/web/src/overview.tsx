@@ -1,3 +1,4 @@
+import { WatchControls } from './watch-control';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Clock, Monitor, Play } from "lucide-react";
@@ -194,6 +195,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
         ] as const).map(([key, label, unit]) => <div key={key}><dt>{label}</dt><dd>{loading ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : <><strong>{data?.resources[key].toLocaleString("zh-CN") ?? "—"}</strong><span className="overview-metric-unit">{unit}</span></>}</dd></div>)}
       </dl>
     </Card>
+    <WatchControls readonly={readonly} compact />
     <div className="overview-metrics" aria-busy={loading}>
       <Card className="overview-live">
         {renderMetric(metrics[2])}

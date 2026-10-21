@@ -1,5 +1,5 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
-export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; liveTv?: boolean; serverUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string; catalogSync?: boolean; offlinePlayback?: boolean };
+export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; liveTv?: boolean; serverUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string; catalogSync?: boolean; offlinePlayback?: boolean; watchControl?: boolean };
 export type ImageRef = { url: string; directUrl?: string | null };
 export type Series = { id: string; name: string; type?: 'episode' | 'folder'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; overview?: string; image?: ImageRef };
 export type Season = { id: string; name: string; image?: ImageRef; indexNumber?: number; episodeCount?: number };
@@ -87,15 +87,19 @@ async function fetchApi(path: string, method = 'GET', body?: unknown, retry = tr
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (version !== bindingVersion) throw new ApiError('请求已取消');
-  if (response.status === 401 && retry && refresh && !path.startsWith('/api/auth/')) {
+  if (response.status === 401 && retry && refresh && !path.startsWith('/api/auth/') && path !== '/api/watch-control') {
     refreshInFlight ??= fetchApi('/api/auth/refresh', 'POST', { refreshToken: refresh }, false)
       .then((data) => { if (version !== bindingVersion) throw new ApiError('请求已取消'); const auth = data as { accessToken: string; refreshToken: string }; access = auth.accessToken; refresh = auth.refreshToken; saveBinding(); })
       .finally(() => { refreshInFlight = undefined; });
     await refreshInFlight;
     return fetchApi(path, method, body, false);
   }
-  if (response.status === 401) clearBinding();
-  if (!response.ok) throw new ApiError(response.status === 401 ? '电视授权已失效，请重新扫码绑定' : '媒体库请求失败，请重试', response.status);
+  // Optional capability discovery must not revoke a binding when an older API lacks it.
+  if (response.status === 401 && path !== '/api/watch-control') clearBinding();
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(response.status === 401 ? '电视授权已失效，请重新扫码绑定' : typeof data.detail === 'string' ? data.detail : '媒体库请求失败，请重试', response.status);
+  }
   const result = await response.json();
   if (version !== bindingVersion) throw new ApiError('请求已取消');
   return result;

@@ -325,3 +325,53 @@ class OperationsStorage(Base):
     config: Mapped[dict] = mapped_column(JSON)
     updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
+
+
+class WatchControlPin(Base):
+    __tablename__ = "watch_control_pins"
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), primary_key=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class WatchControl(Base):
+    __tablename__ = "watch_controls"
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
+    supported: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    mode: Mapped[str] = mapped_column(String(16), default="episodes")
+    amount: Mapped[int] = mapped_column(Integer, default=2)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    acknowledged: Mapped[int] = mapped_column(Integer, default=0)
+    round_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class WatchControlRound(Base):
+    __tablename__ = "watch_control_rounds"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    amount: Mapped[int] = mapped_column(Integer)
+    playlist: Mapped[list] = mapped_column(JSON, default=list)
+    cursor: Mapped[int] = mapped_column(Integer, default=0)
+    played_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    client_played_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    limit_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    ended: Mapped[bool] = mapped_column(Boolean, default=False)
+    stop_after: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class WatchControlSession(Base):
+    __tablename__ = "watch_control_sessions"
+    session_id: Mapped[str] = mapped_column(ForeignKey("watch_sessions.id"), primary_key=True)
+    round_id: Mapped[str] = mapped_column(ForeignKey("watch_control_rounds.id"), index=True)
+    cursor: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class WatchControlCommand(Base):
+    __tablename__ = "watch_control_commands"
+    id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))

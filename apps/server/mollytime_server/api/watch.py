@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from ..deps import CurrentUser, DbSession
 from ..manage_auth import aware
 from ..management_models import Device, DeviceReminder, WatchInterval, WatchProgress, WatchSession
-from ..resource_policy import require_visible
 from ..models import Item
+from ..resource_policy import require_visible
 from ..transactions import serialize_sqlite_write
 from .playback import _child, _episode
 
@@ -36,6 +36,8 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
         if reminder.phase == "done" or (reminder.episode_id and reminder.episode_id != episode.id):
             raise HTTPException(403, "今天的最后一集已安排，请家长在后台恢复播放")
         reminder.episode_id = episode.id
+    from ..watch_control import attach_session, require_play
+    arrangement = require_play(db, device_id, episode.id, bind=True)
     row = WatchSession(
         family_id=user.family_id,
         user_id=user.id,
@@ -49,6 +51,7 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
     )
     db.add(row)
     db.flush()
+    attach_session(db, arrangement, row.id)
     if reminder and reminder.phase != "idle":
         reminder.session_id = row.id
     if row.device_id:
@@ -138,6 +141,8 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
     if body.stopped and upper:
         raise HTTPException(422, "结束记录不是最后一条")
     db.add(WatchInterval(session_id=row.id, **values))
+    from ..watch_control import report as report_control
+    report_control(db, row.id, body)
     if body.seq > row.last_seq:
         row.last_seq, row.ended = body.seq, body.stopped
         row.last_reported_at = dt.datetime.now(dt.UTC)

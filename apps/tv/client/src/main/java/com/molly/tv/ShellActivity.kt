@@ -251,7 +251,7 @@ class ShellActivity : AppCompatActivity() {
     private fun handle(method: String, args: JSONObject, current: Int): Any = when (method) {
         "ready" -> JSONObject().put("ok", true)
         "getCapabilities" -> JSONObject().put("bridgeVersion", 1).put("shellVersion", BuildConfig.VERSION_NAME)
-            .put("catalogSync", true).put("offlinePlayback", true)
+            .put("catalogSync", true).put("offlinePlayback", true).put("watchControl", true)
             .put("serverUrl", app.session.server).put("webVersion", app.webBundles.selectedVersion()).put("authenticated", app.session.refresh.isNotEmpty())
             .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
             .put("clientUpdates", true).put("liveTv", true)
@@ -317,7 +317,9 @@ class ShellActivity : AppCompatActivity() {
             val path = args.getString("path")
             require(BridgePolicy.allows(verb, path)) { "接口不允许访问" }
             if (path.substringBefore('?') == "/api/home") app.api.homeSchemaVersion = args.optInt("homeSchemaVersion", 1).coerceIn(1, 2)
-            val result = org.json.JSONTokener(app.api.text(verb, path, args.optJSONObject("body"))).nextValue()
+            val result = if (path == "/api/watch-control" && verb == "GET") app.watchControl.refreshOrCached()
+                else org.json.JSONTokener(app.api.text(verb, path, args.optJSONObject("body"))).nextValue()
+            if (path == "/api/watch-control/commands" && result is JSONObject) app.watchControl.accept(result)
             result
         }
         "playLiveChannel" -> {

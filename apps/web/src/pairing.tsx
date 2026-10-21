@@ -73,7 +73,7 @@ export function PairingDialog({
           <DialogBody>
             <p role="status">电视正在连接「{session.family.name}」，无需在遥控器上输入密码。</p>
           </DialogBody>
-          <DialogFooter><Button onClick={close}>完成</Button></DialogFooter>
+          <DialogFooter><Button onClick={() => { paired(); close(); }}>完成</Button></DialogFooter>
         </>
       ) : !admin ? (
         <>

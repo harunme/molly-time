@@ -55,6 +55,7 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
     .getByRole("link", { name: "家庭设置" })
     .click();
   await expect(page.getByRole("heading", { name: "儿童档案", exact: true })).toHaveCount(0);
+  await page.getByRole("tab", { name: "观看管理", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "播放偏好", exact: true }),
   ).toBeVisible();

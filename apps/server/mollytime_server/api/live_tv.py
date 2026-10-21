@@ -91,6 +91,8 @@ def require_live_access(request, db):
     if getattr(request.state, "parent_preview", False):
         raise HTTPException(403, "请在已绑定的电视端观看直播")
     device_id = getattr(request.state, "device_id", None)
+    from ..watch_control import require_play
+    require_play(db, device_id, live=True)
     reminder = db.get(DeviceReminder, device_id) if device_id else None
     if reminder and reminder.phase != "idle":
         raise HTTPException(403, "家长已安排休息，请先在后台恢复播放")
@@ -124,6 +126,9 @@ def start(channel_id: str, request: Request, user: CurrentUser, db: DbSession):
         purpose="live_tv",
     )
     db.add(row)
+    db.flush()
+    from ..watch_control import attach_session, require_play
+    attach_session(db, require_play(db, row.device_id, live=True), row.id)
     db.commit()
     return {
         "sessionId": row.id,

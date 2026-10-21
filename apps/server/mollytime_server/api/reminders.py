@@ -16,6 +16,7 @@ from ..management_models import (
     DeviceReminder,
     FamilyReminders,
     ResourceState,
+    WatchControl,
     WatchInterval,
     WatchSession,
     uid,
@@ -96,9 +97,9 @@ def upload_target(kind: ClipKind, user: Parent, db: DbSession):
     return {"itemId": item.id}
 
 
-def authorized_clip(db, user, kind, parent_preview=False):
+def authorized_clip(db, user, kind, parent_preview=False, managed=False):
     row = db.get(FamilyReminders, user.family_id)
-    if not row or (not row.enabled and not parent_preview):
+    if not row or (not row.enabled and not parent_preview and not managed):
         raise HTTPException(404)
     file = clip_file(db, row, kind)
     if file is None:
@@ -108,7 +109,9 @@ def authorized_clip(db, user, kind, parent_preview=False):
 
 @router.get("/api/reminders/{kind}/playback")
 def clip_playback(kind: ClipKind, request: Request, user: CurrentUser, db: DbSession):
-    file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False))
+    from ..watch_control import control
+    policy = control(db, getattr(request.state, "device_id", None))
+    file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False), bool(policy and policy.enabled))
     info = playback_info(db, file)
     if file.storage == "local":
         info["url"] = f"/api/reminders/{kind}/play"
@@ -118,7 +121,9 @@ def clip_playback(kind: ClipKind, request: Request, user: CurrentUser, db: DbSes
 
 @router.api_route("/api/reminders/{kind}/play", methods=["GET", "HEAD"])
 def play_clip(kind: ClipKind, request: Request, user: CurrentUser, db: DbSession):
-    file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False))
+    from ..watch_control import control
+    policy = control(db, getattr(request.state, "device_id", None))
+    file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False), bool(policy and policy.enabled))
     return stream_file(file, request, db=db)
 
 
@@ -194,6 +199,7 @@ def reminder_devices(user: Parent, db: DbSession):
             "lastSeen": aware(device.last_seen).isoformat(),
             "bootPlayedMs": boot_totals.get(device.id, 0) if device.id in boots else None,
             "bootId": boots[device.id].boot_id if device.id in boots else None,
+            "watchManagement": bool((managed := db.get(WatchControl, device.id)) and managed.enabled),
             **device_state(db, user, device.id),
             "currentWatch": {
                 "sessionId": current[device.id].id,
@@ -213,6 +219,10 @@ def request_reminder(body: RequestBody, user: Parent, db: DbSession):
         raise HTTPException(404)
     if not device_online(device):
         raise HTTPException(409, "电视当前离线，请先打开电视上的 MollyTime，连接后再发起提醒")
+    from ..watch_control import control
+    managed = control(db, device.id)
+    if managed and managed.enabled:
+        raise HTTPException(409, "请使用观看管理中的看完这集休息")
     settings = db.get(FamilyReminders, user.family_id)
     if not settings or not all(clip_file(db, settings, kind) for kind in LABELS):
         raise HTTPException(422, "请先上传并处理好两段家长视频")
@@ -247,6 +257,10 @@ def request_reminder(body: RequestBody, user: Parent, db: DbSession):
 @router.delete("/api/manage/reminders/devices/{device_id}")
 def restore_playback(device_id: str, user: Parent, db: DbSession):
     serialize_sqlite_write(db)
+    from ..watch_control import control
+    managed = control(db, device_id)
+    if managed and managed.enabled:
+        raise HTTPException(409, "请使用允许观看")
     row = db.get(DeviceReminder, device_id)
     if not row or row.family_id != user.family_id:
         raise HTTPException(404)

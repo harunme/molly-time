@@ -83,6 +83,8 @@ def parse_range(header: str, total: int) -> tuple[int, int]:
 def authorized_file(db, episode_id, request, user, mediaId=None, sessionId=None):
     episode = _episode(db, episode_id, user.family_id)
     device_id = getattr(request.state, "device_id", None)
+    from ..watch_control import require_play
+    require_play(db, device_id, episode_id)
     reminder = db.get(DeviceReminder, device_id) if device_id else None
     if reminder and reminder.phase != "idle" and (
         reminder.phase == "done" or reminder.episode_id != episode_id

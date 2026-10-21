@@ -10,6 +10,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: /^(概览|资源库)$/ })).toBeVisible();
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
+  await page.getByRole('tab', { name: '观看管理', exact: true }).click();
   await expect(page.getByRole('heading', { name: '家庭设置', exact: true })).toBeVisible();
   await chooseSelect(page.getByLabel('默认字幕', { exact: true }), 'en');
   await page.getByRole('button', { name: '保存默认字幕' }).click();
@@ -87,6 +88,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
 
     await page.reload();
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
+    await page.getByRole('tab', { name: '观看管理', exact: true }).click();
     await expect(page.getByLabel('默认字幕', { exact: true })).toHaveAttribute('data-value', 'zh-en');
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();

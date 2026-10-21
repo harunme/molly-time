@@ -38,7 +38,7 @@ test("QR pairing survives login in a mobile modal and revoked TVs disappear", as
     return result.status;
   }, { intervals: [3000], timeout: 15000 }).toBe("authorized");
   await page.getByRole("button", { name: "完成", exact: true }).click();
-  await expect(page).toHaveURL(/\/family$/);
+  await expect(page).toHaveURL(/\/family\/devices$/);
   const row = page.locator(".device-row").filter({ hasText: "弹窗绑定的电视" });
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "取消配对", exact: true }).click();
@@ -52,7 +52,7 @@ test("QR pairing survives login in a mobile modal and revoked TVs disappear", as
 });
 
 test("manual pairing has normal modal dismissal, focus, history and local errors", async ({ page }) => {
-  await page.goto("/manage/#/family");
+  await page.goto("/manage/#/family/devices");
   await login(page);
   const trigger = page.getByRole("button", { name: "绑定电视", exact: true });
   await trigger.click();
@@ -93,7 +93,7 @@ test("active TV pagination returns to the previous page after revoking its last 
     revoked = true;
     await route.fulfill({ json: { ok: true } });
   });
-  await page.goto("/manage/#/family");
+  await page.goto("/manage/#/family/devices");
   await login(page);
   const pagination = page.getByRole("navigation", { name: "设备分页", exact: true });
   await expect(pagination).toContainText("共 21 条");

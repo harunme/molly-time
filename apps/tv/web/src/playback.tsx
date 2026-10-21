@@ -1,3 +1,4 @@
+import { BrowserWatchGuard, watchLabel } from './watch-control';
 import { useEffect, useRef, useState } from 'react';
 import { browserMediaUrl, browserRequest } from './api';
 import type { PlaybackReturn } from './catalog';
@@ -28,14 +29,14 @@ export function BrowserPlaybackHost() {
   </div>;
 }
 type EpisodeProps = { episode: string; fromStart: boolean; playNext: (episodeId: string) => void; close: (progress?: PlaybackReturn) => void };
-function ParentClip({ path, label, done, close }: { path: string; label: string; done: () => void; close: () => void }) {
+function ParentClip({ path, label, done, close, fallback = false }: { path: string; label: string; done: () => void; close: () => void; fallback?: boolean }) {
   const [info, setInfo] = useState<Playback>(), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const ended = useRef(false), retryButton = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let alive = true;
     setInfo(undefined); setError(''); ended.current = false;
     void browserRequest<Playback>(path).then((result) => { if (alive) setInfo(result); })
-      .catch(() => { if (alive) setError('家长视频加载失败，请重试'); });
+      .catch(() => { if (alive) { if (fallback) done(); else setError('家长视频加载失败，请重试'); } });
     return () => { alive = false; };
   }, [path, retry]);
   useEffect(() => {
@@ -55,7 +56,7 @@ function ParentClip({ path, label, done, close }: { path: string; label: string;
   return <div ref={panel} tabIndex={-1} role="dialog" aria-label="家长视频提醒" className="parent-clip-player" data-parent-clip={label}>
     {info && <video key={retry} src={browserMediaUrl(info.url)} autoPlay controls aria-label={label}
       onEnded={() => { if (!ended.current) { ended.current = true; done(); } }}
-      onError={() => setError('家长视频播放失败，请重试')} />}
+      onError={() => { if (fallback) done(); else setError('家长视频播放失败，请重试'); }} />}
     {!info && !error && <p role="status">正在加载{label}…</p>}
     {error && <div className="parent-clip-error"><p role="alert">{error}</p><button ref={retryButton} onClick={() => setRetry((v) => v + 1)}>重试家长视频</button></div>}
   </div>;
@@ -63,7 +64,9 @@ function ParentClip({ path, label, done, close }: { path: string; label: string;
 
 type ReminderState = { requestId: string | null; phase: 'idle' | 'pending' | 'watching' | 'done'; episodeId: string | null; warningPath?: string; farewellPath?: string };
 function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) {
-  const [clip, setClip] = useState<{ path: string; label: string; after: boolean; requestId: string }>();
+  const guard = useRef(new BrowserWatchGuard());
+  const [watchNotice, setWatchNotice] = useState('');
+  const [clip, setClip] = useState<{ path: string; label: string; after: boolean; requestId: string; managed?: boolean }>();
   const activeClip = useRef(false), shownReminder = useRef('');
   const readReminder = async () => {
     const state = await browserRequest<ReminderState>('/api/reminders/state').catch((failure) => {
@@ -83,6 +86,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
   const clipDone = async () => {
     if (!clip || closed.current) return;
     if (clip.after) { finish(); return; }
+    if (clip.managed) { activeClip.current = false; setClip(undefined); void video.current?.play().catch(() => {}); return; }
     try {
       await browserRequest(`/api/reminders/requests/${clip.requestId}/ack`, 'POST');
       if (closed.current) return;
@@ -148,11 +152,19 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     if (closed.current) return;
     closed.current = true;
     // Read the media position while the video is still mounted.
+    guard.current.sample(false); void guard.current.sync().catch(() => {});
     sample(true); playing.current = false; video.current?.pause();
     const runtime = (video.current?.duration ?? 0) * 1000;
     close(session.current ? { episodeId: episode, positionMs: Math.round(position.current * 1000),
       completed: completed.current || !!video.current?.ended,
       runtimeMs: Number.isFinite(runtime) && runtime > 0 ? runtime : undefined, progressKnown: true } : undefined);
+  };
+  const rest = () => {
+    if (activeClip.current || closed.current) return;
+    const state = guard.current.state;
+    guard.current.sample(false); sample(); playing.current = false; video.current?.pause();
+    if (state?.enabled && state.farewellPath) { activeClip.current = true; setClip({ path: state.farewellPath, label: '休息提醒', after: true, requestId: state.round?.id ?? 'rest', managed: true }); }
+    else finish();
   };
   const advance = async () => {
     if (advancing.current || closed.current) return;
@@ -160,8 +172,12 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     sample(true); playing.current = false;
     try {
       // Finish the old viewing session before starting the next episode.
+      guard.current.sample(false);
+      guard.current.complete(episode);
       await chain.current;
+      await guard.current.sync();
       if (closed.current) return;
+      if (guard.current.state?.enabled && guard.current.state.status === 'resting') { rest(); return; }
       const state = await readReminder();
       if (closed.current) return;
       if (state.requestId && state.episodeId === episode && state.phase !== 'idle') {
@@ -187,6 +203,17 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     const load = async () => {
       if (!session.current) {
         const watch = await browserRequest<{ sessionId: string }>('/api/playback/sessions', 'POST', { episodeId: episode });
+        await guard.current.open();
+        if (guard.current.state?.enabled) {
+          const state = guard.current.state;
+          setWatchNotice(watchLabel(state)); setTimeout(() => setWatchNotice(''), 5000);
+          const round = state.round;
+          const key = `mollytime.watch-warning.${round?.id}:${round?.cursor}`;
+          if (round?.mode === 'episodes' && round.playlist.length === round.cursor + 1 && state.warningPath && !localStorage.getItem(key)) {
+            localStorage.setItem(key, 'true'); activeClip.current = true;
+            setClip({ path: state.warningPath, label: '这是最后一集啦', after: false, requestId: key, managed: true });
+          }
+        }
         session.current = watch.sessionId; start.current = performance.now(); last.current = 0;
         const resume = await browserRequest<{ positionMs: number; completed: boolean }>(`/api/episodes/${episode}/progress`);
         if (!fromStart && !resume.completed) position.current = resume.positionMs / 1000;
@@ -200,6 +227,21 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     void load().catch((e) => { if (alive) setError(e.status === 403 ? '最后一集已经安排或看完了，请家长在后台恢复播放' : e.message); });
     return () => { alive = false; };
   }, [episode, serial]);
+  useEffect(() => {
+    let syncing = false, warned = false;
+    const timer = setInterval(() => {
+      if (closed.current || !session.current) return;
+      if (!guard.current.sample(playing.current && !activeClip.current && !document.hidden)) { if (!activeClip.current) rest(); return; }
+      const state = guard.current.state;
+      if (!warned && state?.enabled && state.round?.mode === 'minutes' && state.round.remainingMs! <= 300000) { warned = true; setWatchNotice('还有不到 5 分钟就休息啦。'); setTimeout(() => setWatchNotice(''), 5000); }
+    }, 100);
+    const sync = setInterval(() => {
+      if (syncing || closed.current || !session.current) return;
+      syncing = true;
+      void guard.current.sync().catch(e => { if ([401, 403].includes(e.status)) finish(); }).finally(() => { syncing = false; });
+    }, 2000);
+    return () => { clearInterval(timer); clearInterval(sync); guard.current.sample(false); void guard.current.sync().catch(() => {}); };
+  }, []);
   useEffect(() => {
     const oldBack = window.mollyBack;
     window.mollyBack = () => { if (menuOpen.current) showMenu(false); else finish(); return true; };
@@ -260,8 +302,8 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
   return <div role="dialog" aria-label="视频播放" className="browser-player">
     {info && <video key={serial} ref={video} tabIndex={0} src={browserMediaUrl(info.url)} controls autoPlay={!clip} crossOrigin="anonymous"
       onLoadedMetadata={() => { if (video.current) { video.current.currentTime = position.current; video.current.playbackRate = selectedSpeed.current; } applySubtitle(); }}
-      onPlaying={() => { if (activeClip.current) { video.current?.pause(); return; } sample(); playing.current = true; }} onPause={() => { sample(); playing.current = false; }}
-      onWaiting={() => { sample(); playing.current = false; }} onSeeking={() => { completed.current = false; }} onTimeUpdate={() => { position.current = video.current?.currentTime ?? position.current; }}
+      onPlaying={() => { guard.current.sample(true); if (activeClip.current) { video.current?.pause(); return; } sample(); playing.current = true; }} onPause={() => { guard.current.sample(false); sample(); playing.current = false; }}
+      onWaiting={() => { guard.current.sample(false); sample(); playing.current = false; }} onSeeking={() => { completed.current = false; }} onTimeUpdate={() => { position.current = video.current?.currentTime ?? position.current; }}
       onEnded={() => { completed.current = true; void advance(); }}
       onError={() => {
         if (advancing.current || nextError) return;
@@ -273,7 +315,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       }}>
       {info.subtitles.map((sub) => <track key={sub.index} kind="subtitles" src={browserMediaUrl(sub.url)} srcLang={sub.language} label={sub.label} default={sub.isDefault} onLoad={applySubtitle} />)}
     </video>}
-    {clip && <ParentClip key={clip.requestId + String(clip.after)} path={clip.path} label={clip.label} done={() => { void clipDone(); }} close={finish} />}
+    {clip && <ParentClip key={clip.requestId + String(clip.after)} path={clip.path} label={clip.label} done={() => { void clipDone(); }} close={finish} fallback={clip.managed} />}
     {menu && <div ref={menuPanel} className="player-menu" role="dialog" aria-label="播放设置">
       <h2>播放设置</h2><p>仅影响当前视频</p>
       <h3>字幕</h3>
@@ -284,6 +326,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       <div className="player-speeds">{[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => <button key={rate} aria-pressed={speed === rate} onClick={() => { selectedSpeed.current = rate; setSpeed(rate); if (video.current) video.current.playbackRate = rate; }}>{rate}×</button>)}</div>
       <button onClick={() => showMenu(false)}>返回播放</button>
     </div>}
+    {watchNotice && <p className="watch-player-notice" role="status">{watchNotice}</p>}
     {nextPending && <p role="status" style={{ position: 'absolute', color: '#fff' }}>正在准备下一集…</p>}
     {nextError && <button ref={retryButton} className="player-next-retry" onClick={() => { void advance(); }} style={{ position: 'absolute', bottom: 80 }}>重试下一集</button>}
     {error && <p role="alert" style={{ position: 'absolute', color: '#fff' }}>{error}</p>}

@@ -37,6 +37,7 @@ from .api import (
     usage,
     users,
     watch,
+    watch_control,
 )
 from .api import auth as api_auth
 from .config import get_settings
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
     app.include_router(playback_settings.router)
     app.include_router(live_tv.router)
     app.include_router(reminders.router)
+    app.include_router(watch_control.router)
     app.include_router(manage_auth.router)
     app.include_router(downloads.router)
     app.include_router(manage_resources.router)

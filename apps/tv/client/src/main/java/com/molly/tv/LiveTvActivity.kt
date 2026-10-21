@@ -41,6 +41,14 @@ class LiveTvActivity : AppCompatActivity() {
     private var retries = 0
     private var checking = false
     private var endsAt = 0L
+    private val watchTick = object : Runnable {
+        override fun run() {
+            if (!active || isFinishing) return
+            if (player != null && !runCatching { app.watchControl.tick(player?.isPlaying == true) }.getOrDefault(false)) { player?.pause(); finish(); return }
+            if (player?.isPlaying == true) runCatching { app.watchControl.notice() }.getOrNull()?.let { android.widget.Toast.makeText(this@LiveTvActivity, it, android.widget.Toast.LENGTH_LONG).show() }
+            handler.postDelayed(this, 100)
+        }
+    }
     private val stopAtDeadline = Runnable { finish() }
     private val poll = object : Runnable {
         override fun run() {
@@ -51,7 +59,7 @@ class LiveTvActivity : AppCompatActivity() {
                 checking = true
                 val current = generation
                 app.playbackIo.execute {
-                    val result = runCatching { app.api.json("GET", "/api/live-tv/sessions/$id") }
+                    val result = runCatching { app.watchControl.sync(); app.api.json("GET", "/api/live-tv/sessions/$id") }
                     runOnUiThread {
                         checking = false
                         if (active && generation == current) result.onFailure { error ->
@@ -88,6 +96,7 @@ class LiveTvActivity : AppCompatActivity() {
         active = true
         load()
         handler.post(poll)
+        handler.post(watchTick)
     }
 
     private fun load() {
@@ -95,7 +104,7 @@ class LiveTvActivity : AppCompatActivity() {
         release()
         status.text = "正在连接频道… · 返回退出"
         app.playbackIo.execute {
-            val result = runCatching { app.api.json("POST", "/api/live-tv/channels/$channel/sessions") }
+            val result = runCatching { app.watchControl.sync(); app.watchControl.requireLive(); app.api.json("POST", "/api/live-tv/channels/$channel/sessions") }
             runOnUiThread {
                 result.onSuccess { source ->
                     val id = source.getString("sessionId")
@@ -132,6 +141,7 @@ class LiveTvActivity : AppCompatActivity() {
             player = connected; view.player = connected
             connected.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (!runCatching { app.watchControl.tick(isPlaying) }.getOrDefault(false)) { connected.pause(); finish(); return }
                     sample(isPlaying)
                     if (isPlaying) { retries = 0; status.text = source.getString("name") + " · 正在直播 · 返回换台 · 最长 30 分钟" }
                 }
@@ -166,6 +176,7 @@ class LiveTvActivity : AppCompatActivity() {
     }
 
     private fun release() {
+        runCatching { app.watchControl.tick(false) }
         sample(false)
         clock?.let {
             val end = it.offset(SystemClock.elapsedRealtime())

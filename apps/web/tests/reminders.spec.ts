@@ -19,6 +19,7 @@ test('parent uploads clips and actively ends the TV after its current episode', 
     await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
+    await page.getByRole('tab', { name: '观看管理', exact: true }).click();
     await expect(page.getByRole('heading', { name: '家长视频提醒' })).toBeVisible();
     await expect(page.getByRole('button', { name: '发起提醒', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '恢复播放', exact: true })).toHaveCount(0);

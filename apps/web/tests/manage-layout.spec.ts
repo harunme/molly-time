@@ -88,7 +88,9 @@ test('long durations stay on one line and fields share the same typography', asy
   expect(size.content).toBeLessThanOrEqual(size.width);
   expect(size.height).toBe(36);
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-  for (const field of [page.getByLabel('默认字幕', { exact: true }), page.getByLabel('用量月份')]) {
+  for (const [tab, label] of [['观看管理', '默认字幕'], ['家庭信息', '用量月份']]) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    const field = page.getByLabel(label, { exact: true });
     await expect(field).toHaveCSS('font-size', '16px');
     await expect(field).toHaveCSS('height', '40px');
   }

@@ -329,6 +329,15 @@ def _get_item(db: Session, item_id: str, expected_type: str, family_id: str) -> 
 def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSession):
     episode = _get_item(db, episode_id, "Episode", user.family_id)
     require_visible(db, episode, request)
+    from ..watch_control import control, current_round, normalize
+    policy = control(db, getattr(request.state, "device_id", None))
+    if policy and policy.enabled:
+        arrangement = current_round(db, policy)
+        normalize(db, arrangement)
+        if not arrangement or arrangement.ended:
+            return {"episodeId": None}
+        if arrangement.mode == "episodes" and arrangement.playlist:
+            return {"episodeId": arrangement.playlist[arrangement.cursor] if arrangement.playlist[arrangement.cursor] != episode_id else None}
     folder_id = _series_id(db, episode)
     if not folder_id:
         return {"episodeId": None}
