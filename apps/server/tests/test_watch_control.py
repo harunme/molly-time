@@ -98,33 +98,60 @@ def finish(client, headers, session_id):
     return response
 
 
-def test_free_selection_completion_resume_end_and_add(setup):
+def test_starting_a_video_consumes_a_slot_and_resume_never_recharges(setup):
     client, headers = setup
     enable(client, headers)
     first = start(client, headers).json()["sessionId"]
+    assert state(client, headers)["round"]["remainingEpisodes"] == 1
+    assert start(client, headers).status_code == 200
+    assert state(client, headers)["round"]["remainingEpisodes"] == 1
     switched = start(client, headers, "ep3").json()["sessionId"]
-    assert state(client, headers)["round"]["cursor"] == 0  # changing videos is free
+    assert state(client, headers)["round"]["cursor"] == 1
+    assert state(client, headers)["round"]["remainingEpisodes"] == 0
+    assert start(client, headers, "ep2").status_code == 403
+    assert state(client, headers)["round"]["episodeId"] == "ep3"
+    assert start(client, headers, "ep3").status_code == 200  # last video can still resume
+    finish(client, headers, first)  # late completion cannot charge the new slot
+    assert state(client, headers)["round"]["cursor"] == 1
     finish(client, headers, switched)
-    assert state(client, headers)["round"]["cursor"] == 1
-    # Delayed completion from the previous video cannot consume the same slot again.
-    finish(client, headers, first)
-    assert state(client, headers)["round"]["cursor"] == 1
-    assert client.get("/api/episodes/e1/next", headers=headers).json()["episodeId"] == "ep2"
-    second = start(client, headers, "e1").json()["sessionId"]  # replay is allowed
-    finish(client, headers, second)
     assert state(client, headers)["status"] == "resting"
     assert client.get("/api/episodes/ep2/playback", headers=headers).status_code == 403
     assert command(client, headers, "add").status_code == 200
-    assert state(client, headers)["round"]["amount"] == 3
-    assert start(client, headers, "ep3").status_code == 200
+    assert state(client, headers)["round"]["remainingEpisodes"] == 1
+    assert start(client, headers, "ep2").status_code == 200
+    assert state(client, headers)["round"]["remainingEpisodes"] == 0
+
+
+def test_offline_started_video_sync_does_not_restore_or_replace_slots(setup):
+    client, headers = setup
+    enable(client, headers)
+    current = state(client, headers)
+    body = {"roundId": current["round"]["id"], "cursor": 1, "episodeId": "ep2"}
+    response = client.post("/api/watch-control/sync", headers=headers, json=body).json()
+    assert response["round"]["remainingEpisodes"] == 0
+    assert response["round"]["episodeId"] == "ep2"
+    assert start(client, headers, "ep2").status_code == 200
+    for snapshot in ({**body, "cursor": 0, "episodeId": "e1"}, {**body, "episodeId": "ep3"}):
+        client.post("/api/watch-control/sync", headers=headers, json=snapshot)
+        assert state(client, headers)["round"]["episodeId"] == "ep2"
+        assert state(client, headers)["round"]["remainingEpisodes"] == 0
+    assert start(client, headers, "e1").status_code == 403
 
 
 def test_tv_start_sets_rule_and_grants_one_atomic_idempotent_allowance(setup):
     client, headers = setup
     current = state(client, headers)
-    body = {"action": "start", "mode": "minutes", "amount": 15,
-            "version": current["version"], "requestId": str(uuid.uuid4()), "pin": "1234"}
-    wrong = client.post("/api/watch-control/commands", headers=headers, json={**body, "pin": "0000"})
+    body = {
+        "action": "start",
+        "mode": "minutes",
+        "amount": 15,
+        "version": current["version"],
+        "requestId": str(uuid.uuid4()),
+        "pin": "1234",
+    }
+    wrong = client.post(
+        "/api/watch-control/commands", headers=headers, json={**body, "pin": "0000"}
+    )
     assert wrong.status_code == 403
     assert state(client, headers)["enabled"] is False
     result = client.post("/api/watch-control/commands", headers=headers, json=body)
@@ -305,8 +332,8 @@ def test_optional_clips_and_live_policy(setup):
     live_path = "/api/live-tv/channels/" + "a" * 32 + "/sessions"
     assert client.post(live_path, headers=headers).status_code == 403
     assert (
-        client.get("/api/episodes/e1/playback", headers=headers).status_code == 200
-    )  # no playlist setup is required
+        client.get("/api/episodes/e1/playback", headers=headers).status_code == 403
+    )  # a playback session reserves a slot before streaming
     command(client, headers, "settings", mode="minutes", amount=1)
     command(client, headers, "reselect")
     assert client.post(live_path, headers=headers).status_code == 200

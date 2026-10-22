@@ -126,7 +126,11 @@ def perform(db, user, device_id, body):
         )
         if mode == "episodes" and amount > 99:
             raise HTTPException(422, "集数应在 1～99 之间")
-        enabled = True if body.action == "start" else (row.enabled if body.enabled is None else body.enabled)
+        enabled = (
+            True
+            if body.action == "start"
+            else (row.enabled if body.enabled is None else body.enabled)
+        )
         if enabled and not db.get(WatchControlPin, user.family_id):
             raise HTTPException(409, "请先设置家长密码")
         legacy = db.get(DeviceReminder, device_id)
@@ -171,6 +175,8 @@ def perform(db, user, device_id, body):
         if round:
             if round.mode == "minutes":
                 round.limit_ms = max(round.played_ms, round.client_played_ms)
+            elif round.cursor < len(round.playlist) and round.playlist[round.cursor]:
+                round.cursor += 1
             round.ended = True
     elif body.action == "finish-current":
         if not round or round.ended or round.mode != "episodes":
@@ -205,6 +211,7 @@ class Sync(BaseModel):
     roundId: str | None = None
     playedMs: int = Field(default=0, ge=0, le=365 * 86400000)
     cursor: int = Field(default=0, ge=0, le=10000)
+    episodeId: str | None = Field(default=None, max_length=128)
 
 
 @router.post("/api/watch-control/sync")
@@ -222,7 +229,29 @@ def sync(body: Sync, request: Request, user: CurrentUser, db: DbSession):
     if round and round.id == body.roundId:
         round.client_played_ms = max(round.client_played_ms, body.playedMs)
         if round.mode == "episodes":
+            previous_cursor = round.cursor
             round.cursor = max(round.cursor, min(body.cursor, round.amount))
+            if body.episodeId and body.cursor == round.cursor and round.cursor < round.amount:
+                from ..models import Item
+                from ..resource_policy import visible
+
+                item = db.get(Item, body.episodeId)
+                active = (
+                    round.playlist[round.cursor] if round.cursor < len(round.playlist) else None
+                )
+                if (
+                    item
+                    and item.family_id == user.family_id
+                    and item.type == "Episode"
+                    and visible(db, item)
+                    and (not active or active == body.episodeId or body.cursor > previous_cursor)
+                ):
+                    prefix = round.playlist[: round.cursor]
+                    round.playlist = [
+                        *prefix,
+                        *([""] * (round.cursor - len(prefix))),
+                        body.episodeId,
+                    ]
             if round.cursor >= round.amount:
                 round.ended = True
         normalize(db, round)

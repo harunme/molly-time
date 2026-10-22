@@ -68,6 +68,11 @@ def dto(db, row):
             "id": round.id,
             "mode": round.mode,
             "amount": round.amount,
+            "remainingEpisodes": (
+                0 if round.ended else max(0, round.amount - round.cursor - bool(episode_id))
+            )
+            if round.mode == "episodes"
+            else None,
             "playlist": round.playlist,
             "cursor": round.cursor,
             "playedMs": max(round.played_ms, round.client_played_ms),
@@ -91,10 +96,17 @@ def require_play(db, device_id, episode_id=None, *, live=False, bind=False):
         raise HTTPException(403, "看完啦，请家长允许观看")
     if live and round.mode != "minutes":
         raise HTTPException(403, "看直播需要家长设置观看时间")
-    if round.mode == "episodes" and bind:
-        # Store only the current video as a resume hint. It never restricts selection.
-        round.playlist = [*round.playlist[:round.cursor], episode_id]
-        db.flush()
+    if round.mode == "episodes":
+        active = round.playlist[round.cursor] if round.cursor < len(round.playlist) else None
+        if bind:
+            cursor = round.cursor + (1 if active and active != episode_id else 0)
+            if cursor >= round.amount:
+                raise HTTPException(403, "本次集数已用完，可继续当前视频，或请家长加看")
+            round.cursor = cursor
+            round.playlist = [*round.playlist[:cursor], episode_id]
+            db.flush()
+        elif episode_id != active:
+            raise HTTPException(403, "请先开始观看这个视频")
     return round
 
 

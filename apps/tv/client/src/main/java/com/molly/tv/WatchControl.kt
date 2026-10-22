@@ -2,6 +2,7 @@ package com.molly.tv
 
 import android.content.Context
 import android.os.SystemClock
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** One persisted allowance per device binding, shared by online, cached and live players. */
@@ -48,9 +49,10 @@ class WatchControl(private val context: Context, private val session: SessionSto
         if (oldRound != null && round != null && oldRound.optString("id") == round.optString("id")) {
             round.put("playedMs", maxOf(round.optLong("playedMs"), oldRound.optLong("playedMs")))
             round.put("cursor", maxOf(round.optInt("cursor"), oldRound.optInt("cursor")))
-            if (oldRound.has("activeEpisode") && oldRound.optInt("activeCursor", -1) == round.optInt("cursor")) {
+            if (oldRound.has("activeEpisode") && oldRound.optInt("activeCursor", -1) == round.optInt("cursor") && (round.isNull("episodeId") || round.optString("episodeId") == oldRound.optString("activeEpisode"))) {
                 round.put("activeEpisode", oldRound.getString("activeEpisode"))
                 round.put("activeCursor", oldRound.optInt("activeCursor"))
+                round.put("playlist", oldRound.optJSONArray("playlist"))
             }
             if (previous.optInt("version") == next.optInt("version") && oldRound.optBoolean("ended")) round.put("ended", true)
         }
@@ -76,7 +78,7 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val round = before?.optJSONObject("round")
         val body = JSONObject().put("supported", true).put("acknowledged", before?.optInt("version") ?: 0)
             .put("roundId", round?.optString("id") ?: JSONObject.NULL).put("playedMs", round?.optLong("playedMs") ?: 0)
-            .put("cursor", round?.optInt("cursor") ?: 0)
+            .put("cursor", round?.optInt("cursor") ?: 0).put("episodeId", round?.opt("episodeId") ?: JSONObject.NULL)
         val incoming = try { api.json("POST", "/api/watch-control/sync", body) } catch (error: ApiFailure) {
             if (error.status == 404 && before?.optBoolean("enabled") != true) JSONObject().put("enabled", false).put("supported", false).put("status", "off").put("version", 0)
             else throw error
@@ -95,7 +97,16 @@ class WatchControl(private val context: Context, private val session: SessionSto
         require(value.optString("status") == "allowed") { "看完啦，请家长允许观看" }
         val round = value.getJSONObject("round")
         if (round.optString("mode") == "episodes") {
-            round.put("activeEpisode", episode).put("activeCursor", round.optInt("cursor"))
+            val active = round.optString("activeEpisode").takeIf { it.isNotEmpty() && round.optInt("activeCursor", -1) == round.optInt("cursor") }
+                ?: round.optString("episodeId").takeIf { it.isNotEmpty() && it != "null" }
+            val cursor = round.optInt("cursor") + if (active != null && active != episode) 1 else 0
+            require(cursor < round.optInt("amount")) { "本次集数已用完，可继续当前视频，或请家长加看" }
+            val previous = round.optJSONArray("playlist") ?: JSONArray()
+            val playlist = JSONArray()
+            for (index in 0 until cursor) playlist.put(previous.optString(index, ""))
+            playlist.put(episode)
+            round.put("cursor", cursor).put("playlist", playlist).put("episodeId", episode)
+            round.put("activeEpisode", episode).put("activeCursor", cursor)
             persist()
         }
     }
@@ -168,7 +179,7 @@ class WatchControl(private val context: Context, private val session: SessionSto
             if (claim("start:$id")) return "这次最多看 " + round.optInt("amount") + " 分钟。"
         } else {
             if (round.optInt("amount") == round.optInt("cursor") + 1 && claim("last:$id:" + round.optInt("cursor"))) { claim("start:$id"); return "这是最后一集啦。" }
-            if (claim("start:$id")) return "还能看 " + (round.optInt("amount") - round.optInt("cursor")) + " 集，看完休息。"
+            if (claim("start:$id")) return "本集看完后，还能看 " + (round.optInt("amount") - round.optInt("cursor") - 1).coerceAtLeast(0) + " 集。"
         }
         return null
     }

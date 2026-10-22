@@ -1145,8 +1145,6 @@ td small {
 .watch-control-device h3 { font-weight: 600; }
 .watch-control-device p { margin-block: calc(var(--spacing) * 2); }
 .watch-control-actions { display: flex; gap: calc(var(--spacing) * 2); flex-wrap: wrap; align-items: center; margin-block: calc(var(--spacing) * 3); }
-.watch-control-actions summary { cursor: pointer; padding: calc(var(--spacing) * 2); }
-.watch-control-more { display: flex; flex-direction: column; }
 @media (max-width: 640px) { .watch-control-device { align-items: flex-start; flex-direction: column; } }
 .family-settings-tabs .watch-controls { margin-block: 0 var(--spacing-card-gap); }
 

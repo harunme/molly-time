@@ -55,21 +55,22 @@ class WatchControlTest {
         control.accept(state(limit = 2500))
         assertFalse(control.tick(true))
     }
-    @Test fun freeSelectionCountsCompletionsOnceAndSurvivesRestart() {
+    @Test fun startingVideosReservesSlotsAndResumeSurvivesRestart() {
         val (session, control) = setup()
         control.accept(state("episodes"))
         control.requireEpisode("a", true)
-        control.requireEpisode("other-folder-video", true)
-        control.complete("a") // the video that was left must not consume a slot
+        control.requireEpisode("a", true)
         assertEquals(0, control.snapshot().getJSONObject("round").getInt("cursor"))
-        control.complete("other-folder-video")
-        control.complete("other-folder-video")
+        control.requireEpisode("other-folder-video", true)
+        assertEquals(1, control.snapshot().getJSONObject("round").getInt("cursor"))
+        control.complete("a") // completion from an abandoned video cannot consume another slot
         assertEquals(1, control.snapshot().getJSONObject("round").getInt("cursor"))
         val restored = WatchControl(RuntimeEnvironment.getApplication(), session, MollyTimeApi(session) { "test" })
-        restored.requireEpisode("a", true)
-        restored.complete("a")
+        restored.requireEpisode("other-folder-video", true)
+        assertTrue(runCatching { restored.requireEpisode("a", true) }.isFailure)
+        restored.complete("other-folder-video")
+        restored.complete("other-folder-video")
         assertFalse(restored.tick(true))
-        assertTrue(runCatching { restored.requireEpisode("anything", true) }.isFailure)
         val addition = state("episodes", version = 2)
         addition.getJSONObject("round").put("amount", 3).put("cursor", 2)
         restored.accept(addition)
