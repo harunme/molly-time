@@ -35,7 +35,10 @@ for (const width of [390, 1440]) {
     await expect(page.getByLabel('家庭名称', { exact: true })).toBeVisible();
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
     await expect(page.getByRole('button', { name: '重设家长密码', exact: true })).toHaveCount(0);
-    await page.getByRole('link', { name: '观看设置', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '观看安排', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '观看设置', exact: true })).toHaveCount(0);
+    await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
+    await page.getByRole('tab', { name: '观看管理', exact: true }).click();
     await expect(page).toHaveURL(/#\/family\/watching$/);
   });
 }

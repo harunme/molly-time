@@ -18,7 +18,8 @@ test('parent configures offline; TV starts with a quantity and counts free playb
     const data = await (await route.fetch()).json();
     await route.fulfill({ json: { ...data, devices: data.devices.map((device: { deviceId: string }) => device.deviceId === auth.deviceId ? { ...device, online: false } : device) } });
   });
-  await page.getByRole('link', { name: '观看设置', exact: true }).click();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
+  await page.getByRole('tab', { name: '观看管理', exact: true }).click();
   await expect(page.getByRole('tab', { name: '观看管理', exact: true })).toHaveAttribute('aria-selected', 'true');
   const device = page.getByRole('region', { name: '观看安排测试电视观看安排' });
   // section has an accessible name but browsers expose it as a region.
