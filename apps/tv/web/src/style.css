@@ -11,9 +11,10 @@
   --muted: #a1a6ae;
   --white: #f5f5f7;
   --focus: #ffffff;
-  --card-radius: 1.2rem;
-  --control-radius: .9rem;
-  --panel-radius: 1.8rem;
+  --surface-radius: 1rem;
+  --card-radius: var(--surface-radius);
+  --control-radius: var(--surface-radius);
+  --panel-radius: var(--surface-radius);
   --ease: cubic-bezier(.2,.75,.25,1);
 }
 * { box-sizing: border-box; }
@@ -23,7 +24,6 @@ button { color: inherit; cursor: pointer; background: transparent; border: .15re
 button:focus { outline: none; }
 /* Containers delegate focus to controls; only controls draw selection cues. */
 .app:focus, .app [data-focus-region]:focus, .app .shelf:focus, .app .rail-track:focus, .app .rail-content:focus, .app .episode-grid:focus { outline: none; }
-button.focused, button:focus-visible { border-color: var(--focus); box-shadow: 0 .3rem 1rem #0004; }
 button:disabled { opacity: .55; cursor: wait; }
 .load-more { min-width: 12rem; align-self: center; padding: 1rem; }
 .load-more p { color: #ffb4a8; }
@@ -34,7 +34,6 @@ button:disabled { opacity: .55; cursor: wait; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
 .settings-trigger { display: flex; align-items: center; justify-content: center; gap: .5rem; padding: .55rem .75rem; flex-shrink: 0; font-size: .9rem; }
 .settings-trigger .icon { width: 1.05rem; height: 1.05rem; }
-.settings-trigger.focused { color: var(--canvas); background: var(--white); }
 .content-shell { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .topbar { position: absolute; inset: 1rem 0 auto; z-index: 3; min-height: 2.9rem; text-shadow: 0 .1rem .6rem #0008; display: flex; align-items: center; gap: 1.35rem; padding: 0 3rem; color: #bcc2d6; flex-shrink: 0; }
 .home-page .topbar { position: relative; inset: auto; padding-top: 1rem; padding-bottom: 1rem; text-shadow: none; }
@@ -60,7 +59,8 @@ h1 { margin: 0; font-size: 3.6rem; line-height: 1.13; font-weight: 750; letter-s
 .detail-navigation { display: flex; align-items: center; gap: 1rem; width: 55%; min-width: 0; }
 .detail-navigation .detail-context { width: auto; flex: 1; }
 .folder-path { margin: 0 0 .6rem; color: var(--muted); font-size: .8rem; line-height: 1.5; }
-.folder-back { flex-shrink: 0; width: 3.2rem; height: 3.2rem; display: grid; place-items: center; }
+.folder-back { flex-shrink: 0; width: 3.2rem; height: 3.2rem; padding: 0; display: grid; place-items: center; }
+.folder-back .icon { display: block; }
 .folder-badge { position: absolute; left: .65rem; bottom: .65rem; padding: .2rem .45rem; border-radius: .3rem; background: #141619cc; color: #fff; font-size: .7rem; }
 .detail-page .shelf-list { padding-top: .7rem; }
 .cover { width: 100%; background: var(--cover-tone, #3a4770); overflow: hidden; border-radius: var(--card-radius); aspect-ratio: 16 / 9; position: relative; }
@@ -115,8 +115,8 @@ h2 { font-size: 1.25rem; line-height: 1.4; margin: 0; font-weight: 600; }
    covers without turning the title into a solid plate. Shadows do not change
    navigation geometry and the rim remains visible with reduced motion. */
 .poster.focused, .poster:focus-visible { border-color: transparent; box-shadow: none; background: transparent; transform: translateY(-.18rem) scale(1.055); z-index: 3; }
-.poster .cover { transition: box-shadow .18s var(--ease); }
-.poster.focused .cover, .poster:focus-visible .cover { box-shadow: 0 0 0 .12rem var(--canvas), 0 0 0 .24rem #ffffffc7, 0 .85rem 1.8rem #0008; content-visibility: visible; }
+.card-art { position: relative; border-radius: var(--card-radius); --focus-ring-border: 0rem; }
+.poster.focused .cover, .poster:focus-visible .cover { content-visibility: visible; }
 .poster.focused strong, .poster:focus-visible strong { color: var(--focus); }
 .poster.focused .card-copy > span, .poster:focus-visible .card-copy > span { color: #d5d8dd; }
 .card-copy { padding: .75rem .15rem .25rem; }
@@ -137,26 +137,23 @@ footer { display: flex; flex-shrink: 0; align-items: center; gap: 1.6rem; paddin
 .catalog-notice { display: flex; align-items: center; gap: 1rem; padding: .5rem 3.4rem; color: var(--muted); font-size: .85rem; }
 .overlay-panel { max-height: calc(100vh - 4rem); overflow-y: auto; background: #24282e; border: 1px solid #ffffff14; border-radius: var(--panel-radius); padding: 2.8rem; box-shadow: 0 1rem 4rem #0005; }
 .overlay-panel h1 { font-size: 2.3rem; }
-.overlay-page > .text-button { margin-top: .6rem; color: #d0d7ee; }
 .settings-list { display: flex; flex-direction: column; gap: 1rem; margin: 1.6rem 0; }
 .subtitle-preference h2 { font-size: 1.2rem; margin: .4rem 0; }
 .subtitle-preference p { font-size: .85rem; line-height: 1.6; color: var(--muted); }
 .focus-select { position: relative; }
-.focus-select-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; min-height: 3.2rem; padding: .7rem 1rem; background: #32373f; border: .1rem solid #ffffff24; border-radius: .6rem; }
+.focus-select-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; min-height: 3.2rem; padding: .7rem 1rem; background: #32373f; border: .12rem solid #ffffff24; border-radius: var(--surface-radius); }
 .select-chevron { color: var(--muted); font-size: 1.2rem; }
-.focus-select-options { position: absolute; left: 0; right: 0; top: calc(100% + .4rem); z-index: 2; max-height: min(16rem, 40vh); overflow-y: auto; padding: .4rem; background: #32373f; border: .1rem solid #ffffff24; border-radius: .7rem; box-shadow: 0 .7rem 2rem #0008; }
-.focus-select-options button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: .7rem .8rem; border-radius: .4rem; }
-.focus-select-options button:focus { outline: none; background: var(--accent); color: #171b22; }
+.focus-select-options { position: absolute; left: 0; right: 0; top: calc(100% + .4rem); z-index: 2; max-height: min(16rem, 40vh); overflow-y: auto; padding: .6rem; background: #32373f; border: .12rem solid #ffffff24; border-radius: var(--surface-radius); box-shadow: 0 .7rem 2rem #0008; }
+.focus-select-options button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: .7rem .8rem; border-radius: var(--surface-radius); }
 .browser-playback-host:fullscreen { background: #000; }
 .browser-player { position: fixed; inset: 0; z-index: 100; background: #000; display: grid; place-items: center; }
 /* Keep intrinsic portrait dimensions from expanding the player's grid tracks. */
 .browser-player > video, .parent-clip-player > video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; outline: none; }
-.player-menu { position: absolute; right: 2rem; top: 5rem; bottom: 2rem; width: 26rem; overflow-y: auto; padding: 1.5rem; border-radius: 1rem; background: #242a32; color: #fff; box-shadow: 0 8px 40px #0009; }
+.player-menu { position: absolute; right: 2rem; top: 5rem; bottom: 2rem; width: 26rem; overflow-y: auto; padding: 1.5rem; border-radius: var(--surface-radius); background: #242a32; color: #fff; box-shadow: 0 8px 40px #0009; }
 .player-menu h2 { margin: 0; }
 .player-menu p { color: var(--muted); font-size: .85rem; }
 .player-menu > button { display: block; width: 100%; margin: .6rem 0; text-align: left; }
 .player-menu button[aria-pressed="true"] { background: var(--accent); color: #171b22; }
-.player-menu button:focus { outline: 3px solid white; outline-offset: 3px; }
 .player-speeds { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-bottom: 1.5rem; }
 .settings-item { display: flex; align-items: center; gap: 1rem; padding: 1rem; width: 100%; background: #32373f; }
 .settings-item > span:nth-child(2) { flex: 1; }
@@ -164,7 +161,7 @@ footer { display: flex; flex-shrink: 0; align-items: center; gap: 1.6rem; paddin
 .settings-item small { display: block; margin-top: .4rem; font-size: .75rem; color: var(--muted); }
 .settings-item > span:last-child { color: var(--accent); font-size: 1.6rem; }
 label { display: flex; flex-direction: column; gap: .5rem; font-size: 1rem; }
-input { width: 100%; padding: .85rem; color: var(--white); border: 2px solid #556183; background: #292d33; border-radius: .5rem; font-size: 1.15rem; }
+input { width: 100%; padding: .85rem; color: var(--white); border: 2px solid #556183; background: #292d33; border-radius: var(--surface-radius); font-size: 1.15rem; }
 input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .connection-form { display: grid; gap: 1rem; width: min(100%, 42rem); margin: 0 auto; }
 .connection-form label { color: var(--muted); font-size: 1rem; }
@@ -182,11 +179,11 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 }
 .settings-panel h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -.04rem; }
 .settings-list { gap: 1.3rem; margin: 1.5rem 0 1rem; }
-.update-card { padding: 1.2rem 1.3rem; background: var(--settings-surface); border: 1px solid var(--settings-line); border-radius: 1rem; }
+.update-card { padding: 1.2rem 1.3rem; background: var(--settings-surface); border: 1px solid var(--settings-line); border-radius: var(--surface-radius); }
 .update-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .update-card h2, .subtitle-preference h2 { margin: 0; font-size: 1.1rem; line-height: 1.4; font-weight: 650; }
 .update-current { margin: .25rem 0 0; color: var(--settings-muted); font-size: .8rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
-.update-check { padding: .6rem .85rem; background: var(--settings-control); border: .1rem solid var(--settings-line); border-radius: .65rem; font-size: .9rem; font-weight: 600; white-space: nowrap; }
+.update-check { padding: .6rem .85rem; background: var(--settings-control); border: .12rem solid var(--settings-line); border-radius: var(--surface-radius); font-size: .9rem; font-weight: 600; white-space: nowrap; }
 .client-update-panel { display: flex; flex-direction: column; gap: .85rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--settings-line); }
 .update-state-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .3rem 1rem; }
 .update-state { margin: 0; font-size: 1.15rem; font-weight: 650; line-height: 1.45; color: var(--white); }
@@ -195,22 +192,17 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .update-notes p { margin: 0; color: #dbe1e9; font-size: .95rem; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
 .update-progress { height: .35rem; border-radius: 1rem; background: #39434f; overflow: hidden; }
 .update-progress > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .2s ease; }
-.update-action { align-self: stretch; min-width: 11rem; padding: .8rem 1.6rem; background: var(--settings-control); color: var(--white); border: .12rem solid var(--settings-line); border-radius: .7rem; font-size: 1.05rem; line-height: 1.4; font-weight: 700; text-align: center; }
-/* Share the standard button focus treatment, including controls whose
-   resting borders are declared inside the settings panel. */
-.settings-panel button.focused, .settings-panel button:focus-visible {
-  border-color: var(--focus); box-shadow: 0 .3rem 1rem #0004;
-}
+.update-action { align-self: stretch; min-width: 11rem; padding: .8rem 1.6rem; background: var(--settings-control); color: var(--white); border: .12rem solid var(--settings-line); border-radius: var(--surface-radius); font-size: 1.05rem; line-height: 1.4; font-weight: 700; text-align: center; }
+.settings-panel button { border-width: .12rem; }
 .subtitle-preference { padding: 0 .2rem; }
 .subtitle-preference-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .subtitle-preference-heading p { margin: .25rem 0 0; font-size: .8rem; color: var(--settings-muted); }
 .subtitle-preference-heading .focus-select { width: 11rem; flex-shrink: 0; }
 .subtitle-preference .subtitle-help { margin: .55rem 0 0; font-size: .75rem; color: var(--settings-muted); }
-.settings-panel .settings-item { min-height: 4.2rem; padding: .8rem 1rem; border: .1rem solid var(--settings-line); background: transparent; border-radius: .7rem; }
+.settings-panel .settings-item { min-height: 4.2rem; padding: .8rem 1rem; border: .12rem solid var(--settings-line); background: transparent; border-radius: var(--surface-radius); }
 .settings-panel .settings-item strong { font-size: 1.05rem; }
 .settings-panel .settings-item small { margin-top: .2rem; font-size: .8rem; }
 .settings-panel .settings-item > .icon { width: 1.3rem; height: 1.3rem; }
-.settings-panel .overlay-page > .text-button { margin-top: .25rem; color: var(--settings-muted); font-size: .9rem; }
 .settings-panel .client-update-panel[data-phase="error"] .update-state { color: #ffc3b6; }
 .settings-panel .overlay-page > .update-card { margin-top: 1.5rem; }
 
@@ -218,7 +210,7 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .live-toolbar { display: flex; align-items: center; gap: .8rem; margin: 1rem 0; }
 .live-toolbar > button { padding: .6rem 1rem; }
 .live-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
-.live-channel { min-width: 0; padding: .8rem 1rem; text-align: left; background: var(--settings-control); border: .1rem solid var(--settings-line); border-radius: .7rem; }
+.live-channel { min-width: 0; padding: .8rem 1rem; text-align: left; background: var(--settings-control); border: .12rem solid var(--settings-line); border-radius: var(--surface-radius); }
 .live-channel strong, .live-channel small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-channel strong { font-size: 1rem; }
 .live-channel small { margin-top: .3rem; color: var(--muted); font-size: .75rem; }
@@ -227,8 +219,7 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .live-player-controls { display: flex; gap: .7rem; align-items: center; padding: 1rem 2rem; background: #1c222a; }
 .live-player-controls > div { flex: 1; min-width: 0; }
 .live-player-controls p { font-size: .8rem; color: #b1bbc9; margin: .4rem 0; }
-.live-player-controls button { padding: .7rem 1rem; border: 2px solid #465160; border-radius: .5rem; }
-.live-player-controls button:focus { outline: 3px solid white; outline-offset: 2px; }
+.live-player-controls button { padding: .7rem 1rem; border: 2px solid #465160; border-radius: var(--surface-radius); }
 @media (max-width: 700px) and (orientation: portrait) {
   :root { font-size: 12px; }
   .topbar { padding: 0 1.5rem; }
@@ -277,7 +268,7 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 
 .offline-badge { position: absolute; top: .6rem; right: .6rem; padding: .2rem .45rem; border-radius: .3rem; font-size: .7rem; color: #edfff9; background: #164b40e6; }
 
-.watch-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1rem 1.5rem; margin-block: 1rem; background: var(--surface, #202831); border-radius: 1rem; font-size: 1.4rem; }
+.watch-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1rem 1.5rem; margin-block: 1rem; background: var(--surface, #202831); border-radius: var(--surface-radius); font-size: 1.4rem; }
 .watch-banner button, .watch-parent-panel button { min-height: 3.5rem; padding: .8rem 1.3rem; font-size: 1.4rem; }
 .watch-parent-panel { max-width: 52rem; }
 .watch-parent-panel h2 { font-size: 2.2rem; }
@@ -301,10 +292,7 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .watch-pin-dots span.filled { border-color: var(--white); background: var(--white); }
 .watch-pin-pad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; width: 22rem; max-width: 100%; margin-inline: auto; }
 .watch-pin-pad button { min-height: 3.8rem; padding: .65rem .5rem; text-align: center; white-space: nowrap; background: var(--surface); font-size: 1.5rem; font-variant-numeric: tabular-nums; }
-.watch-pin-pad button.focused, .watch-pin-pad button:focus-visible { background: var(--white); color: var(--canvas); }
-.watch-pin-pad button[data-focus="watch-pin-delete"], .watch-pin-pad button[data-focus="watch-pin-cancel"] { font-size: 1.05rem; color: var(--muted); background: transparent; }
-.watch-pin-pad button[data-focus="watch-pin-delete"].focused, .watch-pin-pad button[data-focus="watch-pin-cancel"].focused,
-.watch-pin-pad button[data-focus="watch-pin-delete"]:focus-visible, .watch-pin-pad button[data-focus="watch-pin-cancel"]:focus-visible { color: var(--canvas); background: var(--white); }
+.watch-pin-pad button[data-focus="watch-pin-delete"], .watch-pin-pad button[data-focus="watch-pin-cancel"] { font-size: 1.2rem; }
 .watch-pin-feedback { min-height: 2.4rem; margin-top: 1rem; }
 .watch-pin-view .watch-pin-feedback p { margin: 0; font-size: .9rem; line-height: 1.6; color: var(--muted); }
 .watch-pin-view .watch-pin-feedback .error { color: #ffb4a8; }
@@ -319,4 +307,8 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .watch-quantity-view .watch-parent-actions { width: 24rem; max-width: 100%; margin: 1.5rem auto .4rem; }
 .watch-quantity-view .watch-parent-actions button { width: 100%; min-height: 3.6rem; font-size: 1.2rem; }
 .watch-quantity-view .watch-current { margin: .8rem 0 .2rem; font-size: .9rem; }
-.watch-quantity-view > .text-button { min-height: 2.6rem; padding: .55rem 1.2rem; font-size: .95rem; color: var(--muted); text-align: center; }
+.settings-panel .settings-action { min-height: 3.6rem; min-width: 10rem; padding: .8rem 1.3rem; border-radius: var(--control-radius); font-size: 1.2rem; font-weight: 600; line-height: 1.4; text-align: center; }
+.settings-panel .settings-secondary { border: .12rem solid var(--settings-line); color: var(--white); background: var(--settings-control); }
+.settings-panel .overlay-page > .settings-secondary { margin-top: 1rem; }
+.watch-quantity-view > .settings-secondary { width: 24rem; max-width: 100%; margin-top: .65rem; }
+.re-pair-actions .settings-action { flex: 1; }

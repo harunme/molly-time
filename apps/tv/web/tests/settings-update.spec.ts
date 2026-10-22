@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 async function setup(page: import('@playwright/test').Page) {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => {
     const w = window as any;
     w.MollyBridge = { postMessage(raw: string) {

@@ -46,7 +46,7 @@ export function Icon({ name }: { name: 'home' | 'people' | 'settings' | 'back' |
     home: <><path d="m3 10 9-7 9 7v10H3Z" /><path d="M9 20v-7h6v7" /></>,
     people: <><circle cx="9" cy="8" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M19 15a5 5 0 0 1 2 5" /></>,
     settings: <><path d="M19.727 9.929L21.877 10.436L21.877 13.564L19.727 14.071L18.928 16.000L20.090 17.878L17.878 20.090L16.000 18.928L14.071 19.727L13.564 21.877L10.436 21.877L9.929 19.727L8.000 18.928L6.122 20.090L3.910 17.878L5.072 16.000L4.273 14.071L2.123 13.564L2.123 10.436L4.273 9.929L5.072 8.000L3.910 6.122L6.122 3.910L8.000 5.072L9.929 4.273L10.436 2.123L13.564 2.123L14.071 4.273L16.000 5.072L17.878 3.910L20.090 6.122L18.928 8.000Z" /><circle cx="12" cy="12" r="3" /></>,
-    back: <path d="m14 5-7 7 7 7M7 12h14" />,
+    back: <path d="m12 5-7 7 7 7M5 12h14" />,
     play: <path d="m8 4 12 8-12 8Z" />,
     check: <path d="m5 12 4 4 10-10" />,
   };
@@ -129,7 +129,7 @@ export const CatalogCard = memo(function CatalogCard({ item, focusKey, disabled,
   return <FocusButton focusKey={focusKey} className="poster" disabled={disabled}
     onArrow={(direction) => onArrow(direction, firstRow)}
     onFocus={() => { onRemember(focusKey); if (nearEnd) onLoad(rowId); }} onClick={() => onActivate(item)}>
-    <Cover item={item} folder={!playable}>{playable && <><span>{subtitle}</span><Icon name="play" /></>}</Cover>
+    <div className="card-art"><Cover item={item} folder={!playable}>{playable && <><span>{subtitle}</span><Icon name="play" /></>}</Cover></div>
     <div className="card-copy"><strong>{item.name}</strong>{!playable && <span>{item.episodeCount === 0 ? '暂无视频' : item.episodeCount === undefined ? '' : `${item.episodeCount} 个视频`}</span>}</div>
   </FocusButton>;
 });
@@ -214,7 +214,7 @@ export function DetailHeader({ series, path = [], total, loading, onBack, onDown
 }) {
   return <section className="detail-header" aria-label="文件夹详情">
     <div className="detail-navigation">
-      <FocusButton focusKey="folder-back" className="folder-back text-button" onClick={onBack}
+      <FocusButton focusKey="folder-back" className="folder-back" onClick={onBack}
         onArrow={direction => { if (direction === 'down') onDown(); return false; }}
         ariaLabel={`返回${path[path.length - 1]?.name ?? '媒体库'}`}><Icon name="back" /></FocusButton>
       <div className="detail-context">

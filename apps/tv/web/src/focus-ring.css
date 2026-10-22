@@ -1,0 +1,57 @@
+/* One focus treatment for spatial navigation, keyboard navigation and native controls.
+   Media cards draw it around the artwork wrapper so the clipped image and title stay intact. */
+:root {
+  --focus-ring-surface: var(--canvas);
+  --focus-ring-border: .15rem;
+  --focus-ring-gap: .3rem;
+  --focus-ring-width: .1rem;
+  --focus-ring-radius: var(--surface-radius);
+  --focus-ring-lap: 3.2s;
+  --focus-ring-breath: 2.6s;
+}
+.settings-panel { --focus-ring-surface: var(--settings-surface); --focus-ring-border: .12rem; }
+.player-menu { --focus-ring-surface: #242a32; }
+.card-art { --focus-ring-border: 0rem; }
+button { position: relative; }
+
+@property --tv-focus-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+:is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
+    .poster.focused > .card-art, .poster:focus-visible > .card-art) {
+  outline: none;
+  border-color: #ffffff80;
+  box-shadow: 0 0 0 .15rem var(--focus-ring-surface), 0 0 0 .26rem #ffffff60, 0 .3rem 1rem #0004;
+}
+@supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+  :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
+      .poster.focused > .card-art, .poster:focus-visible > .card-art)::before {
+    content: '';
+    position: absolute;
+    z-index: 2;
+    inset: calc(-1 * (var(--focus-ring-gap) + var(--focus-ring-border)));
+    padding: var(--focus-ring-width);
+    border-radius: calc(var(--focus-ring-radius) + var(--focus-ring-gap));
+    pointer-events: none;
+    background: conic-gradient(from var(--tv-focus-angle), #ffffff00 0deg 180deg, #ffffff20 235deg, #ffffff99 285deg, #fff 320deg, #ffffff00 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: tv-focus-orbit var(--focus-ring-lap) linear infinite, tv-focus-breathe var(--focus-ring-breath) ease-in-out infinite;
+  }
+}
+@keyframes tv-focus-orbit { to { --tv-focus-angle: 360deg; } }
+@keyframes tv-focus-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
+      .poster.focused > .card-art, .poster:focus-visible > .card-art) {
+    border-color: var(--focus);
+    box-shadow: 0 0 0 .15rem var(--focus-ring-surface), 0 0 0 .26rem #ffffffb8, 0 .3rem 1rem #0004;
+  }
+  :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
+      .poster.focused > .card-art, .poster:focus-visible > .card-art)::before { display: none; animation: none; }
+}

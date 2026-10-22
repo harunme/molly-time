@@ -499,7 +499,7 @@ test('native container focus restores a control without row or page outlines', a
     await expect(container).toHaveCSS('outline-style', 'none');
     await expect(page.locator('.poster.focused')).toHaveCount(1);
   }
-  await expect(second.locator('.cover')).not.toHaveCSS('box-shadow', 'none');
+  await expect(second.locator('.card-art')).not.toHaveCSS('box-shadow', 'none');
   // A disabled/stale selection must fall back to a usable control in that row.
   await second.evaluate((node: HTMLButtonElement) => { node.disabled = true; });
   await page.locator('[data-rail="home-row-0"]').evaluate((node: HTMLElement) => node.focus());

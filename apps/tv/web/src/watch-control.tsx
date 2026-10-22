@@ -147,7 +147,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [enteringPin]);
-  if (!state) return <section className="watch-parent-panel"><p role="status">请连接网络后设置观看数量。</p><FocusButton focusKey="close-overlay" className="text-button" onClick={close}>{backLabel}</FocusButton></section>;
+  if (!state) return <section className="watch-parent-panel"><p role="status">请连接网络后设置观看数量。</p><FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton></section>;
   const label = `${selection.amount} ${selection.mode === 'episodes' ? '集' : '分钟'}`;
   if (enteringPin) return <FocusRegion focusKey="watch-pin" boundary className="watch-parent-panel watch-pin-view">
     <h2>{state.pinSet || pinKnown.current ? '输入家长密码' : '设置家长密码'}</h2>
@@ -164,8 +164,8 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
     <h2>这次看多少</h2>
     <p>选一个数量，看完自动休息。</p>
     <div className="watch-amount-grid" role="group" aria-label="观看数量">{choices.map(choice => <FocusButton key={choice.label} ariaLabel={choice.label} focusKey={`watch-choice-${choice.mode}-${choice.amount}`} selected={selection.mode === choice.mode && selection.amount === choice.amount} className={selection.mode === choice.mode && selection.amount === choice.amount ? 'primary' : ''} onClick={() => { touched.current = true; setSelection({ mode: choice.mode, amount: choice.amount }); }}>{choice.label}</FocusButton>)}</div>
-    <div className="watch-parent-actions"><FocusButton focusKey="watch-parent-main" className="primary" onClick={() => { touched.current = true; setEnteringPin(true); setError(''); }}>开始观看</FocusButton></div>
+    <div className="watch-parent-actions"><FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => { touched.current = true; setEnteringPin(true); setError(''); }}>开始观看</FocusButton></div>
     {state.enabled && state.status === 'allowed' && <p className="watch-current">{watchLabel(state)} · 返回后可继续看</p>}
-    <FocusButton focusKey="close-overlay" className="text-button" onClick={close}>{backLabel}</FocusButton>
+    <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
   </section>;
 }

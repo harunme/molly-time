@@ -15,6 +15,7 @@ import { useClientUpdate } from './client-update';
 import { useTvMotion } from './motion';
 import { HomeLoading } from './home-loading';
 import './style.css';
+import './focus-ring.css';
 
 init({ debug: false, visualDebug: false, throttle: 100, shouldFocusDOMNode: true,
   domNodeFocusOptions: { preventScroll: true }, shouldUseNativeEvents: true });
@@ -555,9 +556,9 @@ function App() {
           {overlay === 're-pair' ? <div className="re-pair-confirm">
             <p>重新配对会断开当前家庭媒体库，需要家长再次输入配对码确认。</p>
             {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
-            <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="text-button" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
-              <FocusButton focusKey="confirm-re-pair" className="primary" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
-          </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '活动一下，等家长安排下次观看吧。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary" onClick={() => { setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" onClick={() => openOverlay('watch-control')}>家长允许观看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} close={closeOverlay} backLabel={parentOverlay === 'settings' ? '返回设置' : '返回媒体库'} changed={state => { watch.setState(state); setFolder(undefined); folderHistory.current = []; resetOverlay(null); }} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
+            <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="settings-action settings-secondary" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
+              <FocusButton focusKey="confirm-re-pair" className="primary settings-action" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
+          </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '活动一下，等家长安排下次观看吧。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary settings-action" onClick={() => { setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" className="settings-action settings-secondary" onClick={() => openOverlay('watch-control')}>家长允许观看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} close={closeOverlay} backLabel={parentOverlay === 'settings' ? '返回设置' : '返回媒体库'} changed={state => { watch.setState(state); setFolder(undefined); folderHistory.current = []; resetOverlay(null); }} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
             {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && updateCard}
             {authenticated && <PlaybackSettings />}
             {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
@@ -565,7 +566,7 @@ function App() {
             {authenticated && <FocusButton focusKey="open-live-tv" className="settings-item" onClick={() => openOverlay('live-tv')}><Icon name="play" /><span><strong>电视直播（实验）</strong><small>观看运营提供的直播频道</small></span><span>›</span></FocusButton>}
           </div>}
           {error && <p role="alert" className="error">{error}</p>}
-          {overlay !== 're-pair' && overlay !== 'watch-rest' && overlay !== 'watch-control' && <FocusButton focusKey="close-overlay" className="text-button" onClick={closeOverlay}>{parentOverlay === 'settings' ? '返回设置' : '返回媒体库'}</FocusButton>}
+          {overlay !== 're-pair' && overlay !== 'watch-rest' && overlay !== 'watch-control' && <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={closeOverlay}>{parentOverlay === 'settings' ? '返回设置' : '返回媒体库'}</FocusButton>}
         </div>
       </FocusRegion>
     </div>}

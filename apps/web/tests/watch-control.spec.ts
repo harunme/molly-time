@@ -181,5 +181,6 @@ test('TV offers six quantities at 720p, starts on the fourth digit, and remember
     await page.locator('[data-focus="watch-banner-parent"]').click();
     await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
   }
+  await expect(page.locator('[data-focus="watch-parent-main"]')).toBeFocused();
   await page.screenshot({ path: testInfo.outputPath('watch-quantity-tv-720p.png') });
 });
