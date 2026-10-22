@@ -336,8 +336,6 @@ def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSes
         normalize(db, arrangement)
         if not arrangement or arrangement.ended:
             return {"episodeId": None}
-        if arrangement.mode == "episodes" and arrangement.playlist:
-            return {"episodeId": arrangement.playlist[arrangement.cursor] if arrangement.playlist[arrangement.cursor] != episode_id else None}
     folder_id = _series_id(db, episode)
     if not folder_id:
         return {"episodeId": None}

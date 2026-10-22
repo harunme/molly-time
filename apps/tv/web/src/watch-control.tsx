@@ -10,8 +10,8 @@ export const watchLabel = (state: Watching) => {
   if (!state.enabled) return '观看管理未开启';
   if (state.status === 'resting') return '看完啦，休息一下吧。';
   if (round?.mode === 'minutes') return `还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟`;
-  if (round?.playlist.length) return round.cursor + 1 === round.playlist.length ? '这是最后一集啦。' : `正在看第 ${round.cursor + 1} 集，共 ${round.playlist.length} 集`;
-  return `可以看 ${round?.amount ?? state.amount} 集，选一个视频吧。`;
+  if (round) return round.cursor + 1 === round.amount ? '这是最后一集啦。' : `还能看 ${Math.max(0, round.amount - round.cursor)} 集`;
+  return `可以看 ${state.amount} 集，选一个视频吧。`;
 };
 const localKey = (id: string) => `mollytime.watch-control.${id}`;
 function saved(id: string): { playedMs: number; cursor: number } {
@@ -34,7 +34,8 @@ export class BrowserWatchGuard {
   private at = performance.now();
   private playing = false;
   private syncing?: Promise<void>;
-  async open() { this.state = await readWatchControl().catch(e => { if (e instanceof ApiError && e.status === 404) return undefined; throw e; }); this.at = performance.now(); }
+  private completed = false;
+  async open() { this.completed = false; this.state = await readWatchControl().catch(e => { if (e instanceof ApiError && e.status === 404) return undefined; throw e; }); this.at = performance.now(); }
   sample(playing: boolean): boolean {
     const now = performance.now(), round = this.state?.round;
     if (this.playing && round && this.state?.enabled && this.state.status === 'allowed') {
@@ -46,9 +47,9 @@ export class BrowserWatchGuard {
     return !this.state?.enabled || (this.state.status === 'allowed' && !round?.ended && (round?.mode !== 'minutes' || round.remainingMs! > 0));
   }
   private persist() { const round = this.state?.round; if (round) localStorage.setItem(localKey(round.id), JSON.stringify({ playedMs: round.playedMs, cursor: round.cursor })); }
-  complete(episode: string) {
+  complete(_episode: string) {
     const round = this.state?.round;
-    if (this.state?.enabled && round?.mode === 'episodes' && round.playlist[round.cursor] === episode) { round.cursor++; this.persist(); }
+    if (this.state?.enabled && round?.mode === 'episodes' && !this.completed) { this.completed = true; round.cursor++; round.ended = round.cursor >= round.amount; this.persist(); }
   }
   sync() {
     if (demoEnabled || (this.state && !this.state.supported && !this.state.enabled)) return Promise.resolve();
@@ -83,65 +84,88 @@ export function useWatchControl(authenticated: boolean, capabilities?: Capabilit
   return { state, setState };
 }
 
-export function WatchControlPanel({ state, changed }: { state?: Watching; changed: (state: Watching) => void }) {
-  const [action, setAction] = useState<string>(), [pin, setPin] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const [settings, setSettings] = useState(false), [mode, setMode] = useState<Watching['mode']>(state?.mode ?? 'episodes'), [amount, setAmount] = useState(state?.amount ?? 2), [custom, setCustom] = useState(false), [customValue, setCustomValue] = useState('');
-  const pinRef = useRef(''), lock = useRef(false);
-  const choose = (value: string) => { setAction(value); setPin(''); pinRef.current = ''; setError(''); };
+const choices = [
+  { mode: 'episodes', amount: 1, label: '1 集' },
+  { mode: 'episodes', amount: 2, label: '2 集' },
+  { mode: 'episodes', amount: 3, label: '3 集' },
+  { mode: 'minutes', amount: 15, label: '15 分钟' },
+  { mode: 'minutes', amount: 30, label: '30 分钟' },
+  { mode: 'minutes', amount: 60, label: '60 分钟' },
+] as const;
+
+export function WatchControlPanel({ state, changed, close, backLabel }: { state?: Watching; changed: (state: Watching) => void; close: () => void; backLabel: string }) {
+  const initial = choices.find(choice => choice.mode === state?.mode && choice.amount === state.amount) ?? choices[1];
+  const [selection, setSelection] = useState<{ mode: Watching['mode']; amount: number }>({ mode: initial.mode, amount: initial.amount });
+  const touched = useRef(false);
+  useEffect(() => {
+    if (touched.current) return;
+    const previous = choices.find(choice => choice.mode === state?.mode && choice.amount === state.amount) ?? choices[1];
+    setSelection({ mode: previous.mode, amount: previous.amount });
+  }, [state?.mode, state?.amount]);
+  const [enteringPin, setEnteringPin] = useState(false), [pin, setPin] = useState('');
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const pinRef = useRef(''), lock = useRef(false), pinKnown = useRef(!!state?.pinSet), version = useRef(state?.version ?? 0);
+  version.current = Math.max(state?.version ?? 0, version.current);
+  const attempt = useRef<{ requestId: string; version: number; mode: Watching['mode']; amount: number } | undefined>(undefined);
   const perform = async () => {
     if (!state || pinRef.current.length !== 4 || lock.current) return;
     lock.current = true; setBusy(true); setError('');
     try {
-      if (!state.pinSet) await request('/api/watch-control/pin', 'POST', { pin: pinRef.current });
-      const next = await request<Watching>('/api/watch-control/commands', 'POST', { requestId: crypto.randomUUID(), version: state.version, action, pin: pinRef.current,
-        ...(action === 'settings' ? { enabled: !state.enabled || settings, mode, amount } : {}) });
-      changed({ ...next, pinSet: true }); setAction(undefined); setSettings(false); setPin(''); pinRef.current = '';
-      requestAnimationFrame(() => setFocus('watch-parent-main'));
-    } catch (e) { setError(e instanceof Error ? e.message : '请连接网络后再试'); setPin(''); pinRef.current = ''; const next = await readWatchControl().catch(() => undefined); if (next) changed(next); }
-    finally { lock.current = false; setBusy(false); }
+      if (!pinKnown.current && !state.pinSet) { await request('/api/watch-control/pin', 'POST', { pin: pinRef.current }); pinKnown.current = true; }
+      attempt.current ??= { requestId: crypto.randomUUID(), version: version.current, ...selection };
+      const next = await request<Watching>('/api/watch-control/commands', 'POST', { ...attempt.current, action: 'start', pin: pinRef.current });
+      changed({ ...next, pinSet: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '请连接网络后再试');
+      pinRef.current = ''; setPin('');
+      // Keep an uncertain request id for safe retry; version conflicts require a fresh attempt.
+      if (e instanceof ApiError && e.status === 409) {
+        attempt.current = undefined;
+        const next = await readWatchControl().catch(() => undefined);
+        if (next) { version.current = next.version; pinKnown.current = !!next.pinSet; }
+      }
+    } finally { lock.current = false; setBusy(false); }
   };
-  useEffect(() => {
-    if (!settings || !custom || action) return;
-    const key = (event: KeyboardEvent) => {
-      if ((!/^[0-9]$/.test(event.key) && event.key !== 'Backspace') || event.repeat) return;
-      event.preventDefault(); event.stopImmediatePropagation();
-      setCustomValue(previous => { const next = event.key === 'Backspace' ? previous.slice(0, -1) : (previous + event.key).slice(-3); setAmount(Number(next)); return next; });
-    };
-    window.addEventListener('keydown', key, true); return () => window.removeEventListener('keydown', key, true);
-  }, [settings, custom, action]);
   const performRef = useRef(perform); performRef.current = perform;
+  const digit = (value: string) => {
+    if (lock.current || pinRef.current.length >= 4) return;
+    pinRef.current += value; setPin(pinRef.current);
+    if (pinRef.current.length === 4) void performRef.current();
+  };
+  const digitRef = useRef(digit); digitRef.current = digit;
   useEffect(() => {
-    if (!action) return;
+    if (!enteringPin) return;
     requestAnimationFrame(() => setFocus('watch-digit-1'));
     const key = (event: KeyboardEvent) => {
-      if (/^[0-9]$/.test(event.key) && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); if (!lock.current && pinRef.current.length < 4) { pinRef.current += event.key; setPin(pinRef.current); } }
-      if (event.key === 'Backspace') { event.preventDefault(); event.stopImmediatePropagation(); if (!lock.current) { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); } }
-      if (event.key === 'Enter' && pinRef.current.length === 4 && !event.repeat) { event.preventDefault(); event.stopImmediatePropagation(); void performRef.current(); }
+      if (/^[0-9]$/.test(event.key) && !event.repeat) {
+        event.preventDefault(); event.stopImmediatePropagation(); digitRef.current(event.key);
+      } else if (event.key === 'Backspace') {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (!lock.current) { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }
+      }
     };
-    window.addEventListener('keydown', key, true); return () => window.removeEventListener('keydown', key, true);
-  }, [action]);
-  if (!state) return <p role="status">请连接网络读取观看安排；旧客户端需要升级。</p>;
-  if (action) return <FocusRegion focusKey="watch-pin" boundary className="watch-parent-panel">
-    <h2>{state.pinSet ? '请输入家长密码' : '设置四位数字家长密码'}</h2><p>家长操作需要联网</p>
-    <div aria-label={`已输入 ${pin.length} 位密码`} className="watch-pin-dots">{[0, 1, 2, 3].map(index => <span key={index}>{index < pin.length ? '●' : '○'}</span>)}</div>
-    <div className="watch-pin-pad">{[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(digit => <FocusButton key={digit} focusKey={`watch-digit-${digit}`} disabled={busy} onClick={() => { if (pinRef.current.length < 4) { pinRef.current += digit; setPin(pinRef.current); } }}>{digit}</FocusButton>)}<FocusButton focusKey="watch-pin-delete" disabled={busy} onClick={() => { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }}>删除</FocusButton></div>
-    {error && <p role="alert" className="error">{error}</p>}
-    <div className="watch-parent-actions"><FocusButton focusKey="watch-pin-confirm" className="primary" disabled={busy || pin.length !== 4} onClick={() => { void perform(); }}>{busy ? '正在办理…' : '确定'}</FocusButton><FocusButton focusKey="watch-pin-cancel" disabled={busy} onClick={() => { setAction(undefined); setPin(''); pinRef.current = ''; requestAnimationFrame(() => setFocus('watch-parent-main')); }}>取消</FocusButton></div>
-  </FocusRegion>;
-  if (settings) return <section className="watch-parent-panel"><h2>平时每次看多少</h2><div className="watch-parent-actions">{(['episodes', 'minutes'] as const).map(value => <FocusButton key={value} focusKey={`watch-mode-${value}`} className={mode === value ? 'primary' : ''} onClick={() => { setMode(value); setAmount(value === 'episodes' ? 2 : 30); setCustom(false); }}>{value === 'episodes' ? '按集数' : '按时间'}</FocusButton>)}</div>
-    <div className="watch-parent-actions">{(mode === 'episodes' ? [1, 2, 3] : [15, 30, 45, 60]).map(value => <FocusButton key={value} focusKey={`watch-amount-${value}`} className={!custom && amount === value ? 'primary' : ''} onClick={() => { setAmount(value); setCustom(false); }}>{value} {mode === 'episodes' ? '集' : '分钟'}</FocusButton>)}<FocusButton focusKey="watch-custom" onClick={() => { setCustom(true); setCustomValue(''); setAmount(0); requestAnimationFrame(() => setFocus('watch-custom-plus')); }}>自定义</FocusButton></div>
-    {custom && <div><p>用遥控器数字键输入{mode === 'episodes' ? '集数（1～99）' : '分钟（1～600）'}：<output aria-label="自定义观看数量">{customValue || '—'}</output></p><div className="watch-parent-actions"><FocusButton focusKey="watch-custom-minus" onClick={() => { const next = Math.max(1, amount - 1); setAmount(next); setCustomValue(String(next)); }}>减少</FocusButton><FocusButton focusKey="watch-custom-plus" onClick={() => { const next = Math.min(mode === 'episodes' ? 99 : 600, amount + 1); setAmount(next); setCustomValue(String(next)); }}>增加</FocusButton></div></div>}
-    <p>每次看 {amount} {mode === 'episodes' ? '集，看完休息。' : '分钟，时间到休息。'}下次允许观看时生效。</p>
-    <FocusButton focusKey="watch-parent-main" className="primary" disabled={!Number.isInteger(amount) || amount < 1 || amount > (mode === 'episodes' ? 99 : 600)} onClick={() => choose('settings')}>保存设置</FocusButton>
-    <FocusButton focusKey="watch-settings-back" onClick={() => { setSettings(false); requestAnimationFrame(() => setFocus('watch-parent-main')); }}>返回</FocusButton></section>;
-  return <section className="watch-parent-panel"><h2>观看安排</h2><p role="status">{watchLabel(state)}</p><p>平时每次看 {state.amount} {state.mode === 'episodes' ? '集' : '分钟'}</p>
-    <div className="watch-parent-actions">
-      {!state.enabled ? <FocusButton focusKey="watch-parent-main" className="primary" onClick={() => { setSettings(true); requestAnimationFrame(() => setFocus('watch-mode-episodes')); }}>开启观看管理</FocusButton> : <>
-        <FocusButton focusKey="watch-parent-main" className="primary" onClick={() => choose(state.status === 'resting' ? 'allow' : 'add')}>{state.status === 'resting' ? '允许观看' : state.round?.mode === 'episodes' ? '再看一集' : '再看 10 分钟'}</FocusButton>
-        {state.round && state.status === 'resting' && <FocusButton focusKey="watch-add-rest" onClick={() => choose('add')}>{state.round.mode === 'episodes' ? '再看一集' : '再看 10 分钟'}</FocusButton>}
-        {state.status === 'allowed' && <FocusButton focusKey="watch-finish" onClick={() => choose(state.round?.mode === 'episodes' ? 'finish-current' : 'stop')}>{state.round?.mode === 'episodes' ? (state.round.playlist.length ? '看完这集休息' : '再看一集就休息') : '现在休息'}</FocusButton>}
-      </>}
+    window.addEventListener('keydown', key, true);
+    return () => window.removeEventListener('keydown', key, true);
+  }, [enteringPin]);
+  if (!state) return <section className="watch-parent-panel"><p role="status">请连接网络后设置观看数量。</p><FocusButton focusKey="close-overlay" className="text-button" onClick={close}>{backLabel}</FocusButton></section>;
+  const label = `${selection.amount} ${selection.mode === 'episodes' ? '集' : '分钟'}`;
+  if (enteringPin) return <FocusRegion focusKey="watch-pin" boundary className="watch-parent-panel watch-pin-view">
+    <h2>{state.pinSet || pinKnown.current ? '输入家长密码' : '设置家长密码'}</h2>
+    <p className="watch-pin-summary">这次看 {label}</p>
+    <div aria-label={`已输入 ${pin.length} 位密码`} className="watch-pin-dots">{[0, 1, 2, 3].map(index => <span key={index} className={index < pin.length ? 'filled' : ''} />)}</div>
+    <div className="watch-pin-pad">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map(value => <FocusButton key={value} focusKey={`watch-digit-${value}`} disabled={busy} onClick={() => digit(String(value))}>{value}</FocusButton>)}
+      <FocusButton focusKey="watch-pin-delete" disabled={busy} onClick={() => { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }}>删除</FocusButton>
+      <FocusButton focusKey="watch-digit-0" disabled={busy} onClick={() => digit('0')}>0</FocusButton>
+      <FocusButton focusKey="watch-pin-cancel" disabled={busy} onClick={() => { setEnteringPin(false); setPin(''); pinRef.current = ''; attempt.current = undefined; setError(''); requestAnimationFrame(() => setFocus('watch-parent-main')); }}>返回</FocusButton>
     </div>
-    {state.enabled && <div className="watch-parent-actions"><FocusButton focusKey="watch-settings" onClick={() => { setMode(state.mode); setAmount(state.amount); setSettings(true); requestAnimationFrame(() => setFocus('watch-mode-' + state.mode)); }}>观看设置</FocusButton><FocusButton focusKey="watch-reselect" onClick={() => choose('reselect')}>重新选片</FocusButton>{state.status === 'allowed' && state.round?.mode === 'episodes' && <FocusButton focusKey="watch-stop" onClick={() => choose('stop')}>现在休息</FocusButton>}<FocusButton focusKey="watch-disable" onClick={() => { setSettings(false); choose('settings'); }}>关闭观看管理</FocusButton></div>}
+    <div className="watch-pin-feedback" aria-live="polite">{error ? <p role="alert" className="error">{error}</p> : <p role="status">{busy ? '正在开始观看…' : '输入 4 位数字后自动开始'}</p>}</div>
+  </FocusRegion>;
+  return <section className="watch-parent-panel watch-quantity-view">
+    <h2>这次看多少</h2>
+    <p>选一个数量，看完自动休息。</p>
+    <div className="watch-amount-grid" role="group" aria-label="观看数量">{choices.map(choice => <FocusButton key={choice.label} ariaLabel={choice.label} focusKey={`watch-choice-${choice.mode}-${choice.amount}`} selected={selection.mode === choice.mode && selection.amount === choice.amount} className={selection.mode === choice.mode && selection.amount === choice.amount ? 'primary' : ''} onClick={() => { touched.current = true; setSelection({ mode: choice.mode, amount: choice.amount }); }}>{choice.label}</FocusButton>)}</div>
+    <div className="watch-parent-actions"><FocusButton focusKey="watch-parent-main" className="primary" onClick={() => { touched.current = true; setEnteringPin(true); setError(''); }}>开始观看</FocusButton></div>
+    {state.enabled && state.status === 'allowed' && <p className="watch-current">{watchLabel(state)} · 返回后可继续看</p>}
+    <FocusButton focusKey="close-overlay" className="text-button" onClick={close}>{backLabel}</FocusButton>
   </section>;
 }

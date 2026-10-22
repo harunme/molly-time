@@ -2,7 +2,7 @@ import { chooseSelect } from "./select";
 import { expect, test } from '@playwright/test';
 const apiOrigin = `http://127.0.0.1:${process.env.MOLLYTIME_E2E_PORT || '8098'}`;
 
-test('parent enables a fixed playlist; TV PIN authorizes, completes, and cannot restart its allowance', async ({ page }, testInfo) => {
+test('parent configures offline; TV starts with a quantity and counts free playback across restarts', async ({ page }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto('/manage/');
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
@@ -60,15 +60,19 @@ test('parent enables a fixed playlist; TV PIN authorizes, completes, and cannot 
   const tv = await page.context().newPage();
   tv.on('pageerror', e => errors.push(e.message));
   await tv.addInitScript(binding => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), auth);
+  await tv.emulateMedia({ reducedMotion: 'reduce' });
   await tv.goto(`${apiOrigin}/tv/`);
   await expect(tv.getByText('看完啦，休息一下吧。', { exact: true })).toBeVisible();
   await tv.getByRole('button', { name: '家长允许观看', exact: true }).click();
-  await tv.getByRole('button', { name: '允许观看', exact: true }).click();
-  await tv.keyboard.type('0000'); await tv.keyboard.press('Enter');
+  await expect(tv.getByRole('group', { name: '观看数量' }).getByRole('button')).toHaveCount(6);
+  await expect(tv.getByRole('button', { name: '2 集', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await tv.screenshot({ path: testInfo.outputPath('watch-quantity-tv.png') });
+  await tv.getByRole('button', { name: '开始观看', exact: true }).click();
+  await tv.keyboard.type('0000');
   await expect(tv.getByRole('alert')).toHaveText('家长密码不正确');
-  await tv.keyboard.type('1234'); await tv.keyboard.press('Enter');
-  await expect(tv.getByText('请输入家长密码', { exact: true })).toHaveCount(0);
-  await tv.keyboard.press('Escape');
+  await tv.keyboard.type('1234');
+  await expect(tv.getByRole('heading', { name: '输入家长密码', exact: true })).toHaveCount(0);
+  await expect(tv.getByRole('button', { name: '开始观看', exact: true })).toHaveCount(0);
   await testInfo.attach('tv-before-selection', { body: await tv.locator('body').innerText(), contentType: 'text/plain' });
   await tv.screenshot({ path: testInfo.outputPath('tv-before-selection.png') });
   await tv.locator('[data-focus$="-series"]').click();
@@ -77,8 +81,20 @@ test('parent enables a fixed playlist; TV PIN authorizes, completes, and cannot 
   const video = tv.getByRole('dialog', { name: '视频播放', exact: true }).locator(':scope > video');
   await expect.poll(() => video.evaluate(v => (v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
   await video.evaluate(v => { (v as HTMLVideoElement).pause(); });
+  // Leaving an unfinished episode and switching videos never opens parent controls.
+  await tv.keyboard.press('Escape');
+  await expect(tv.getByRole('dialog', { name: '视频播放', exact: true })).toHaveCount(0);
+  await tv.locator('[data-focus="episode-browser-next"]').click();
+  await expect.poll(() => video.evaluate(v => (v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+  await video.evaluate(v => { (v as HTMLVideoElement).pause(); });
+  await tv.keyboard.press('Escape');
+  await expect(tv.getByRole('dialog', { name: '视频播放', exact: true })).toHaveCount(0);
+  await tv.locator('[data-focus="episode-browser-episode"]').click();
+  await expect.poll(() => video.evaluate(v => (v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+  await video.evaluate(v => { (v as HTMLVideoElement).pause(); });
   let state = await (await page.request.get(`${apiOrigin}/api/watch-control`, { headers })).json();
-  expect(state.round.playlist).toEqual(['browser-episode', 'browser-next']);
+  expect(state.round.cursor).toBe(0);
+  expect(state.round.amount).toBe(2);
   const finish = async () => { await video.evaluate(v => { (v as HTMLVideoElement).currentTime = (v as HTMLVideoElement).duration - 0.1; void (v as HTMLVideoElement).play(); }); };
   await finish();
   await expect.poll(async () => (await (await page.request.get(`${apiOrigin}/api/watch-control`, { headers })).json()).round.cursor).toBe(1);
@@ -124,4 +140,46 @@ test('time limit stops real playback, keeps progress after reload, and parent ad
   await expect.poll(async () => (await (await page.request.get(`${apiOrigin}/api/watch-control`, { headers })).json()).status).toBe('allowed');
   state = await (await page.request.get(`${apiOrigin}/api/watch-control`, { headers })).json();
   expect(state.round.remainingMs).toBeGreaterThan(599000);
+});
+
+test('TV offers six quantities at 720p, starts on the fourth digit, and remembers the last choice', async ({ page }, testInfo) => {
+  const auth = await (await page.request.post(`${apiOrigin}/api/auth/login`, { headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' } })).json();
+  const headers = { Authorization: `Bearer ${auth.accessToken}` };
+  await page.request.post('/api/manage/auth/login', { data: { username: 'parent@example.test', password: 'parent-e2e' } });
+  const parent = await (await page.request.get('/api/manage/auth/session')).json();
+  await page.request.put('/api/manage/watch-control/pin', { headers: { 'X-CSRF-Token': parent.csrfToken }, data: { pin: '1234' } });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(binding => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), auth);
+  await page.goto(`${apiOrigin}/tv/`);
+  await expect(page.locator('[data-focus$="-series"]')).toBeVisible();
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '电视设置', exact: true })).toBeVisible();
+  await page.locator('[data-focus="open-watch-control"]').click();
+  let previousRound: string | undefined;
+  for (const [mode, amount] of [['episodes', 1], ['episodes', 2], ['episodes', 3], ['minutes', 15], ['minutes', 30], ['minutes', 60]] as const) {
+    const label = `${amount} ${mode === 'episodes' ? '集' : '分钟'}`;
+    const choice = page.getByRole('button', { name: label, exact: true });
+    await expect(choice).toBeInViewport();
+    await choice.focus(); await page.keyboard.press('Enter');
+    await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /重新选片|自定义|关闭观看管理|按集数|按时间/ })).toHaveCount(0);
+    await page.getByRole('button', { name: '开始观看', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '输入家长密码', exact: true })).toBeVisible();
+    await expect(page.locator('[data-focus="watch-digit-0"]')).toBeInViewport();
+    await page.keyboard.type('123');
+    await expect(page.getByLabel('已输入 3 位密码')).toBeVisible();
+    const beforeFourth = await (await page.request.get(`${apiOrigin}/api/watch-control`, { headers })).json();
+    expect(beforeFourth.round?.id).toBe(previousRound);
+    if (mode === 'minutes' && amount === 60) await page.screenshot({ path: testInfo.outputPath('watch-pin-tv-720p.png') });
+    await page.keyboard.type('4');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const state = await (await page.request.get(`${apiOrigin}/api/watch-control`, { headers })).json();
+    expect(state.status).toBe('allowed'); expect(state.mode).toBe(mode); expect(state.amount).toBe(amount);
+    expect(state.round.id).not.toBe(previousRound); previousRound = state.round.id;
+    await page.reload();
+    await page.locator('[data-focus="watch-banner-parent"]').click();
+    await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+  }
+  await page.screenshot({ path: testInfo.outputPath('watch-quantity-tv-720p.png') });
 });

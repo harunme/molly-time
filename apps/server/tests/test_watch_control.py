@@ -98,23 +98,51 @@ def finish(client, headers, session_id):
     return response
 
 
-def test_fixed_playlist_resume_end_and_add(setup):
+def test_free_selection_completion_resume_end_and_add(setup):
     client, headers = setup
     enable(client, headers)
-    watch = start(client, headers).json()["sessionId"]
-    assert state(client, headers)["round"]["playlist"] == ["e1", "ep2"]
-    assert start(client, headers, "ep2").status_code == 403
-    assert start(client, headers).status_code == 200  # same episode resume
-    finish(client, headers, watch)
+    first = start(client, headers).json()["sessionId"]
+    switched = start(client, headers, "ep3").json()["sessionId"]
+    assert state(client, headers)["round"]["cursor"] == 0  # changing videos is free
+    finish(client, headers, switched)
+    assert state(client, headers)["round"]["cursor"] == 1
+    # Delayed completion from the previous video cannot consume the same slot again.
+    finish(client, headers, first)
+    assert state(client, headers)["round"]["cursor"] == 1
     assert client.get("/api/episodes/e1/next", headers=headers).json()["episodeId"] == "ep2"
-    assert start(client, headers).status_code == 403
-    second = start(client, headers, "ep2").json()["sessionId"]
+    second = start(client, headers, "e1").json()["sessionId"]  # replay is allowed
     finish(client, headers, second)
     assert state(client, headers)["status"] == "resting"
     assert client.get("/api/episodes/ep2/playback", headers=headers).status_code == 403
     assert command(client, headers, "add").status_code == 200
-    assert state(client, headers)["round"]["episodeId"] == "ep3"
+    assert state(client, headers)["round"]["amount"] == 3
     assert start(client, headers, "ep3").status_code == 200
+
+
+def test_tv_start_sets_rule_and_grants_one_atomic_idempotent_allowance(setup):
+    client, headers = setup
+    current = state(client, headers)
+    body = {"action": "start", "mode": "minutes", "amount": 15,
+            "version": current["version"], "requestId": str(uuid.uuid4()), "pin": "1234"}
+    wrong = client.post("/api/watch-control/commands", headers=headers, json={**body, "pin": "0000"})
+    assert wrong.status_code == 403
+    assert state(client, headers)["enabled"] is False
+    result = client.post("/api/watch-control/commands", headers=headers, json=body)
+    assert result.status_code == 200, result.text
+    allowed = result.json()
+    assert allowed["enabled"] and allowed["status"] == "allowed"
+    assert allowed["amount"] == 15 and allowed["mode"] == "minutes"
+    assert allowed["round"]["remainingMs"] == 900000
+    duplicate = client.post("/api/watch-control/commands", headers=headers, json=body)
+    assert duplicate.json()["round"]["id"] == allowed["round"]["id"]
+    # A new parent-authorized choice replaces an active allowance in one command.
+    body.update(mode="episodes", amount=1, version=allowed["version"], requestId=str(uuid.uuid4()))
+    next_round = client.post("/api/watch-control/commands", headers=headers, json=body).json()
+    assert next_round["round"]["id"] != allowed["round"]["id"]
+    assert next_round["mode"] == "episodes" and next_round["amount"] == 1
+    completed = start(client, headers, "ep3").json()["sessionId"]
+    finish(client, headers, completed)
+    assert state(client, headers)["status"] == "resting"
 
 
 def test_time_pause_duplicate_and_late_old_round(setup):
@@ -277,8 +305,8 @@ def test_optional_clips_and_live_policy(setup):
     live_path = "/api/live-tv/channels/" + "a" * 32 + "/sessions"
     assert client.post(live_path, headers=headers).status_code == 403
     assert (
-        client.get("/api/episodes/e1/playback", headers=headers).status_code == 403
-    )  # must bind a selected playlist first
+        client.get("/api/episodes/e1/playback", headers=headers).status_code == 200
+    )  # no playlist setup is required
     command(client, headers, "settings", mode="minutes", amount=1)
     command(client, headers, "reselect")
     assert client.post(live_path, headers=headers).status_code == 200

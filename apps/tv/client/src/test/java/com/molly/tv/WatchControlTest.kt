@@ -24,7 +24,7 @@ class WatchControlTest {
     }
     private fun state(mode: String = "minutes", limit: Long = 60000, version: Int = 1): JSONObject = JSONObject()
         .put("enabled", true).put("supported", true).put("version", version).put("status", "allowed")
-        .put("round", JSONObject().put("id", "round").put("mode", mode).put("amount", 1).put("limitMs", limit)
+        .put("round", JSONObject().put("id", "round").put("mode", mode).put("amount", if (mode == "episodes") 2 else 1).put("limitMs", limit)
             .put("playedMs", 0).put("playlist", if (mode == "episodes") JSONArray(listOf("a", "b")) else JSONArray())
             .put("cursor", 0).put("ended", false))
 
@@ -55,24 +55,28 @@ class WatchControlTest {
         control.accept(state(limit = 2500))
         assertFalse(control.tick(true))
     }
-    @Test fun fixedPlaylistCompletionSurvivesRestartAndNewCommandCanAdd() {
+    @Test fun freeSelectionCountsCompletionsOnceAndSurvivesRestart() {
         val (session, control) = setup()
         control.accept(state("episodes"))
         control.requireEpisode("a", true)
-        assertTrue(runCatching { control.requireEpisode("b", true) }.isFailure)
-        control.complete("a")
-        control.complete("a") // duplicate completion cannot advance twice
+        control.requireEpisode("other-folder-video", true)
+        control.complete("a") // the video that was left must not consume a slot
+        assertEquals(0, control.snapshot().getJSONObject("round").getInt("cursor"))
+        control.complete("other-folder-video")
+        control.complete("other-folder-video")
+        assertEquals(1, control.snapshot().getJSONObject("round").getInt("cursor"))
         val restored = WatchControl(RuntimeEnvironment.getApplication(), session, MollyTimeApi(session) { "test" })
-        assertEquals("b", restored.next())
-        restored.complete("b")
+        restored.requireEpisode("a", true)
+        restored.complete("a")
         assertFalse(restored.tick(true))
+        assertTrue(runCatching { restored.requireEpisode("anything", true) }.isFailure)
         val addition = state("episodes", version = 2)
-        addition.getJSONObject("round").put("playlist", JSONArray(listOf("a", "b", "c"))).put("cursor", 2)
+        addition.getJSONObject("round").put("amount", 3).put("cursor", 2)
         restored.accept(addition)
-        assertEquals("c", restored.next())
+        restored.requireEpisode("any-video", true)
         assertTrue(restored.tick(true))
         restored.accept(state("episodes", version = 1))
-        assertEquals("c", restored.next())
+        assertEquals(2, restored.snapshot().getJSONObject("round").getInt("cursor"))
     }
     @Test fun bindingChangeCannotReuseAnotherTelevisionsAllowance() {
         val (session, control) = setup()

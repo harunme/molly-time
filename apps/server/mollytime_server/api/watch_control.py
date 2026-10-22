@@ -23,7 +23,7 @@ from ..management_models import (
     uid,
 )
 from ..transactions import serialize_sqlite_write
-from ..watch_control import current_round, dto, normalize, playlist_from
+from ..watch_control import current_round, dto, normalize
 
 router = APIRouter(tags=["watch-control"])
 
@@ -44,7 +44,7 @@ class Command(BaseModel):
     model_config = ConfigDict(extra="forbid")
     requestId: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
     version: int = Field(ge=0)
-    action: Literal["settings", "allow", "add", "stop", "finish-current", "reselect"]
+    action: Literal["settings", "allow", "add", "stop", "finish-current", "reselect", "start"]
     enabled: bool | None = None
     mode: Literal["episodes", "minutes"] | None = None
     amount: int | None = Field(default=None, ge=1, le=600)
@@ -117,7 +117,7 @@ def perform(db, user, device_id, body):
         raise HTTPException(409, "电视的安排已更新，请重新操作")
     round = current_round(db, row)
     normalize(db, round)
-    if body.action == "settings":
+    if body.action in ("settings", "start"):
         mode = body.mode or row.mode
         amount = (
             body.amount
@@ -126,7 +126,7 @@ def perform(db, user, device_id, body):
         )
         if mode == "episodes" and amount > 99:
             raise HTTPException(422, "集数应在 1～99 之间")
-        enabled = row.enabled if body.enabled is None else body.enabled
+        enabled = True if body.action == "start" else (row.enabled if body.enabled is None else body.enabled)
         if enabled and not db.get(WatchControlPin, user.family_id):
             raise HTTPException(409, "请先设置家长密码")
         legacy = db.get(DeviceReminder, device_id)
@@ -135,9 +135,11 @@ def perform(db, user, device_id, body):
         if enabled != row.enabled and round:
             round.ended = True
         row.enabled, row.mode, row.amount = enabled, mode, amount
+    if body.action == "settings":
+        pass
     elif not row.enabled:
         raise HTTPException(409, "请先开启观看管理")
-    elif body.action in ("allow", "reselect"):
+    elif body.action in ("allow", "reselect", "start"):
         if body.action == "allow" and round and not round.ended:
             raise HTTPException(409, "已经可以观看，无需重复允许")
         if round:
@@ -162,14 +164,8 @@ def perform(db, user, device_id, body):
             # Manual rest discards unused minutes; add always grants ten from now.
             round.ended = False
         else:
-            if not round.playlist:
-                round.amount += 1
-            else:
-                extra = playlist_from(db, round.playlist[-1], 2)[1:]
-                if not extra:
-                    raise HTTPException(409, "这个片单看完了，请重新选片")
-                round.playlist = [*round.playlist, *extra]
-                round.amount = len(round.playlist)
+            # Finished episodes consume one slot, regardless of folder or video.
+            round.amount = (round.cursor if round.ended else round.amount) + 1
             round.ended = False
     elif body.action == "stop":
         if round:
@@ -179,9 +175,7 @@ def perform(db, user, device_id, body):
     elif body.action == "finish-current":
         if not round or round.ended or round.mode != "episodes":
             raise HTTPException(409, "当前没有按集数观看的安排")
-        if round.playlist:
-            round.playlist = round.playlist[: round.cursor + 1]
-        round.amount = round.cursor + 1 if round.playlist else 1
+        round.amount = round.cursor + 1
         round.stop_after = True
     row.version += 1
     db.add(WatchControlCommand(id=key, device_id=device_id, fingerprint=fingerprint))
@@ -228,8 +222,8 @@ def sync(body: Sync, request: Request, user: CurrentUser, db: DbSession):
     if round and round.id == body.roundId:
         round.client_played_ms = max(round.client_played_ms, body.playedMs)
         if round.mode == "episodes":
-            round.cursor = max(round.cursor, min(body.cursor, len(round.playlist)))
-            if round.playlist and round.cursor >= len(round.playlist):
+            round.cursor = max(round.cursor, min(body.cursor, round.amount))
+            if round.cursor >= round.amount:
                 round.ended = True
         normalize(db, round)
     result = {"pinSet": db.get(WatchControlPin, user.family_id) is not None, **dto(db, row)}

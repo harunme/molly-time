@@ -283,7 +283,40 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .watch-parent-panel h2 { font-size: 2.2rem; }
 .watch-parent-panel p { font-size: 1.5rem; margin-block: 1rem; line-height: 1.5; }
 .watch-parent-actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-block: 1.2rem; }
-.watch-pin-dots { display: flex; gap: 1.5rem; font-size: 2.5rem; margin-block: 1rem; }
-.watch-pin-pad { display: grid; grid-template-columns: repeat(3, 5rem); gap: .6rem; }
 .watch-parent-panel input { font-size: 1.5rem; padding: .7rem; max-width: 10rem; }
 .watch-player-notice { position: absolute; top: 2rem; left: 50%; transform: translateX(-50%); padding: 1rem 1.5rem; background: var(--canvas); color: var(--white); border-radius: var(--control-radius); font-size: 1.5rem; pointer-events: none; }
+
+.watch-amount-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-block: 1.5rem; max-width: 36rem; }
+.watch-amount-grid button { min-height: 4rem; padding: 1rem 1.5rem; font-size: 1.6rem; text-align: center; background: var(--surface); }
+.watch-amount-grid button.primary { background: var(--white); color: var(--canvas); }
+.watch-parent-panel .watch-current { color: var(--muted); font-size: 1.1rem; }
+
+/* Watching uses the same TV surfaces and focus treatment in a tighter layout. */
+.watch-control-shell { width: min(34rem, 100%); }
+.watch-pin-view { text-align: center; padding-top: .35rem; }
+.watch-pin-view h2 { margin: 0; font-size: 1.9rem; line-height: 1.3; letter-spacing: -.035rem; }
+.watch-pin-view .watch-pin-summary { margin: .65rem 0 0; font-size: 1.1rem; color: var(--muted); }
+.watch-pin-dots { display: flex; justify-content: center; gap: 1rem; margin: 1.65rem 0 1.85rem; }
+.watch-pin-dots span { width: .85rem; height: .85rem; border: .12rem solid var(--muted); border-radius: 50%; background: transparent; }
+.watch-pin-dots span.filled { border-color: var(--white); background: var(--white); }
+.watch-pin-pad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; width: 22rem; max-width: 100%; margin-inline: auto; }
+.watch-pin-pad button { min-height: 3.8rem; padding: .65rem .5rem; text-align: center; white-space: nowrap; background: var(--surface); font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.watch-pin-pad button.focused, .watch-pin-pad button:focus-visible { background: var(--white); color: var(--canvas); }
+.watch-pin-pad button[data-focus="watch-pin-delete"], .watch-pin-pad button[data-focus="watch-pin-cancel"] { font-size: 1.05rem; color: var(--muted); background: transparent; }
+.watch-pin-pad button[data-focus="watch-pin-delete"].focused, .watch-pin-pad button[data-focus="watch-pin-cancel"].focused,
+.watch-pin-pad button[data-focus="watch-pin-delete"]:focus-visible, .watch-pin-pad button[data-focus="watch-pin-cancel"]:focus-visible { color: var(--canvas); background: var(--white); }
+.watch-pin-feedback { min-height: 2.4rem; margin-top: 1rem; }
+.watch-pin-view .watch-pin-feedback p { margin: 0; font-size: .9rem; line-height: 1.6; color: var(--muted); }
+.watch-pin-view .watch-pin-feedback .error { color: #ffb4a8; }
+
+.watch-quantity-view { text-align: center; padding-top: .35rem; }
+.watch-quantity-view h2 { margin: 0; font-size: 1.9rem; line-height: 1.3; letter-spacing: -.035rem; }
+.watch-quantity-view > p { margin: .65rem 0 0; font-size: 1.1rem; color: var(--muted); }
+.watch-quantity-view .watch-amount-grid { width: 24rem; max-width: 100%; gap: .75rem; margin: 1.85rem auto 0; }
+.watch-quantity-view .watch-amount-grid button { position: relative; min-height: 4.3rem; padding: .8rem .5rem; font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.watch-quantity-view .watch-amount-grid button[aria-pressed="true"] { background: var(--settings-control); border-color: var(--white); color: var(--white); }
+.watch-quantity-view .watch-amount-grid button[aria-pressed="true"]::after { content: '✓'; position: absolute; top: .25rem; right: .45rem; font-size: .8rem; line-height: 1; }
+.watch-quantity-view .watch-parent-actions { width: 24rem; max-width: 100%; margin: 1.5rem auto .4rem; }
+.watch-quantity-view .watch-parent-actions button { width: 100%; min-height: 3.6rem; font-size: 1.2rem; }
+.watch-quantity-view .watch-current { margin: .8rem 0 .2rem; font-size: .9rem; }
+.watch-quantity-view > .text-button { min-height: 2.6rem; padding: .55rem 1.2rem; font-size: .95rem; color: var(--muted); text-align: center; }

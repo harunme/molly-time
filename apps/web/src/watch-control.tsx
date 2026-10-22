@@ -9,7 +9,7 @@ import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './components/ui/dialog';
 
-type Device = { deviceId: string; name: string; online: boolean; supported: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: string; round: null | { mode: string; cursor: number; playlist: string[]; episodeName: string | null; remainingMs: number | null; ended: boolean } };
+type Device = { deviceId: string; name: string; online: boolean; supported: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: string; round: null | { mode: string; amount: number; cursor: number; playlist: string[]; episodeName: string | null; remainingMs: number | null; ended: boolean } };
 type Data = { pinSet: boolean; devices: Device[] };
 export function WatchControls({ readonly, compact = false }: { readonly: boolean; compact?: boolean }) {
   const [data, setData] = useState<Data>(), [error, setError] = useState('');
@@ -45,7 +45,7 @@ export function WatchControls({ readonly, compact = false }: { readonly: boolean
     {data && !data.devices.length && <p className="muted">绑定电视后，可以在这里安排观看。</p>}
     <div className="watch-control-devices">{data?.devices.map(device => <section key={device.deviceId} className="watch-control-device" aria-label={device.name + '观看安排'}>
       <div><h3>{device.name}<span className="muted"> · {device.online ? '在线' : '离线'}</span></h3>
-        <p>{device.enabled && (!device.supported || device.version > device.acknowledged) ? '观看管理已开启，等待电视同步' : !device.enabled ? '观看管理未开启' : device.status === 'resting' ? '正在休息' : device.round?.mode === 'minutes' ? `还能看 ${device.round.remainingMs! < 60000 ? '不到 1' : Math.ceil(device.round.remainingMs! / 60000)} 分钟` : device.round?.playlist.length ? `正在看第 ${device.round.cursor + 1} 集，共 ${device.round.playlist.length} 集` : `可以看 ${device.round?.mode === 'episodes' ? device.amount + ' 集' : ''}，选一个视频吧`}</p>
+        <p>{device.enabled && (!device.supported || device.version > device.acknowledged) ? '观看管理已开启，等待电视同步' : !device.enabled ? '观看管理未开启' : device.status === 'resting' ? '正在休息' : device.round?.mode === 'minutes' ? `还能看 ${device.round.remainingMs! < 60000 ? '不到 1' : Math.ceil(device.round.remainingMs! / 60000)} 分钟` : device.round?.mode === 'episodes' ? `还能看 ${Math.max(0, device.round.amount - device.round.cursor)} 集` : `可以看 ${device.round?.mode === 'episodes' ? device.amount + ' 集' : ''}，选一个视频吧`}</p>
         {device.round?.episodeName && device.status === 'allowed' && <p className="muted">{device.round.episodeName}</p>}
         {device.enabled && <p className="muted">平时每次看 {device.amount} {device.mode === 'episodes' ? '集' : '分钟'}</p>}
         {device.version > device.acknowledged && <p className="muted" role="status">已保存 · {device.online ? (!device.supported ? '等待兼容客户端确认' : '等待电视确认') : '电视离线，开机后同步'}</p>}
@@ -54,11 +54,10 @@ export function WatchControls({ readonly, compact = false }: { readonly: boolean
       {!readonly && <div className="watch-control-actions">
         {device.enabled && device.status === 'resting' && <Button disabled={busy} onClick={() => act(device, 'allow')}>允许观看</Button>}
         {device.enabled && device.round && <Button disabled={busy} variant={device.status === 'allowed' ? 'default' : 'bordered'} onClick={() => act(device, 'add')}>{device.round.mode === 'episodes' ? '再看一集' : '再看 10 分钟'}</Button>}
-        {device.enabled && device.status === 'allowed' && <Button variant="bordered" disabled={busy} onClick={() => act(device, device.round?.mode === 'episodes' ? 'finish-current' : 'stop')}>{device.round?.mode === 'episodes' ? (device.round.playlist.length ? '看完这集休息' : '再看一集就休息') : '现在休息'}</Button>}
+        {device.enabled && device.status === 'allowed' && <Button variant="bordered" disabled={busy} onClick={() => act(device, device.round?.mode === 'episodes' ? 'finish-current' : 'stop')}>{device.round?.mode === 'episodes' ? '看完这集休息' : '现在休息'}</Button>}
         {!compact && <Button variant={device.enabled ? "bordered" : "default"} disabled={busy} onClick={() => edit(device)}>{device.enabled ? '观看设置' : '开启观看管理'}</Button>}
         {device.enabled && <details><summary>更多</summary><div className="watch-control-more">
           {device.enabled && device.status === 'allowed' && device.round?.mode === 'episodes' && <Button variant="ghost" disabled={busy} onClick={() => act(device, 'stop')}>现在休息</Button>}
-          {device.enabled && <Button variant="ghost" disabled={busy} onClick={() => act(device, 'reselect')}>重新选片</Button>}
 
         </div></details>}
       </div>}

@@ -48,6 +48,10 @@ class WatchControl(private val context: Context, private val session: SessionSto
         if (oldRound != null && round != null && oldRound.optString("id") == round.optString("id")) {
             round.put("playedMs", maxOf(round.optLong("playedMs"), oldRound.optLong("playedMs")))
             round.put("cursor", maxOf(round.optInt("cursor"), oldRound.optInt("cursor")))
+            if (oldRound.has("activeEpisode") && oldRound.optInt("activeCursor", -1) == round.optInt("cursor")) {
+                round.put("activeEpisode", oldRound.getString("activeEpisode"))
+                round.put("activeCursor", oldRound.optInt("activeCursor"))
+            }
             if (previous.optInt("version") == next.optInt("version") && oldRound.optBoolean("ended")) round.put("ended", true)
         }
         state = next
@@ -61,7 +65,7 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val round = value.optJSONObject("round") ?: return
         if (round.optString("mode") == "minutes" && round.optLong("playedMs") >= round.optLong("limitMs", round.optLong("amount") * 60000) && prepaidUntil <= SystemClock.elapsedRealtime()) round.put("ended", true)
         val list = round.optJSONArray("playlist")
-        if (round.optString("mode") == "episodes" && list != null && list.length() > 0 && round.optInt("cursor") >= list.length()) round.put("ended", true)
+        if (round.optString("mode") == "episodes" && round.optInt("cursor") >= round.optInt("amount")) round.put("ended", true)
         value.put("status", if (!value.optBoolean("enabled")) "off" else if (round.optBoolean("ended")) "resting" else "allowed")
         if (list != null && round.optInt("cursor") < list.length()) round.put("episodeId", list.getString(round.optInt("cursor")))
         else round.put("episodeId", JSONObject.NULL)
@@ -91,8 +95,8 @@ class WatchControl(private val context: Context, private val session: SessionSto
         require(value.optString("status") == "allowed") { "看完啦，请家长允许观看" }
         val round = value.getJSONObject("round")
         if (round.optString("mode") == "episodes") {
-            val list = round.getJSONArray("playlist")
-            require((!offline && list.length() == 0) || (round.optInt("cursor") < list.length() && list.getString(round.optInt("cursor")) == episode)) { "请继续这次的片单，换片需要家长重新安排" }
+            round.put("activeEpisode", episode).put("activeCursor", round.optInt("cursor"))
+            persist()
         }
     }
     @Synchronized fun requireLive() {
@@ -127,8 +131,10 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val value = load()
         val round = value.optJSONObject("round") ?: return
         if (!value.optBoolean("enabled") || round.optString("mode") != "episodes") return
-        val list = round.getJSONArray("playlist")
-        if (round.optInt("cursor") < list.length() && list.getString(round.optInt("cursor")) == episode) round.put("cursor", round.optInt("cursor") + 1)
+        if (round.optString("activeEpisode") == episode && round.optInt("activeCursor", -1) == round.optInt("cursor")) {
+            round.put("cursor", round.optInt("cursor") + 1)
+            round.remove("activeEpisode"); round.remove("activeCursor")
+        }
         normalize(); persist()
     }
     @Synchronized fun next(): String? {
@@ -141,8 +147,8 @@ class WatchControl(private val context: Context, private val session: SessionSto
     @Synchronized fun warningPath(episode: String): String? {
         val value = load(); val round = value.optJSONObject("round") ?: return null
         if (!value.optBoolean("enabled") || round.optString("mode") != "episodes") return null
-        val list = round.getJSONArray("playlist"); val cursor = round.optInt("cursor")
-        val last = if (list.length() == 0) round.optInt("amount") == 1 else cursor == list.length() - 1 && list.optString(cursor) == episode
+        val cursor = round.optInt("cursor")
+        val last = cursor + 1 == round.optInt("amount")
         val path = value.optString("warningPath").takeIf { it.isNotEmpty() && it != "null" } ?: return null
         if (!last || !claim("warning:" + round.optString("id") + ":" + cursor)) return null
         return path
@@ -161,9 +167,8 @@ class WatchControl(private val context: Context, private val session: SessionSto
             if (round.optLong("remainingMs") <= 300000 && claim("five:$id:" + value.optInt("version"))) { claim("start:$id"); return "还有不到 5 分钟就休息啦。" }
             if (claim("start:$id")) return "这次最多看 " + round.optInt("amount") + " 分钟。"
         } else {
-            val list = round.optJSONArray("playlist") ?: return null
-            if (list.length() == round.optInt("cursor") + 1 && claim("last:$id:" + round.optInt("cursor"))) { claim("start:$id"); return "这是最后一集啦。" }
-            if (claim("start:$id")) return "这次看 " + list.length() + " 集，看完休息。"
+            if (round.optInt("amount") == round.optInt("cursor") + 1 && claim("last:$id:" + round.optInt("cursor"))) { claim("start:$id"); return "这是最后一集啦。" }
+            if (claim("start:$id")) return "还能看 " + (round.optInt("amount") - round.optInt("cursor")) + " 集，看完休息。"
         }
         return null
     }

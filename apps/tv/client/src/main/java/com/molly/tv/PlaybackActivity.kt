@@ -323,9 +323,9 @@ class PlaybackActivity : AppCompatActivity() {
         status.text = "正在准备下一集…"
         (if (offlineMode) app.catalog.reads else app.playbackIo).execute {
             runCatching {
-                if (offlineMode) return@runCatching JSONObject().put("episodeId", (if (app.watchControl.managedEpisodes()) app.watchControl.next() else app.catalog.store().nextEpisode(finishedEpisode)) ?: JSONObject.NULL)
+                if (offlineMode) return@runCatching JSONObject().put("episodeId", (if (app.watchControl.managedEpisodes() && app.watchControl.snapshot().optString("status") != "allowed") null else app.catalog.store().nextEpisode(finishedEpisode)) ?: JSONObject.NULL)
                 app.watchControl.sync()
-                if (app.watchControl.managedEpisodes()) return@runCatching JSONObject().put("episodeId", app.watchControl.next() ?: JSONObject.NULL)
+                if (app.watchControl.managedEpisodes()) return@runCatching if (app.watchControl.snapshot().optString("status") != "allowed") JSONObject().put("episodeId", JSONObject.NULL) else app.api.json("GET", "/api/episodes/$finishedEpisode/next")
                 val reminder = reminderState()
                 if (reminder.optString("episodeId") == finishedEpisode && reminder.optString("phase") != "idle")
                     JSONObject().put("parentFarewell", reminder.getString("farewellPath"))

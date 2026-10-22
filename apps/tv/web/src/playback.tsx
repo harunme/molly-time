@@ -209,7 +209,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
           setWatchNotice(watchLabel(state)); setTimeout(() => setWatchNotice(''), 5000);
           const round = state.round;
           const key = `mollytime.watch-warning.${round?.id}:${round?.cursor}`;
-          if (round?.mode === 'episodes' && round.playlist.length === round.cursor + 1 && state.warningPath && !localStorage.getItem(key)) {
+          if (round?.mode === 'episodes' && round.amount === round.cursor + 1 && state.warningPath && !localStorage.getItem(key)) {
             localStorage.setItem(key, 'true'); activeClip.current = true;
             setClip({ path: state.warningPath, label: '这是最后一集啦', after: false, requestId: key, managed: true });
           }

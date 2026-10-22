@@ -1,11 +1,9 @@
 """Device-scoped deterministic watching policy, independent of viewing statistics."""
 
 from fastapi import HTTPException
-from sqlalchemy import func
 
 from .management_models import WatchControl, WatchControlRound, WatchControlSession
 from .models import Item
-from .resource_policy import visible
 
 
 def control(db, device_id):
@@ -30,14 +28,8 @@ def normalize(db, round):
     if round.mode == "minutes":
         if remaining(round) == 0:
             round.ended = True
-    elif round.playlist:
-        while round.cursor < len(round.playlist):
-            item = db.get(Item, round.playlist[round.cursor])
-            if item and visible(db, item):
-                break
-            round.cursor += 1
-        if round.cursor >= len(round.playlist):
-            round.ended = True
+    elif round.cursor >= round.amount:
+        round.ended = True
 
 
 def dto(db, row):
@@ -99,45 +91,11 @@ def require_play(db, device_id, episode_id=None, *, live=False, bind=False):
         raise HTTPException(403, "看完啦，请家长允许观看")
     if live and round.mode != "minutes":
         raise HTTPException(403, "看直播需要家长设置观看时间")
-    if round.mode == "episodes":
-        if not round.playlist and bind:
-            round.playlist = playlist_from(db, episode_id, round.amount)
-            db.flush()
-        if not round.playlist and not bind:
-            raise HTTPException(403, "请先选择视频开始观看")
-        if round.playlist and (
-            round.cursor >= len(round.playlist) or round.playlist[round.cursor] != episode_id
-        ):
-            raise HTTPException(403, "这次的片单还没看完，请继续观看或请家长重新选片")
+    if round.mode == "episodes" and bind:
+        # Store only the current video as a resume hint. It never restricts selection.
+        round.playlist = [*round.playlist[:round.cursor], episode_id]
+        db.flush()
     return round
-
-
-def playlist_from(db, episode_id, amount):
-    from sqlalchemy import select
-
-    from .api.catalog_pagination import ordered_playlist
-
-    item = db.get(Item, episode_id)
-    if not item:
-        raise HTTPException(404)
-    query, order = ordered_playlist(db, item.family_id, item.parent_id)
-    ordered = (
-        query.with_entities(Item.id.label("id"), func.row_number().over(order_by=order).label("n"))
-        .order_by(None)
-        .subquery()
-    )
-    start = select(ordered.c.n).where(ordered.c.id == episode_id).scalar_subquery()
-    ids = [
-        r[0]
-        for r in db.query(ordered.c.id)
-        .filter(ordered.c.n >= start)
-        .order_by(ordered.c.n)
-        .limit(amount)
-        .all()
-    ]
-    if not ids:
-        raise HTTPException(404, "这个视频已不可播放")
-    return ids
 
 
 def attach_session(db, round, session_id):
@@ -153,6 +111,6 @@ def report(db, session_id, body):
     round.played_ms += body.playedMs
     if body.completed and body.stopped and round.mode == "episodes" and link.cursor == round.cursor:
         round.cursor += 1
-        if round.cursor >= len(round.playlist):
+        if round.cursor >= round.amount:
             round.ended = True
     normalize(db, round)
