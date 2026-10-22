@@ -268,8 +268,7 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 
 .offline-badge { position: absolute; top: .6rem; right: .6rem; padding: .2rem .45rem; border-radius: .3rem; font-size: .7rem; color: #edfff9; background: #164b40e6; }
 
-.watch-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1rem 1.5rem; margin-block: 1rem; background: var(--surface, #202831); border-radius: var(--surface-radius); font-size: 1.4rem; }
-.watch-banner button, .watch-parent-panel button { min-height: 3.5rem; padding: .8rem 1.3rem; font-size: 1.4rem; }
+.watch-parent-panel button { min-height: 3.5rem; padding: .8rem 1.3rem; font-size: 1.4rem; }
 .watch-parent-panel { max-width: 52rem; }
 .watch-parent-panel h2 { font-size: 2.2rem; }
 .watch-parent-panel p { font-size: 1.5rem; margin-block: 1rem; line-height: 1.5; }
