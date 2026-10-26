@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, dateTime } from './api';
 import { MoreHorizontal } from 'lucide-react';
 import { Empty } from './components/ui/empty';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Input } from './components/ui/input';
@@ -72,10 +72,9 @@ export function WatchControls({ readonly, devices, total, serial, pairing, listS
           <Button variant="bordered" disabled={busy || !device} onClick={() => { if (device) edit({ ...device, name: paired.name }); }}>观看设置</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`${paired.name}的更多操作`} disabled={busy}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="watch-device-menu">
               <DropdownMenuItem onSelect={() => { void execute(() => rename(paired)); }}>重命名</DropdownMenuItem>
               {active && device && <DropdownMenuItem onSelect={() => act(device, 'stop')}>结束今日观看</DropdownMenuItem>}
-              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => { void execute(() => revoke(paired)); }}>取消配对</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
