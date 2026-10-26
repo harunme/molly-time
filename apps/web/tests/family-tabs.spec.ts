@@ -13,7 +13,7 @@ for (const width of [390, 1440]) {
     await expect(tabs.getByRole('tab', { name: '电视管理', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('heading', { name: '家长视频提醒', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '家庭信息', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '我的电视', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^我的电视/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '绑定电视', exact: true })).toBeVisible();
     await expect(page).toHaveURL(/#\/family\/devices$/);
     await page.reload();

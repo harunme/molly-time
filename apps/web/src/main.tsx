@@ -1396,10 +1396,10 @@ function Family({
           <TrashRetentionSettings readonly={readonly} run={run} notify={notify} />
       </div></div></TabsContent>
       <TabsContent value="devices">
-        <WatchControls readonly={readonly} devices={devices.data} serial={serial}
+        <WatchControls readonly={readonly} devices={devices.data} total={devices.total} serial={serial}
           listState={<State loading={devices.loading && !devices.data.length} error={devices.error} variant="list" />}
           empty={!devices.loading && !devices.error && !devices.data.length}
-          footer={<Pagination {...devices} loading={devices.refreshing} label="设备分页" />}
+          footer={devices.total > devices.pageSize && <Pagination {...devices} loading={devices.refreshing} label="设备分页" />}
           pairing={<Dialog open={pairingOpen} onOpenChange={setPairingOpen}>
             {!readonly && <DialogTrigger asChild><Button variant="bordered">绑定电视</Button></DialogTrigger>}
             {pairingOpen && <PairingDialog key={pairCode} initialCode={pairCode} session={session}

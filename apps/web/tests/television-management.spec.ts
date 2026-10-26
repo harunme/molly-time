@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-for (const width of [390, 1440]) {
+for (const width of [390, 768, 1440, 1920]) {
   test(`one TV row owns device actions and watching status at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.request.post('/api/manage/auth/login', { data: { username: 'parent@example.test', password: 'parent' + '-e2e' } });
@@ -30,6 +30,16 @@ for (const width of [390, 1440]) {
     await expect(living.getByText('每日 60 分钟', { exact: true })).toBeVisible();
     await expect(living.getByRole('button', { name: '观看设置', exact: true })).toHaveCount(1);
     await expect(page.getByText('未限制观看', { exact: true })).toHaveCount(1);
+    await expect(page.getByRole('navigation', { name: '设备分页', exact: true })).toHaveCount(0);
+    await expect(page.locator('.watch-device-count')).toHaveText('3 台');
+    if (width >= 1440) {
+      expect((await page.locator('.watch-controls').boundingBox())!.height).toBeLessThan(400);
+      for (const row of await page.locator('.watch-control-device').all()) {
+        expect((await row.boundingBox())!.height).toBeLessThan(100);
+      }
+      const columns = await page.locator('.watch-device-viewing').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().x));
+      expect(Math.max(...columns) - Math.min(...columns)).toBeLessThan(1);
+    }
     await page.screenshot({ path: testInfo.outputPath(`television-management-${width}.png`), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await living.getByRole('button', { name: '客厅电视的更多操作' }).click();

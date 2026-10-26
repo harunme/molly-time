@@ -14,8 +14,8 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 type Device = { deviceId: string; name: string; online: boolean; supported: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: string; round: null | { mode: string; amount: number; remainingEpisodes?: number | null; cursor: number; playlist: string[]; episodeId: string | null; episodeName: string | null; remainingMs: number | null; ended: boolean } };
 type Data = { pinSet: boolean; devices: Device[] };
 type PairedDevice = { id: string; name: string; lastSeen: string | null };
-export function WatchControls({ readonly, devices, serial, pairing, listState, empty, footer, rename, revoke }: {
-  readonly: boolean; devices: PairedDevice[]; serial: number; pairing: ReactNode; listState: ReactNode; empty: boolean; footer: ReactNode;
+export function WatchControls({ readonly, devices, total, serial, pairing, listState, empty, footer, rename, revoke }: {
+  readonly: boolean; devices: PairedDevice[]; total: number; serial: number; pairing: ReactNode; listState: ReactNode; empty: boolean; footer: ReactNode;
   rename: (device: PairedDevice) => Promise<void>; revoke: (device: PairedDevice) => Promise<void>;
 }) {
   const [data, setData] = useState<Data>(), [error, setError] = useState('');
@@ -43,7 +43,7 @@ export function WatchControls({ readonly, devices, serial, pairing, listState, e
     await command(editing, 'settings', { enabled, mode: enabled ? mode : editing.mode, amount: enabled ? amount : editing.amount }); setEditing(undefined);
   }); };
   return <Card className="watch-controls">
-    <div className="section-heading"><div><h2>我的电视</h2><p className="muted">每台电视独立设置每日额度，北京时间每天 0 点恢复。</p></div>{pairing}</div>
+    <div className="section-heading"><div><h2>我的电视<span className="watch-device-count">{total} 台</span></h2><p className="muted">每台电视独立设置每日额度，北京时间每天 0 点恢复。</p></div>{pairing}</div>
     {error && !editing && !pinOpen && <p role="alert" className="error">{error}</p>}
     {listState}
     {empty && <Empty className="empty">还没有绑定电视，请输入电视上的配对码或扫码绑定。</Empty>}
@@ -55,13 +55,16 @@ export function WatchControls({ readonly, devices, serial, pairing, listState, e
       return <section key={paired.id} className="watch-control-device" aria-label={paired.name + '观看安排'}>
         <div className="watch-device-info">
           <div className="watch-device-title"><h3>{paired.name}</h3>{device && <span className="watch-device-presence" data-online={device.online}>{device.online ? '在线' : '离线'}</span>}</div>
+          {device && !device.online && <p className="watch-device-last-seen muted">最近连接：{dateTime(paired.lastSeen)}</p>}
+        </div>
+        <div className="watch-device-viewing">
           {device ? <>
             <div className="watch-device-quota"><p>{!device.enabled ? '未限制观看' : !active ? '今日观看已结束' : round?.mode === 'minutes' ? `今日还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟` : round?.episodeId ? (left ? `本集之后，还能看 ${left} 集` : '这是今天最后一集') : `今日还能看 ${left} 集`}</p>
               {device.enabled && <span className="muted">每日 {device.amount} {device.mode === 'episodes' ? '集' : '分钟'}{!active ? ' · 明天恢复' : ''}</span>}
             </div>
-            {active && round?.episodeName && <p className="muted">当前一集：{round.episodeName}（可继续）</p>}
-            {device.version > device.acknowledged ? <p className="muted" role="status">已安排 · {device.online ? (!device.supported ? '等待兼容客户端确认' : '等待电视确认') : '电视离线，开机联网后生效'}</p> : !device.online && <p className="muted">最近连接：{dateTime(paired.lastSeen)}</p>}
-            {!device.supported && <p className="muted">请升级电视客户端，以使用观看限制。</p>}
+            {active && round?.episodeName && <p className="muted watch-device-episode" title={`当前一集：${round.episodeName}（可继续）`}>当前一集：{round.episodeName}（可继续）</p>}
+            {device.version > device.acknowledged ? <p className="muted" role="status">已安排 · {device.online ? (!device.supported ? '等待兼容客户端确认' : '等待电视确认') : '电视离线，开机联网后生效'}</p> : null}
+            {!device.supported && <p className="muted">观看限制需升级电视客户端。</p>}
           </> : <p className="muted" role="status">{error || data ? '暂时无法读取观看额度' : '正在读取电视状态…'}</p>}
         </div>
         {!readonly && <div className="watch-control-actions">
@@ -80,7 +83,7 @@ export function WatchControls({ readonly, devices, serial, pairing, listState, e
       </section>;
     })}</div>
     {footer}
-    {data?.pinSet && <div className="watch-family-pin"><p className="muted">家长密码<span>所有电视共用，用于在电视上加看和修改设置。</span></p>
+    {data?.pinSet && <div className="watch-family-pin"><p className="muted">家长密码 · 所有电视共用</p>
       {!readonly && <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setPin(''); setPinOpen(true); }}>重设家长密码</Button>}
     </div>}
     <Dialog open={!!editing} onOpenChange={open => { if (!open && !busy) setEditing(undefined); }}>

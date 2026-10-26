@@ -105,7 +105,7 @@ test("active TV pagination returns to the previous page after revoking its last 
   await page.getByRole("menuitem", { name: "取消配对", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "确认", exact: true }).click();
   await expect(row).toHaveCount(0);
-  await expect(pagination).toContainText("共 20 条");
-  await expect(pagination).toContainText("第 1 / 1 页");
+  await expect(pagination).toHaveCount(0);
+  await expect(page.locator(".watch-device-count")).toHaveText("20 台");
   await expect(page.locator(".watch-control-device")).toHaveCount(20);
 });
