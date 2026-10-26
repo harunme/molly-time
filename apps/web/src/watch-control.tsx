@@ -1,7 +1,10 @@
 import { SelectField } from "./components/ui/select";
 import { Switch } from "./components/ui/switch";
-import { useEffect, useRef, useState } from 'react';
-import { api } from './api';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { api, dateTime } from './api';
+import { MoreHorizontal } from 'lucide-react';
+import { Empty } from './components/ui/empty';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './components/ui/dropdown-menu';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Input } from './components/ui/input';
@@ -10,7 +13,11 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 
 type Device = { deviceId: string; name: string; online: boolean; supported: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: string; round: null | { mode: string; amount: number; remainingEpisodes?: number | null; cursor: number; playlist: string[]; episodeId: string | null; episodeName: string | null; remainingMs: number | null; ended: boolean } };
 type Data = { pinSet: boolean; devices: Device[] };
-export function WatchControls({ readonly }: { readonly: boolean }) {
+type PairedDevice = { id: string; name: string; lastSeen: string | null };
+export function WatchControls({ readonly, devices, serial, pairing, listState, empty, footer, rename, revoke }: {
+  readonly: boolean; devices: PairedDevice[]; serial: number; pairing: ReactNode; listState: ReactNode; empty: boolean; footer: ReactNode;
+  rename: (device: PairedDevice) => Promise<void>; revoke: (device: PairedDevice) => Promise<void>;
+}) {
   const [data, setData] = useState<Data>(), [error, setError] = useState('');
   const [editing, setEditing] = useState<Device>(), [mode, setMode] = useState<Device['mode']>('episodes'), [amount, setAmount] = useState(2);
   const [customAmount, setCustomAmount] = useState(false);
@@ -22,7 +29,7 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
     const read = async () => { if (loading) return; loading = true; try { const result = await api<Data>('/watch-control'); if (alive) { setData(result); } } catch (e) { if (alive) setError((e as Error).message); } finally { loading = false; } };
     void read(); const timer = setInterval(() => { void read(); }, 5000);
     return () => { alive = false; clearInterval(timer); };
-  }, []);
+  }, [serial]);
   const execute = async (work: () => Promise<void>) => {
     if (lock.current) return; lock.current = true; setBusy(true); setError('');
     try { await work(); await reload(); window.dispatchEvent(new Event('molly:watch-controlChanged')); } catch (e) { setError((e as Error).message); await reload().catch(() => {}); }
@@ -36,31 +43,46 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
     await command(editing, 'settings', { enabled, mode: enabled ? mode : editing.mode, amount: enabled ? amount : editing.amount }); setEditing(undefined);
   }); };
   return <Card className="watch-controls">
-    <div className="section-heading"><div><h2>观看安排</h2><p className="muted">设置每日额度，北京时间每天 0 点自动恢复；用完自动休息。</p></div>
-      {!readonly && data?.pinSet && <Button variant="ghost" onClick={() => { setPin(''); setPinOpen(true); }}>重设家长密码</Button>}</div>
+    <div className="section-heading"><div><h2>我的电视</h2><p className="muted">每台电视独立设置每日额度，北京时间每天 0 点恢复。</p></div>{pairing}</div>
     {error && !editing && !pinOpen && <p role="alert" className="error">{error}</p>}
-    {!data && !error && <p role="status">正在读取电视状态…</p>}
-    {data && !data.devices.length && <p className="muted">绑定电视后，可以在这里安排观看。</p>}
-    <div className="watch-control-devices">{data?.devices.map(device => {
-      const active = device.enabled && device.status === 'allowed' && !!device.round;
-      const round = device.round;
+    {listState}
+    {empty && <Empty className="empty">还没有绑定电视，请输入电视上的配对码或扫码绑定。</Empty>}
+    <div className="watch-control-devices">{devices.map(paired => {
+      const device = data?.devices.find(device => device.deviceId === paired.id);
+      const active = device?.enabled && device.status === 'allowed' && !!device.round;
+      const round = device?.round;
       const left = round ? round.remainingEpisodes ?? Math.max(0, round.amount - round.cursor - (round.episodeId ? 1 : 0)) : 0;
-      return <section key={device.deviceId} className="watch-control-device" aria-label={device.name + '观看安排'}>
-        <div><h3>{device.name}<span className="muted"> · {device.online ? '在线' : '离线'}</span></h3>
-          {device.enabled && <p className="muted">每日可看：{device.amount} {device.mode === 'episodes' ? '集' : '分钟'}</p>}
-          <p>{!device.enabled ? '未限制观看' : !active ? '今日观看已结束，明天自动恢复' : round?.mode === 'minutes' ? `今日还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟` : round?.episodeId ? (left ? `本集之后，还能看 ${left} 集` : '这是今天最后一集') : `今日还能看 ${left} 集`}</p>
-          {active && round?.episodeName && <p className="muted">当前一集：{round.episodeName}（可继续）</p>}
-          {device.version > device.acknowledged && <p className="muted" role="status">已安排 · {device.online ? (!device.supported ? '等待兼容客户端确认' : '等待电视确认') : '电视离线，开机联网后生效'}</p>}
-          {!device.supported && <p className="muted">旧版电视客户端需升级后执行观看限制。</p>}
-          {!readonly && <Button variant="ghost" size="sm" disabled={busy} onClick={() => edit(device)}>观看设置</Button>}
+      return <section key={paired.id} className="watch-control-device" aria-label={paired.name + '观看安排'}>
+        <div className="watch-device-info">
+          <div className="watch-device-title"><h3>{paired.name}</h3>{device && <span className="watch-device-presence" data-online={device.online}>{device.online ? '在线' : '离线'}</span>}</div>
+          {device ? <>
+            <div className="watch-device-quota"><p>{!device.enabled ? '未限制观看' : !active ? '今日观看已结束' : round?.mode === 'minutes' ? `今日还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟` : round?.episodeId ? (left ? `本集之后，还能看 ${left} 集` : '这是今天最后一集') : `今日还能看 ${left} 集`}</p>
+              {device.enabled && <span className="muted">每日 {device.amount} {device.mode === 'episodes' ? '集' : '分钟'}{!active ? ' · 明天恢复' : ''}</span>}
+            </div>
+            {active && round?.episodeName && <p className="muted">当前一集：{round.episodeName}（可继续）</p>}
+            {device.version > device.acknowledged ? <p className="muted" role="status">已安排 · {device.online ? (!device.supported ? '等待兼容客户端确认' : '等待电视确认') : '电视离线，开机联网后生效'}</p> : !device.online && <p className="muted">最近连接：{dateTime(paired.lastSeen)}</p>}
+            {!device.supported && <p className="muted">请升级电视客户端，以使用观看限制。</p>}
+          </> : <p className="muted" role="status">{error || data ? '暂时无法读取观看额度' : '正在读取电视状态…'}</p>}
         </div>
         {!readonly && <div className="watch-control-actions">
-          {!device.enabled && <Button disabled={busy} onClick={() => edit(device)}>设置观看限制</Button>}
-          {device.enabled && <Button disabled={busy} onClick={() => act(device, 'add')}>{(round?.mode ?? device.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</Button>}
-          {active && <Button variant="bordered" disabled={busy} onClick={() => act(device, 'stop')}>结束今日观看</Button>}
+          {device?.enabled && <Button disabled={busy} onClick={() => act(device, 'add')}>{(round?.mode ?? device.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</Button>}
+          <Button variant="bordered" disabled={busy || !device} onClick={() => { if (device) edit({ ...device, name: paired.name }); }}>观看设置</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`${paired.name}的更多操作`} disabled={busy}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => { void execute(() => rename(paired)); }}>重命名</DropdownMenuItem>
+              {active && device && <DropdownMenuItem onSelect={() => act(device, 'stop')}>结束今日观看</DropdownMenuItem>}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => { void execute(() => revoke(paired)); }}>取消配对</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>}
       </section>;
     })}</div>
+    {footer}
+    {data?.pinSet && <div className="watch-family-pin"><p className="muted">家长密码<span>所有电视共用，用于在电视上加看和修改设置。</span></p>
+      {!readonly && <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setPin(''); setPinOpen(true); }}>重设家长密码</Button>}
+    </div>}
     <Dialog open={!!editing} onOpenChange={open => { if (!open && !busy) setEditing(undefined); }}>
       <DialogContent className="watch-settings-dialog">
         <DialogHeader>

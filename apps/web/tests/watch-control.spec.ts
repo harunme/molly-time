@@ -38,7 +38,7 @@ test('daily quota is immediately usable, survives reload, and rest only blocks p
   });
   await page.goto('/manage/');
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-  await page.getByRole('tab', { name: '观看管理', exact: true }).click();
+  await page.getByRole('tab', { name: '电视管理', exact: true }).click();
   const device = page.getByRole('region', { name: '每日额度测试电视观看安排' });
   await device.getByRole('button', { name: '观看设置', exact: true }).click();
   const dialog = page.getByRole('dialog');

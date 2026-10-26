@@ -79,11 +79,11 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 管理后台使用 React + TypeScript、Tailwind CSS v4（Vite 插件）和 shadcn/ui（Radix 基础组件）。基础组件迁移自 `smart-afs-platform/frontend/smartafs/src/components/ui`，组件源码统一在 `src/components/ui`。Tailwind v4 的 CSS-first 全局配置在 `src/styles/theme.css`，集中维护颜色、字号、圆角、控件尺寸、阴影、层级及动效变量；`src/styles/ui-motion.css` 提供配套动画，`src/style.css` 只保留应用基础规则和页面布局。组件不再各自写固定颜色或重复定义变量。Geist 字体随应用自托管，图标使用 Lucide。
 
-页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看明细弹窗 `/manage/#/overview?watch=1`（旧 `/manage/#/watch` 自动跳转）、家庭设置使用「家庭信息、电视设备、观看管理、账号安全」四个页签，地址分别为 `/manage/#/family/general`、`/manage/#/family/devices`、`/manage/#/family/watching`、`/manage/#/family/security`，旧 `/manage/#/family` 默认进入家庭信息；运营设置页签包括 `/manage/#/operations/storage`、`/manage/#/operations/backups`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。数据库备份页可设置每日备份时间与本地保留天数，并查看最近执行结果。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
+页面使用 React Router 的 hash 路由：概览 `/manage/#/overview`、资源库 `/manage/#/library`、文件夹 `/manage/#/library/:folderId`、回收站 `/manage/#/trash`、观看明细弹窗 `/manage/#/overview?watch=1`（旧 `/manage/#/watch` 自动跳转）、家庭设置使用「家庭信息、电视管理、账号安全」三个页签，地址分别为 `/manage/#/family/general`、`/manage/#/family/devices`、`/manage/#/family/security`；旧 `/manage/#/family/watching` 自动跳转到电视管理并保留配对参数，旧 `/manage/#/family` 默认进入家庭信息；运营设置页签包括 `/manage/#/operations/storage`、`/manage/#/operations/backups`、`/manage/#/operations/client-releases` 和 `/manage/#/operations/invitations`。数据库备份页可设置每日备份时间与本地保留天数，并查看最近执行结果。导航、刷新及浏览器前进后退均保留当前页面。默认入口和未知路径跳转概览，普通账号访问运营设置也跳转概览，接口仍独立校验权限。
 
 文件夹顶部使用紧凑的路径导航：左侧箭头返回上一级，路径可直接跳到任意上级；右侧关闭退出文件夹并回到资源库。所有目录统一提供“新建文件夹”：点击即创建普通文件夹并选中名称，直接在卡片下输入，Enter 或失焦保存，Esc 保留默认名称，不选择类型、不弹窗。重名的默认文件夹自动编号，已有分季和集数保留。菜单“重命名”使用相同的卡片内输入框，不再提供编辑弹窗和介绍字段；“上传封面”直接打开图片选择器，进度与错误显示在对应卡片上。视频菜单单独提供“字幕设置”。
 
-视频和字幕上传后，进度、处理状态、暂停、续传和错误重试显示在对应资源卡片下方，不自动打开公共任务弹窗。根目录上传会打开实际保存视频的“未整理”文件夹；在文件夹内上传保持当前位置。提醒视频的状态和错误显示在「家庭设置 → 观看管理」对应文件选择框下方，刷新后可在原处重新选文件续传，无需跳转到资源库。完成后状态区自动收起并更新资源或预览按钮。前端仅按当前可见资源 ID 批量查询未完成任务，服务端在分页前应用资源和家庭筛选。
+视频和字幕上传后，进度、处理状态、暂停、续传和错误重试显示在对应资源卡片下方，不自动打开公共任务弹窗。根目录上传会打开实际保存视频的“未整理”文件夹；在文件夹内上传保持当前位置。提醒视频的状态和错误显示在「家庭设置 → 电视管理」对应文件选择框下方，刷新后可在原处重新选文件续传，无需跳转到资源库。完成后状态区自动收起并更新资源或预览按钮。前端仅按当前可见资源 ID 批量查询未完成任务，服务端在分页前应用资源和家庭筛选。
 
 资源库首页保留“查看全部上传”手动入口，作为集中排查未完成任务的辅助功能。总任务弹窗沿用 `?uploads=1`，关闭和后退保留当前目录；旧 `/manage/#/upload` 链接仍跳转到 `/manage/#/library?uploads=1`。上传在切换页面或关闭任务弹窗后继续，浏览器刷新后需重新选择原文件续传。
 
@@ -91,7 +91,7 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 顶栏不显示家庭名称，品牌图标直接复用电视客户端 `mollytime_icon.png`，由 Vite 打包，无需维护第二份图标。管理端没有手动刷新按钮，月份或筛选变更、写操作完成后仍按原有流程更新数据。
 
-登录入口为 `/manage/#/login`，未登录访问管理页时，登录后回到原 URL。邀请码入口为 `/manage/#/invite`，旧 `#invite=…` 链接仍有效，旧邀请令牌转换为 fragment 内的 `#/invite?token=…`。电视配对弹窗入口为 `/manage/#/family/devices?pair=1&code=…`，兼容旧 `/manage/#/pair?code=…` 和 `/manage/?pair=…`。旧 `/manage/#/family?pair=1&code=…` 自动进入电视设备页签。关闭弹窗回到电视设备，手动打开时支持浏览器前进和后退。路由部分不发送给服务器，因此刷新仍只请求 `/manage/`，无需服务器配置 SPA 路径回退或重启 API；更新前端构建后刷新浏览器即可。
+登录入口为 `/manage/#/login`，未登录访问管理页时，登录后回到原 URL。邀请码入口为 `/manage/#/invite`，旧 `#invite=…` 链接仍有效，旧邀请令牌转换为 fragment 内的 `#/invite?token=…`。电视配对弹窗入口为 `/manage/#/family/devices?pair=1&code=…`，兼容旧 `/manage/#/pair?code=…` 和 `/manage/?pair=…`。旧 `/manage/#/family?pair=1&code=…` 自动进入电视管理页签。关闭弹窗回到电视管理，手动打开时支持浏览器前进和后退。路由部分不发送给服务器，因此刷新仍只请求 `/manage/`，无需服务器配置 SPA 路径回退或重启 API；更新前端构建后刷新浏览器即可。
 
 2026-10-13 起，后台参考 Smart AFS 的视觉语言：石墨色顶栏、白色导航和内容区、浅灰画布、黄色主按钮与导航标记。管理页和弹窗共用主题 token。顶栏提供 TV 入口和账号菜单，内容区不展示面包屑栏。
 
@@ -131,4 +131,4 @@ TV 实际播放验证另见 [验证记录](../../docs/parent-admin-validation.md
 
 ## 观看安排
 
-「家庭设置 → 观看管理」集中管理观看规则、家长密码、播放偏好及提醒视频，概览不展示观看安排。「观看设置」保存每次可看的数量，以后直接「开始观看 · 数量」，无需重复选择。TV 支持 1/2/3 集和 15/30/60 分钟六种每次规则，并原样沿用后台自定义数量。保存规则不开始观看，修改从下一轮生效；加看只影响本次，不改变每次规则。开始一个视频占用一集，续播当前视频不重复计数，换片占用下一集；时间模式只计实际播放时长。重启不重置本次额度，家长再次开始才按规则发放新一轮。离线继续执行已确认的原生播放限制。完整规则与接口见 [观看安排](../../docs/watch-control.md)。
+「家庭设置 → 电视管理」在同一份分页列表中管理设备和观看额度。每台电视显示连接状态、今日剩余与每日设置，行内可加看或打开观看设置；重命名、结束今日观看和取消配对收在该设备的更多菜单中。列表下方放家庭共用的家长密码、播放偏好及提醒视频。首次启用观看限制后今天即可观看，每天北京时间 0 点恢复额度；后续修改从明天起生效，加看只影响今天。开始一个视频占用一集，续播当前视频不重复计数；时间模式只计实际播放时长。重启不重置今日额度。完整规则与接口见 [观看安排](../../docs/watch-control.md)。

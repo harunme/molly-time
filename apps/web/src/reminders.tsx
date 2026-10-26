@@ -89,7 +89,7 @@ export function ParentReminderActions({ data, readonly, run, notify }: {
       <Button type="button" size="sm" title="提醒后只看完当前这一集，结束时播放休息提醒视频并停止" disabled={busy || !!error || !online.some((device) => eligible(device, 'remind'))} onClick={() => start('remind')}>发起提醒</Button>
       <Button type="button" size="sm" variant="bordered" disabled={busy || !!error || !online.some((device) => eligible(device, 'restore'))} onClick={() => start('restore')}>恢复播放</Button>
     </div>}
-    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family/watching">观看管理</Link>上传剩余集数提醒和休息提醒视频。</p>}
+    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family/devices">电视管理</Link>上传剩余集数提醒和休息提醒视频。</p>}
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(undefined); }}>
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>

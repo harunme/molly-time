@@ -120,7 +120,7 @@ test("legacy invitation and pairing URLs remain usable and pairing opens over fa
   await login(page);
   await expect(page).toHaveURL(/\/manage\/#\/family\/devices\?pair=1&code=$/);
   await expect(page.getByRole("heading", { name: "绑定电视", exact: true })).toBeVisible();
-  await expect(page.locator('.family-settings-tabs [data-slot="tabs-trigger"][data-state="active"]')).toHaveText("电视设备");
+  await expect(page.locator('.family-settings-tabs [data-slot="tabs-trigger"][data-state="active"]')).toHaveText("电视管理");
   const backgroundRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());

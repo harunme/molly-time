@@ -724,18 +724,6 @@ td small {
 .inline-form input {
   @apply min-w-0 flex-1;
 }
-.device-row {
-  @apply flex flex-wrap items-center justify-between gap-2 py-3 text-sm;
-}
-.device-row strong {
-  @apply block font-medium;
-}
-.device-row small {
-  @apply mt-1 block text-tiny;
-}
-.device-row > div:last-child {
-  @apply flex items-center gap-1;
-}
 .section-heading {
   @apply mb-4 flex min-w-0 flex-wrap items-center justify-between gap-3;
 }
@@ -1140,12 +1128,24 @@ td small {
 }
 
 .watch-controls { margin-block: calc(var(--spacing) * 6); padding: calc(var(--spacing) * 6); }
-.watch-control-devices { display: grid; gap: calc(var(--spacing) * 4); }
-.watch-control-device { display: flex; justify-content: space-between; align-items: center; gap: calc(var(--spacing) * 4); padding-block: calc(var(--spacing) * 4); border-bottom: 1px solid var(--border); }
-.watch-control-device h3 { font-weight: 600; }
-.watch-control-device p { margin-block: calc(var(--spacing) * 2); }
-.watch-control-actions { display: flex; gap: calc(var(--spacing) * 2); flex-wrap: wrap; align-items: center; margin-block: calc(var(--spacing) * 3); }
-@media (max-width: 640px) { .watch-control-device { align-items: flex-start; flex-direction: column; } }
+.watch-control-devices { display: grid; }
+.watch-control-device { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding-block: 1.25rem; }
+.watch-control-device + .watch-control-device { border-top: 1px solid var(--border); }
+.watch-device-info { min-width: 0; }
+.watch-device-title { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.watch-device-title h3 { font-weight: 600; overflow-wrap: anywhere; }
+.watch-device-presence { display: inline-flex; align-items: center; gap: .375rem; font-size: var(--text-xs); color: var(--muted-foreground); }
+.watch-device-presence::before { content: ''; width: .375rem; height: .375rem; border-radius: 50%; background: var(--muted-foreground); opacity: .4; }
+.watch-device-presence[data-online="true"]::before { background: var(--foreground); opacity: 1; }
+.watch-device-quota { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin-top: .5rem; font-variant-numeric: tabular-nums; }
+.watch-device-quota > p { margin: 0; }
+.watch-device-quota > span, .watch-device-info > .muted { font-size: var(--text-xs); }
+.watch-device-info > p { margin: .375rem 0 0; }
+.watch-control-actions { display: flex; gap: .5rem; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
+.watch-family-pin { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding-top: 1rem; margin-top: .5rem; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.watch-family-pin p { margin: 0; }
+.watch-family-pin p > span { display: block; margin-top: .25rem; }
+@media (max-width: 640px) { .watch-control-device { align-items: flex-start; flex-direction: column; gap: .75rem; } }
 .family-settings-tabs .watch-controls { margin-block: 0 var(--spacing-card-gap); }
 
 .watch-settings-dialog { grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }

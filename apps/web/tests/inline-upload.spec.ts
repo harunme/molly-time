@@ -82,7 +82,7 @@ test('reminder progress and errors stay under the matching file and recover afte
     await farewell.getByLabel('上传休息提醒视频', { exact: true }).setInputFiles(video('休息提醒.mp4'));
     await expect(farewell.getByRole('alert')).toHaveText('无法创建休息提醒，请重试');
     await expect(warning.getByRole('alert')).toHaveCount(0);
-    await expect(page).toHaveURL(/family\/watching$/);
+    await expect(page).toHaveURL(/family\/devices$/);
   } finally {
     release();
     const settings = await (await page.request.get('/api/manage/reminders')).json();

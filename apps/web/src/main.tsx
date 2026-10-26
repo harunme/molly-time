@@ -1266,8 +1266,9 @@ function Family({
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
-  const tab = location.pathname.split("/")[2] || (params.get("pair") === "1" ? "devices" : "general");
-  const validTab = ["general", "devices", "watching", "security"].includes(tab);
+  const requestedTab = location.pathname.split("/")[2] || (params.get("pair") === "1" ? "devices" : "general");
+  const tab = requestedTab === "watching" ? "devices" : requestedTab;
+  const validTab = ["general", "devices", "security"].includes(tab);
   const pairingOpen = tab === "devices" && params.get("pair") === "1";
   const pairCode = params.get("code") || "";
   const setPairingOpen = (open: boolean) => {
@@ -1317,7 +1318,7 @@ function Family({
       setDefaultSubtitle(settings.data.defaultSubtitle ?? "zh");
     }
   }, [settings.data]);
-  if (!validTab || location.pathname === "/family" || location.pathname === "/family/") {
+  if (!validTab || requestedTab === "watching" || location.pathname === "/family" || location.pathname === "/family/") {
     return <Navigate to={`/family/${validTab ? tab : "general"}${location.search}`} replace />;
   }
   return <>
@@ -1325,8 +1326,7 @@ function Family({
     <Tabs className="operations-tabs family-settings-tabs" value={tab} activationMode="manual" onValueChange={value => navigate(`/family/${value}`)}>
       <TabsList aria-label="家庭设置分类">
         <TabsTrigger value="general">家庭信息</TabsTrigger>
-        <TabsTrigger value="devices">电视设备</TabsTrigger>
-        <TabsTrigger value="watching">观看管理</TabsTrigger>
+        <TabsTrigger value="devices">电视管理</TabsTrigger>
         <TabsTrigger value="security">账号安全</TabsTrigger>
       </TabsList>
       <TabsContent value="general"><div className="settings-grid"><div className="settings-column">
@@ -1396,75 +1396,28 @@ function Family({
           <TrashRetentionSettings readonly={readonly} run={run} notify={notify} />
       </div></div></TabsContent>
       <TabsContent value="devices">
-          <Card className="settings-card">
-            <div className="section-heading">
-              <h2>TV 设备</h2>
-              <Dialog open={pairingOpen} onOpenChange={setPairingOpen}>
-                {!readonly && <DialogTrigger asChild>
-                  <Button variant="bordered">绑定电视</Button>
-                </DialogTrigger>}
-                {pairingOpen && <PairingDialog key={pairCode} initialCode={pairCode} session={session}
-                  close={() => setPairingOpen(false)} paired={() => refresh((v) => v + 1)} />}
-              </Dialog>
-            </div>
-            <p className="muted">
-              扫码或输入电视上的配对码绑定。取消配对后，电视需重新扫码。
-            </p>
-            <State loading={devices.loading && !devices.data.length} error={devices.error} variant="list" />
-            {devices.data.length ? (
-              devices.data.map((d) => (
-                <div className="device-row" key={d.id}>
-                  <div>
-                    <strong>{d.name}</strong>
-                    <small>
-                      最近连接：{dateTime(d.lastSeen)}
-                    </small>
-                  </div>
-                  {!readonly && (
-                    <div>
-                      <Button
-                        variant="ghost"
-                        className="quiet"
-                        onClick={async () => {
-                          const name = await promptText("设备名称", d.name);
-                          if (name)
-                            void run(async () => {
-                              await api(`/devices/${d.id}`, "PATCH", { name });
-                              refresh((v) => v + 1);
-                            });
-                        }}
-                      >
-                        改名
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="danger quiet"
-                        onClick={async () => {
-                          if (
-                            await confirmAction(
-                              `取消“${d.name}”的配对？电视将无法继续访问家庭媒体库。`,
-                            )
-                          )
-                            void run(async () => {
-                              await api(`/devices/${d.id}/revoke`, "POST");
-                              refresh((v) => v + 1);
-                            });
-                        }}
-                      >
-                        取消配对
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              !devices.loading && <Empty className="empty">还没有绑定电视</Empty>
-            )}
-            <Pagination {...devices} loading={devices.refreshing} label="设备分页" />
-          </Card>
-      </TabsContent>
-      <TabsContent value="watching">
-        <WatchControls readonly={readonly} />
+        <WatchControls readonly={readonly} devices={devices.data} serial={serial}
+          listState={<State loading={devices.loading && !devices.data.length} error={devices.error} variant="list" />}
+          empty={!devices.loading && !devices.error && !devices.data.length}
+          footer={<Pagination {...devices} loading={devices.refreshing} label="设备分页" />}
+          pairing={<Dialog open={pairingOpen} onOpenChange={setPairingOpen}>
+            {!readonly && <DialogTrigger asChild><Button variant="bordered">绑定电视</Button></DialogTrigger>}
+            {pairingOpen && <PairingDialog key={pairCode} initialCode={pairCode} session={session}
+              close={() => setPairingOpen(false)} paired={() => refresh(v => v + 1)} />}
+          </Dialog>}
+          rename={async device => {
+            const name = await promptText("设备名称", device.name);
+            if (name && name !== device.name) {
+              await api(`/devices/${device.id}`, "PATCH", { name });
+              refresh(v => v + 1);
+            }
+          }}
+          revoke={async device => {
+            if (await confirmAction(`取消“${device.name}”的配对？电视将无法继续访问家庭媒体库。`)) {
+              await api(`/devices/${device.id}/revoke`, "POST");
+              refresh(v => v + 1);
+            }
+          }} />
         <div className="settings-grid"><div className="settings-column">
           <Card className="settings-card">
             <h2>播放偏好</h2>
