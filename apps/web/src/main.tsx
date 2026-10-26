@@ -1,3 +1,4 @@
+import { FileUploadStatus, useItemUploads } from "./upload-status";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WatchControls } from "./watch-control";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -620,6 +621,16 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
   const parentName = parent?.ancestors?.[parent.ancestors.length - 1]?.name || "全部文件夹";
   const closeFolder = () => navigate(parent?.parentId ? `/library/${encodeURIComponent(parent.parentId)}` : "/library");
   const pendingUploads = usePendingUploads(serial, 1);
+  const fileUploads = useItemUploads(list.data.filter(item => item.type === "Episode").map(item => item.id), () => refresh(value => value + 1));
+  useEffect(() => {
+    let ids = [...live.keys()].sort().join(',');
+    const update = () => {
+      const next = [...live.keys()].sort().join(',');
+      if (next !== ids) { ids = next; refresh(value => value + 1); }
+    };
+    window.addEventListener('mollytime:uploads', update);
+    return () => window.removeEventListener('mollytime:uploads', update);
+  }, []);
   const filtered = createdFolder ? [createdFolder, ...list.data.filter(item => item.id !== createdFolder.id)] : list.data;
   useEffect(() => {
     if (createdFolder && !renaming && list.data.some(item => item.id === createdFolder.id && item.name === createdFolder.name)) {
@@ -691,14 +702,14 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
   const uploadVideos = async (files: File[] = []) => {
     if (readonly || quickLock.current) return;
     quickLock.current = true; setQuickBusy(true); setQuickError('');
-    let openedTasks = false;
     try {
       await queueVideoFiles(quickBatch.current, files, () => {
         changed();
-        if (!openedTasks) { openedTasks = true; if (!tasksOpen) setTasksOpen(true); }
       });
+      if (!parent && quickBatch.current.folderId) navigate(`/library/${encodeURIComponent(quickBatch.current.folderId)}`);
     } catch (error) {
-      setQuickError((error as Error).message || '未能建立上传任务，请重试。');
+      const filename = quickBatch.current.rows[0]?.file.name;
+      setQuickError(`${filename ? filename + '：' : ''}${(error as Error).message || '未能建立上传任务，请重试。'}`);
     } finally {
       if (!quickBatch.current.rows.length) quickBatch.current.folderId = parent?.id;
       quickLock.current = false; setQuickBusy(false);
@@ -717,7 +728,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
     }} />;
   const toolbar = <>{publication.toolbar}{!parent && pendingUploads.total > 0 && <div className="toolbar library-toolbar">
     <Button variant="bordered" aria-label="上传任务" onClick={() => setTasksOpen(true)}>
-      <ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务
+      <ListTodo className="size-4" />查看全部上传
     </Button>
   </div>}</>;
   return (
@@ -733,7 +744,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
               input={videoPicker}
               exitSelection={publication.selecting ? publication.exit : undefined}
               leadingTile={!readonly && !publication.selecting ? <LibraryAddTile onCreate={() => void createFolder()} onUpload={() => videoInput.current?.click()} creating={folderCreating || !!renaming} uploading={quickBusy} /> : undefined}
-              toolbar={toolbar} feedback={<>{publication.feedback}{quickFeedback}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
+              toolbar={toolbar} feedback={<>{publication.feedback}{quickFeedback}{fileUploads.error && <Alert variant="destructive" role="alert"><AlertDescription>上传状态暂时无法更新：{fileUploads.error}</AlertDescription></Alert>}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
               suspended={!!(upload || preview || share || subtitleSettings || tasksOpen || publication.busy)}
               loading={list.loading} loadError={list.error}
               footer={<Pagination {...list} loading={list.refreshing || publication.busy} label="资源库分页" />}
@@ -745,7 +756,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                 backgroundToolbar: !parent.parentId && <>
                   <div className="library-publication-controls"><div className="library-selection-toolbar"><span className="library-selection-hint">上架后可在电视观看。</span></div></div>
                   {pendingUploads.total > 0 && <div className="toolbar library-toolbar">
-                  <Button variant="bordered"><ListTodo className="size-4" />上传中 · {pendingUploads.total} 个任务</Button>
+                  <Button variant="bordered"><ListTodo className="size-4" />查看全部上传</Button>
                 </div>}</>,
                 backgroundError: backgroundList.error,
                 backgroundFooter: <Pagination {...backgroundList} loading={backgroundList.refreshing} label="上级文件夹分页" />,
@@ -892,10 +903,10 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                     {item.name}
                   </Button>}
                 </div>
-                <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
+                {fileUploads.forItem(item.id).length ? fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />) : <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
                   title={item.hiddenByFolder ? `上级目录“${item.hiddenByFolder.name}”已下架` : undefined}>
                   <span>{publicationLabel(item)}</span>
-                </p>
+                </p>}
                 {coverError?.id === item.id && <p className="desktop-cover-error" role="alert">{coverError.message}</p>}
               </>}
             />
@@ -912,7 +923,6 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
         <UploadDialog
           initialKind={uploadKind}
           item={upload}
-          started={() => setTasksOpen(true)}
           close={() => {
             setUpload(undefined);
             changed();
@@ -947,11 +957,10 @@ function Preview({ item, close }: { item: Resource; close: () => void; }) {
   );
 }
 
-function UploadDialog({ item, close, started, initialKind = "video" }: {
+function UploadDialog({ item, close, initialKind = "video" }: {
   initialKind?: string;
   item: Resource;
   close: () => void;
-  started: () => void;
 }) {
   const [kind, setKind] = useState(initialKind),
     [language, setLanguage] = useState("und");
@@ -974,7 +983,6 @@ function UploadDialog({ item, close, started, initialKind = "video" }: {
         setRows((current) => current.filter((r) => r.file !== row.file));
       }
       close();
-      started();
     })()
       .catch((e) => setError(e.message))
       .finally(() => setBusy(false));
@@ -1475,7 +1483,7 @@ function Family({
               {!readonly && <Button variant="bordered">保存默认字幕</Button>}
             </form>}
           </Card>
-        </div><div className="settings-column"><ParentReminders readonly={readonly} run={run} notify={notify} /></div></div>
+        </div><div className="settings-column"><ParentReminders readonly={readonly} /></div></div>
       </TabsContent>
       <TabsContent value="security"><div className="settings-column">
           {!readonly && (

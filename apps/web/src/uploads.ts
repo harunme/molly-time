@@ -99,7 +99,7 @@ async function transfer(id: string, file = files.get(id)!) {
       catch (error) { if (attempt === 2) throw error; }
     }
     row = result!;
-    if (row.kind !== 'image') { live.set(id, { offset: row.offset, error: '', paused: false }); changed(); }
+    if (row.kind !== 'image') { live.set(id, { offset: row.offset, error: '', paused: paused.has(id) }); changed(); }
   }
   if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
 }

@@ -9,7 +9,7 @@ from pathlib import Path
 import uvicorn
 
 workspace = tempfile.TemporaryDirectory(prefix="mollytime-parent-e2e-")
-root = Path(workspace.name)
+root = Path(workspace.name).resolve()
 os.environ["MOLLYTIME_DATA_DIR"] = str(root)
 os.environ["MOLLYTIME_MEDIA_DIR"] = str(root)
 

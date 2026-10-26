@@ -291,3 +291,24 @@ def test_pending_uploads_filter_before_pagination_and_keep_family_scope(parent):
     assert {row["status"] for row in rows} == {"uploading", "processing", "failed"}
     assert {row["id"] for row in rows} == {"pending-2", "pending-3", "pending-4"}
     assert parent.get("/api/manage/uploads?page=1").json()["total"] == 5
+
+
+def test_uploads_are_filtered_to_requested_files_before_pagination(parent):
+    with Session(db.get_engine()) as session:
+        session.add(Item(id="inline-episode", family_id="f1", type="Episode", name="Inline"))
+        session.flush()
+        for index, item_id in enumerate(["e1", "inline-episode", "e1"]):
+            session.add(UploadSession(id=f"inline-{index}", family_id="f1", item_id=item_id,
+                filename=f"inline-{index}.mp4", kind="video", size=100, fingerprint=str(index), status="uploading"))
+        session.add(UploadSession(id="foreign-inline", family_id="f2", item_id="e1",
+            filename="foreign.mp4", kind="video", size=100, fingerprint="foreign", status="uploading"))
+        session.commit()
+    query = "/api/manage/uploads?pending=true&pageSize=1&itemIds=e1"
+    first = parent.get(query + "&page=1").json()
+    second = parent.get(query + "&page=2").json()
+    assert first["total"] == second["total"] == 2
+    assert {row["id"] for row in first["items"] + second["items"]} == {"inline-0", "inline-2"}
+    assert parent.get("/api/manage/uploads?pending=true&page=1&itemIds=inline-episode").json()["total"] == 1
+    assert parent.get("/api/manage/uploads?pending=true&page=1&itemIds=missing").json()["items"] == []
+    assert parent.get("/api/manage/uploads?pending=true&page=1&itemIds=e1&itemIds=inline-episode").json()["total"] == 3
+    assert parent.get("/api/manage/uploads?" + "&".join(["itemIds=e1"] * 101)).status_code == 422

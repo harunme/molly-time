@@ -19,11 +19,8 @@ async function choose(page: Page, names: string[]) {
   expect(chooser.isMultiple()).toBe(true);
   await chooser.setFiles(names.map(video));
 }
-async function closeTasks(page: Page) {
-  const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
-  await expect(tasks).toBeVisible();
-  await tasks.getByRole('button', { name: '关闭', exact: true }).click();
-  await expect(tasks).not.toBeVisible();
+async function noTasks(page: Page) {
+  await expect(page.getByRole('dialog', { name: '上传任务', exact: true })).toHaveCount(0);
 }
 async function remove(page: Page, headers: Record<string, string>, id: string) {
   await page.request.post(`/api/manage/resources/${id}/archive`, { headers });
@@ -43,14 +40,14 @@ test('upload opens the file chooser directly, cancellation writes nothing and a 
     await expect(page.getByRole('dialog', { name: '上传资源', exact: true })).toHaveCount(0);
     expect(writes).toEqual([]);
     await choose(page, ['第一集.早上好.mp4', '第二集.MP4']);
-    await expect(page.getByRole('dialog', { name: '上传任务', exact: true })).toBeVisible();
+    await noTasks(page);
     await expect(page.getByRole('textbox', { name: /视频名称|新文件夹名称/ })).toHaveCount(0);
     await expect.poll(async () => (await (await page.request.get(`/api/manage/resources?parentId=${season.id}`)).json()).length).toBe(2);
     const episodes = await (await page.request.get(`/api/manage/resources?parentId=${season.id}`)).json();
     expect(episodes.map((item: { name: string }) => item.name).sort()).toEqual(['第一集.早上好', '第二集']);
     expect(episodes.every((item: { parentId: string; indexNumber: number | null }) => item.parentId === season.id && item.indexNumber === null)).toBe(true);
     await expect.poll(async () => (await (await page.request.get(`/api/manage/resources?parentId=${season.id}`)).json()).every((item: { ready: boolean }) => item.ready)).toBe(true);
-    await closeTasks(page);
+    await noTasks(page);
     await expect(page.getByRole('button', { name: '第一集.早上好', exact: true })).toBeVisible();
   } finally { await remove(page, headers, series.id); }
 });
@@ -65,7 +62,9 @@ test('root uploads reuse the inbox and a failed batch retries without duplicate 
     await expect.poll(async () => (await (await page.request.get('/api/manage/resources?q=' + encodeURIComponent('未整理'))).json()).length).toBe(1);
     inboxId = (await (await page.request.get('/api/manage/resources?q=' + encodeURIComponent('未整理'))).json())[0].id;
     await expect.poll(async () => (await (await page.request.get(`/api/manage/resources?parentId=${inboxId}`)).json()).length).toBe(originalIds.size + 1);
-    await closeTasks(page);
+    await noTasks(page);
+    await expect(page).toHaveURL(new RegExp(`/library/${inboxId}$`));
+    await page.goto('/manage/#/library');
     let rejected = false;
     await page.route('**/api/manage/uploads', async route => {
       if (route.request().method() === 'POST' && route.request().postDataJSON().filename === '批量重试.mp4' && !rejected) {
@@ -75,10 +74,11 @@ test('root uploads reuse the inbox and a failed batch retries without duplicate 
       return route.continue();
     });
     await choose(page, ['批量先成功.mp4', '批量重试.mp4']);
-    const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
-    await expect(tasks.getByRole('alert')).toContainText('上传连接暂时不可用');
-    await tasks.getByRole('button', { name: '重试上传', exact: true }).click();
-    await expect(tasks.getByRole('alert')).toHaveCount(0);
+    await noTasks(page);
+    await expect(page.getByRole('alert')).toContainText('上传连接暂时不可用');
+    await page.getByRole('button', { name: '重试上传', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/library/${inboxId}$`));
     await expect.poll(async () => {
       const rows = await (await page.request.get(`/api/manage/resources?parentId=${inboxId}`)).json();
       return rows.length === originalIds.size + 3 && rows.every((row: { ready: boolean }) => row.ready);
@@ -88,7 +88,7 @@ test('root uploads reuse the inbox and a failed batch retries without duplicate 
     const episodes = await (await page.request.get(`/api/manage/resources?parentId=${inboxId}`)).json();
     expect(episodes.filter((item: { id: string }) => !originalIds.has(item.id)).map((item: { name: string }) => item.name).sort()).toEqual(['批量先成功', '批量重试', '根目录直接上传'].sort());
     await page.goBack();
-    await expect(tasks).not.toBeVisible();
+    await noTasks(page);
     await expect(page).toHaveURL(/#\/library$/);
   } finally {
     if (inboxId && !existing.length) await remove(page, headers, inboxId);
@@ -110,7 +110,7 @@ test('a bad selection creates no resources and the next valid selection still wo
     await expect(dialog.getByRole('alert')).toContainText('不是 MP4 视频');
     expect(await (await page.request.get(`/api/manage/resources?parentId=${series.id}`)).json()).toEqual([]);
     await choose(page, ['正常.mp4']);
-    await closeTasks(page);
+    await noTasks(page);
     await expect(page.getByRole('button', { name: '正常', exact: true })).toBeVisible();
   } finally { await remove(page, headers, series.id); }
 });

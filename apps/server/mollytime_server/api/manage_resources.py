@@ -7,7 +7,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from PIL import Image, UnidentifiedImageError
@@ -654,12 +654,15 @@ def uploads(
     page: int | None = Query(default=None, ge=1),
     pageSize: int = Query(default=20, ge=1, le=100),
     pending: bool = False,
+    itemIds: Annotated[list[str] | None, Query(max_length=100)] = None,
 ):
     query = (
         db.query(UploadSession)
         .filter(UploadSession.family_id == user.family_id)
         .order_by(UploadSession.created_at.desc(), UploadSession.id.desc())
     )
+    if itemIds is not None:
+        query = query.filter(UploadSession.item_id.in_(itemIds))
     if pending:
         query = query.filter(
             UploadSession.status.in_(["uploading", "processing", "failed"]),

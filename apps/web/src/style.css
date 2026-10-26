@@ -1154,3 +1154,15 @@ td small {
 .watch-settings-enable label { margin: 0; cursor: pointer; }
 .watch-settings-help { color: var(--muted-foreground); font-size: var(--text-xs); font-weight: 400; line-height: 1.6; }
 .watch-settings-preview { margin-top: .25rem; color: var(--muted-foreground); font-size: var(--text-sm); line-height: 1.6; }
+
+/* File progress belongs to its resource card or upload field, not a global overlay. */
+.file-upload-status { @apply mt-2 min-w-0 text-xs; }
+.file-upload-caption { @apply flex min-w-0 items-center gap-2 text-muted-foreground; }
+.file-upload-caption > span:first-child { @apply min-w-0 flex-1 truncate; }
+.file-upload-caption > [role="status"] { @apply shrink-0 text-foreground tabular-nums; }
+.file-upload-status [data-slot="progress"] { @apply my-2 h-0.5 bg-muted; }
+.file-upload-detail { @apply flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-muted-foreground; }
+.file-upload-actions { @apply flex items-center; }
+.file-upload-actions [data-slot="button"] { @apply h-7 px-2 text-xs; }
+.file-upload-error { @apply mt-1 break-words text-destructive; }
+.file-upload-status [data-slot="file-upload"] { @apply mt-2 h-8 text-xs; }

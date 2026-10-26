@@ -1,3 +1,4 @@
+import { FileUploadStatus, useItemUploads } from "./upload-status";
 import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
@@ -107,24 +108,29 @@ export function ParentReminderActions({ data, readonly, run, notify }: {
   </div>;
 }
 
-export function ParentReminders({ readonly, run, notify }: {
-  readonly: boolean; run: Run; notify: (value: string) => void;
-}) {
+export function ParentReminders({ readonly }: { readonly: boolean }) {
   const { settings, error, reload } = useReminderData();
   const uploadPolicy = useUploadLimits();
-  const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState<Kind>();
+  const [targets, setTargets] = useState<Partial<Record<Kind, string>>>({});
+  const [uploadErrors, setUploadErrors] = useState<Partial<Record<Kind, string>>>({});
+  const [selectedNames, setSelectedNames] = useState<Partial<Record<Kind, string>>>({});
+  const uploadLock = useRef(false);
+  const uploads = useItemUploads([settings?.warning.itemId, settings?.farewell.itemId, ...Object.values(targets)].filter((id): id is string => !!id), reload);
   const [preview, setPreview] = useState<Kind>();
   const upload = async (kind: Kind, file: File) => {
-    setBusy(true);
+    if (readonly || uploadLock.current) return;
+    uploadLock.current = true; setStarting(kind);
+    setSelectedNames(value => ({ ...value, [kind]: file.name }));
+    setUploadErrors(value => ({ ...value, [kind]: '' }));
     try {
-      await run(async () => {
-        validateUploadSize(file, 'video', await getUploadLimits());
-        const target = await api<{ itemId: string; }>(`/reminders/${kind}/upload-target`, 'POST');
-        await enqueue(file, target.itemId, 'video');
-        notify('已加入上传任务，处理完成后可预览和发起提醒。');
-        await reload();
-      });
-    } finally { setBusy(false); }
+      validateUploadSize(file, 'video', await getUploadLimits());
+      const target = await api<{ itemId: string }>(`/reminders/${kind}/upload-target`, 'POST');
+      setTargets(value => ({ ...value, [kind]: target.itemId }));
+      await enqueue(file, target.itemId, 'video');
+      await reload(); uploads.refresh();
+    } catch (failure) { setUploadErrors(value => ({ ...value, [kind]: (failure as Error).message })); }
+    finally { uploadLock.current = false; setStarting(undefined); }
   };
   return <Card className="settings-card parent-reminders">
     <h2>家长视频提醒</h2>
@@ -134,18 +140,24 @@ export function ParentReminders({ readonly, run, notify }: {
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
     {!settings && !error && <Loading variant="form" label="正在加载提醒设置…" />}
     {settings && <>
-      {(['warning', 'farewell'] as const).map((kind) => <div className="reminder-clip" key={kind}>
+      {(['warning', 'farewell'] as const).map((kind) => {
+        const rows = uploads.forItem(targets[kind] || settings[kind].itemId || '');
+        return <div className="reminder-clip" key={kind}>
         <Label htmlFor={`reminder-${kind}`}>{kind === 'warning' ? '剩 1 集提醒视频' : '休息提醒视频'}</Label>
         <p className="muted">{settings[kind].ready ? '视频已就绪' : '请上传视频，等待处理完成'} · {kind === 'warning' ? '最后一集开始时出现，也支持后台手动发起' : '最后一集看完后出现，随后停止播放'}</p>
-        {!readonly && <FileUploadField className="rounded-full" inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={busy || !uploadPolicy.limits}
-          inputLabel={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传休息提醒视频'} placeholder="选择 MP4 视频"
+        {!readonly && <FileUploadField className="rounded-full" inputId={`reminder-${kind}`} accept="video/mp4,.mp4" disabled={!!starting || rows.some(row => ['uploading', 'processing'].includes(row.status)) || !uploadPolicy.limits}
+          inputLabel={kind === 'warning' ? '上传剩 1 集提醒视频' : '上传休息提醒视频'} placeholder="选择 MP4 视频" fileName={rows[0]?.filename || selectedNames[kind]}
           onFileSelect={(file) => { void upload(kind, file); }} />}
+        {starting === kind && <p className="muted" role="status">正在准备上传 {selectedNames[kind]}…</p>}
+        {uploadErrors[kind] && <p className="file-upload-error" role="alert">{uploadErrors[kind]}</p>}
+        {rows.map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={uploads.refresh} showFilename={readonly || rows.length > 1} />)}
         {settings[kind].ready && <Button type="button" variant="bordered" onClick={() => setPreview(preview === kind ? undefined : kind)}>
           {preview === kind ? '关闭预览' : `预览${kind === 'warning' ? '提醒' : '休息提醒'}`}
         </Button>}
         {preview === kind && settings[kind].previewUrl && <video key={settings[kind].previewUrl} src={settings[kind].previewUrl!} controls autoPlay aria-label="家长提醒预览" />}
-      </div>)}
-      <p className="muted">上传 MP4 视频，可在资源库的上传任务中查看进度或重试。不上传也能按观看安排休息；未开启观看管理的电视需两段视频就绪后才能手动提醒。提醒不计入观看记录。</p>
+      </div>; })}
+      {uploads.error && <p className="file-upload-error" role="alert">上传状态暂时无法更新：{uploads.error}</p>}
+      <p className="muted">上传 MP4 视频，进度和重试会显示在对应文件下方。不上传也能按观看安排休息；未开启观看管理的电视需两段视频就绪后才能手动提醒。提醒不计入观看记录。</p>
     </>}
   </Card>;
 }
