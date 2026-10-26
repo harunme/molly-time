@@ -36,7 +36,7 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
     await command(editing, 'settings', { enabled, mode: enabled ? mode : editing.mode, amount: enabled ? amount : editing.amount }); setEditing(undefined);
   }); };
   return <Card className="watch-controls">
-    <div className="section-heading"><div><h2>观看安排</h2><p className="muted">设置每次可看的数量，以后直接开始；看完自动休息。</p></div>
+    <div className="section-heading"><div><h2>观看安排</h2><p className="muted">设置每日额度，北京时间每天 0 点自动恢复；用完自动休息。</p></div>
       {!readonly && data?.pinSet && <Button variant="ghost" onClick={() => { setPin(''); setPinOpen(true); }}>重设家长密码</Button>}</div>
     {error && !editing && !pinOpen && <p role="alert" className="error">{error}</p>}
     {!data && !error && <p role="status">正在读取电视状态…</p>}
@@ -47,16 +47,17 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
       const left = round ? round.remainingEpisodes ?? Math.max(0, round.amount - round.cursor - (round.episodeId ? 1 : 0)) : 0;
       return <section key={device.deviceId} className="watch-control-device" aria-label={device.name + '观看安排'}>
         <div><h3>{device.name}<span className="muted"> · {device.online ? '在线' : '离线'}</span></h3>
-          {device.enabled && <p className="muted">每次可看：{device.amount} {device.mode === 'episodes' ? '集' : '分钟'}</p>}
-          <p>{!device.enabled ? '未限制观看' : !active ? '正在休息' : round?.mode === 'minutes' ? `本次还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟` : round?.episodeId ? (left ? `本集之后，还能看 ${left} 集` : '这是本次最后一集') : `本次还能看 ${left} 集`}</p>
+          {device.enabled && <p className="muted">每日可看：{device.amount} {device.mode === 'episodes' ? '集' : '分钟'}</p>}
+          <p>{!device.enabled ? '未限制观看' : !active ? '今日观看已结束，明天自动恢复' : round?.mode === 'minutes' ? `今日还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟` : round?.episodeId ? (left ? `本集之后，还能看 ${left} 集` : '这是今天最后一集') : `今日还能看 ${left} 集`}</p>
           {active && round?.episodeName && <p className="muted">当前一集：{round.episodeName}（可继续）</p>}
           {device.version > device.acknowledged && <p className="muted" role="status">已安排 · {device.online ? (!device.supported ? '等待兼容客户端确认' : '等待电视确认') : '电视离线，开机联网后生效'}</p>}
           {!device.supported && <p className="muted">旧版电视客户端需升级后执行观看限制。</p>}
           {!readonly && <Button variant="ghost" size="sm" disabled={busy} onClick={() => edit(device)}>观看设置</Button>}
         </div>
         {!readonly && <div className="watch-control-actions">
-          {!active && <Button disabled={busy} onClick={() => device.enabled && data.pinSet ? act(device, 'allow') : edit(device)}>{device.enabled && data.pinSet ? `开始观看 · ${device.amount} ${device.mode === 'episodes' ? '集' : '分钟'}` : '设置观看限制'}</Button>}
-          {active && <><Button disabled={busy} onClick={() => act(device, 'add')}>{round?.mode === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</Button><Button variant="bordered" disabled={busy} onClick={() => act(device, 'stop')}>结束观看</Button></>}
+          {!device.enabled && <Button disabled={busy} onClick={() => edit(device)}>设置观看限制</Button>}
+          {device.enabled && <Button disabled={busy} onClick={() => act(device, 'add')}>{(round?.mode ?? device.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</Button>}
+          {active && <Button variant="bordered" disabled={busy} onClick={() => act(device, 'stop')}>结束今日观看</Button>}
         </div>}
       </section>;
     })}</div>
@@ -64,7 +65,7 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
       <DialogContent className="watch-settings-dialog">
         <DialogHeader>
           <DialogTitle>{editing?.name} · 观看设置</DialogTitle>
-          <DialogDescription>设一次，以后每次开始都按这个数量。修改从下一次观看生效，不改变本次剩余；电视关机时也能保存。</DialogDescription>
+          <DialogDescription>首次保存后今天即可观看；修改从明天起生效，不改变今日剩余。加看仅限当天，未用额度不结转；电视离线时也能保存。</DialogDescription>
         </DialogHeader>
         <DialogBody className="watch-settings-body">
           {error && <p role="alert" className="error">{error}</p>}
@@ -80,8 +81,8 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
                   { value: 'minutes', label: '按时间' },
                 ]} />
               </Label>
-              <Label htmlFor="watch-preset">{mode === 'episodes' ? '每次看几集' : '每次看多久'}
-                <SelectField id="watch-preset" aria-label={mode === 'episodes' ? '每次看几集' : '每次看多久'} value={customAmount ? 'custom' : String(amount)} disabled={busy} onValueChange={value => { setCustomAmount(value === 'custom'); if (value !== 'custom') setAmount(Number(value)); }} options={[
+              <Label htmlFor="watch-preset">{mode === 'episodes' ? '每天看几集' : '每天看多久'}
+                <SelectField id="watch-preset" aria-label={mode === 'episodes' ? '每天看几集' : '每天看多久'} value={customAmount ? 'custom' : String(amount)} disabled={busy} onValueChange={value => { setCustomAmount(value === 'custom'); if (value !== 'custom') setAmount(Number(value)); }} options={[
                   ...(mode === 'episodes' ? [1, 2, 3] : [15, 30, 60]).map(value => ({ value: String(value), label: `${value} ${mode === 'episodes' ? '集' : '分钟'}` })),
                   { value: 'custom', label: '自定义' },
                 ]} />
@@ -93,11 +94,11 @@ export function WatchControls({ readonly }: { readonly: boolean }) {
             </Label>}
             {!data?.pinSet && <Label htmlFor="watch-pin">家长密码
               <Input id="watch-pin" aria-label="设置四位数字家长密码" type="password" inputMode="numeric" autoComplete="new-password" placeholder="设置 4 位数字密码" maxLength={4} value={pin} disabled={busy} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
-              <span className="watch-settings-help">家长在电视上开始或加看时使用。</span>
+              <span className="watch-settings-help">家长在电视上加看或修改设置时使用，日常观看无需密码。</span>
             </Label>}
           </>}
           {enabled && <p className="watch-settings-help">{mode === 'episodes' ? '开始一个视频计 1 集，续播同一集不重复计算。' : '只计算实际播放时间，暂停和选片不计时。'}</p>}
-          <p className="watch-settings-preview" aria-live="polite">{enabled ? `每次可看 ${amount || '—'} ${mode === 'episodes' ? '集，看完后休息。' : '分钟，时间到暂停并保存进度。'}` : '关闭后，电视可以自由播放。'}</p>
+          <p className="watch-settings-preview" aria-live="polite">{enabled ? `每日可看 ${amount || '—'} ${mode === 'episodes' ? '集，看完后休息。' : '分钟，时间到暂停并保存进度。'}` : '关闭后，电视可以自由播放。'}</p>
         </DialogBody>
         <DialogFooter>
           <Button variant="bordered" disabled={busy} onClick={() => setEditing(undefined)}>取消</Button>

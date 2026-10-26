@@ -11,11 +11,12 @@ class WatchControl(private val context: Context, private val session: SessionSto
     private var state: JSONObject? = null
     private var prepaidUntil = 0L
     private var running = false
+    private var playbackRoundId: String? = null
     private fun prefs() = context.getSharedPreferences("watch-control-" + CatalogStore.digest(session.server + "|" + session.deviceId), Context.MODE_PRIVATE)
     @Synchronized private fun load(): JSONObject {
         val binding = session.server + "|" + session.deviceId
         if (owner != binding) {
-            owner = binding; prepaidUntil = 0L
+            owner = binding; prepaidUntil = 0L; playbackRoundId = null
             state = prefs().getString("state", null)?.let { JSONObject(it) }
         }
         return state ?: throw IllegalStateException("请先联网读取观看安排")
@@ -29,21 +30,32 @@ class WatchControl(private val context: Context, private val session: SessionSto
         }
         prepaidUntil = 0L
     }
+    private fun expired(value: JSONObject): Boolean {
+        val deadline = value.optLong("resetsAt")
+        if (deadline <= 0) return false
+        val elapsed = SystemClock.elapsedRealtime() - value.optLong("syncedElapsed")
+        val serverNow = value.optLong("serverTime") + elapsed.coerceAtLeast(0)
+        return maxOf(serverNow, System.currentTimeMillis()) >= deadline
+    }
     @Synchronized fun snapshot(): JSONObject {
         val result = JSONObject(load().toString())
         result.optJSONObject("round")?.let { round ->
             round.put("playedMs", (round.optLong("playedMs") + if (prepaidUntil > 0) SystemClock.elapsedRealtime() - prepaidUntil else 0).coerceAtLeast(0))
             if (round.optString("mode") == "minutes") round.put("remainingMs", (round.optLong("limitMs", round.optLong("amount") * 60000) - round.optLong("playedMs")).coerceAtLeast(0))
         }
+        if (result.optBoolean("enabled") && expired(result)) {
+            result.put("status", "resting").put("needsSync", true)
+            result.optJSONObject("round")?.put("ended", true)
+        }
         return result
     }
     @Synchronized fun accept(incoming: JSONObject): JSONObject {
         val binding = session.server + "|" + session.deviceId
-        if (owner != binding) { owner = binding; state = prefs().getString("state", null)?.let { JSONObject(it) }; prepaidUntil = 0L }
+        if (owner != binding) { owner = binding; state = prefs().getString("state", null)?.let { JSONObject(it) }; prepaidUntil = 0L; playbackRoundId = null }
         val previous = state
         if (previous != null && previous.optInt("version") > incoming.optInt("version")) return snapshot()
         settle()
-        val next = JSONObject(incoming.toString())
+        val next = JSONObject(incoming.toString()).put("syncedElapsed", SystemClock.elapsedRealtime())
         val oldRound = previous?.optJSONObject("round")
         val round = next.optJSONObject("round")
         if (oldRound != null && round != null && oldRound.optString("id") == round.optString("id")) {
@@ -58,7 +70,7 @@ class WatchControl(private val context: Context, private val session: SessionSto
         }
         state = next
         normalize()
-        if (running) tick(true)
+        if (running && oldRound?.optString("id") == round?.optString("id")) tick(true)
         persist()
         return snapshot()
     }
@@ -66,6 +78,7 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val value = state ?: return
         val round = value.optJSONObject("round") ?: return
         if (round.optString("mode") == "minutes" && round.optLong("playedMs") >= round.optLong("limitMs", round.optLong("amount") * 60000) && prepaidUntil <= SystemClock.elapsedRealtime()) round.put("ended", true)
+        if (value.optBoolean("enabled") && expired(value)) round.put("ended", true)
         val list = round.optJSONArray("playlist")
         if (round.optString("mode") == "episodes" && round.optInt("cursor") >= round.optInt("amount")) round.put("ended", true)
         value.put("status", if (!value.optBoolean("enabled")) "off" else if (round.optBoolean("ended")) "resting" else "allowed")
@@ -94,13 +107,14 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val value = load()
         if (!value.optBoolean("enabled")) return
         normalize()
-        require(value.optString("status") == "allowed") { "看完啦，请家长允许观看" }
+        require(value.optString("status") == "allowed") { "今日观看已结束，请联网刷新每日额度或请家长加看" }
         val round = value.getJSONObject("round")
+        playbackRoundId = round.optString("id")
         if (round.optString("mode") == "episodes") {
             val active = round.optString("activeEpisode").takeIf { it.isNotEmpty() && round.optInt("activeCursor", -1) == round.optInt("cursor") }
                 ?: round.optString("episodeId").takeIf { it.isNotEmpty() && it != "null" }
             val cursor = round.optInt("cursor") + if (active != null && active != episode) 1 else 0
-            require(cursor < round.optInt("amount")) { "本次集数已用完，可继续当前视频，或请家长加看" }
+            require(cursor < round.optInt("amount")) { "今日集数已用完，可继续当前视频，或请家长加看" }
             val previous = round.optJSONArray("playlist") ?: JSONArray()
             val playlist = JSONArray()
             for (index in 0 until cursor) playlist.put(previous.optString(index, ""))
@@ -115,6 +129,7 @@ class WatchControl(private val context: Context, private val session: SessionSto
         if (!value.optBoolean("enabled")) return
         normalize()
         require(value.optString("status") == "allowed" && value.getJSONObject("round").optString("mode") == "minutes") { "看直播需要家长设置观看时间" }
+        playbackRoundId = value.getJSONObject("round").optString("id")
     }
     /** Prepay at most one second before allowing it to play. Normal pause refunds the unused tail. */
     @Synchronized fun tick(playing: Boolean): Boolean {
@@ -122,6 +137,9 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val value = load()
         if (!value.optBoolean("enabled")) return true
         val round = value.optJSONObject("round") ?: return false
+        normalize()
+        if (playbackRoundId != null && playbackRoundId != round.optString("id")) return false
+        if (playing) playbackRoundId = round.optString("id")
         if (!playing) { if (prepaidUntil != 0L) { settle(); normalize(); persist() }; return !round.optBoolean("ended") }
         if (round.optBoolean("ended")) return false
         if (round.optString("mode") != "minutes") return true
@@ -176,9 +194,9 @@ class WatchControl(private val context: Context, private val session: SessionSto
         val id = round.optString("id")
         if (round.optString("mode") == "minutes") {
             if (round.optLong("remainingMs") <= 300000 && claim("five:$id:" + value.optInt("version"))) { claim("start:$id"); return "还有不到 5 分钟就休息啦。" }
-            if (claim("start:$id")) return "这次最多看 " + round.optInt("amount") + " 分钟。"
+            if (claim("start:$id")) return "今天最多看 " + round.optInt("amount") + " 分钟。"
         } else {
-            if (round.optInt("amount") == round.optInt("cursor") + 1 && claim("last:$id:" + round.optInt("cursor"))) { claim("start:$id"); return "这是最后一集啦。" }
+            if (round.optInt("amount") == round.optInt("cursor") + 1 && claim("last:$id:" + round.optInt("cursor"))) { claim("start:$id"); return "这是今天最后一集啦。" }
             if (claim("start:$id")) return "本集看完后，还能看 " + (round.optInt("amount") - round.optInt("cursor") - 1).coerceAtLeast(0) + " 集。"
         }
         return null

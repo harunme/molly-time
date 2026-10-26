@@ -1,5 +1,8 @@
 """Device-scoped deterministic watching policy, independent of viewing statistics."""
 
+import datetime as dt
+from zoneinfo import ZoneInfo
+
 from fastapi import HTTPException
 
 from .management_models import WatchControl, WatchControlRound, WatchControlSession
@@ -16,6 +19,40 @@ def current_round(db, row):
         if row and row.round_id
         else None
     )
+
+
+QUOTA_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def quota_now():
+    return dt.datetime.now(QUOTA_TIMEZONE)
+
+
+def refresh_daily(db, row):
+    """Caller holds the device control lock and commits this transaction."""
+    if not row or not row.enabled:
+        return
+    today = quota_now().date().isoformat()
+    if row.quota_day and row.quota_day >= today:
+        return  # Clock rollback must never grant another allowance.
+    previous = current_round(db, row)
+    if row.quota_day is None and previous:
+        row.quota_day = today  # Upgrade without restoring already-consumed quota.
+        db.flush()
+        return
+    if previous:
+        previous.ended = True
+    round = WatchControlRound(
+        device_id=row.device_id,
+        mode=row.mode,
+        amount=row.amount,
+        limit_ms=row.amount * 60000 if row.mode == "minutes" else 0,
+    )
+    db.add(round)
+    db.flush()
+    row.round_id, row.quota_day = round.id, today
+    row.version += 1
+    db.flush()
 
 
 def remaining(round):
@@ -51,8 +88,19 @@ def dto(db, row):
         else None
         for kind in ("warning", "farewell")
     }
+    reset_at = (
+        dt.datetime.combine(
+            dt.date.fromisoformat(row.quota_day) + dt.timedelta(days=1),
+            dt.time(), QUOTA_TIMEZONE,
+        )
+        if row and row.quota_day else None
+    )
     return {
         **paths,
+        "quotaDay": row.quota_day if row else None,
+        "timezone": "Asia/Shanghai",
+        "resetsAt": int(reset_at.timestamp() * 1000) if reset_at else None,
+        "serverTime": int(quota_now().timestamp() * 1000),
         "supported": bool(row and row.supported),
         "enabled": bool(row and row.enabled),
         "mode": row.mode if row else "episodes",
@@ -87,13 +135,18 @@ def dto(db, row):
 
 
 def require_play(db, device_id, episode_id=None, *, live=False, bind=False):
-    row = control(db, device_id)
+    row = (
+        db.query(WatchControl).filter_by(device_id=device_id).with_for_update().first()
+        if bind and device_id else control(db, device_id)
+    )
+    if bind:
+        refresh_daily(db, row)
     if not row or not row.enabled:
         return None
     round = current_round(db, row)
     normalize(db, round)
     if not round or round.ended:
-        raise HTTPException(403, "看完啦，请家长允许观看")
+        raise HTTPException(403, "今日额度已用完，明天自动恢复，也可请家长加看")
     if live and round.mode != "minutes":
         raise HTTPException(403, "看直播需要家长设置观看时间")
     if round.mode == "episodes":
@@ -101,7 +154,7 @@ def require_play(db, device_id, episode_id=None, *, live=False, bind=False):
         if bind:
             cursor = round.cursor + (1 if active and active != episode_id else 0)
             if cursor >= round.amount:
-                raise HTTPException(403, "本次集数已用完，可继续当前视频，或请家长加看")
+                raise HTTPException(403, "今日集数已用完，可继续当前视频，或请家长加看")
             round.cursor = cursor
             round.playlist = [*round.playlist[:cursor], episode_id]
             db.flush()

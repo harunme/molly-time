@@ -4,15 +4,34 @@ import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { ApiError, browserRequest, request, type Capabilities } from './api';
 import { FocusButton, FocusRegion } from './focus';
 
-export type Watching = { warningPath?: string | null; farewellPath?: string | null; supported: boolean; pinSet?: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: 'off' | 'resting' | 'allowed'; round: null | { id: string; mode: 'episodes' | 'minutes'; amount: number; remainingEpisodes?: number | null; limitMs: number; playlist: string[]; cursor: number; playedMs: number; remainingMs: number | null; ended: boolean; stopAfter: boolean; episodeId: string | null; episodeName: string | null } };
+export type Watching = { needsSync?: boolean; quotaDay?: string | null; resetsAt?: number | null; serverTime?: number; warningPath?: string | null; farewellPath?: string | null; supported: boolean; pinSet?: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: 'off' | 'resting' | 'allowed'; round: null | { id: string; mode: 'episodes' | 'minutes'; amount: number; remainingEpisodes?: number | null; limitMs: number; playlist: string[]; cursor: number; playedMs: number; remainingMs: number | null; ended: boolean; stopAfter: boolean; episodeId: string | null; episodeName: string | null } };
 export const watchLabel = (state: Watching) => {
   const round = state.round;
   if (!state.enabled) return '观看管理未开启';
-  if (state.status === 'resting') return '看完啦，休息一下吧。';
-  if (round?.mode === 'minutes') return `还能看 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟`;
-  if (round) { const left = Math.max(0, round.amount - round.cursor - (round.episodeId ? 1 : 0)); return round.episodeId ? (left ? `本集看完后，还能看 ${left} 集` : '这是最后一集啦。') : `还能看 ${left} 集`; }
+  if (state.needsSync) return '请联网更新今日额度';
+  if (state.status === 'resting') return '今日观看已结束，明天自动恢复';
+  if (round?.mode === 'minutes') return `今日还剩 ${round.remainingMs! < 60000 ? '不到 1' : Math.ceil(round.remainingMs! / 60000)} 分钟`;
+  if (round) { const left = Math.max(0, round.amount - round.cursor - (round.episodeId ? 1 : 0)); return round.episodeId ? (left ? `本集看完后，还能看 ${left} 集` : '这是今天最后一集啦。') : `今日还能看 ${left} 集`; }
   return `可以看 ${state.amount} 集，选一个视频吧。`;
 };
+/** Quiet, single-line status for the existing top bar; details stay in the parent panel. */
+export function WatchQuota({ state }: { state: Watching }) {
+  const round = state.round;
+  let label = '今日剩余', value = '';
+  if (state.needsSync) label = '联网更新今日额度';
+  else if (state.status === 'resting') label = '今日已结束';
+  else if (round?.mode === 'minutes') value = `${round.remainingMs! < 60000 ? '不足 1' : Math.ceil(round.remainingMs! / 60000)} 分钟`;
+  else if (round) {
+    const left = Math.max(0, round.amount - round.cursor - (round.episodeId ? 1 : 0));
+    if (round.episodeId) { label = left ? '本集之后' : '今日最后'; value = left ? `还可看 ${left} 集` : '1 集'; }
+    else value = `${left} 集`;
+  }
+  return <span className="watch-quota" role="status" aria-label="今日观看额度" title={watchLabel(state)}>
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.5 1.5" /></svg>
+    <span>{label}{value && <> <strong>{value}</strong></>}</span>
+  </span>;
+}
+
 const localKey = (id: string) => `mollytime.watch-control.${id}`;
 function saved(id: string): { playedMs: number; cursor: number; episodeId?: string | null } {
   try { const value = JSON.parse(localStorage.getItem(localKey(id)) || '{}'); return { playedMs: Math.max(0, Number(value.playedMs) || 0), cursor: Math.max(0, Number(value.cursor) || 0), episodeId: typeof value.episodeId === 'string' ? value.episodeId : null }; }
@@ -35,9 +54,15 @@ export class BrowserWatchGuard {
   private playing = false;
   private syncing?: Promise<void>;
   private completed = false;
-  async open() { this.completed = false; this.state = await readWatchControl().catch(e => { if (e instanceof ApiError && e.status === 404) return undefined; throw e; }); this.at = performance.now(); }
+  private interrupted = false;
+  private expiresAt = Infinity;
+  private deadline(state?: Watching) {
+    this.expiresAt = state?.resetsAt && state.serverTime ? performance.now() + Math.max(0, state.resetsAt - state.serverTime) : Infinity;
+  }
+  async open() { this.completed = false; this.interrupted = false; this.state = await readWatchControl().catch(e => { if (e instanceof ApiError && e.status === 404) return undefined; throw e; }); this.at = performance.now(); this.deadline(this.state); }
   sample(playing: boolean): boolean {
     const now = performance.now(), round = this.state?.round;
+    if (this.interrupted || (this.state?.enabled && now >= this.expiresAt)) { this.playing = false; return false; }
     if (this.playing && round && this.state?.enabled && this.state.status === 'allowed') {
       round.playedMs += Math.max(0, Math.round(now - this.at));
       if (round.mode === 'minutes') round.remainingMs = Math.max(0, round.limitMs - round.playedMs);
@@ -49,7 +74,7 @@ export class BrowserWatchGuard {
   private persist() { const round = this.state?.round; if (round) localStorage.setItem(localKey(round.id), JSON.stringify({ playedMs: round.playedMs, cursor: round.cursor, episodeId: round.episodeId })); }
   complete(_episode: string) {
     const round = this.state?.round;
-    if (this.state?.enabled && round?.mode === 'episodes' && !this.completed) { this.completed = true; round.cursor++; round.episodeId = null; round.ended = round.cursor >= round.amount; this.persist(); }
+    if (!this.interrupted && this.state?.enabled && round?.mode === 'episodes' && !this.completed) { this.completed = true; round.cursor++; round.episodeId = null; round.ended = round.cursor >= round.amount; this.persist(); }
   }
   sync() {
     if (demoEnabled || (this.state && !this.state.supported && !this.state.enabled)) return Promise.resolve();
@@ -63,6 +88,8 @@ export class BrowserWatchGuard {
         next.round.cursor = Math.max(next.round.cursor, round.cursor);
         if (next.round.mode === 'minutes') next.round.remainingMs = Math.max(0, next.round.limitMs - next.round.playedMs);
       }
+      if (before.enabled && round && next.round && next.round.id !== round.id) this.interrupted = true;
+      this.deadline(next);
       this.state = next;
     }).finally(() => { this.syncing = undefined; });
     return this.syncing;
@@ -102,7 +129,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
     const previous = { mode: state?.mode ?? ('episodes' as const), amount: state?.amount ?? 2 };
     setSelection({ mode: previous.mode, amount: previous.amount });
   }, [state?.mode, state?.amount]);
-  const [pinAction, setPinAction] = useState<'allow' | 'settings' | 'add' | 'stop'>('allow');
+  const [pinAction, setPinAction] = useState<'settings' | 'add' | 'stop'>('settings');
   const [editing, setEditing] = useState(false);
   const [enteringPin, setEnteringPin] = useState(false), [pin, setPin] = useState('');
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -116,11 +143,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
       if (!pinKnown.current && !state.pinSet) { await request('/api/watch-control/pin', 'POST', { pin: pinRef.current }); pinKnown.current = true; }
       attempt.current ??= { requestId: crypto.randomUUID(), version: version.current, ...selection };
       const next = await request<Watching>('/api/watch-control/commands', 'POST', { requestId: attempt.current.requestId, version: attempt.current.version, ...(pinAction === 'settings' ? { mode: attempt.current.mode, amount: attempt.current.amount, enabled: true } : {}), action: pinAction, pin: pinRef.current });
-      changed({ ...next, pinSet: true }, pinAction === 'settings');
-      if (pinAction === 'settings') {
-        setEditing(false); setEnteringPin(false); setPin(''); pinRef.current = ''; attempt.current = undefined; touched.current = false;
-        requestAnimationFrame(() => setFocus('watch-parent-main'));
-      }
+      changed({ ...next, pinSet: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : '请连接网络后再试');
       pinRef.current = ''; setPin('');
@@ -160,41 +183,45 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
   const settings = () => { setEditing(true); requestAnimationFrame(() => setFocus('watch-parent-main')); };
   if (enteringPin) return <FocusRegion focusKey="watch-pin" boundary className="watch-parent-panel watch-pin-view">
     <h2>{state.pinSet || pinKnown.current ? '输入家长密码' : '设置家长密码'}</h2>
-    <p className="watch-pin-summary">{pinAction === 'settings' ? `每次可看 ${label}，保存后持续沿用` : pinAction === 'allow' ? `开始观看 · ${ruleLabel}` : pinAction === 'add' ? `加看 ${state.round?.mode === 'episodes' ? '1 集' : '10 分钟'}` : '结束本次观看'}</p>
+    <p className="watch-pin-summary">{pinAction === 'settings' ? `每日可看 ${label}${state.enabled ? '，明天起生效' : '，保存后今天即可观看'}` : pinAction === 'add' ? `加看 ${state.round?.mode === 'episodes' ? '1 集' : '10 分钟'}` : '结束今日观看'}</p>
     <div aria-label={`已输入 ${pin.length} 位密码`} className="watch-pin-dots">{[0, 1, 2, 3].map(index => <span key={index} className={index < pin.length ? 'filled' : ''} />)}</div>
     <div className="watch-pin-pad">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map(value => <FocusButton key={value} focusKey={`watch-digit-${value}`} disabled={busy} onClick={() => digit(String(value))}>{value}</FocusButton>)}
       <FocusButton focusKey="watch-pin-delete" disabled={busy} onClick={() => { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }}>删除</FocusButton>
       <FocusButton focusKey="watch-digit-0" disabled={busy} onClick={() => digit('0')}>0</FocusButton>
       <FocusButton focusKey="watch-pin-cancel" disabled={busy} onClick={() => { setEnteringPin(false); setPin(''); pinRef.current = ''; attempt.current = undefined; setError(''); requestAnimationFrame(() => setFocus('watch-parent-main')); }}>返回</FocusButton>
     </div>
-    <div className="watch-pin-feedback" aria-live="polite">{error ? <p role="alert" className="error">{error}</p> : <p role="status">{busy ? '正在处理…' : pinAction === 'allow' ? '输入 4 位数字后自动开始' : '输入 4 位数字后自动确认'}</p>}</div>
+    <div className="watch-pin-feedback" aria-live="polite">{error ? <p role="alert" className="error">{error}</p> : <p role="status">{busy ? '正在处理…' : '输入 4 位数字后自动确认'}</p>}</div>
   </FocusRegion>;
   if (!editing && state.enabled && state.status === 'allowed' && state.round) return <section className="watch-parent-panel watch-quantity-view">
-    <h2>本次观看</h2><p>{watchLabel(state)}</p>
+    <h2>今日观看</h2><p>{watchLabel(state)}</p>
     {state.round.episodeName && <p className="watch-current">当前一集：{state.round.episodeName}（可继续）</p>}
     <div className="watch-parent-actions">
       <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{state.round.mode === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</FocusButton>
-      <FocusButton focusKey="watch-end" className="settings-action settings-secondary" onClick={() => authorize('stop')}>结束观看</FocusButton>
+      <FocusButton focusKey="watch-end" className="settings-action settings-secondary" onClick={() => authorize('stop')}>结束今日观看</FocusButton>
     </div>
     <div className="watch-parent-actions"><FocusButton focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton></div>
     <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
   </section>;
+  if (!editing && state.needsSync) return <section className="watch-parent-panel watch-quantity-view">
+    <h2>请联网更新今日额度</h2><p>连接网络后会自动恢复今天的观看额度，无需输入密码。</p>
+    <FocusButton focusKey="watch-parent-main" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
+  </section>;
   if (!editing && state.enabled) return <section className="watch-parent-panel watch-quantity-view">
-    <h2>开始观看</h2><p>每次可看 {ruleLabel}，看完自动休息。</p>
-    <p className="watch-current">无需重新设置数量，重新打开也不会重置本次额度。</p>
+    <h2>今日观看已结束</h2><p>每日可看 {ruleLabel}，明天 0 点自动恢复。</p>
+    <p className="watch-current">北京时间 · 剩余额度不结转，重新打开不会重置。</p>
     <div className="watch-parent-actions">
-      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('allow')}>开始观看 · {ruleLabel}</FocusButton>
+      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{(state.round?.mode ?? state.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</FocusButton>
       <FocusButton focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton>
     </div>
     <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
   </section>;
   return <section className="watch-parent-panel watch-quantity-view">
     <h2>观看设置</h2>
-    <p>每次可看多少？设一次，以后持续沿用。</p>
+    <p>每天可看多少？北京时间每天 0 点自动恢复。</p>
     <div className="watch-amount-grid" role="group" aria-label="观看数量">{choices.map(choice => <FocusButton key={choice.label} ariaLabel={choice.label} focusKey={`watch-choice-${choice.mode}-${choice.amount}`} selected={selection.mode === choice.mode && selection.amount === choice.amount} className={selection.mode === choice.mode && selection.amount === choice.amount ? 'primary' : ''} onClick={() => { touched.current = true; setSelection({ mode: choice.mode, amount: choice.amount }); }}>{choice.label}</FocusButton>)}</div>
     <p className="watch-current">{selection.mode === 'episodes' ? '开始一个视频计 1 集，续播不重复计数。' : '只计算播放时间，暂停和选片不计时。'}</p>
-    <div className="watch-parent-actions"><FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => { touched.current = true; authorize('settings'); }}>保存设置</FocusButton></div>
-    <p className="watch-current">每次可看 {label} · 保存不开始观看{state.enabled && state.status === 'allowed' ? '，下一次生效' : ''}</p>
+    <div className="watch-parent-actions"><FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => { touched.current = true; authorize('settings'); }}>{state.enabled ? '保存设置' : '保存并开始观看'}</FocusButton></div>
+    <p className="watch-current">每日可看 {label} · {state.enabled ? '明天起生效，今日额度不变' : '保存后今天即可观看'}</p>
     <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={() => { if (editing && state.enabled) { setEditing(false); requestAnimationFrame(() => setFocus('watch-parent-main')); } else close(); }}>{editing && state.enabled ? '返回' : backLabel}</FocusButton>
   </section>;
 }

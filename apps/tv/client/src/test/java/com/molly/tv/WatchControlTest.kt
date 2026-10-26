@@ -85,4 +85,31 @@ class WatchControlTest {
         session.save(JSONObject().put("accessToken", "b").put("refreshToken", "s").put("deviceId", UUID.randomUUID().toString()))
         assertTrue(runCatching { control.requireEpisode("a", true) }.isFailure)
     }
+    @Test fun dailyExpiryStopsOfflinePlaybackWithoutGrantingAnotherDay() {
+        val (session, control) = setup()
+        val today = state().put("serverTime", System.currentTimeMillis()).put("resetsAt", System.currentTimeMillis() + 1000)
+        control.accept(today)
+        assertTrue(control.tick(true))
+        ShadowSystemClock.advanceBy(Duration.ofMillis(1100))
+        assertFalse(control.tick(true))
+        assertEquals("resting", control.snapshot().getString("status"))
+        val restored = WatchControl(RuntimeEnvironment.getApplication(), session, MollyTimeApi(session) { "test" })
+        assertFalse(restored.tick(true))
+        assertEquals("round", restored.snapshot().getJSONObject("round").getString("id"))
+    }
+    @Test fun newDayStopsOldPlaybackWithoutSpendingOrCompletingNewQuota() {
+        val (_, control) = setup()
+        control.accept(state("episodes"))
+        control.requireEpisode("a")
+        assertTrue(control.tick(true))
+        val tomorrow = state("episodes", version = 2)
+        tomorrow.getJSONObject("round").put("id", "tomorrow").put("playlist", JSONArray())
+        control.accept(tomorrow)
+        assertFalse(control.tick(true))
+        control.complete("a")
+        assertEquals(0, control.snapshot().getJSONObject("round").getInt("cursor"))
+        control.requireEpisode("b")
+        assertTrue(control.tick(true))
+    }
+
 }

@@ -73,6 +73,25 @@ def upgrade_reminder_sessions(engine) -> None:
         """)
 
 
+def upgrade_watch_control_daily(engine) -> None:
+    """Keep existing allowances; their first sync adopts them as today's quota."""
+    with engine.begin() as connection:
+        mysql = engine.dialect.name == "mysql"
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        if mysql and connection.exec_driver_sql(
+            "SELECT GET_LOCK('mollytime_daily_quota', 30)"
+        ).scalar() != 1:
+            raise RuntimeError("Cannot acquire daily quota migration lock")
+        try:
+            columns = inspect(connection).get_columns("watch_controls")
+            if "quota_day" not in {column["name"] for column in columns}:
+                connection.exec_driver_sql("ALTER TABLE watch_controls ADD COLUMN quota_day VARCHAR(10)")
+        finally:
+            if mysql:
+                connection.exec_driver_sql("SELECT RELEASE_LOCK('mollytime_daily_quota')")
+
+
 def upgrade_trash_entries(engine) -> None:
     """Add deletion progress to early recycle-bin tables, preserving existing entries."""
     with engine.begin() as connection:
@@ -224,6 +243,7 @@ def init_db() -> None:
     upgrade_share_credentials(engine)
     Base.metadata.create_all(bind=engine)
     # create_all creates new tables but does not upgrade columns in existing ones.
+    upgrade_watch_control_daily(engine)
     upgrade_reminder_sessions(engine)
     upgrade_trash_entries(engine)
     upgrade_query_schema(engine)

@@ -19,11 +19,9 @@ from ..management_models import (
     WatchControl,
     WatchControlCommand,
     WatchControlPin,
-    WatchControlRound,
-    uid,
 )
 from ..transactions import serialize_sqlite_write
-from ..watch_control import current_round, dto, normalize
+from ..watch_control import current_round, dto, normalize, refresh_daily
 
 router = APIRouter(tags=["watch-control"])
 
@@ -70,16 +68,24 @@ def set_pin(body: PinBody, user: Parent, db: DbSession):
 
 @router.get("/api/manage/watch-control")
 def devices(user: Parent, db: DbSession):
+    serialize_sqlite_write(db)
+
+    def device_state(device):
+        row = owned(db, user, device.id)
+        refresh_daily(db, row)
+        return dto(db, row)
+
     pin = db.get(WatchControlPin, user.family_id)
     result = [
         {
             "deviceId": device.id,
             "name": device.name,
             "online": device_online(device),
-            **dto(db, owned(db, user, device.id)),
+            **device_state(device),
         }
         for device in db.query(Device).filter_by(family_id=user.family_id, revoked=False).all()
     ]
+    db.commit()
     return {"pinSet": pin is not None, "devices": result}
 
 
@@ -112,8 +118,13 @@ def perform(db, user, device_id, body):
     if previous:
         if previous.fingerprint != fingerprint:
             raise HTTPException(409, "重复请求内容不一致")
-        return dto(db, row)
+        refresh_daily(db, row)
+        result = dto(db, row)
+        db.commit()
+        return result
+    refresh_daily(db, row)
     if row.version != body.version:
+        db.commit()  # Keep a midnight rollover even when the old command is rejected.
         raise HTTPException(409, "电视的安排已更新，请重新操作")
     round = current_round(db, row)
     normalize(db, round)
@@ -139,32 +150,20 @@ def perform(db, user, device_id, body):
         if enabled != row.enabled and round:
             round.ended = True
         row.enabled, row.mode, row.amount = enabled, mode, amount
-    if body.action == "settings":
-        pass
+    if body.action in ("settings", "start"):
+        refresh_daily(db, row)
     elif not row.enabled:
         raise HTTPException(409, "请先开启观看管理")
-    elif body.action in ("allow", "reselect", "start"):
-        if body.action == "allow" and round and not round.ended:
-            raise HTTPException(409, "已经可以观看，无需重复允许")
-        if round:
-            round.ended = True
-        round = WatchControlRound(
-            id=uid(),
-            device_id=device_id,
-            mode=row.mode,
-            amount=row.amount,
-            limit_ms=row.amount * 60000 if row.mode == "minutes" else 0,
-        )
-        db.add(round)
-        row.round_id = round.id
+    elif body.action in ("allow", "reselect"):
+        raise HTTPException(409, "每日额度自动恢复，今天需要更多额度请使用加看")
     elif body.action == "add":
         if not round:
-            raise HTTPException(409, "请先允许观看")
+            raise HTTPException(409, "请先设置每日额度")
         if round.stop_after:
             round.stop_after = False
         if round.mode == "minutes":
             round.amount += 10
-            round.limit_ms += 600000
+            round.limit_ms = max(round.limit_ms, round.played_ms, round.client_played_ms) + 600000
             # Manual rest discards unused minutes; add always grants ten from now.
             round.ended = False
         else:
@@ -225,6 +224,7 @@ def sync(body: Sync, request: Request, user: CurrentUser, db: DbSession):
     row.acknowledged = (
         max(row.acknowledged, min(body.acknowledged, row.version)) if body.supported else 0
     )
+    refresh_daily(db, row)
     round = current_round(db, row)
     if round and round.id == body.roundId:
         round.client_played_ms = max(round.client_played_ms, body.playedMs)
@@ -262,13 +262,18 @@ def sync(body: Sync, request: Request, user: CurrentUser, db: DbSession):
 
 @router.get("/api/watch-control")
 def read(request: Request, user: CurrentUser, db: DbSession):
+    serialize_sqlite_write(db)
     device_id = getattr(request.state, "device_id", None)
     if not device_id:
         raise HTTPException(403)
-    return {
+    row = owned(db, user, device_id)
+    refresh_daily(db, row)
+    result = {
         "pinSet": db.get(WatchControlPin, user.family_id) is not None,
-        **dto(db, owned(db, user, device_id)),
+        **dto(db, row),
     }
+    db.commit()
+    return result
 
 
 @router.post("/api/watch-control/commands")

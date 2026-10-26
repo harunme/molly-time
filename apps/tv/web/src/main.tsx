@@ -1,4 +1,4 @@
-import { useWatchControl, WatchControlPanel, readWatchControl } from './watch-control';
+import { useWatchControl, WatchControlPanel, readWatchControl, WatchQuota } from './watch-control';
 import { BrowserPlaybackHost } from './playback';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -358,12 +358,17 @@ function App() {
     setError(previous?.error ?? ''); setOverlay(overlayPage.current);
   }, [overlay, busy]);
   const restShown = useRef('');
+  const watchedRound = useRef('');
   useEffect(() => {
     const state = watch.state;
-    if (state?.status === 'allowed' && overlay === 'watch-rest') { resetOverlay(null); return; }
+    if (state?.status === 'allowed') {
+      watchedRound.current = state.round?.id ?? '';
+      if (overlay === 'watch-rest') resetOverlay(null);
+      return;
+    }
     if (!state?.enabled || state.status !== 'resting' || playing || overlay) return;
     const key = `${state.round?.id ?? 'waiting'}:${state.version}`;
-    if (restShown.current === key) return;
+    if (!watchedRound.current || watchedRound.current !== state.round?.id || restShown.current === key) return;
     restShown.current = key;
     openOverlay('watch-rest');
   }, [watch.state, playing, overlay]);
@@ -440,7 +445,7 @@ function App() {
         const state = await readWatchControl().catch(() => watch.state);
         if (state) watch.setState(state);
         if (state?.enabled && state.status === 'allowed' && state.round?.mode === 'episodes' && state.round.episodeId && state.round.episodeId !== id && state.round.cursor + 1 >= state.round.amount) {
-          setPlaying(false); openOverlay('watch-control'); setError('本次集数已用完，可以继续当前视频，或请家长加看。'); return;
+          setPlaying(false); openOverlay('watch-control'); setError('今日集数已用完，可以继续当前视频，或请家长加看。'); return;
         }
         if (state?.enabled && state.status !== 'allowed') {
           setPlaying(false); openOverlay('watch-control'); return;
@@ -516,7 +521,10 @@ function App() {
       <div className="topbar">
         <span className="topbar-brand">MollyTime</span>
         {authenticated && syncStatus?.supported !== false && syncStatus && <span className="sync-status" role="status">{syncStatus.message || (!syncStatus.online ? '离线浏览' : syncStatus.catalogComplete ? '内容已同步' : syncStatus.paused ? '同步已暂停' : '正在同步内容')}{!syncStatus.online && syncStatus.lastSync ? ` · 上次同步 ${new Date(syncStatus.lastSync).toLocaleDateString('zh-CN')}` : ''}</span>}
-        {!window.MollyBridge && <div className="topbar-actions"><FocusButton focusKey="browser-settings" className="settings-trigger" ariaLabel="打开设置" onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton></div>}
+        {(!window.MollyBridge || (authenticated && watch.state?.enabled)) && <div className="topbar-actions">
+          {authenticated && watch.state?.enabled && <WatchQuota state={watch.state} />}
+          {!window.MollyBridge && <FocusButton focusKey="browser-settings" className="settings-trigger" ariaLabel="打开设置" onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>}
+        </div>}
       </div>
         {authenticated && (folder ? <DetailHeader series={folder} path={folderHistory.current.map(entry => entry.folder)} total={playlist?.total ?? folder.episodeCount} loading={busy} onBack={back} onDown={() => {
           const saved = folderGridFocus.current;
@@ -560,11 +568,11 @@ function App() {
             {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
             <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="settings-action settings-secondary" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
               <FocusButton focusKey="confirm-re-pair" className="primary settings-action" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
-          </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '活动一下，等家长安排下次观看吧。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary settings-action" onClick={() => { setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" className="settings-action settings-secondary" onClick={() => openOverlay('watch-control')}>开始观看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} close={closeOverlay} backLabel={parentOverlay === 'settings' ? '返回设置' : '返回媒体库'} changed={(state, keepOpen) => { watch.setState(state); if (!keepOpen) { setFolder(undefined); folderHistory.current = []; resetOverlay(null); } }} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
+          </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '今日观看已结束，明天 0 点自动恢复。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary settings-action" onClick={() => { setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" className="settings-action settings-secondary" onClick={() => openOverlay('watch-control')}>家长加看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} close={closeOverlay} backLabel={parentOverlay === 'settings' ? '返回设置' : '返回媒体库'} changed={(state, keepOpen) => { watch.setState(state); if (!keepOpen) { setFolder(undefined); folderHistory.current = []; resetOverlay(null); } }} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
             {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && updateCard}
             {authenticated && <PlaybackSettings />}
             {!authenticated ? <FocusButton focusKey="connect-account" className="settings-item" onClick={() => openOverlay('pairing')}><Icon name="people" /><span><strong>绑定电视</strong></span><span>›</span></FocusButton> : <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
-            {authenticated && (!window.MollyBridge || capabilities?.watchControl) && <FocusButton focusKey="open-watch-control" className="settings-item" onClick={() => openOverlay('watch-control')}><Icon name="play" /><span><strong>观看安排</strong><small>开始、加看或结束观看</small></span><span>›</span></FocusButton>}
+            {authenticated && (!window.MollyBridge || capabilities?.watchControl) && <FocusButton focusKey="open-watch-control" className="settings-item" onClick={() => openOverlay('watch-control')}><Icon name="play" /><span><strong>观看安排</strong><small>每日额度、加看或结束今日观看</small></span><span>›</span></FocusButton>}
             {authenticated && <FocusButton focusKey="open-live-tv" className="settings-item" onClick={() => openOverlay('live-tv')}><Icon name="play" /><span><strong>电视直播（实验）</strong><small>观看运营提供的直播频道</small></span><span>›</span></FocusButton>}
           </div>}
           {error && <p role="alert" className="error">{error}</p>}

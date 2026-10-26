@@ -346,6 +346,7 @@ class WatchControl(Base):
     version: Mapped[int] = mapped_column(Integer, default=0)
     acknowledged: Mapped[int] = mapped_column(Integer, default=0)
     round_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    quota_day: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 
 class WatchControlRound(Base):

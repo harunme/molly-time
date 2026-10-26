@@ -87,12 +87,12 @@ def channels(user: CurrentUser, db: DbSession):
     return settings_dto(db)
 
 
-def require_live_access(request, db):
+def require_live_access(request, db, *, bind=False):
     if getattr(request.state, "parent_preview", False):
         raise HTTPException(403, "请在已绑定的电视端观看直播")
     device_id = getattr(request.state, "device_id", None)
     from ..watch_control import require_play
-    require_play(db, device_id, live=True)
+    require_play(db, device_id, live=True, bind=bind)
     reminder = db.get(DeviceReminder, device_id) if device_id else None
     if reminder and reminder.phase != "idle":
         raise HTTPException(403, "家长已安排休息，请先在后台恢复播放")
@@ -105,7 +105,7 @@ def require_live_access(request, db):
 @router.post("/api/live-tv/channels/{channel_id}/sessions")
 def start(channel_id: str, request: Request, user: CurrentUser, db: DbSession):
     serialize_sqlite_write(db)
-    config = require_live_access(request, db)
+    config = require_live_access(request, db, bind=True)
     channel = next((c for c in config.channels if c["id"] == channel_id), None)
     if channel is None:
         raise HTTPException(404, "频道已下线，请刷新列表")
