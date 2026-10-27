@@ -1173,3 +1173,22 @@ td small {
 .file-upload-actions [data-slot="button"] { @apply h-7 px-2 text-xs; }
 .file-upload-error { @apply mt-1 break-words text-destructive; }
 .file-upload-status [data-slot="file-upload"] { @apply mt-2 h-8 text-xs; }
+
+/* First TV setup uses the same surfaces and type scale as the workspace. */
+.television-onboarding { @apply mb-6 flex flex-row items-start gap-5 p-card-padding; }
+.television-onboarding-icon { @apply flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent; }
+.television-onboarding-icon svg { @apply size-6; }
+.television-onboarding-copy { @apply min-w-0; }
+.television-onboarding-copy h2 { @apply mb-2 text-lg font-semibold; }
+.television-onboarding-copy p { @apply mb-4 text-sm leading-6 text-muted-foreground; }
+.pairing-instruction { @apply mb-4 text-sm leading-6 text-muted-foreground; }
+.pairing-help { @apply mt-5 border-t border-border pt-4 text-sm; }
+.pairing-help summary { @apply cursor-pointer font-medium; }
+.pairing-help summary:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 4px; }
+.pairing-install { @apply mt-3 flex flex-col items-start gap-3; }
+.pairing-install ol { @apply list-decimal space-y-2 pl-5 leading-6; }
+.television-settings { @apply mt-6; }
+@media (max-width: 640px) {
+  .television-onboarding { @apply flex-col gap-3; }
+  .television-onboarding .actions { @apply items-start; }
+}

@@ -1,6 +1,5 @@
 import { FileUploadStatus, useItemUploads } from "./upload-status";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WatchControls } from "./watch-control";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -25,10 +24,11 @@ import { LibraryAddTile } from "./library-add-tile";
 import { queueVideoFiles, type VideoUploadBatch } from "./video-upload";
 import { MediaPreview, SubtitleSettings } from "./media";
 import { ShareDialog, ShareReceive } from "./shares";
-import { PairingDialog } from "./pairing";
+import { PairingProvider } from "./pairing";
+import { Televisions } from "./televisions";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
-import { ParentReminders, useReminderData } from "./reminders";
+import { useReminderData } from "./reminders";
 import { DeviceNotifications } from "./device-notifications";
 import { DeviceErrorLogs } from "./device-error-logs";
 import { Pagination, usePagedData } from "./pagination";
@@ -53,6 +53,7 @@ import {
   ListTodo,
   LayoutDashboard,
   Users,
+  Monitor,
   Settings2,
   Film,
   ChevronRight,
@@ -129,6 +130,7 @@ function Icon({ name }: { name: string; }) {
     trash: Trash2,
     overview: LayoutDashboard,
     family: Users,
+    devices: Monitor,
     operations: Settings2,
     logs: ScrollText,
   };
@@ -302,6 +304,7 @@ function App() {
     }} />;
   const names = [
     ["overview", "概览"],
+    ["devices", "我的电视"],
     ["library", "资源库"],
     ["trash", "回收站"],
     ["family", "家庭设置"],
@@ -310,6 +313,7 @@ function App() {
     names.push(["operations", "运营设置"], ["logs", "系统日志"]);
   const readonly = !["admin", "superadmin"].includes(session.user.role);
   return (
+    <PairingProvider key={session.family.id} session={session} devices={reminders.devices} devicesError={reminders.error}>
     <div className="workspace">
       <aside className="manage-sidebar">
         <Link className="wordmark" to="/overview">
@@ -318,7 +322,7 @@ function App() {
           </span>
         </Link>
         <nav ref={navigation} aria-label="管理导航">
-          {[{ label: "媒体管理", items: names.slice(0, 3) }, { label: "家庭与设置", items: names.slice(3) }].map((group) => (
+          {[{ label: "媒体管理", items: names.slice(0, 4) }, { label: "家庭与设置", items: names.slice(4) }].map((group) => (
             <div className="sidebar-nav-group" key={group.label}>
               <span className="sidebar-nav-label">{group.label}</span>
               {group.items.map(([id, name]) => (
@@ -400,6 +404,7 @@ function App() {
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
             <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} reminders={reminders} />} />
+            <Route path="devices" element={<Televisions run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<LibraryDataProvider key={`${session.user.id}:${session.family.id}`} />}>
               <Route index element={<Library run={run} readonly={readonly} />} />
               <Route path=":folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
@@ -423,7 +428,7 @@ function App() {
                 ...current, family: { ...current.family, name },
               })}
             />} />
-            <Route path="pair" element={<Navigate to={`/family/devices?${new URLSearchParams({ pair: "1", code: pairCode })}`} replace />} />
+            <Route path="pair" element={<Navigate to={`/devices?${new URLSearchParams({ pair: "1", code: pairCode })}`} replace />} />
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Routes>
           <footer className="manage-footer">
@@ -433,6 +438,7 @@ function App() {
         </div>
       </main>
     </div>
+    </PairingProvider>
   );
 }
 
@@ -1269,33 +1275,13 @@ function Family({
   const requestedTab = location.pathname.split("/")[2] || (params.get("pair") === "1" ? "devices" : "general");
   const tab = requestedTab === "watching" ? "devices" : requestedTab;
   const validTab = ["general", "devices", "security"].includes(tab);
-  const pairingOpen = tab === "devices" && params.get("pair") === "1";
-  const pairCode = params.get("code") || "";
-  const setPairingOpen = (open: boolean) => {
-    const backgroundParams = new URLSearchParams(location.search);
-    backgroundParams.delete("pair");
-    backgroundParams.delete("code");
-    const background = `${location.pathname}${backgroundParams.size ? `?${backgroundParams}` : ""}`;
-    if (open) {
-      backgroundParams.set("pair", "1");
-      navigate(`${location.pathname}?${backgroundParams}`, { state: { pairingReturnTo: background } });
-    } else if (location.state?.pairingReturnTo === background) {
-      navigate(-1);
-    } else {
-      navigate(background, { replace: true });
-    }
-  };
   const [serial, refresh] = useState(0),
     [timezone, setTimezone] = useState("");
   const [familyName, setFamilyName] = useState(session.family.name);
   const [savingFamilyName, setSavingFamilyName] = useState(false);
   useEffect(() => setFamilyName(session.family.name), [session.family.name]);
-  const [defaultSubtitle, setDefaultSubtitle] = useState("zh");
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
-  const devices = usePagedData<
-      { id: string; name: string; revoked: boolean; lastSeen: string; }
-    >("/devices?activeOnly=true", serial);
   const settings = useData<
     | {
       familyName: string;
@@ -1315,18 +1301,17 @@ function Family({
   useEffect(() => {
     if (settings.data) {
       setTimezone(settings.data.timezone);
-      setDefaultSubtitle(settings.data.defaultSubtitle ?? "zh");
     }
   }, [settings.data]);
+  if (tab === "devices") return <Navigate to={`/devices${location.search}`} replace />;
   if (!validTab || requestedTab === "watching" || location.pathname === "/family" || location.pathname === "/family/") {
     return <Navigate to={`/family/${validTab ? tab : "general"}${location.search}`} replace />;
   }
   return <>
-    <div className="page-title"><div><h1>家庭设置</h1><p>管理家庭资料、电视设备、观看安排和账号安全。</p></div></div>
+    <div className="page-title"><div><h1>家庭设置</h1><p>管理家庭资料、存储和账号安全。</p></div></div>
     <Tabs className="operations-tabs family-settings-tabs" value={tab} activationMode="manual" onValueChange={value => navigate(`/family/${value}`)}>
       <TabsList aria-label="家庭设置分类">
         <TabsTrigger value="general">家庭信息</TabsTrigger>
-        <TabsTrigger value="devices">电视管理</TabsTrigger>
         <TabsTrigger value="security">账号安全</TabsTrigger>
       </TabsList>
       <TabsContent value="general"><div className="settings-grid"><div className="settings-column">
@@ -1395,49 +1380,6 @@ function Family({
           </Card>
           <TrashRetentionSettings readonly={readonly} run={run} notify={notify} />
       </div></div></TabsContent>
-      <TabsContent value="devices">
-        <WatchControls readonly={readonly} devices={devices.data} total={devices.total} serial={serial}
-          listState={<State loading={devices.loading && !devices.data.length} error={devices.error} variant="list" />}
-          empty={!devices.loading && !devices.error && !devices.data.length}
-          footer={devices.total > devices.pageSize && <Pagination {...devices} loading={devices.refreshing} label="设备分页" />}
-          pairing={<Dialog open={pairingOpen} onOpenChange={setPairingOpen}>
-            {!readonly && <DialogTrigger asChild><Button variant="bordered">绑定电视</Button></DialogTrigger>}
-            {pairingOpen && <PairingDialog key={pairCode} initialCode={pairCode} session={session}
-              close={() => setPairingOpen(false)} paired={() => refresh(v => v + 1)} />}
-          </Dialog>}
-          rename={async device => {
-            const name = await promptText("设备名称", device.name);
-            if (name && name !== device.name) {
-              await api(`/devices/${device.id}`, "PATCH", { name });
-              refresh(v => v + 1);
-            }
-          }}
-          revoke={async device => {
-            if (await confirmAction(`取消“${device.name}”的配对？电视将无法继续访问家庭媒体库。`)) {
-              await api(`/devices/${device.id}/revoke`, "POST");
-              refresh(v => v + 1);
-            }
-          }} />
-        <div className="settings-grid"><div className="settings-column">
-          <Card className="settings-card">
-            <h2>播放偏好</h2>
-            <State loading={settings.loading && !settings.data} error={settings.error} variant="form" />
-            {settings.data && <form onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                await api("/settings", "PUT", { defaultSubtitle });
-                refresh((v) => v + 1);
-                notify("默认字幕已更新，下一次播放生效。");
-              });
-            }}>
-              <Label htmlFor="default-subtitle">默认字幕</Label>
-              <SelectField id="default-subtitle" value={defaultSubtitle} onValueChange={(value) => setDefaultSubtitle(value)} disabled={readonly} options={[({ value: "zh", label: <> 中文 </> }), ({ value: "en", label: <> 英文 </> }), ({ value: "zh-en", label: <> 中英文 </> }), ({ value: "off", label: <> 关闭字幕 </> })]} />
-              <p className="muted">所有视频共用此偏好，与电视设置同步。没有匹配类型时关闭字幕；中英文需要对应的双语字幕文件。</p>
-              {!readonly && <Button variant="bordered">保存默认字幕</Button>}
-            </form>}
-          </Card>
-        </div><div className="settings-column"><ParentReminders readonly={readonly} /></div></div>
-      </TabsContent>
       <TabsContent value="security"><div className="settings-column">
           {!readonly && (
             <Card className="settings-card">

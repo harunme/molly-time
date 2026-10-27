@@ -23,7 +23,7 @@ for (const width of [390, 768, 1440, 1920]) {
       round: index === 0 ? { mode: 'minutes', remainingMs: 22 * 60000, amount: 60, cursor: 0, episodeId: null } : null,
     })) } }));
     await page.goto('/manage/#/family/watching');
-    await expect(page).toHaveURL(/family\/devices$/);
+    await expect(page).toHaveURL(/#\/devices$/);
     await expect(page.locator('.watch-control-device')).toHaveCount(3);
     const living = page.getByRole('region', { name: '客厅电视观看安排', exact: true });
     await expect(living.getByText('今日还能看 22 分钟', { exact: true })).toBeVisible();

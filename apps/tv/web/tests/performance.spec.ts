@@ -18,8 +18,9 @@ async function openCatalog(page: Page, count = 1) {
         }
         if (url.pathname.endsWith('/playlist')) {
           catalog = batch === 1;
+          const episodes = Array.from({ length: 24 }, (_, i) => ({ id: `e-${(batch - 1) * 24 + i}`, name: `视频 ${(batch - 1) * 24 + i}`, runtimeMs: 60000 }));
           result = { page: batch, total: 72, hasMore: batch < 3, episodeId: null, hasProgress: false,
-            episodes: Array.from({ length: 24 }, (_, i) => ({ id: `e-${(batch - 1) * 24 + i}`, name: `视频 ${(batch - 1) * 24 + i}`, runtimeMs: 60000 })) };
+            episodes, items: episodes.map(item => ({ ...item, type: 'episode' })), itemTotal: 72, itemsHasMore: batch < 3 };
         }
         if (url.pathname === '/api/home' || url.pathname.endsWith('/playlist')) w.catalogRequests.push(args.path);
       }
@@ -102,7 +103,7 @@ for (const status of [503, 401]) {
       await page.getByRole('button', { name: '重试更新' }).click();
       await expect(page.locator('.catalog-notice')).toHaveCount(0);
     } else {
-      await expect(page.getByRole('button', { name: '绑定家庭媒体库' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '用手机绑定电视' })).toBeVisible();
       await expect(page.locator('.poster')).toHaveCount(0);
     }
   });

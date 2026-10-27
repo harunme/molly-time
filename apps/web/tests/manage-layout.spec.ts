@@ -87,9 +87,8 @@ test('long durations stay on one line and fields share the same typography', asy
   const size = await duration.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth, height: element.clientHeight }));
   expect(size.content).toBeLessThanOrEqual(size.width);
   expect(size.height).toBe(36);
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-  for (const [tab, label] of [['电视管理', '默认字幕'], ['家庭信息', '用量月份']]) {
-    await page.getByRole('tab', { name: tab, exact: true }).click();
+  for (const [destination, label] of [['我的电视', '默认字幕'], ['家庭设置', '用量月份']]) {
+    await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: destination, exact: true }).click();
     const field = page.getByLabel(label, { exact: true });
     await expect(field).toHaveCSS('font-size', '16px');
     await expect(field).toHaveCSS('height', '40px');

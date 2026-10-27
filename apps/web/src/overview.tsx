@@ -10,6 +10,7 @@ import type { Run } from "./main";
 import { useLocation, useNavigate } from "react-router";
 import { dateKey, parseDateKey } from "@/lib/date-only";
 import { WatchHistoryDialog } from "./watch-history";
+import { usePairing } from "./pairing";
 
 export type OverviewData = {
   media: { folders: number; videos: number; published: number; draft: number; archived: number; };
@@ -25,7 +26,7 @@ export type OverviewData = {
   };
 };
 
-type Destination = "library" | "upload" | "watch" | "family";
+type Destination = "library" | "upload" | "watch" | "devices";
 
 function duration(value: number) {
   if (value === 0) return "0 分钟";
@@ -119,6 +120,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
 }) {
   const location = useLocation();
   const routerNavigate = useNavigate();
+  const pairing = usePairing();
   const params = new URLSearchParams(location.search);
   const watchOpen = params.get("watch") === "1";
   const opener = useRef<HTMLElement | null>(null);
@@ -142,7 +144,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     void refresh();
     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 30000);
     return () => { controller.abort(); clearInterval(timer); };
-  }, []);
+  }, [pairing.revision]);
   const today = data?.watch.days[data.watch.days.length - 1]?.date ?? dateKey(new Date());
   const openWatch = (start?: string, end = today) => {
     opener.current = document.activeElement as HTMLElement;
@@ -160,7 +162,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     else routerNavigate(background, { replace: true });
   };
   const metrics = [
-    { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "family" },
+    { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${pairing.deviceCount ?? data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "devices" },
     { label: "本次观看时长", value: reminders.devices && bootKnown ? duration(onlineDevices.reduce((sum, device) => sum + (device.bootPlayedMs ?? 0), 0)) : "—", detail: !bootKnown ? "请更新电视客户端，以统计本次开机观看时长" : onlineDevices.length > 1 ? `${onlineDevices.length} 台电视本次开机观看合计 · 每 5 秒更新` : "本次开机累计观看 · 切换视频继续累计", icon: Clock, page: "watch" },
     { label: "正在观看", value: reminders.devices ? watching.map((device) => device.currentWatch!.name).join("、") || "暂无正在观看" : "—", detail: liveDetail || "电视播放后显示 · 每 5 秒更新", icon: Play, page: "watch" },
     { label: "今日观看", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
@@ -183,7 +185,17 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       restoreFocus={() => { const target = opener.current?.isConnected ? opener.current : heatmap.current?.querySelector<HTMLButtonElement>(".section-heading button"); target?.focus(); }} />
     <div className="page-title">
       <div><h1>概览</h1><p>{familyName}的设备在线状态与观看习惯。</p></div>
+      <Button variant="bordered" onClick={() => pairing.open()}>{readonly ? "如何绑定电视" : "绑定电视"}</Button>
     </div>
+    {pairing.deviceCount === 0 && <Card className="television-onboarding" aria-label="连接第一台电视">
+      <div className="television-onboarding-icon" aria-hidden="true"><Monitor /></div>
+      <div className="television-onboarding-copy"><h2>把你选好的故事，带到电视上</h2>
+        <p>在电视上打开 MollyTime，用手机扫码，或在这里输入电视上的配对码。</p>
+        {readonly ? <p className="muted">请家庭管理员完成绑定，你也可以先查看安装方法。</p> : null}
+        <div className="actions"><Button onClick={() => pairing.open()}>{readonly ? "如何绑定电视" : "绑定电视"}</Button>
+          <Button variant="ghost" onClick={() => pairing.open(true)}>电视还没安装？</Button></div>
+      </div>
+    </Card>}
     {error && <Alert variant="destructive" role="alert" className="banner error"><AlertDescription>{error}</AlertDescription></Alert>}
     {loading && <p role="status" className="sr-only">正在加载概览…</p>}
     <Card className="overview-panel overview-resources" aria-busy={loading}>

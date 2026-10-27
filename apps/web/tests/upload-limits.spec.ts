@@ -32,8 +32,7 @@ test('oversize videos are rejected before resources or upload sessions are creat
   await expect(page.getByRole('alert')).toContainText('超过单个视频上限 500.0 MB');
   expect(created).toEqual([]);
 
-  await navigation.getByRole('link', { name: '家庭设置', exact: true }).click();
-  await page.getByRole('tab', { name: '电视管理', exact: true }).click();
+  await navigation.getByRole('link', { name: '我的电视', exact: true }).click();
   await expect(page.getByText('单个视频上限：500.0 MB', { exact: true })).toBeVisible();
   for (const label of ['上传剩 1 集提醒视频', '上传休息提醒视频']) {
     const input = page.getByLabel(label, { exact: true });

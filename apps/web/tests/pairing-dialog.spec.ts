@@ -17,7 +17,7 @@ test("QR pairing survives login in a mobile modal and revoked TVs disappear", as
   await login(page);
   const dialog = page.getByRole("dialog", { name: "绑定电视", exact: true });
   await expect(dialog).toBeVisible();
-  await expect(page.locator(".page-title h1")).toHaveText("家庭设置");
+  await expect(page.locator(".page-title h1")).toHaveText("我的电视");
   await expect(dialog.locator(".pairing-summary")).toContainText(userCode);
   await expect(dialog.getByLabel("电视名称")).toHaveValue("弹窗配对电视");
   const pending = await page.request.post("/api/auth/pairing/poll", { data: { deviceCode } });
@@ -38,7 +38,7 @@ test("QR pairing survives login in a mobile modal and revoked TVs disappear", as
     return result.status;
   }, { intervals: [3000], timeout: 15000 }).toBe("authorized");
   await page.getByRole("button", { name: "完成", exact: true }).click();
-  await expect(page).toHaveURL(/\/family\/devices$/);
+  await expect(page).toHaveURL(/#\/devices$/);
   const row = page.locator(".watch-control-device").filter({ hasText: "弹窗绑定的电视" });
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: /的更多操作$/ }).click();

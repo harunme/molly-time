@@ -107,7 +107,7 @@ test("ordinary users cannot enter operations through a URL; unknown routes retur
   await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
 });
 
-test("legacy invitation and pairing URLs remain usable and pairing opens over family settings", async ({ page }) => {
+test("legacy invitation and pairing URLs remain usable and pairing opens over my TVs", async ({ page }) => {
   await page.goto("/manage/#invite=");
   await expect(page).toHaveURL(/\/manage\/#\/invite$/);
   await expect(page.locator(".account-card")).toBeVisible();
@@ -118,9 +118,9 @@ test("legacy invitation and pairing URLs remain usable and pairing opens over fa
   await page.goto("/manage/?pair=");
   await expect(page).toHaveURL(/\/manage\/#\/login$/);
   await login(page);
-  await expect(page).toHaveURL(/\/manage\/#\/family\/devices\?pair=1&code=$/);
+  await expect(page).toHaveURL(/\/manage\/#\/devices\?pair=1&code=$/);
   await expect(page.getByRole("heading", { name: "绑定电视", exact: true })).toBeVisible();
-  await expect(page.locator('.family-settings-tabs [data-slot="tabs-trigger"][data-state="active"]')).toHaveText("电视管理");
+  await expect(page.locator('.manage-sidebar a[href="#/devices"]')).toHaveAttribute("aria-current", "page");
   const backgroundRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -129,24 +129,24 @@ test("legacy invitation and pairing URLs remain usable and pairing opens over fa
     }
   });
   await page.getByRole("dialog", { name: "绑定电视", exact: true }).getByRole("button", { name: "取消", exact: true }).click();
-  await expect(page).toHaveURL(/\/manage\/#\/family\/devices$/);
+  await expect(page).toHaveURL(/\/manage\/#\/devices$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(backgroundRequests).toEqual([]);
   await page.getByRole("button", { name: "绑定电视", exact: true }).click();
-  await expect(page).toHaveURL(/\/manage\/#\/family\/devices\?pair=1$/);
+  await expect(page).toHaveURL(/\/manage\/#\/devices\?pair=1$/);
   await expect(page.getByRole("dialog", { name: "绑定电视", exact: true })).toBeVisible();
   await page.getByRole("dialog", { name: "绑定电视", exact: true }).getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(page).toHaveURL(/\/manage\/#\/family\/devices$/);
+  await expect(page).toHaveURL(/\/manage\/#\/devices$/);
   expect(backgroundRequests).toEqual([]);
   await page.getByRole("button", { name: "绑定电视", exact: true }).click();
-  await expect(page.locator(".page-title h1")).toHaveText("家庭设置");
+  await expect(page.locator(".page-title h1")).toHaveText("我的电视");
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "家庭设置", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的电视", exact: true })).toBeVisible();
   await page.route("**/api/manage/pairing/1234", (route) => route.fulfill({
     json: { name: "配对测试电视", expiresAt: "2099-01-01T00:00:00Z" },
   }));
   await page.goto("/manage/?pair=1234");
-  await expect(page).toHaveURL(/\/manage\/#\/family\/devices\?pair=1&code=1234$/);
+  await expect(page).toHaveURL(/\/manage\/#\/devices\?pair=1&code=1234$/);
   await expect(page.locator(".pairing-summary")).toContainText("1234");
   await page.reload();
   await expect(page.locator(".pairing-summary")).toContainText("1234");

@@ -11,13 +11,16 @@
   "dependencies": {
     "@noriginmedia/norigin-spatial-navigation": "2.3.0",
     "hls.js": "1.6.13",
+    "qrcode": "1.5.4",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.1.16",
     "@types/react-dom": "19.1.9",
+    "jsqr": "1.4.0",
     "typescript": "5.9.3",
     "vite": "7.1.12"
   }

@@ -9,9 +9,8 @@ test('admin and TV share defaults while remote playback choices stay local to th
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: /^(概览|资源库)$/ })).toBeVisible();
-  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-  await page.getByRole('tab', { name: '电视管理', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '家庭设置', exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '我的电视', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '我的电视', exact: true })).toBeVisible();
   await chooseSelect(page.getByLabel('默认字幕', { exact: true }), 'en');
   await page.getByRole('button', { name: '保存默认字幕' }).click();
   await expect.poll(async () => (await (await page.request.get('/api/manage/settings')).json()).defaultSubtitle).toBe('en');
@@ -28,7 +27,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
       accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId, childId: 'child',
     });
     await tv.goto(`http://127.0.0.1:${process.env.MOLLYTIME_E2E_PORT || '8098'}/tv/`);
-    await tv.getByRole('button', { name: '设置', exact: true }).click();
+    await tv.getByRole('button', { name: '打开设置', exact: true }).click();
     const preference = tv.getByRole('region', { name: '默认字幕' });
     const subtitleSelect = preference.getByRole('combobox', { name: '默认字幕' });
     await expect(subtitleSelect).toHaveText('英文⌄');
@@ -87,8 +86,7 @@ test('admin and TV share defaults while remote playback choices stay local to th
     await tv.keyboard.press('Escape');
 
     await page.reload();
-    await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置', exact: true }).click();
-    await page.getByRole('tab', { name: '电视管理', exact: true }).click();
+    await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '我的电视', exact: true }).click();
     await expect(page.getByLabel('默认字幕', { exact: true })).toHaveAttribute('data-value', 'zh-en');
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
     await page.getByRole('button', { name: '英语启蒙', exact: true }).click();

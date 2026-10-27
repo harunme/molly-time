@@ -251,13 +251,25 @@ input:focus { outline: .2rem solid var(--white); border-color: transparent; }
 .connect-state h1 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; font-size: 4.5rem; letter-spacing: -.1rem; }
 .connect-state .primary { min-width: 14rem; }
 .connect-viewer { width: 100%; color: var(--muted); font-size: .95rem; }
-.account-panel { width: 28rem; }
+/* Pairing is the first screen on an unbound TV. */
+.pairing-screen { width: 100%; display: flex; flex-direction: column; padding: 1.5rem 4rem 2.5rem; overflow-y: auto; }
+.pairing-screen-header { display: flex; align-items: center; justify-content: space-between; }
+.pairing-panel { display: grid; grid-template-columns: minmax(0, 1fr) 23rem; align-items: center; gap: 4rem; width: min(76rem, 100%); margin: auto; padding: 2rem 0; }
+.pairing-panel p { margin: 0; font-size: 1rem; line-height: 1.6; }
+.pairing-explanation h1 { font-size: 2.8rem; line-height: 1.2; margin: 0 0 1.2rem; }
+.pairing-explanation > p { color: var(--muted); font-size: 1.2rem; }
+.pairing-explanation ol { padding-left: 1.4rem; margin: 2.5rem 0 1.5rem; }
+.pairing-explanation li { padding-left: .4rem; margin-bottom: 1.2rem; line-height: 1.6; }
+.pairing-explanation .pairing-alternative { font-size: .95rem; }
+.pairing-credentials { display: flex; flex-direction: column; align-items: center; gap: .65rem; text-align: center; min-width: 0; }
+.pairing-qr { display: block; width: 17rem; height: 17rem; border-radius: .6rem; }
+.pairing-qr-fallback { width: 17rem; min-height: 17rem; display: flex; align-items: center; justify-content: center; padding: 1.5rem; color: var(--muted); background: var(--surface); border-radius: .6rem; }
+.pairing-panel .pairing-code { color: var(--white); font-family: monospace; font-size: 3.8rem; font-weight: 600; line-height: 1.2; letter-spacing: .65rem; padding-left: .65rem; font-variant-numeric: tabular-nums; }
+.pairing-panel .pairing-manual, .pairing-panel .pairing-status { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.account-panel { width: 80rem; max-height: 92vh; overflow-y: auto; }
+.account-panel .pairing-panel { margin: 0; padding: 0; gap: 2rem; }
+.account-panel .pairing-explanation h1 { font-size: 2.3rem; }
 
-.pairing-panel { display: flex; flex-direction: column; align-items: center; gap: .85rem; margin-top: 1.4rem; text-align: center; }
-.pairing-panel p { margin: 0; font-size: 1rem; line-height: 1.5; }
-.pairing-panel .pairing-code { color: var(--white); font-family: monospace; font-size: 5rem; font-weight: 600; line-height: 1.2; letter-spacing: .65rem; padding-left: .65rem; margin: .6rem 0; font-variant-numeric: tabular-nums; }
-.pairing-panel .pairing-manual, .pairing-panel .pairing-status { color: var(--muted); font-size: .75rem; }
-.account-panel { max-height: 92vh; overflow-y: auto; text-align: center; }
 
 .re-pair-confirm p{margin:1.5rem 0 2rem;color:var(--muted);font-size:1.05rem;line-height:1.7}
 .re-pair-actions{display:flex;justify-content:flex-end;gap:1rem;align-items:center}

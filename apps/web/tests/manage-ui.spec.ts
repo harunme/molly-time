@@ -52,10 +52,9 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
   await page.getByRole("button", { name: "返回全部文件夹", exact: true }).click();
   await page
     .getByRole("navigation")
-    .getByRole("link", { name: "家庭设置" })
+    .getByRole("link", { name: "我的电视" })
     .click();
   await expect(page.getByRole("heading", { name: "儿童档案", exact: true })).toHaveCount(0);
-  await page.getByRole("tab", { name: "电视管理", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "播放偏好", exact: true }),
   ).toBeVisible();

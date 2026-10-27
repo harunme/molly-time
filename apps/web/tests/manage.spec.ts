@@ -197,13 +197,13 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
   page,
   browser,
 }) => {
+  const tvOrigin = `http://127.0.0.1:${process.env.MOLLYTIME_E2E_PORT || "8098"}`;
   const tvContext = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
   });
   const tv = await tvContext.newPage();
   try {
-    await tv.goto("http://127.0.0.1:8098/tv/");
-    await tv.getByRole("button", { name: "绑定家庭媒体库" }).click();
+    await tv.goto(`${tvOrigin}/tv/`);
     await expect(tv.locator(".pairing-code")).toBeVisible();
     const code = await tv.locator(".pairing-code").innerText();
     await expect(tv.getByLabel("密码")).toHaveCount(0);
@@ -221,7 +221,7 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
     await codeInput.fill(code);
     await page.getByRole("button", { name: "查看电视" }).click();
     await expect(page.locator(".pairing-summary")).toContainText(code);
-    await expect(tv.getByRole("dialog")).toBeVisible();
+    await expect(tv.getByRole("heading", { name: "用手机绑定电视" })).toBeVisible();
     await page.getByLabel("电视名称").fill("客厅电视");
     await page.screenshot({
       path: "../../artifacts/parent-pairing-mobile.png",
@@ -248,21 +248,20 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
     await tv.reload();
     await expect(tv.locator(".poster").first()).toBeVisible();
     await expect(
-      tv.getByRole("button", { name: "绑定家庭媒体库" }),
+      tv.getByRole("heading", { name: "用手机绑定电视" }),
     ).toHaveCount(0);
-    await tv.getByRole("button", { name: "打开菜单" }).click();
-    await tv.getByRole("button", { name: "设置", exact: true }).click();
+    await tv.getByRole("button", { name: "打开设置", exact: true }).click();
     await tv.getByRole("button", { name: "重新配对", exact: true }).click();
     await tv.getByRole("button", { name: "取消", exact: true }).click();
     await tv.getByRole("button", { name: "返回媒体库" }).click();
     await expect(tv.locator(".poster").first()).toBeVisible();
-    await tv.getByRole("button", { name: "设置", exact: true }).click();
+    await tv.getByRole("button", { name: "打开设置", exact: true }).click();
     await tv.getByRole("button", { name: "重新配对", exact: true }).click();
     await tv.getByRole("button", { name: "确认重新配对" }).click();
     await expect(tv.locator(".pairing-code")).toBeVisible();
     expect(
       (
-        await tv.request.get("http://127.0.0.1:8098/api/home", {
+        await tv.request.get(`${tvOrigin}/api/home`, {
           headers: { Authorization: `Bearer ${auth.accessToken}` },
         })
       ).status(),
@@ -284,30 +283,28 @@ test("TV four-digit pairing survives parent login and requires explicit mobile c
     await tv.screenshot({ path: "../../artifacts/tv-pairing-home.png" });
     await page.getByRole("button", { name: "完成", exact: true }).click();
     await expect(
-      page.locator(".device-row").filter({ hasText: "客厅电视重新配对" }),
+      page.locator(".watch-control-device").filter({ hasText: "客厅电视重新配对" }),
     ).toBeVisible();
-    await page
-      .locator(".device-row")
-      .filter({ hasText: "客厅电视重新配对" })
-      .getByRole("button", { name: "取消配对", exact: true })
-      .click();
+    await page.locator(".watch-control-device").filter({ hasText: "客厅电视重新配对" })
+      .getByRole("button", { name: "客厅电视重新配对的更多操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "取消配对", exact: true }).click();
     await page
       .getByRole("alertdialog")
       .getByRole("button", { name: "确认", exact: true })
       .click();
     await expect(
-      page.locator(".device-row").filter({ hasText: "客厅电视重新配对" }),
+      page.locator(".watch-control-device").filter({ hasText: "客厅电视重新配对" }),
     ).toHaveCount(0);
     expect(
       (
-        await tv.request.get("http://127.0.0.1:8098/api/home", {
+        await tv.request.get(`${tvOrigin}/api/home`, {
           headers: { Authorization: `Bearer ${auth.accessToken}` },
         })
       ).status(),
     ).toBe(401);
     await tv.reload();
     await expect(
-      tv.getByRole("button", { name: "绑定家庭媒体库" }),
+      tv.getByRole("heading", { name: "用手机绑定电视" }),
     ).toBeVisible();
     expect(
       await tv.evaluate(() => localStorage.getItem("mollytime.tv.binding.v1")),

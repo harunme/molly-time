@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, call, type Capabilities } from './api';
 import { FocusButton } from './focus';
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
+import { toDataURL } from 'qrcode';
 
 type Pairing = { userCode: string; verificationUri: string; verificationUriManual: string; expiresAt: string; interval: number };
 export function PairingPanel({ capabilities, done }: { capabilities?: Capabilities; done: () => void }) {
@@ -10,6 +11,7 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
   const [expired, setExpired] = useState(false);
   const [attempt, retry] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [qr, setQr] = useState<{ uri: string; src: string }>();
   useEffect(() => {
     if (!capabilities) return;
     if (!capabilities.devicePairing) { setError('请先更新电视客户端，再绑定。'); return; }
@@ -43,15 +45,38 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
     return () => { alive = false; clearTimeout(timer); void call('pairingCancel').catch(() => {}); };
   }, [capabilities, attempt, done]);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    let alive = true;
+    setQr(undefined);
+    if (pairing?.verificationUri) {
+      const uri = pairing.verificationUri;
+      try {
+        const url = new URL(uri, capabilities?.serverUrl || location.origin);
+        if (url.protocol === 'https:' || url.protocol === 'http:') {
+          void toDataURL(url.href, { width: 480, margin: 4, errorCorrectionLevel: 'M' })
+            .then(value => { if (alive) setQr({ uri, src: value }); }).catch(() => {});
+        }
+      } catch { /* The public code remains usable without a QR link. */ }
+    }
+    return () => { alive = false; };
+  }, [pairing, capabilities?.serverUrl]);
   const seconds = pairing ? Math.max(0, Math.ceil((Date.parse(pairing.expiresAt) - now) / 1000)) : 0;
+  const isExpired = expired || (!!pairing && seconds === 0);
   return <div className="pairing-panel">
-    {pairing && !expired ? <>
-      <p>在家长后台输入以下配对码</p>
-      <p className="pairing-code" aria-label="配对码">{pairing.userCode}</p>
-      <p className="pairing-manual">打开家长后台 · 绑定电视</p>
-      <p className="pairing-status" role="status">等待家长确认 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</p>
-    </> : expired ? <p role="status">配对码已过期，请重新生成</p> : !error ? <p role="status">正在生成配对码…</p> : null}
-    {error && <p role="alert" className="error">{error}</p>}
-    {(!window.MollyBridge || capabilities?.devicePairing) && <FocusButton focusKey="pairing-refresh" className="text-button" onClick={() => retry((value) => value + 1)}>{expired || !pairing ? '重新生成配对码' : '刷新配对码'}</FocusButton>}
+    <div className="pairing-explanation"><h1>用手机绑定电视</h1>
+      <p>把你选好的故事，带到电视上。</p>
+      <ol><li>用手机扫描右侧二维码，打开家长后台。</li><li>登录家庭管理员账号，确认绑定这台电视。</li><li>绑定后，电视会自动进入内容页。</li></ol>
+      <p className="pairing-alternative">也可以在家长后台点击「绑定电视」，输入右侧四位配对码。</p>
+    </div>
+    <div className="pairing-credentials">
+      {pairing && !isExpired ? <>
+        {qr && qr.uri === pairing.verificationUri ? <img className="pairing-qr" src={qr.src} alt="电视绑定二维码" /> : <div className="pairing-qr-fallback"><p>请在家长后台输入配对码</p></div>}
+        <p className="pairing-code" aria-label="配对码">{pairing.userCode}</p>
+        {pairing.verificationUriManual && <p className="pairing-manual">{pairing.verificationUriManual}</p>}
+        <p className="pairing-status" role="status">等待家长确认 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</p>
+      </> : isExpired ? <div className="pairing-qr-fallback"><p role="status">配对码已过期，请重新生成</p></div> : !error ? <div className="pairing-qr-fallback"><p role="status">正在生成配对码…</p></div> : null}
+      {error && <p role="alert" className="error">{error}</p>}
+      {(!window.MollyBridge || capabilities?.devicePairing) && <FocusButton focusKey="pairing-refresh" className="text-button" onClick={() => retry((value) => value + 1)}>{isExpired || !pairing ? '重新生成配对码' : '刷新配对码'}</FocusButton>}
+    </div>
   </div>;
 }
