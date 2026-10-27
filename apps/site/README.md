@@ -1,6 +1,6 @@
 # MollyTime 官网
 
-直接使用 [AstroWind](https://github.com/arthelokyo/astrowind) 原版组件、布局、字号、圆角按钮、配图和深浅色主题。替换品牌文案、导航链接与产品功能内容。主题主色与家长后台一致，为 #ffe600 黄色，按钮和图标配 #2e2e38 深色前景。MIT 许可保留于 `LICENSE`。
+直接使用 [AstroWind](https://github.com/arthelokyo/astrowind) 原版组件、布局、字号、圆角按钮、配图和深浅色主题。替换品牌文案、导航链接与产品功能内容。主题主色与家长后台、Logo 一致，为 #FFD000 黄色，按钮和图标配 #2e2e38 深色前景。MIT 许可保留于 `LICENSE`。
 
 原版组件位于 `src/components/`，样式位于 `src/assets/styles/`，配置加载器位于 `vendor/integration/`。为兼容现有 Node 22.22.1，运行在 Astro 5.18.2，Inter 改为本地字体包；页面保持原版呈现。
 

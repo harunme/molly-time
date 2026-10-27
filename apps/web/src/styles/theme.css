@@ -50,7 +50,7 @@
   --color-input: var(--color-border);
   --color-input-surface: var(--color-card);
   --color-ring: var(--color-primary);
-  --color-focus-ring: rgb(255 230 0 / 0.45);
+  --color-focus-ring: rgb(255 208 0 / 0.45);
   --color-toast-border: rgb(255 255 255 / 0.12);
   --color-alert-overlay: rgb(26 26 36 / 0.45);
   --color-tab-indicator: #000000;
@@ -60,7 +60,7 @@
   --color-muted: #f6f6fa;
   --color-placeholder: #c4c4cd;
   --color-destructive: #c41230;
-  --color-primary: #ffe600;
+  --color-primary: #ffd000;
   --color-destructive-surface: #fff2f0;
   --color-surface-subtle: #fafafc;
   --color-info: #155cb4;
@@ -91,15 +91,17 @@
   --color-success-surface: #eef8f7;
   --color-metric-icon: #676771;
   --color-metric-label: #5f5f69;
-  --color-primary-hover: #f0d800;
+  --color-primary-hover: #f0c400;
   --radius-ui: 0.5rem;
   --radius-card: 1.5rem;
   --radius-popover: 1rem;
   --radius-heatmap: 0.25rem;
   --radius-control-mark: 0.25rem;
   --radius-dialog: 1rem;
-  --spacing-card-padding: 1.5rem;
-  --spacing-card-gap: 1.5rem;
+  --spacing-card-padding: 1.25rem;
+  --spacing-card-gap: 1rem;
+  --spacing-field-gap: 0.75rem;
+  --spacing-page-padding: 1.5rem;
   --spacing-heatmap-cell: 0.75rem;
   --spacing-heatmap-gap: 0.1875rem;
   --blur-dialog: 0.25rem;

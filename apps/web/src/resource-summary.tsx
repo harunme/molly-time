@@ -18,7 +18,7 @@ type ResourceSummaryProps = {
 
 export function ResourceSummary({ icon: Icon, title, primary, primaryTitle, primaryTestId,
   secondary, detail, note, children, className }: ResourceSummaryProps) {
-  return <Card className={cn('mb-6 p-6', className)}>
+  return <Card className={cn('mb-card-gap p-card-padding', className)}>
     <div className="min-w-0 space-y-3">
       <div className="flex items-center gap-2 text-muted-foreground">
         <Icon className="size-4 shrink-0" />
