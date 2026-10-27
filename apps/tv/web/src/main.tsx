@@ -11,6 +11,7 @@ import { playlistItems, playlistHasMore, playlistFocus } from './catalog';
 import { finishScrolls, FocusButton, FocusRegion, isFirstGridRow } from './focus';
 import { CatalogCard, DetailHeader, HomeGreeting, Icon, LoadMore, Shelf } from './content';
 import { PairingPanel } from './pairing';
+import { Brand } from './brand';
 import { useClientUpdate } from './client-update';
 import { useTvMotion } from './motion';
 import { HomeLoading } from './home-loading';
@@ -519,7 +520,7 @@ function App() {
   if (!authenticated && !busy && bridgeCompatible && capabilities && !overlay) {
     return <FocusRegion focusKey="screen" className="app">
       <FocusRegion focusKey="content" className="pairing-screen" boundary>
-        <header className="pairing-screen-header"><span className="topbar-brand">MollyTime</span>
+        <header className="pairing-screen-header"><Brand />
           {canOpenSettings && <FocusButton focusKey="pairing-settings" className="settings-trigger" ariaLabel="打开设置" onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>}
         </header>
         <PairingPanel capabilities={capabilities} done={completePairing} />
@@ -532,7 +533,7 @@ function App() {
     <main ref={motion.homeRef} inert={!!overlay} aria-hidden={overlay ? true : undefined} className={`content-shell ${folder ? 'detail-page' : 'home-page'}`}>
       <FocusRegion focusKey="content" className="content-panels shelves-scroll" scrollRef={viewport}>
       <div className="topbar">
-        <span className="topbar-brand">MollyTime</span>
+        <Brand />
         {authenticated && syncStatus?.supported !== false && syncStatus && <span className="sync-status" role="status">{syncStatus.message || (!syncStatus.online ? '离线浏览' : syncStatus.catalogComplete ? '内容已同步' : syncStatus.paused ? '同步已暂停' : '正在同步内容')}{!syncStatus.online && syncStatus.lastSync ? ` · 上次同步 ${new Date(syncStatus.lastSync).toLocaleDateString('zh-CN')}` : ''}</span>}
         {authenticated && (!window.MollyBridge || watch.state?.enabled) && <div className="topbar-actions">
           {authenticated && watch.state?.enabled && <WatchQuota state={watch.state} />}
@@ -545,7 +546,7 @@ function App() {
         }} /> : <HomeGreeting />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {refreshError && <div className="catalog-notice"><span role="status">{refreshError}</span><FocusButton focusKey="refresh-retry" onClick={() => setReload((value) => value + 1)} className="text-button">重试更新</FocusButton></div>}
-          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1>MollyTime</h1><p>用手机绑定电视，开始观看。</p></div> : busy ? (!folder ? <HomeLoading /> : <div role="status" className="state">正在加载内容…</div>) : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="文件夹与视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? (entries[0] ? playlistFocus(entries[0]) : undefined)} virtualize={!!capabilities?.catalogSync}>
+          {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => { openOverlay('client-update'); void checkClientUpdate(); }}>检查客户端更新</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1><Brand /></h1><p>用手机绑定电视，开始观看。</p></div> : busy ? (!folder ? <HomeLoading /> : <div role="status" className="state">正在加载内容…</div>) : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="文件夹与视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? (entries[0] ? playlistFocus(entries[0]) : undefined)} virtualize={!!capabilities?.catalogSync}>
             {entries.map((item, index) => <CatalogCard key={item.id} item={item} focusKey={playlistFocus(item)} disabled={!!overlay}
               firstRow nearEnd={index >= entries.length - 8} rowId="playlist" playable={item.type !== 'folder'}
               subtitle={`${item.id === resumeId ? '继续观看 · ' : ''}${watchedPosition(item) || duration(item.runtimeMs)}`}

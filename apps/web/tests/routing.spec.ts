@@ -18,10 +18,20 @@ test("deep links survive login and refresh; navigation supports history and new 
   await page.goto("/manage/#/library");
   await expect(page).toHaveURL(/\/manage\/#\/login$/);
   await page.reload();
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect(page.locator('.login-brand .brand-mark')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.locator('.login-brand p').evaluate(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
+    return range.getClientRects().length;
+  })).toBe(1);
+  await page.screenshot({ path: '/tmp/mollytime-parent-logo-320.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await login(page);
   await expect(page).toHaveURL(/\/manage\/#\/library$/);
   const navigation = page.getByRole("navigation", { name: "管理导航", exact: true });
   await expect(navigation.getByRole("link", { name: "资源库", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect.poll(() => page.locator('.manage-sidebar .brand-mark').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   await navigation.getByRole("link", { name: "家庭设置", exact: true }).click();
   await expect(page).toHaveURL(/\/manage\/#\/family$/);
   await expect(page.getByRole("heading", { name: "家庭设置", exact: true })).toBeVisible();

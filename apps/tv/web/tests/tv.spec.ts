@@ -332,6 +332,7 @@ test('TV opens pairing directly, pairs without a password, renews expired codes 
   await expect(page.getByLabel('密码')).toHaveCount(0);
   await expect(page.getByLabel('账号', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('img', { name: '电视绑定二维码' })).toBeVisible();
+  await expect.poll(() => page.locator('.pairing-screen .brand-mark').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(page.locator('[data-focus="pairing-refresh"]')).toBeFocused();
   expect(await decodePairingQr(page)).toBe('http://127.0.0.1:8096/manage/?pair=0123');
   expect(imageViolations).toEqual([]);

@@ -29,7 +29,9 @@ button:disabled { opacity: .55; cursor: wait; }
 .load-more p { color: #ffb4a8; }
 .icon { width: 1.4rem; height: 1.4rem; flex-shrink: 0; }
 .app { position: relative; height: 100vh; height: 100dvh; display: flex; overflow: hidden; }
-.topbar-brand { flex-shrink: 0; font-size: 1.25rem; font-weight: 750; letter-spacing: -.045rem; color: var(--white); margin-right: .5rem; }
+.topbar-brand { display: inline-flex; align-items: center; gap: .6rem; flex-shrink: 0; font-size: 1.25rem; font-weight: 750; letter-spacing: -.045rem; color: var(--white); margin-right: .5rem; }
+.topbar-brand .brand-mark { display: block; width: 1.6rem; height: 1.6rem; flex-shrink: 0; }
+.connect-state .topbar-brand { font-size: inherit; }
 .sync-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .7rem; color: var(--muted); }
 .topbar-actions { margin-left: auto; display: flex; flex-shrink: 0; align-items: center; gap: 1.25rem; }
 .watch-quota { display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap; color: var(--muted); font-size: .85rem; line-height: 1.25rem; }

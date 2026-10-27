@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
+import { BrandMark } from "./brand";
 import { api, ApiError, bytes, dateTime, setSession, type Resource, type Session } from "./api";
 import { ResourcePicker } from "./pagination";
 import { Loading } from "@/components/ui/loading";
@@ -298,7 +299,7 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
   </>;
   return standalone ? <main className="share-landing">
     <div className="share-page">
-      <header className="share-brand"><div className="wordmark">MollyTime</div><span>内容分享</span></header>
+      <header className="share-brand"><div className="wordmark"><BrandMark />MollyTime</div><span>内容分享</span></header>
       {content}
     </div>
   </main> : modal ? content : <div className="share-page share-page-embedded">{content}</div>;

@@ -27,6 +27,7 @@ import { PairingProvider } from "./pairing";
 import { Televisions } from "./televisions";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
+import { BrandMark } from "./brand";
 import { useReminderData } from "./reminders";
 import { DeviceNotifications } from "./device-notifications";
 import { DeviceErrorLogs } from "./device-error-logs";
@@ -316,6 +317,7 @@ function App() {
     <div className="workspace">
       <aside className="manage-sidebar">
         <Link className="wordmark" to="/overview">
+          <BrandMark />
           <span className="brand-copy">
             MollyTime<small>家庭媒体管理</small>
           </span>
@@ -450,7 +452,7 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
     <main className="login">
       <section className="login-story">
         <header className="login-brand">
-          <div className="wordmark">MollyTime</div>
+          <div className="wordmark"><BrandMark />MollyTime</div>
           <span className="login-brand-divider" aria-hidden="true" />
           <p>家庭放映室</p>
         </header>

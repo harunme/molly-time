@@ -239,6 +239,8 @@
 .wordmark {
   @apply flex items-center gap-2.5 text-xl font-semibold tracking-[-0.8px];
 }
+.brand-mark { display: block; width: 32px; height: 32px; flex-shrink: 0; }
+.login-brand .brand-mark { width: 40px; height: 40px; }
 .manage-sidebar > .wordmark { @apply px-3; }
 .brand-copy {
   @apply flex flex-col;
@@ -1032,6 +1034,10 @@ td small {
   }
 }
 @media (max-width: 639px) {
+  .login-brand { gap: 12px; padding: 24px 20px; }
+  .login-brand .wordmark { font-size: 24px; }
+  .login-brand .brand-mark { width: 32px; height: 32px; }
+  .login-brand p { white-space: nowrap; }
   .page-title {
     gap: 14px;
   }
