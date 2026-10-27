@@ -23,7 +23,7 @@ test("deep links survive login and refresh; navigation supports history and new 
   const navigation = page.getByRole("navigation", { name: "管理导航", exact: true });
   await expect(navigation.getByRole("link", { name: "资源库", exact: true })).toHaveAttribute("aria-current", "page");
   await navigation.getByRole("link", { name: "家庭设置", exact: true }).click();
-  await expect(page).toHaveURL(/\/manage\/#\/family\/general$/);
+  await expect(page).toHaveURL(/\/manage\/#\/family$/);
   await expect(page.getByRole("heading", { name: "家庭设置", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "资源库", exact: true })).toBeVisible();

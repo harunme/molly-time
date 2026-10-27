@@ -1,5 +1,4 @@
 import { FileUploadStatus, useItemUploads } from "./upload-status";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -1270,11 +1269,8 @@ function Family({
   familyRenamed: (name: string) => void;
 }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
-  const requestedTab = location.pathname.split("/")[2] || (params.get("pair") === "1" ? "devices" : "general");
-  const tab = requestedTab === "watching" ? "devices" : requestedTab;
-  const validTab = ["general", "devices", "security"].includes(tab);
+  const requestedSection = location.pathname.split("/")[2] || (params.get("pair") === "1" ? "devices" : "general");
   const [serial, refresh] = useState(0),
     [timezone, setTimezone] = useState("");
   const [familyName, setFamilyName] = useState(session.family.name);
@@ -1303,19 +1299,13 @@ function Family({
       setTimezone(settings.data.timezone);
     }
   }, [settings.data]);
-  if (tab === "devices") return <Navigate to={`/devices${location.search}`} replace />;
-  if (!validTab || requestedTab === "watching" || location.pathname === "/family" || location.pathname === "/family/") {
-    return <Navigate to={`/family/${validTab ? tab : "general"}${location.search}`} replace />;
-  }
+  if (["devices", "watching"].includes(requestedSection)) return <Navigate to={`/devices${location.search}`} replace />;
+  if (location.pathname !== "/family") return <Navigate to={`/family${location.search}`} replace />;
   return <>
     <div className="page-title"><div><h1>家庭设置</h1><p>管理家庭资料、存储和账号安全。</p></div></div>
-    <Tabs className="operations-tabs family-settings-tabs" value={tab} activationMode="manual" onValueChange={value => navigate(`/family/${value}`)}>
-      <TabsList aria-label="家庭设置分类">
-        <TabsTrigger value="general">家庭信息</TabsTrigger>
-        <TabsTrigger value="security">账号安全</TabsTrigger>
-      </TabsList>
-      <TabsContent value="general"><div className="settings-grid"><div className="settings-column">
-          <Card className="settings-card">
+    <div className="family-settings-grid">
+      <div className="settings-column family-settings-main">
+          <Card className="settings-card family-info-card">
             <h2>家庭信息</h2>
             <form onSubmit={(e) => {
               e.preventDefault();
@@ -1335,9 +1325,7 @@ function Family({
               {!readonly && <Button variant="bordered" className="mt-3" disabled={savingFamilyName || !familyName.trim() || familyName.trim() === session.family.name}>保存家庭名称</Button>}
             </form>
           </Card>
-          <FamilyUsage />
-      </div><div className="settings-column">
-          <Card className="settings-card">
+          <Card className="settings-card family-storage-card">
             <h2>时区与存储</h2>
             <State loading={settings.loading && !settings.data} error={settings.error} variant="detail" />
             {settings.data && (
@@ -1378,11 +1366,11 @@ function Family({
               </>
             )}
           </Card>
-          <TrashRetentionSettings readonly={readonly} run={run} notify={notify} />
-      </div></div></TabsContent>
-      <TabsContent value="security"><div className="settings-column">
+          <div className="family-cleanup-panel"><TrashRetentionSettings readonly={readonly} run={run} notify={notify} /></div>
+      </div>
+      <div className="settings-column family-settings-side">
           {!readonly && (
-            <Card className="settings-card">
+            <Card className="settings-card family-password-card">
               <h2>修改密码</h2>
               <form
                 onSubmit={(e) => {
@@ -1423,9 +1411,9 @@ function Family({
               </form>
             </Card>
           )}
-        {readonly && <p className="muted">修改账号密码需要管理员账号。</p>}
-      </div></TabsContent>
-    </Tabs>
+        <div className="family-usage-panel"><FamilyUsage /></div>
+      </div>
+    </div>
   </>;
 }
 
