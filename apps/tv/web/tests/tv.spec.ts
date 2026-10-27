@@ -1,5 +1,18 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import jsQR from 'jsqr';
+
+async function decodePairingQr(page: Page) {
+  const pixels = await page.getByRole('img', { name: '电视绑定二维码' }).evaluate(async (svg: SVGSVGElement) => {
+    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' }));
+    try {
+      const image = new Image(); image.src = url; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d')!; context.drawImage(image, 0, 0);
+      return { data: Array.from(context.getImageData(0, 0, canvas.width, canvas.height).data), width: canvas.width, height: canvas.height };
+    } finally { URL.revokeObjectURL(url); }
+  });
+  return jsQR(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height)?.data;
+}
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/me', (route) => route.fulfill({ json: {} }));
@@ -95,18 +108,40 @@ test('fresh older shell connects to the official service without an address form
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-focus="pairing-refresh"]')).toBeFocused();
   await page.keyboard.press('ContextMenu');
-  await page.locator('[data-focus="connect-account"]').click();
-  await expect(page.getByRole('heading', { name: '用手机绑定电视' })).toBeVisible();
-  await page.getByRole('button', { name: '返回设置' }).click();
-  await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
-  await expect(page.locator('[data-focus="connect-account"]')).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: '用手机绑定电视' })).toBeVisible();
-  await page.evaluate(() => window.mollyBack?.());
-  await expect(page.locator('[data-focus="connect-account"]')).toBeFocused();
-  await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开设置', exact: true })).toHaveCount(0);
+  await expect(page.locator('.pairing-code')).toHaveText('0123');
   await expect(page.locator('[data-focus="pairing-refresh"]')).toBeFocused();
+});
+
+test('unbound native TV settings only offer updates and return to pairing', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
+    w.MollyBridge = { postMessage(raw) {
+      const { id, method } = JSON.parse(raw);
+      let result: unknown = { ok: true };
+      if (method === 'getCapabilities') result = { bridgeVersion: 1, serverUrl: 'https://media.example.test', authenticated: false, childId: '', nativePlayback: true, devicePairing: true, clientUpdates: true, shellVersion: '0.4.0' };
+      if (method === 'pairingStart') result = { userCode: '0123', verificationUri: 'https://media.example.test/manage/?pair=0123', expiresAt: new Date(Date.now() + 600000).toISOString(), interval: 3 };
+      if (method === 'pairingPoll') result = { status: 'pending' };
+      if (method === 'checkUpdate') result = { release: null };
+      setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 1);
+    } };
+  });
+  await page.goto('/tv/');
+  await expect(page.locator('.pairing-code')).toHaveText('0123');
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '电视设置', exact: true });
+  await expect(dialog.getByRole('button', { name: '检查客户端更新', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('button', { name: '绑定电视', exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-focus="connect-home"]')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '返回媒体库', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: '返回绑定页', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '用手机绑定电视', exact: true })).toBeVisible();
+  await expect(page.locator('[data-focus="pairing-refresh"]')).toBeFocused();
+  await page.keyboard.press('ContextMenu');
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
 });
 
 test('recent playback precedes library and supports remote playback and return', async ({ page }) => {
@@ -237,6 +272,16 @@ test('remote navigation, playback return, folder restoration and durable binding
 });
 
 test('TV opens pairing directly, pairs without a password, renews expired codes and opens content', async ({ page }) => {
+  // Production only allows same-origin and blob images. Vite has no CSP by default.
+  const imageViolations: string[] = [];
+  await page.exposeFunction('recordImageViolation', (value: string) => imageViolations.push(value));
+  await page.addInitScript(() => document.addEventListener('securitypolicyviolation', event => {
+    if (event.effectiveDirective === 'img-src') void (window as unknown as { recordImageViolation: (value: string) => Promise<void> }).recordImageViolation(event.blockedURI);
+  }));
+  await page.route('**/tv/', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self' ws:; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" } });
+  });
   let started = 0;
   await page.route('**/api/auth/pairing/start', (route) => route.fulfill({ json: {
     deviceCode: 'test-device-secret-' + String(++started).padEnd(32, '0'),
@@ -254,23 +299,24 @@ test('TV opens pairing directly, pairs without a password, renews expired codes 
   await expect(page.getByRole('navigation', { name: '电视导航', includeHidden: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '设置', exact: true })).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开设置', exact: true })).toHaveCount(0);
+  await page.keyboard.press('ContextMenu');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.pairing-code')).toHaveText('0123');
   await expect(page.getByLabel('密码')).toHaveCount(0);
   await expect(page.getByLabel('账号', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('img', { name: '电视绑定二维码' })).toBeVisible();
   await expect(page.locator('[data-focus="pairing-refresh"]')).toBeFocused();
-  const pixels = await page.getByRole('img', { name: '电视绑定二维码' }).evaluate((image: HTMLImageElement) => {
-    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
-    const context = canvas.getContext('2d')!; context.drawImage(image, 0, 0);
-    return { data: Array.from(context.getImageData(0, 0, canvas.width, canvas.height).data), width: canvas.width, height: canvas.height };
-  });
-  expect(jsQR(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height)?.data).toBe('http://127.0.0.1:8096/manage/?pair=0123');
+  expect(await decodePairingQr(page)).toBe('http://127.0.0.1:8096/manage/?pair=0123');
+  expect(imageViolations).toEqual([]);
   await page.screenshot({ path: '../../artifacts/tv-first-pairing.png' });
   await expect(page.getByText('配对码已过期，请重新生成')).toBeVisible({ timeout: 10000 });
   await expect(page.getByRole('img', { name: '电视绑定二维码' })).toHaveCount(0);
   await expect(page.locator('.pairing-code')).toHaveCount(0);
   await page.getByRole('button', { name: '重新生成配对码' }).click();
   await expect(page.locator('.pairing-code')).toHaveText('4567');
+  expect(await decodePairingQr(page)).toBe('http://127.0.0.1:8096/manage/?pair=4567');
+  expect(imageViolations).toEqual([]);
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
   await page.reload();

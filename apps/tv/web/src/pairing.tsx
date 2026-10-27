@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ApiError, call, type Capabilities } from './api';
 import { FocusButton } from './focus';
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
-import { toDataURL } from 'qrcode';
+import { create } from 'qrcode';
 
 type Pairing = { userCode: string; verificationUri: string; verificationUriManual: string; expiresAt: string; interval: number };
 export function PairingPanel({ capabilities, done }: { capabilities?: Capabilities; done: () => void }) {
@@ -11,7 +11,6 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
   const [expired, setExpired] = useState(false);
   const [attempt, retry] = useState(0);
   const [now, setNow] = useState(Date.now());
-  const [qr, setQr] = useState<{ uri: string; src: string }>();
   useEffect(() => {
     if (!capabilities) return;
     if (!capabilities.devicePairing) { setError('请先更新电视客户端，再绑定。'); return; }
@@ -45,21 +44,24 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
     return () => { alive = false; clearTimeout(timer); void call('pairingCancel').catch(() => {}); };
   }, [capabilities, attempt, done]);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  useEffect(() => {
-    let alive = true;
-    setQr(undefined);
+  const qr = useMemo(() => {
     if (pairing?.verificationUri) {
-      const uri = pairing.verificationUri;
       try {
-        const url = new URL(uri, capabilities?.serverUrl || location.origin);
+        const url = new URL(pairing.verificationUri, capabilities?.serverUrl || location.origin);
         if (url.protocol === 'https:' || url.protocol === 'http:') {
-          void toDataURL(url.href, { width: 480, margin: 4, errorCorrectionLevel: 'M' })
-            .then(value => { if (alive) setQr({ uri, src: value }); }).catch(() => {});
+          const { modules } = create(url.href, { errorCorrectionLevel: 'M' });
+          let path = '';
+          // Four quiet modules surround the code. Inline SVG works with the TV's
+          // production CSP, which does not permit data: image sources.
+          modules.data.forEach((filled, index) => {
+            if (filled) path += `M${index % modules.size + 4} ${Math.floor(index / modules.size) + 4}h1v1h-1z`;
+          });
+          return { size: modules.size + 8, path };
         }
       } catch { /* The public code remains usable without a QR link. */ }
     }
-    return () => { alive = false; };
-  }, [pairing, capabilities?.serverUrl]);
+    return undefined;
+  }, [pairing?.verificationUri, capabilities?.serverUrl]);
   const seconds = pairing ? Math.max(0, Math.ceil((Date.parse(pairing.expiresAt) - now) / 1000)) : 0;
   const isExpired = expired || (!!pairing && seconds === 0);
   return <div className="pairing-panel">
@@ -70,7 +72,10 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
     </div>
     <div className="pairing-credentials">
       {pairing && !isExpired ? <>
-        {qr && qr.uri === pairing.verificationUri ? <img className="pairing-qr" src={qr.src} alt="电视绑定二维码" /> : <div className="pairing-qr-fallback"><p>请在家长后台输入配对码</p></div>}
+        {qr ? <svg className="pairing-qr" role="img" aria-label="电视绑定二维码" xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox={`0 0 ${qr.size} ${qr.size}`} shapeRendering="crispEdges" focusable="false">
+          <rect width={qr.size} height={qr.size} fill="#fff" />
+          <path d={qr.path} fill="#000" />
+        </svg> : <div className="pairing-qr-fallback"><p>请在家长后台输入配对码</p></div>}
         <p className="pairing-code" aria-label="配对码">{pairing.userCode}</p>
         {pairing.verificationUriManual && <p className="pairing-manual">{pairing.verificationUriManual}</p>}
         <p className="pairing-status" role="status">等待家长确认 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</p>
