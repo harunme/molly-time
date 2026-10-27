@@ -1304,7 +1304,7 @@ function Family({
   return <>
     <div className="page-title"><div><h1>家庭设置</h1><p>管理家庭资料、存储和账号安全。</p></div></div>
     <div className="family-settings-grid">
-      <div className="settings-column family-settings-main">
+      <div className="settings-column family-settings-account">
           <Card className="settings-card family-info-card">
             <h2>家庭信息</h2>
             <form onSubmit={(e) => {
@@ -1325,6 +1325,50 @@ function Family({
               {!readonly && <Button variant="bordered" className="mt-3" disabled={savingFamilyName || !familyName.trim() || familyName.trim() === session.family.name}>保存家庭名称</Button>}
             </form>
           </Card>
+          {!readonly && (
+            <Card className="settings-card family-password-card">
+              <h2>修改密码</h2>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    await api("/password", "POST", {
+                      currentPassword,
+                      newPassword,
+                    });
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    notify("密码已修改。");
+                  });
+                }}
+              >
+                <Label>
+                  当前密码
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                  />
+                </Label>
+                <Label>
+                  新密码
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                </Label>
+                <Button variant="bordered">修改密码</Button>
+              </form>
+            </Card>
+          )}
+      </div>
+      <div className="settings-column family-settings-storage">
           <Card className="settings-card family-storage-card">
             <h2>时区与存储</h2>
             <State loading={settings.loading && !settings.data} error={settings.error} variant="detail" />
@@ -1368,51 +1412,7 @@ function Family({
           </Card>
           <div className="family-cleanup-panel"><TrashRetentionSettings readonly={readonly} run={run} notify={notify} /></div>
       </div>
-      <div className="settings-column family-settings-side">
-          {!readonly && (
-            <Card className="settings-card family-password-card">
-              <h2>修改密码</h2>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    await api("/password", "POST", {
-                      currentPassword,
-                      newPassword,
-                    });
-                    setCurrentPassword("");
-                    setNewPassword("");
-                    notify("密码已修改。");
-                  });
-                }}
-              >
-                <Label>
-                  当前密码
-                  <Input
-                    type="password"
-                    autoComplete="current-password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    required
-                  />
-                </Label>
-                <Label>
-                  新密码
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={8}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
-                </Label>
-                <Button variant="bordered">修改密码</Button>
-              </form>
-            </Card>
-          )}
-        <div className="family-usage-panel"><FamilyUsage /></div>
-      </div>
+      <div className="family-usage-panel"><FamilyUsage /></div>
     </div>
   </>;
 }

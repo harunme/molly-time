@@ -682,17 +682,16 @@ td small {
 .settings-column {
   @apply grid min-w-0 content-start gap-card-gap;
 }
-.family-settings-grid { display: grid; width: 100%; max-width: 64rem; grid-template-columns: minmax(0, 1fr) 24rem; align-items: start; gap: var(--spacing-card-gap); }
-.family-info-card form, .family-storage-card form { max-width: 24rem; }
-.family-password-card { width: 100%; max-width: 24rem; }
-@media (max-width: 1099px) {
+.family-settings-grid { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: var(--spacing-card-gap); }
+.family-settings-grid form { max-width: 21rem; }
+.family-usage-panel { min-width: 0; }
+.family-usage-panel [data-slot="label"] { max-width: 21rem; }
+@media (max-width: 1279px) {
+  .family-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .family-usage-panel { grid-column: 1 / -1; }
+}
+@media (max-width: 767px) {
   .family-settings-grid { grid-template-columns: minmax(0, 1fr); }
-  .family-settings-main, .family-settings-side { display: contents; }
-  .family-info-card { order: 0; }
-  .family-password-card { order: 1; }
-  .family-storage-card { order: 2; }
-  .family-usage-panel { order: 3; }
-  .family-cleanup-panel { order: 4; }
 }
 .settings-card {
   @apply min-w-0 gap-0 p-card-padding;

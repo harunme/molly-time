@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-for (const width of [390, 1440, 1920]) {
+for (const width of [390, 1024, 1440, 1920]) {
   test(`family settings combine profile and a compact password form at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -25,7 +25,17 @@ for (const width of [390, 1440, 1920]) {
     await expect(page.getByLabel('家庭名称', { exact: true })).toBeVisible();
     await expect(page.getByLabel('当前密码', { exact: true })).toBeVisible();
     await expect(page.getByLabel('新密码', { exact: true })).toBeVisible();
-    expect((await page.locator('.family-password-card').boundingBox())!.width).toBeLessThanOrEqual(384);
+    const layout = await page.locator('.family-settings-grid').boundingBox();
+    const contentWidth = await page.locator('.page-content').evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
+    expect(layout!.width).toBeCloseTo(contentWidth, 0);
+    if (width >= 1440) {
+      const account = await page.locator('.family-settings-account').boundingBox();
+      const storage = await page.locator('.family-settings-storage').boundingBox();
+      const usage = await page.locator('.family-usage-panel').boundingBox();
+      expect(account!.y).toBe(storage!.y);
+      expect(storage!.y).toBe(usage!.y);
+      expect(usage!.x + usage!.width).toBeCloseTo(layout!.x + layout!.width, 0);
+    }
     expect((await page.getByLabel('新密码', { exact: true }).boundingBox())!.width).toBeLessThanOrEqual(336);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`family-settings-${width}.png`), fullPage: true });
