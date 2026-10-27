@@ -11,19 +11,20 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
   const [expired, setExpired] = useState(false);
   const [attempt, retry] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [generating, setGenerating] = useState(true);
+  const [retryAt, setRetryAt] = useState(0);
   useEffect(() => {
     if (!capabilities) return;
-    if (!capabilities.devicePairing) { setError('请先更新电视客户端，再绑定。'); return; }
+    if (!capabilities.devicePairing) { setError('请先更新电视客户端，再绑定。'); setGenerating(false); return; }
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
-    setPairing(undefined); setError(''); setExpired(false);
-    void call<Pairing>('pairingStart').then((value) => {
+    setPairing(undefined); setError(''); setExpired(false); setGenerating(true); setRetryAt(0);
+    void call<Pairing>('pairingStart', { force: attempt > 0 }).then((value) => {
       if (!alive) return;
       const deadline = Date.parse(value.expiresAt);
       if (!Number.isFinite(deadline)) throw new Error('配对响应无效，请重试');
       const delay = Math.max(3, Math.min(30, value.interval || 3)) * 1000;
-      setPairing(value); setNow(Date.now());
-      setFocus('pairing-refresh');
+      setPairing(value); setNow(Date.now()); setGenerating(false);
       const poll = async () => {
         if (!alive) return;
         if (Date.now() >= deadline) { setExpired(true); return; }
@@ -40,10 +41,24 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
         if (alive) timer = setTimeout(() => { void poll(); }, delay);
       };
       timer = setTimeout(() => { void poll(); }, delay);
-    }).catch((failure) => { if (alive) setError(failure instanceof Error ? failure.message : '无法生成配对码'); });
-    return () => { alive = false; clearTimeout(timer); void call('pairingCancel').catch(() => {}); };
+    }).catch((failure) => {
+      if (!alive) return;
+      setGenerating(false);
+      setError(failure instanceof Error ? failure.message : '无法生成配对码');
+      if (failure instanceof ApiError && failure.status === 429 && failure.retryAfter) {
+        setNow(Date.now()); setRetryAt(Date.now() + failure.retryAfter * 1000);
+      }
+    });
+    return () => {
+      alive = false; clearTimeout(timer);
+      // Browser reloads and temporary overlays resume the same pending code.
+      // Native shells own their secret and retain their existing cancel contract.
+      if (window.MollyBridge) void call('pairingCancel').catch(() => {});
+    };
   }, [capabilities, attempt, done]);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  const retrySeconds = Math.max(0, Math.ceil((retryAt - now) / 1000));
+  useEffect(() => { if (!generating && !retrySeconds && (!window.MollyBridge || capabilities?.devicePairing)) setFocus('pairing-refresh'); }, [generating, retrySeconds, capabilities?.devicePairing]);
   const qr = useMemo(() => {
     if (pairing?.verificationUri) {
       try {
@@ -81,7 +96,7 @@ export function PairingPanel({ capabilities, done }: { capabilities?: Capabiliti
         <p className="pairing-status" role="status">等待家长确认 · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</p>
       </> : isExpired ? <div className="pairing-qr-fallback"><p role="status">配对码已过期，请重新生成</p></div> : !error ? <div className="pairing-qr-fallback"><p role="status">正在生成配对码…</p></div> : null}
       {error && <p role="alert" className="error">{error}</p>}
-      {(!window.MollyBridge || capabilities?.devicePairing) && <FocusButton focusKey="pairing-refresh" className="text-button" onClick={() => retry((value) => value + 1)}>{isExpired || !pairing ? '重新生成配对码' : '刷新配对码'}</FocusButton>}
+      {(!window.MollyBridge || capabilities?.devicePairing) && <FocusButton focusKey="pairing-refresh" className="text-button" disabled={generating || retrySeconds > 0} onClick={() => { if (!generating && !retrySeconds) retry((value) => value + 1); }}>{generating ? '正在生成配对码…' : retrySeconds ? `${retrySeconds} 秒后可重试` : isExpired || !pairing ? '重新生成配对码' : '刷新配对码'}</FocusButton>}
     </div>
   </div>;
 }

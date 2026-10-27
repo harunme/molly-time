@@ -11,7 +11,7 @@ from mollytime_server import config, db
 from mollytime_server.api.pairing import digest
 from mollytime_server.auth import hash_password, hash_refresh_token, verify_access_token
 from mollytime_server.main import create_app
-from mollytime_server.management_models import Device, DevicePairing
+from mollytime_server.management_models import Device, DevicePairing, PairingRate
 from mollytime_server.models import RefreshToken, User
 
 
@@ -101,7 +101,15 @@ def test_pairing_rate_limits_and_public_phone_link(parent, monkeypatch):
     assert row['verificationUri'] == 'https://mollytime.example/manage/?pair=' + row['userCode']
     for _ in range(9):
         assert parent.post('/api/auth/pairing/start', json={}).status_code == 200
-    assert parent.post('/api/auth/pairing/start', json={}).status_code == 429
+    blocked = parent.post('/api/auth/pairing/start', json={})
+    assert blocked.status_code == 429
+    assert 1 <= int(blocked.headers['Retry-After']) <= 600
+    with Session(db.get_engine()) as session:
+        session.query(PairingRate).one().resets_at = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=17)
+        session.commit()
+    blocked = parent.post('/api/auth/pairing/start', json={})
+    assert blocked.status_code == 429
+    assert 1 <= int(blocked.headers['Retry-After']) <= 17
     for _ in range(30):
         assert parent.post('/api/manage/pairing/confirm', json={'code': '22222222'}).status_code == 404
     assert parent.post('/api/manage/pairing/confirm', json={'code': '22222222'}).status_code == 429

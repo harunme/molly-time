@@ -114,6 +114,32 @@ test('fresh older shell connects to the official service without an address form
   await expect(page.locator('[data-focus="pairing-refresh"]')).toBeFocused();
 });
 
+test('unbound browser never mounts a settings button during startup or reload', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { settingsMounts: number };
+    w.settingsMounts = 0;
+    const selector = '[data-focus="browser-settings"]';
+    new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node instanceof Element && (node.matches(selector) || node.querySelector(selector))) w.settingsMounts++;
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.route('**/api/auth/pairing/start', route => route.fulfill({ json: {
+    deviceCode: 'test-pairing-secret'.padEnd(43, '0'), userCode: '0123', interval: 3,
+    expiresAt: new Date(Date.now() + 600000).toISOString(),
+    verificationUri: '/manage/?pair=0123', verificationUriManual: '/manage/',
+  } }));
+  await page.route('**/api/auth/pairing/poll', route => route.fulfill({ json: { status: 'pending' } }));
+  await page.route('**/api/auth/pairing/cancel', route => route.fulfill({ json: { ok: true } }));
+  for (const reload of [false, true]) {
+    if (reload) await page.reload(); else await page.goto('/tv/');
+    await expect(page.locator('.pairing-code')).toHaveText('0123');
+    await expect(page.getByRole('button', { name: '打开设置', exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { settingsMounts: number }).settingsMounts)).toBe(0);
+  }
+});
+
 test('unbound native TV settings only offer updates and return to pairing', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as { MollyBridge: { postMessage: (raw: string) => void; onmessage?: (event: { data: string }) => void } };
@@ -319,6 +345,7 @@ test('TV opens pairing directly, pairs without a password, renews expired codes 
   expect(imageViolations).toEqual([]);
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem('mollytime.tv.pairing.v1'))).toBeNull();
   await page.reload();
   await expect(page.getByText('媒体库还没有内容')).toBeVisible();
   await expect(page.getByRole('button', { name: '绑定家庭媒体库' })).toHaveCount(0);

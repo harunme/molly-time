@@ -3,6 +3,7 @@
 import datetime as dt
 import hashlib
 import hmac
+import math
 import re
 import secrets
 from urllib.parse import urlsplit
@@ -41,7 +42,8 @@ def limit(db, request, action, maximum, seconds, principal=None):
         row.count = 0
         row.resets_at = now + dt.timedelta(seconds=seconds)
     if row.count >= maximum:
-        raise HTTPException(429, "请求过于频繁，请稍后再试", headers={"Retry-After": str(seconds)})
+        retry_after = max(1, math.ceil((aware(row.resets_at) - now).total_seconds()))
+        raise HTTPException(429, "请求过于频繁，请稍后再试", headers={"Retry-After": str(retry_after)})
     row.count += 1
     # Persist unsuccessful lookup attempts as well as successful requests.
     db.commit()

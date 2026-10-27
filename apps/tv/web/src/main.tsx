@@ -534,7 +534,7 @@ function App() {
       <div className="topbar">
         <span className="topbar-brand">MollyTime</span>
         {authenticated && syncStatus?.supported !== false && syncStatus && <span className="sync-status" role="status">{syncStatus.message || (!syncStatus.online ? '离线浏览' : syncStatus.catalogComplete ? '内容已同步' : syncStatus.paused ? '同步已暂停' : '正在同步内容')}{!syncStatus.online && syncStatus.lastSync ? ` · 上次同步 ${new Date(syncStatus.lastSync).toLocaleDateString('zh-CN')}` : ''}</span>}
-        {(!window.MollyBridge || (authenticated && watch.state?.enabled)) && <div className="topbar-actions">
+        {authenticated && (!window.MollyBridge || watch.state?.enabled) && <div className="topbar-actions">
           {authenticated && watch.state?.enabled && <WatchQuota state={watch.state} />}
           {!window.MollyBridge && <FocusButton focusKey="browser-settings" className="settings-trigger" ariaLabel="打开设置" onClick={() => openOverlay('settings')}><Icon name="settings" /><span>设置</span></FocusButton>}
         </div>}

@@ -9,7 +9,7 @@ export type HomeRow = PageInfo & { id?: string; title: string; items: Series[] }
 export type Home = { rows: HomeRow[] };
 export type PlaylistEpisode = Episode & { seasonName: string };
 export type Playlist = PageInfo & { items: Series[]; itemTotal: number; itemsHasMore: boolean; unavailable?: boolean; episodes: PlaylistEpisode[]; episodeId: string | null; hasProgress: boolean; resumeEpisode?: PlaylistEpisode | null };
-export class ApiError extends Error { constructor(message: string, public status = 0) { super(message); } }
+export class ApiError extends Error { constructor(message: string, public status = 0, public retryAfter?: number) { super(message); } }
 
 type NativePort = { postMessage: (message: string) => void; onmessage?: (event: MessageEvent<string>) => void };
 declare global {
@@ -46,6 +46,27 @@ export const request = <T>(path: string, method = 'GET', body?: Record<string, u
 let access = '', refresh = '', deviceId = '';
 let pairingCode = '';
 let pairingAttempt = 0;
+type BrowserPairing = { deviceCode: string; userCode: string; verificationUri: string; verificationUriManual: string; expiresAt: string; interval: number };
+const pairingKey = 'mollytime.tv.pairing.v1';
+const pairingRetryKey = 'mollytime.tv.pairing.retryAt.v1';
+let browserPairing: BrowserPairing | undefined;
+let pairingRetryAt = 0;
+function clearPairing() {
+  browserPairing = undefined; pairingCode = '';
+  try { sessionStorage.removeItem(pairingKey); } catch { /* Keep working without browser storage. */ }
+}
+function readPairing() {
+  try { browserPairing ??= JSON.parse(sessionStorage.getItem(pairingKey) || 'null') ?? undefined; } catch { /* Ignore unavailable or malformed storage. */ }
+  const value = browserPairing;
+  if (value && typeof value.deviceCode === 'string' && value.deviceCode.length >= 32 && /^[0-9]{4}$/.test(value.userCode)
+    && typeof value.verificationUri === 'string' && typeof value.verificationUriManual === 'string'
+    && Number.isFinite(Date.parse(value.expiresAt)) && Date.parse(value.expiresAt) > Date.now()) return value;
+  clearPairing();
+}
+function publicPairing(value: BrowserPairing) {
+  const { deviceCode: _secret, ...result } = value;
+  return result;
+}
 let refreshInFlight: Promise<void> | undefined;
 let bindingVersion = 0;
 // A browser preview has a tab lifetime rather than an Android boot lifetime.
@@ -98,7 +119,9 @@ async function fetchApi(path: string, method = 'GET', body?: unknown, retry = tr
   if (response.status === 401 && path !== '/api/watch-control') clearBinding();
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new ApiError(response.status === 401 ? '电视授权已失效，请重新扫码绑定' : typeof data.detail === 'string' ? data.detail : '媒体库请求失败，请重试', response.status);
+    const retryAfter = Number(response.headers.get('Retry-After'));
+    throw new ApiError(response.status === 401 ? '电视授权已失效，请重新扫码绑定' : typeof data.detail === 'string' ? data.detail : '媒体库请求失败，请重试', response.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
   }
   const result = await response.json();
   if (version !== bindingVersion) throw new ApiError('请求已取消');
@@ -109,16 +132,32 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
     case 'getCapabilities': return { bridgeVersion: 1, serverUrl: location.origin, authenticated: !!refresh, childId: '', nativePlayback: false, devicePairing: true, devicePairingReset: true };
     case 'ready': return { ok: true };
     case 'pairingStart': {
+      const cached = readPairing();
+      if (!args.force && cached) { pairingCode = cached.deviceCode; return publicPairing(cached); }
+      try { pairingRetryAt = Math.max(pairingRetryAt, Number(sessionStorage.getItem(pairingRetryKey)) || 0); } catch { /* Memory still prevents repeat requests. */ }
+      if (Number.isFinite(pairingRetryAt) && pairingRetryAt > Date.now()) {
+        throw new ApiError('生成配对码过于频繁，请稍后再试', 429, Math.ceil((pairingRetryAt - Date.now()) / 1000));
+      }
       const attempt = ++pairingAttempt;
       const previous = pairingCode; pairingCode = '';
       if (previous) await fetchApi('/api/auth/pairing/cancel', 'POST', { deviceCode: previous });
-      const result = await fetchApi('/api/auth/pairing/start', 'POST', { name: 'MollyTime TV' }) as Record<string, unknown>;
+      clearPairing();
+      let result: BrowserPairing;
+      try { result = await fetchApi('/api/auth/pairing/start', 'POST', { name: 'MollyTime TV' }) as BrowserPairing; }
+      catch (failure) {
+        if (failure instanceof ApiError && failure.status === 429 && failure.retryAfter) {
+          pairingRetryAt = Date.now() + failure.retryAfter * 1000;
+          try { sessionStorage.setItem(pairingRetryKey, String(pairingRetryAt)); } catch { /* Memory still prevents repeat requests. */ }
+        }
+        throw failure;
+      }
       if (attempt !== pairingAttempt) {
         void fetchApi('/api/auth/pairing/cancel', 'POST', { deviceCode: result.deviceCode }).catch(() => {});
         throw new ApiError('配对已取消');
       }
-      pairingCode = String(result.deviceCode); delete result.deviceCode;
-      return result;
+      pairingCode = result.deviceCode; browserPairing = result; pairingRetryAt = 0;
+      try { sessionStorage.setItem(pairingKey, JSON.stringify(result)); sessionStorage.removeItem(pairingRetryKey); } catch { /* The current page can still complete pairing. */ }
+      return publicPairing(result);
     }
     case 'pairingPoll': {
       if (!pairingCode) throw new ApiError('请重新生成配对码');
@@ -127,14 +166,15 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
       if (code !== pairingCode) throw new ApiError('配对已取消');
       if (result.status === 'authorized' && result.auth) {
         bindingVersion++;
-        access = result.auth.accessToken; refresh = result.auth.refreshToken; deviceId = result.auth.deviceId; saveBinding(); pairingCode = '';
+        access = result.auth.accessToken; refresh = result.auth.refreshToken; deviceId = result.auth.deviceId; saveBinding(); clearPairing();
       }
+      if (result.status === 'expired') clearPairing();
       delete result.auth;
       return result;
     }
     case 'pairingCancel': {
       pairingAttempt++;
-      const code = pairingCode; pairingCode = '';
+      const code = pairingCode; clearPairing();
       if (code) await fetchApi('/api/auth/pairing/cancel', 'POST', { deviceCode: code });
       return { ok: true };
     }
@@ -142,6 +182,7 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
       try { await fetchApi('/api/auth/pairing/reset', 'POST', {}); }
       catch (failure) { if (!(failure instanceof ApiError && failure.status === 401)) throw failure; }
       clearBinding();
+      clearPairing();
       return { ok: true };
     }
     case 'request': {
