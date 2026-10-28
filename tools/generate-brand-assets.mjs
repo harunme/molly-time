@@ -16,7 +16,7 @@ const attribute = name => {
   if (!value) throw new Error(`Missing mark attribute: ${name}`);
   return value;
 };
-const background = '#456B45';
+const background = '#22864B';
 const icon = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none"><title>MollyTime</title><rect width="128" height="128" rx="28" fill="${background}"/>${path}</svg>\n`;
 const banner = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none"><title>MollyTime</title><rect width="1280" height="720" fill="${background}"/><g transform="translate(320 40) scale(5)">${path}</g></svg>\n`;
 const write = async (destination, contents) => {

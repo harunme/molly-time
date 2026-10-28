@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="712" viewBox="0 0 1200 712">
+  <rect width="1200" height="712" fill="#F6F6FA"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, PingFang SC, Microsoft YaHei, sans-serif">
+    <text x="40" y="57" font-size="27" font-weight="650" letter-spacing="-0.7" fill="#2E2E38">MollyTime · 更厚的 M</text>
+    <text x="40" y="88" font-size="15" fill="#747480">笔画从 14 加粗到 18，保留圆润的双拱轮廓。</text>
+
+  <g transform="translate(40 122)">
+    <rect width="548" height="526" rx="24" fill="#FFFFFF"/>
+    <text x="28" y="44" font-size="16" fill="#747480">原来 · 14</text>
+    <g transform="translate(178 76) scale(1.5)" fill="none"><title>MollyTime</title><rect width="128" height="128" rx="28" fill="#22864B"/><path d="M22 102V57C22 20 64 20 64 57V83M64 57C64 20 106 20 106 57V102" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+</g>
+    <text x="274" y="314" text-anchor="middle" font-size="32" font-weight="650" letter-spacing="-1" fill="#2E2E38">MollyTime</text>
+    <text x="274" y="349" text-anchor="middle" font-size="15" fill="#747480">原笔画</text>
+    <rect x="174" y="384" width="200" height="48" rx="24" fill="#22864B"/>
+    <text x="274" y="414" text-anchor="middle" font-size="16" font-weight="600" fill="#FFFFFF">进入家长后台 →</text>
+    <text x="274" y="484" text-anchor="middle" font-size="13" fill="#747480">#22864B / #FFFFFF</text>
+  </g>
+
+  <g transform="translate(612 122)">
+    <rect width="548" height="526" rx="24" fill="#FFFFFF"/>
+    <text x="28" y="44" font-size="16" fill="#747480">加粗后 · 18</text>
+    <g transform="translate(178 76) scale(1.5)" fill="none"><title>MollyTime</title><rect width="128" height="128" rx="28" fill="#22864B"/><path d="M22 102V57C22 20 64 20 64 57V83M64 57C64 20 106 20 106 57V102" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+</g>
+    <text x="274" y="314" text-anchor="middle" font-size="32" font-weight="650" letter-spacing="-1" fill="#2E2E38">MollyTime</text>
+    <text x="274" y="349" text-anchor="middle" font-size="15" fill="#747480">笔画加粗约 29%</text>
+    <rect x="174" y="384" width="200" height="48" rx="24" fill="#22864B"/>
+    <text x="274" y="414" text-anchor="middle" font-size="16" font-weight="600" fill="#FFFFFF">进入家长后台 →</text>
+    <text x="274" y="484" text-anchor="middle" font-size="13" fill="#747480">#22864B / #FFFFFF</text>
+  </g>
+  </g>
+</svg>

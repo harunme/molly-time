@@ -11,6 +11,7 @@
 
 @theme {
   --color-primary: var(--aw-color-primary);
+  --color-primary-hover: var(--aw-color-primary-hover);
   --color-secondary: var(--aw-color-secondary);
   --color-accent: var(--aw-color-accent);
   --color-heading: var(--aw-color-text-heading);
@@ -59,7 +60,7 @@
 }
 
 @utility btn-primary {
-  @apply btn font-semibold bg-primary text-primary-foreground border-primary hover:bg-primary/90 hover:border-primary hover:text-primary-foreground dark:text-primary-foreground dark:bg-primary dark:border-primary dark:hover:border-primary dark:hover:bg-primary/90;
+  @apply btn font-semibold bg-primary text-primary-foreground border-primary hover:bg-primary-hover hover:border-primary-hover hover:text-primary-foreground dark:text-primary-foreground dark:bg-primary dark:border-primary dark:hover:border-primary-hover dark:hover:bg-primary-hover;
 }
 
 @utility btn-secondary {
