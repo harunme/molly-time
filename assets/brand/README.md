@@ -1,10 +1,10 @@
 # MollyTime mark
 
-The logo is a flat white double-arch M on a yellow background. Its shorter
+The logo is a flat petal-white double-arch M on a jasmine leaf-green background. Its shorter
 middle stem and rounded ends keep the silhouette readable at small sizes.
 
-- Warm yellow: `#FFD000`
-- White: `#FFFFFF`
+- Jasmine leaf green: `#456B45`
+- Petal white: `#FFFDF5`
 - Stroke: 14 units with round ends; center stem ends at 83, outer stems at 102.
 - Source: `mollytime-mark.svg`
 - Standalone icon: `mollytime-icon.svg`

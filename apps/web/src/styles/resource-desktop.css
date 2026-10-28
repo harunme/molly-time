@@ -179,7 +179,7 @@ button.desktop-add-trigger:focus-visible .desktop-add-art { outline: 2px solid v
 .resource-tile:hover .desktop-card-menu, .resource-tile:focus-within .desktop-card-menu,
 .desktop-card-menu:has([data-state="open"]) { opacity: 1; pointer-events: auto; }
 @media (hover: none) { .desktop-card-menu { opacity: 1; pointer-events: auto; } }
-.desktop-drop-label { position: absolute; z-index: 4; top: 0; left: 50%; transform: translate(-50%, -50%); padding: 6px 10px; border-radius: 20px; white-space: nowrap; background: var(--color-primary); color: var(--color-foreground); font-size: 12px; font-weight: 600; pointer-events: none; }
+.desktop-drop-label { position: absolute; z-index: 4; top: 0; left: 50%; transform: translate(-50%, -50%); padding: 6px 10px; border-radius: 20px; white-space: nowrap; background: var(--color-primary); color: var(--color-primary-foreground); font-size: 12px; font-weight: 600; pointer-events: none; }
 .is-drop-target .desktop-cover-art { transform: scale(1.045); }
 .desktop-drag-ghost {
   position: fixed;

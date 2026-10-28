@@ -43,14 +43,14 @@
   --color-card-foreground: var(--color-foreground);
   --color-popover: #ffffff;
   --color-popover-foreground: var(--color-foreground);
-  --color-primary-foreground: var(--color-foreground);
+  --color-primary-foreground: #fffdf5;
   --color-secondary-foreground: var(--color-foreground);
   --color-accent: #f1f1f5;
   --color-accent-foreground: var(--color-foreground);
   --color-input: var(--color-border);
   --color-input-surface: var(--color-card);
   --color-ring: var(--color-primary);
-  --color-focus-ring: rgb(255 208 0 / 0.45);
+  --color-focus-ring: rgb(69 107 69 / 0.45);
   --color-toast-border: rgb(255 255 255 / 0.12);
   --color-alert-overlay: rgb(26 26 36 / 0.45);
   --color-tab-indicator: #000000;
@@ -60,7 +60,7 @@
   --color-muted: #f6f6fa;
   --color-placeholder: #c4c4cd;
   --color-destructive: #c41230;
-  --color-primary: #ffd000;
+  --color-primary: #456b45;
   --color-destructive-surface: #fff2f0;
   --color-surface-subtle: #fafafc;
   --color-info: #155cb4;
@@ -91,7 +91,7 @@
   --color-success-surface: #eef8f7;
   --color-metric-icon: #676771;
   --color-metric-label: #5f5f69;
-  --color-primary-hover: #f0c400;
+  --color-primary-hover: #3c5e3c;
   --radius-ui: 0.5rem;
   --radius-card: 1.5rem;
   --radius-popover: 1rem;
