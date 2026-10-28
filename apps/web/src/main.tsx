@@ -1,4 +1,5 @@
 import { FileUploadStatus, useItemUploads } from "./upload-status";
+import { CoverArtwork } from "./cover-artwork";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty } from "@/components/ui/empty";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -788,9 +789,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                   disabled={publication.busy}
                   onClick={() => openItem(item)}>
                   <span className="desktop-cover-art">
-                    <img key={item.imageUrl} src={item.imageUrl} alt="" loading="lazy" draggable={false}
-                      onLoad={event => { event.currentTarget.dataset.loaded = "true"; }}
-                      onError={(event) => { delete event.currentTarget.dataset.loaded; event.currentTarget.style.display = "none"; }} />
+                    <CoverArtwork key={item.imageUrl} src={item.imageUrl} preview={item.imagePreviewUrl} />
                     {item.type !== "Episode" ? <FolderOpen className="desktop-fallback-icon" /> : <FileVideo className="desktop-fallback-icon" />}
                     {item.type !== "Episode" && <span className="desktop-folder-badge" aria-hidden="true"><FolderOpen /></span>}
                     {item.type !== "Series" && <span className="desktop-cover-caption">{item.type === "Season" ? (item.indexNumber ? `SEASON ${String(item.indexNumber).padStart(2, "0")}` : "分季") : (item.indexNumber ? `EP ${String(item.indexNumber).padStart(2, "0")}` : "视频")}</span>}

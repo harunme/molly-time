@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..config import get_settings
 from ..deps import DbSession
-from ..images import image_url
+from ..images import image_ref
 from ..manage_auth import Parent, aware
 from ..management_models import (
     FamilyReminders,
@@ -108,7 +108,8 @@ def dto(db, item, include_files=True):
         )
     options = db.info.get("manage_options", {})
     options = {file.id: options[file.id] if file.id in options else db.get(MediaOptions, file.id) for file in media}
-    cover = image_url(db, item)
+    artwork = image_ref(db, item, direct=False)
+    cover = artwork["url"]
     return {
         "id": item.id,
         "name": item.name,
@@ -123,6 +124,7 @@ def dto(db, item, include_files=True):
         "ready": state.ready if state else True,
         "runtimeMs": (item.runtime_ticks or 0) // 10000,
         "imageUrl": cover + ("&" if "?" in cover else "?") + "w=320",
+        "imagePreviewUrl": artwork.get("previewUrl"),
         "files": [
             {
                 "id": f.id,

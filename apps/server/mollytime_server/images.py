@@ -52,12 +52,10 @@ def image_url(db, item):
     return f"/api/items/{item.id}/image"
 
 
-def image_ref(db, item):
+def image_ref(db, item, *, direct=True):
     """Return the authenticated fallback and, for OSS artwork, a direct URL."""
     url = image_url(db, item)
     result = {"url": url}
-    if db.info.get("static_catalog"):
-        return result
     image_id = url.split("/", 4)[3]
     current, visited = db.get(Item, image_id), set()
     while current and current.id not in visited and current.family_id == item.family_id:
@@ -68,7 +66,12 @@ def image_ref(db, item):
             MediaFile.kind == "image",
         ).first()
         if file:
-            if file.storage == "oss":
+            # WebP and PNG may contain animation. Never render their original
+            # OSS object as a poster: it can advance before the card is visible.
+            animated_format = file.mime in ("image/webp", "image/png") or file.path.lower().endswith((".webp", ".png"))
+            if animated_format:
+                result["previewUrl"] = url + ("&" if "?" in url else "?") + "preview=1"
+            if file.storage == "oss" and not animated_format and direct and not db.info.get("static_catalog"):
                 signing = db.info.get("cover_oss_signing")
                 if signing is None:
                     with external_io(db):

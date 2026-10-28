@@ -28,6 +28,7 @@ test('menu cover upload opens the picker directly and shows progress and errors 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await choose({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
   await expect(tile.getByRole('alert')).toContainText('封面图片无效');
+  await page.mouse.move(0, 0); // Compare the poster, not a hovered animated preview.
   await expect(tile.locator('img')).toHaveAttribute('src', original!);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -45,12 +46,14 @@ test('menu cover upload opens the picker directly and shows progress and errors 
     });
     await completing;
     await expect(tile.getByRole('status')).toHaveText('正在上传封面…');
+    await page.mouse.move(0, 0);
     await expect(tile.locator('img')).toHaveAttribute('src', original!);
     await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     release();
     await expect(tile.getByRole('status')).toHaveCount(0);
     const resource = await (await page.request.get('/api/manage/resources/series')).json();
+    await page.mouse.move(0, 0);
     await expect(tile.locator('img')).toHaveAttribute('src', resource.imageUrl);
     await expect(tile.locator('img')).toHaveAttribute('data-loaded', 'true');
     await expect(tile.locator('.desktop-folder-badge')).toBeVisible();

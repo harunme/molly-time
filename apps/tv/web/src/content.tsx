@@ -1,6 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation';
-import { imageSource, type Episode, type Series } from './api';
+import { imageSource, imagePreview, type Episode, type Series } from './api';
+import { observeCoverPreview } from '../../../shared/cover-preview';
 import { FocusButton, observeNavigation } from './focus';
 import { VirtualGrid, VirtualRail } from './virtual-grid';
 
@@ -66,6 +67,12 @@ export const Cover = memo(function Cover({ item, large = false, folder = false, 
   useEffect(() => () => { if (loadedUrl.current.startsWith('blob:')) URL.revokeObjectURL(loadedUrl.current); }, []);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const image = ref.current?.querySelector('img'), host = ref.current?.closest('button');
+    if (!image || !host || !src || !item.image?.previewUrl) return;
+    const path = item.image.previewUrl;
+    return observeCoverPreview(host, image, signal => imagePreview(path, large ? 960 : 480, signal));
+  }, [src, item.image?.previewUrl, large]);
+  useEffect(() => {
     if (visible || !ref.current) return;
     return observeCover(ref.current, () => setVisible(true));
   }, [visible]);
@@ -105,7 +112,7 @@ export const Cover = memo(function Cover({ item, large = false, folder = false, 
     Number.isFinite(position) && Number.isFinite(runtime) && position > 0 && runtime > 0
     ? Math.min(100, Math.max(0, position / runtime * 100)) : undefined;
   return <div ref={ref} className={`cover ${large ? 'cover-large' : ''}`} style={{ '--cover-tone': tone(item.id) } as CSSProperties}>
-    {src ? <img src={src} alt="" decoding="async" onError={() => setLoaded({ path: imagePath, src: '' })} /> : <div className="cover-fallback" aria-hidden="true">
+    {src ? <img src={src} alt="" decoding="async" onError={event => { if (!event.currentTarget.dataset.preview) setLoaded({ path: imagePath, src: '' }); }} /> : <div className="cover-fallback" aria-hidden="true">
       <span className="cover-letter">{item.name.slice(0, 2)}</span><span className="cover-name">{item.name}</span>
     </div>}
     {folder && <span className="folder-badge">文件夹</span>}

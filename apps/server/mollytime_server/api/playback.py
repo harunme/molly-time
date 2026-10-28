@@ -21,7 +21,7 @@ from ..storage.local import LocalStorage
 from ..storage.settings import get_storage_settings
 from ..transactions import external_io
 from ..usage_meter import meter_media
-from ..utils.image import resize_to_file
+from ..utils.image import preview_to_file, resize_to_file
 from ..utils.subtitles import webvtt
 from .watch_progress import scoped_progress
 
@@ -371,6 +371,7 @@ def image(
     request: Request,
     w: int | None = Query(default=None, alias="w"),
     h: int | None = Query(default=None, alias="h"),
+    preview: bool = False,
 ):
     """Walks parent chain to find the first image MediaFile. Falls back
     to season → series cover when the item itself has none."""
@@ -398,19 +399,30 @@ def image(
 
     with external_io(db):
         storage = build_storage(file.storage)
-        target_w = w if (w and w > 0) else 800
+        target_w = min(1280, max(64, w)) if w else 800
         if h is not None and h <= 0:
             h = None
 
         settings = get_settings()
         cache_dir = settings.data_dir / "image-cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w or 'orig'}.jpg"
+        variant = "motion-v1.webp" if preview else "first-v1.jpg"
+        cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w}_{variant}"
         if not cache_path.exists():
-            resize_to_file(storage.open(file.path), cache_path, target_w)
+            if preview:
+                try:
+                    preview_to_file(storage.open(file.path), cache_path, target_w)
+                except ValueError as error:
+                    raise HTTPException(422, "封面动画过大，请使用较短的封面动画") from error
+            else:
+                resize_to_file(storage.open(file.path), cache_path, target_w)
         data = cache_path.read_bytes()
         meter_media(request, user.family_id)
-        tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}".encode()).hexdigest()
-        return Response(content=data, media_type="image/jpeg", headers={
+        # PNG/WebP containers can be still images. Keep their poster unchanged
+        # and let the UI remember that this cover has no animation to fetch again.
+        if preview and not data:
+            return Response(status_code=204, headers={"Cache-Control": "private, no-cache"})
+        tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}:first-v1".encode()).hexdigest()
+        return Response(content=data, media_type="image/webp" if preview else "image/jpeg", headers={
             "Cache-Control": "private, no-cache", "X-Molly-Image-Version": tag,
         })

@@ -1,6 +1,6 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
 export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; liveTv?: boolean; serverUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string; catalogSync?: boolean; offlinePlayback?: boolean; watchControl?: boolean };
-export type ImageRef = { url: string; directUrl?: string | null };
+export type ImageRef = { url: string; directUrl?: string | null; previewUrl?: string | null };
 export type Series = { id: string; name: string; type?: 'episode' | 'folder'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; overview?: string; image?: ImageRef };
 export type Season = { id: string; name: string; image?: ImageRef; indexNumber?: number; episodeCount?: number };
 export type Episode = { id: string; name: string; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; image?: ImageRef };
@@ -212,6 +212,17 @@ export async function imageSource(path: string, width = 480, directUrl?: string 
   const result = await fetch(url, { headers: { Authorization: `Bearer ${access}` } });
   if (!result.ok) throw new ApiError('封面暂不可用');
   return URL.createObjectURL(await result.blob());
+}
+
+export async function imagePreview(path: string, width: number, signal: AbortSignal): Promise<Blob | null> {
+  const url = new URL(path, location.origin);
+  if (url.origin !== location.origin || !/^\/api\/items\/[A-Za-z0-9-]+\/image$/.test(url.pathname)) throw new ApiError('封面地址无效');
+  url.searchParams.set('w', String(width === 960 ? 960 : 480));
+  url.searchParams.set('preview', '1');
+  const result = await fetch(url, { signal, headers: port ? {} : { Authorization: `Bearer ${access}` } });
+  if (!result.ok) throw new ApiError('封面预览暂不可用');
+  if (result.status === 204) return null;
+  return result.blob();
 }
 
 

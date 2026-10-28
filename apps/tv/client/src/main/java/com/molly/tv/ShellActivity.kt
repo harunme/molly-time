@@ -211,13 +211,14 @@ class ShellActivity : AppCompatActivity() {
                 if (!BridgePolicy.image.matches(req.url.path.orEmpty())) return blocked()
                 if (req.method != "GET") return blocked()
                 return try {
-                    // Width is the only supported image parameter; never forward credentials from the page.
+                    // Forward only bounded display parameters, never page credentials.
                     val width = req.url.getQueryParameter("w")?.toIntOrNull()?.coerceIn(64, 1280) ?: 480
                     val version = req.url.getQueryParameter("v").orEmpty()
-                    app.catalog.covers.cached(req.url.path.orEmpty(), version)?.let { cached ->
+                    val preview = req.url.getQueryParameter("preview") == "1"
+                    (if (preview) null else app.catalog.covers.cached(req.url.path.orEmpty(), version))?.let { cached ->
                         return WebResourceResponse("image/jpeg", null, cached.inputStream())
                     }
-                    val res = app.api.imageResponse(req.url.path + "?w=$width")
+                    val res = app.api.imageResponse(req.url.path + "?w=$width" + if (preview) "&preview=1" else "")
                     val body = res.body!!
                     WebResourceResponse(body.contentType()?.toString()?.substringBefore(';') ?: "image/jpeg",
                         null, res.code, "OK", mapOf("Cache-Control" to "no-store"), body.byteStream())

@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api", tags=["catalog"])
 class ImageRef(BaseModel):
     url: str
     directUrl: str | None = None
+    previewUrl: str | None = None
 
 
 class SeriesSummary(BaseModel):

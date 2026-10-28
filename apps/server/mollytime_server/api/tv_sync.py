@@ -88,8 +88,10 @@ def static_images(db, value):
             visited.add(item.id)
             file = db.query(MediaFile).filter_by(item_id=item.id, kind="image").first()
             if file:
-                tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}".encode()).hexdigest()
+                tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}:first-v1".encode()).hexdigest()
                 image.update(url=path + "?v=" + tag, version=tag)
+                if image.get("previewUrl"):
+                    image["previewUrl"] = path + "?v=" + tag + "&preview=1"
                 break
             item = db.get(Item, item.parent_id) if item.parent_id else None
     return result

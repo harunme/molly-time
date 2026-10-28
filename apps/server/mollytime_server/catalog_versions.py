@@ -39,7 +39,8 @@ def version(db, family, collection):
             CatalogVersion.scope == scope(family, collection)
         )
     ).first()
-    schema = "v2" if collection in ("catalog", "home") or collection.startswith("folder:") else "v1"
+    # Refresh cached rows and poster versions when motion preview references ship.
+    schema = "v3" if collection in ("catalog", "home") or collection.startswith("folder:") else "v1"
     return f"{schema}-{row.generation}-{row.revision}" if row else f"{schema}-initial"
 
 
