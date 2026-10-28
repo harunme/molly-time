@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, bytes } from './api';
 
-export type UploadLimits = Record<'video' | 'subtitle' | 'image', number>;
+export type UploadLimits = Record<'video' | 'subtitle' | 'image' | 'preview', number>;
 
 export function getUploadLimits(signal?: AbortSignal) {
   return api<UploadLimits>('/uploads/options', 'GET', undefined, undefined, signal);
@@ -12,7 +12,7 @@ export function validateUploadSize(file: Pick<File, 'name' | 'size'>, kind: stri
   if (!limit) throw new Error('不支持此文件类型');
   if (file.size <= 0) throw new Error(`${file.name} 是空文件，请重新选择`);
   if (file.size > limit) {
-    const label = { video: '视频', subtitle: '字幕', image: '封面' }[kind as keyof UploadLimits];
+    const label = { video: '视频', subtitle: '字幕', image: '封面', preview: '动态预览' }[kind as keyof UploadLimits];
     throw new Error(`${file.name} 超过单个${label}上限 ${bytes(limit)}`);
   }
 }

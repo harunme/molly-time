@@ -327,6 +327,28 @@ def test_inherited_cover_is_frozen_and_remapped(parent, recipient):
         assert session.get(Item, episode).primary_image_tag == image.id
 
 
+def test_static_cover_and_motion_preview_are_both_shared(parent, recipient):
+    root = config.get_settings().resolved_media_dir()
+    (root / "poster.jpg").write_bytes(b"poster")
+    (root / "preview.webp").write_bytes(b"preview")
+    with Session(db.get_engine()) as session:
+        session.add_all([
+            MediaFile(id="poster", family_id="f1", item_id="series", kind="image",
+                      storage="local", path="poster.jpg", size_bytes=6),
+            MediaFile(id="motion", family_id="f1", item_id="series", kind="preview",
+                      storage="local", path="preview.webp", size_bytes=7),
+        ])
+        session.get(Item, "series").primary_image_tag = "poster"
+        session.commit()
+    share = create(parent, "e1")
+    episode = accept(recipient, share, targetFolderId="receiver-folder")
+    with Session(db.get_engine()) as session:
+        files = session.query(MediaFile).filter_by(item_id=episode).all()
+        assert {file.kind for file in files} >= {"image", "preview"}
+        cover = next(file for file in files if file.kind == "image")
+        assert session.get(Item, episode).primary_image_tag == cover.id
+
+
 def test_rollback_leaves_no_partial_claim_or_content(parent, recipient, monkeypatch):
     from mollytime_server.api import shares
 

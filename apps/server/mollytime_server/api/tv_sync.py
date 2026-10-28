@@ -16,6 +16,7 @@ from ..catalog_versions import version
 from ..config import get_settings
 from ..db import get_session_factory
 from ..deps import CurrentUser, DbSession
+from ..images import image_files
 from ..manage_auth import aware
 from ..management_models import DeviceDownload, WatchSession
 from ..models import Item, MediaFile
@@ -86,12 +87,10 @@ def static_images(db, value):
         item = db.get(Item, item_id)
         while item and item.id not in visited:
             visited.add(item.id)
-            file = db.query(MediaFile).filter_by(item_id=item.id, kind="image").first()
+            file, _preview = image_files(db, item)
             if file:
                 tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}:first-v1".encode()).hexdigest()
                 image.update(url=path + "?v=" + tag, version=tag)
-                if image.get("previewUrl"):
-                    image["previewUrl"] = path + "?v=" + tag + "&preview=1"
                 break
             item = db.get(Item, item.parent_id) if item.parent_id else None
     return result

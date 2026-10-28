@@ -36,7 +36,7 @@ def resize_to_file(
 
 
 def preview_to_file(src: bytes, dest: Path, max_width: int) -> None:
-    """Loop the motion frames, keeping the first frame for the static poster."""
+    """Loop the full preview; the static poster is a separate artwork role."""
     frames, durations = [], []
     with Image.open(io.BytesIO(src)) as image:
         width = min(image.width, max_width, 640)
@@ -48,7 +48,7 @@ def preview_to_file(src: bytes, dest: Path, max_width: int) -> None:
             return
         if count > 240 or count * size[0] * size[1] > 32_000_000:
             raise ValueError("cover preview exceeds decode budget")
-        for index in range(1, count):
+        for index in range(count):
             image.seek(index)
             frame = image.convert("RGBA")  # WebP duration is populated on load.
             frames.append(frame.resize(size, Image.Resampling.LANCZOS))

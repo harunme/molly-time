@@ -158,7 +158,7 @@ class MediaFile(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     family_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("families.id"), nullable=True)
     item_id: Mapped[str] = mapped_column(String(36), ForeignKey("items.id"), index=True)
-    kind: Mapped[str] = mapped_column(String(16))  # 'video' | 'subtitle' | 'image'
+    kind: Mapped[str] = mapped_column(String(16))  # video | subtitle | image | preview
     storage: Mapped[str] = mapped_column(String(16))  # 'local' | 'oss'
     path: Mapped[str] = mapped_column(String(1024))
     mime: Mapped[str] = mapped_column(String(64), default="")

@@ -17,7 +17,7 @@ async function fingerprint(file: File) {
 export async function enqueue(file: File, itemId: string, kind: string, language = 'und') {
   validateUploadSize(file, kind, await getUploadLimits());
   const row = await api<Upload>('/uploads', 'POST', { itemId, filename: file.name, size: file.size, fingerprint: await fingerprint(file), kind, language });
-  if (kind === 'image') {
+  if (kind === 'image' || kind === 'preview') {
     try {
       await transfer(row.id, file);
     } catch (error) {
@@ -85,7 +85,7 @@ async function transfer(id: string, file = files.get(id)!) {
         } catch (error) { if (attempt === 2) throw error; }
       }
       offset += chunk.size;
-      if (row.kind !== 'image') { live.set(id, { offset, error: '', paused: paused.has(id) }); changed(); }
+      if (row.kind !== 'image' && row.kind !== 'preview') { live.set(id, { offset, error: '', paused: paused.has(id) }); changed(); }
     }
     if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
     return;
@@ -99,7 +99,7 @@ async function transfer(id: string, file = files.get(id)!) {
       catch (error) { if (attempt === 2) throw error; }
     }
     row = result!;
-    if (row.kind !== 'image') { live.set(id, { offset: row.offset, error: '', paused: paused.has(id) }); changed(); }
+    if (row.kind !== 'image' && row.kind !== 'preview') { live.set(id, { offset: row.offset, error: '', paused: paused.has(id) }); changed(); }
   }
   if (!paused.has(id)) { await api(`/uploads/${id}/complete`, 'POST', metadata); files.delete(id); live.delete(id); }
 }

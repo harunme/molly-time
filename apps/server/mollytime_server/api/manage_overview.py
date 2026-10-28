@@ -148,7 +148,7 @@ def overview(user: Parent, db: DbSession):
                 media[status] += count
     upload_counts = dict(
         db.query(UploadSession.status, func.count(UploadSession.id))
-        .filter(UploadSession.family_id == family, UploadSession.kind != "image")
+        .filter(UploadSession.family_id == family, UploadSession.kind.notin_(["image", "preview"]))
         .group_by(UploadSession.status)
         .all()
     )

@@ -589,9 +589,10 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
   const folderRenameLock = useRef(false);
   const renameFromMenu = useRef(false);
   const coverInput = useRef<HTMLInputElement>(null);
+  const previewInput = useRef<HTMLInputElement>(null);
   const coverTarget = useRef<Resource | undefined>(undefined);
   const coverLock = useRef(false);
-  const [coverUploading, setCoverUploading] = useState<string>();
+  const [coverUploading, setCoverUploading] = useState<{ id: string; kind: 'image' | 'preview' }>();
   const [coverError, setCoverError] = useState<{ id: string; message: string }>();
   useEffect(() => {
     if (renaming && !renaming.saving) {
@@ -694,11 +695,11 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
     } catch (error) { setFolderError((error as Error).message); }
     finally { folderCreateLock.current = false; setFolderCreating(false); }
   };
-  const uploadCover = async (item: Resource, file: File) => {
+  const uploadCover = async (item: Resource, file: File, kind: 'image' | 'preview' = 'image') => {
     if (readonly || coverLock.current) return;
-    coverLock.current = true; setCoverUploading(item.id); setCoverError(undefined);
+    coverLock.current = true; setCoverUploading({ id: item.id, kind }); setCoverError(undefined);
     try {
-      await enqueue(file, item.id, "image");
+      await enqueue(file, item.id, kind);
       changed();
     } catch (error) {
       setCoverError({ id: item.id, message: (error as Error).message });
@@ -794,7 +795,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                     {item.type !== "Episode" && <span className="desktop-folder-badge" aria-hidden="true"><FolderOpen /></span>}
                     {item.type !== "Series" && <span className="desktop-cover-caption">{item.type === "Season" ? (item.indexNumber ? `SEASON ${String(item.indexNumber).padStart(2, "0")}` : "分季") : (item.indexNumber ? `EP ${String(item.indexNumber).padStart(2, "0")}` : "视频")}</span>}
                     {item.type === "Episode" && !!item.runtimeMs && <span className="desktop-runtime">{minutes(item.runtimeMs)}</span>}
-                    {coverUploading === item.id && <span className="desktop-cover-status" role="status">正在上传封面…</span>}
+                    {coverUploading?.id === item.id && <span className="desktop-cover-status" role="status">{coverUploading.kind === 'preview' ? '正在上传动态预览…' : '正在上传封面…'}</span>}
                   </span>
                 </button>
                 {publication.selector(item)}
@@ -822,6 +823,13 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                             coverTarget.current = item;
                             coverInput.current?.click();
                           }}>上传封面</DropdownMenuItem>
+                          <DropdownMenuItem disabled={!!coverUploading || !!renaming} title="悬停时播放动图，移开后显示封面" onSelect={() => {
+                            coverTarget.current = item;
+                            previewInput.current?.click();
+                          }}>上传动态预览</DropdownMenuItem>
+                          {item.hasOwnPreview && <DropdownMenuItem disabled={!!coverUploading || !!renaming} onSelect={() => {
+                            void run(async () => { await api(`/resources/${item.id}/preview`, 'DELETE'); changed(); });
+                          }}>移除动态预览</DropdownMenuItem>}
                           {parent && (parent.parentId || item.type === "Series") && <DropdownMenuItem onSelect={() => {
                             void run(async () => { await api(`/resources/${item.id}/move`, "POST", { folderId: parent.parentId }); changed(); });
                           }}>移到上一级</DropdownMenuItem>}
@@ -921,6 +929,11 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
         const file = event.currentTarget.files?.[0], item = coverTarget.current;
         event.currentTarget.value = "";
         if (file && item) void uploadCover(item, file);
+      }} />
+      <input ref={previewInput} type="file" hidden accept=".webp,.gif,.png" aria-label="选择动态预览" onChange={event => {
+        const file = event.currentTarget.files?.[0], item = coverTarget.current;
+        event.currentTarget.value = "";
+        if (file && item) void uploadCover(item, file, 'preview');
       }} />
       {subtitleSettings && <Modal title={`字幕设置 · ${subtitleSettings.name}`} close={() => setSubtitleSettings(undefined)}>
         <SubtitleSettings item={subtitleSettings} readonly={readonly} />

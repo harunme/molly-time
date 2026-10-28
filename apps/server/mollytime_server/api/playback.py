@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
+from ..images import image_files
 from ..management_models import MediaOptions, WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
 from ..resource_policy import require_visible
@@ -375,26 +376,16 @@ def image(
 ):
     """Walks parent chain to find the first image MediaFile. Falls back
     to season → series cover when the item itself has none."""
-    visited: set[str] = set()
     cur = db.get(Item, item_id)
     if cur is None or cur.family_id != user.family_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     require_visible(db, cur, request)
 
-    file = None
-    while cur is not None and cur.id not in visited:
-        visited.add(cur.id)
-        file = (
-            db.query(MediaFile)
-            .filter(MediaFile.item_id == cur.id, MediaFile.kind == "image")
-            .first()
-        )
-        if file is not None:
-            break
-        cur = db.get(Item, cur.parent_id) if cur.parent_id else None
-        if cur is not None and cur.family_id != user.family_id:
-            cur = None
+    cover, motion = image_files(db, cur)
+    file = motion if preview else cover
     if file is None:
+        if preview:
+            return Response(status_code=204, headers={"Cache-Control": "private, no-cache"})
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     with external_io(db):
@@ -406,7 +397,7 @@ def image(
         settings = get_settings()
         cache_dir = settings.data_dir / "image-cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        variant = "motion-v1.webp" if preview else "first-v1.jpg"
+        variant = "motion-full-v1.webp" if preview else "first-v1.jpg"
         cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w}_{variant}"
         if not cache_path.exists():
             if preview:

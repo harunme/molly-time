@@ -7,6 +7,27 @@ from .storage.settings import get_storage_settings
 from .transactions import external_io
 
 
+def animated_format(file):
+    return file.mime in ("image/webp", "image/png", "image/gif") or file.path.lower().endswith((".webp", ".png", ".gif"))
+
+
+def image_files(db, item):
+    """Resolve both artwork roles from the same item/ancestor, never mix videos."""
+    current, visited = item, set()
+    while current and current.id not in visited and current.family_id == item.family_id:
+        visited.add(current.id)
+        files = db.query(MediaFile).filter(
+            MediaFile.item_id == current.id, MediaFile.family_id == item.family_id,
+            MediaFile.kind.in_(["image", "preview"]),
+        ).all()
+        cover = next((file for file in files if file.kind == "image"), None)
+        preview = next((file for file in files if file.kind == "preview"), None)
+        if cover or preview:
+            return cover or preview, preview or (cover if animated_format(cover) else None)
+        current = db.get(Item, current.parent_id) if current.parent_id else None
+    return None, None
+
+
 def image_url(db, item):
     current, visited = item, set()
     while current and current.id not in visited:
@@ -16,7 +37,7 @@ def image_url(db, item):
         if db.query(MediaFile.id).filter(
             MediaFile.item_id == current.id,
             MediaFile.family_id == item.family_id,
-            MediaFile.kind == "image",
+            MediaFile.kind.in_(["image", "preview"]),
         ).first():
             return f"/api/items/{item.id}/image"
         current = db.get(Item, current.parent_id) if current.parent_id else None
@@ -39,7 +60,7 @@ def image_url(db, item):
                 Item.parent_id.in_(parents),
                 Item.type.in_(["Season", "Episode"]),
                 MediaFile.family_id == item.family_id,
-                MediaFile.kind == "image",
+                MediaFile.kind.in_(["image", "preview"]),
                 Item.id.in_(visible_item_ids(item.family_id)),
             )
             .order_by(Item.type.desc(), Item.index_number, Item.name, Item.id)
@@ -57,27 +78,15 @@ def image_ref(db, item, *, direct=True):
     url = image_url(db, item)
     result = {"url": url}
     image_id = url.split("/", 4)[3]
-    current, visited = db.get(Item, image_id), set()
-    while current and current.id not in visited and current.family_id == item.family_id:
-        visited.add(current.id)
-        file = db.query(MediaFile).filter(
-            MediaFile.item_id == current.id,
-            MediaFile.family_id == item.family_id,
-            MediaFile.kind == "image",
-        ).first()
-        if file:
-            # WebP and PNG may contain animation. Never render their original
-            # OSS object as a poster: it can advance before the card is visible.
-            animated_format = file.mime in ("image/webp", "image/png") or file.path.lower().endswith((".webp", ".png"))
-            if animated_format:
-                result["previewUrl"] = url + ("&" if "?" in url else "?") + "preview=1"
-            if file.storage == "oss" and not animated_format and direct and not db.info.get("static_catalog"):
-                signing = db.info.get("cover_oss_signing")
-                if signing is None:
-                    with external_io(db):
-                        signing = (build_storage("oss"), get_storage_settings().oss_signed_url_ttl)
-                    db.info["cover_oss_signing"] = signing
-                result["directUrl"] = signing[0].signed_url(file.path, signing[1])
-            break
-        current = db.get(Item, current.parent_id) if current.parent_id else None
+    source = db.get(Item, image_id)
+    file, preview = image_files(db, source) if source and source.family_id == item.family_id else (None, None)
+    if preview:
+        result["previewUrl"] = f"/api/items/{image_id}/image?v={preview.id}&preview=1"
+    if file and file.kind == "image" and file.storage == "oss" and not animated_format(file) and direct and not db.info.get("static_catalog"):
+        signing = db.info.get("cover_oss_signing")
+        if signing is None:
+            with external_io(db):
+                signing = (build_storage("oss"), get_storage_settings().oss_signed_url_ttl)
+            db.info["cover_oss_signing"] = signing
+        result["directUrl"] = signing[0].signed_url(file.path, signing[1])
     return result

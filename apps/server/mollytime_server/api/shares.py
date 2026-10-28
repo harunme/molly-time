@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..deps import DbSession
+from ..images import image_files
 from ..manage_auth import Parent, aware, check_origin, parent_session
 from ..management_models import MediaOptions, ResourceState
 from ..models import Item, MediaFile
@@ -167,21 +168,15 @@ def build_snapshot(db, user, resource_id, share_id):
                 selected[current.id] = current
     files = (
         db.query(MediaFile)
-        .filter(MediaFile.item_id.in_(selected), MediaFile.kind.in_(["video", "subtitle", "image"]))
+        .filter(MediaFile.item_id.in_(selected), MediaFile.kind.in_(["video", "subtitle", "image", "preview"]))
         .order_by(MediaFile.id)
         .all()
     )
-    if item.type == "Episode" and not any(file.kind == "image" for file in files):
-        current, visited = item, set()
-        while current.parent_id and current.id not in visited:
-            visited.add(current.id)
-            current = db.get(Item, current.parent_id)
-            if current is None or current.family_id != user.family_id:
-                break
-            cover = db.query(MediaFile).filter_by(item_id=current.id, kind="image").first()
-            if cover:
-                files.append(cover)
-                break
+    if item.type == "Episode" and not any(file.kind in ("image", "preview") for file in files):
+        cover, preview = image_files(db, item)
+        for file in (cover, preview):
+            if file and file not in files:
+                files.append(file)
     rows = [
         {
             **{key: getattr(row, key) for key in ITEM_FIELDS},

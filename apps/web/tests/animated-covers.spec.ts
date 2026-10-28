@@ -13,7 +13,7 @@ async function channel(image: Locator) {
   return pixel.indexOf(Math.max(...pixel));
 }
 
-test('animated covers show frame one, loop subsequent frames on hover/focus, and reset on leave in both apps', async ({ page }, testInfo) => {
+test('legacy animated covers retain a first-frame fallback and loop on hover/focus in both apps', async ({ page }, testInfo) => {
   const data = execFileSync(python, ['-c', 'import io,sys; from PIL import Image; f=[Image.new("RGB",(160,90),c) for c in ["red","lime","blue"]]; b=io.BytesIO(); f[0].save(b,format="WEBP",save_all=True,append_images=f[1:],duration=[600,600,600],loop=0,lossless=True); sys.stdout.buffer.write(b.getvalue())']);
   await page.goto('/manage/');
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
@@ -81,4 +81,68 @@ test('animated covers show frame one, loop subsequent frames on hover/focus, and
   await expect.poll(() => channel(tvImage)).toBe(2);
   await tv.getByRole('button', { name: '打开设置', exact: true }).focus();
   await expect.poll(() => channel(tvImage)).toBe(0);
+});
+
+test('static posters and complete motion previews upload independently in both apps', async ({ page }) => {
+  const animation = execFileSync(python, ['-c', 'import io,sys; from PIL import Image; f=[Image.new("RGB",(160,90),c) for c in ["red","lime"]]; b=io.BytesIO(); f[0].save(b,format="WEBP",save_all=True,append_images=f[1:],duration=[700,700],loop=0,lossless=True); sys.stdout.buffer.write(b.getvalue())']);
+  const poster = execFileSync(python, ['-c', 'import io,sys; from PIL import Image; b=io.BytesIO(); Image.new("RGB",(160,90),"blue").save(b,"PNG"); sys.stdout.buffer.write(b.getvalue())']);
+  await page.goto('/manage/#/library');
+  await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '资源库', exact: true })).toBeVisible();
+  const card = page.getByRole('button', { name: '打开 英语启蒙', exact: true });
+  const tile = page.locator('.resource-tile').filter({ has: card });
+  const choose = async (action: string, name: string, mimeType: string, buffer: Buffer) => {
+    await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
+    const picker = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: action, exact: true }).click();
+    const complete = page.waitForResponse(response => response.url().endsWith('/complete') && response.request().method() === 'POST');
+    await (await picker).setFiles({ name, mimeType, buffer });
+    return complete;
+  };
+  expect((await choose('上传封面', 'poster.png', 'image/png', poster)).ok()).toBe(true);
+  expect((await choose('上传动态预览', 'motion.webp', 'image/webp', animation)).ok()).toBe(true);
+  await expect.poll(async () => (await (await page.request.get('/api/manage/resources/series')).json()).hasOwnPreview).toBe(true);
+  const image = card.locator('img');
+  await page.mouse.move(0, 0);
+  await expect.poll(() => channel(image)).toBe(2);
+  await card.hover();
+  await expect(image).toHaveAttribute('data-preview', 'true');
+  await expect.poll(() => channel(image)).toBe(0); // The first animation frame is retained.
+  await expect.poll(() => channel(image)).toBe(1);
+  await expect.poll(() => channel(image)).toBe(0); // It loops, independently of the blue poster.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => channel(image)).toBe(2);
+
+  const auth = await (await page.request.post(`${apiOrigin}/api/auth/login`, {
+    headers: { 'X-Molly-Client': 'tv-shell/2' }, data: { username: 'parent@example.test', password: 'parent-e2e' },
+  })).json();
+  const tv = await page.context().newPage();
+  await tv.addInitScript(binding => localStorage.setItem('mollytime.tv.binding.v1', JSON.stringify(binding)), {
+    accessToken: auth.accessToken, refreshToken: auth.refreshToken, deviceId: auth.deviceId,
+  });
+  await tv.goto(`${apiOrigin}/tv/`);
+  const tvCard = tv.locator('[data-focus="series-series"]'), tvImage = tvCard.locator('.cover img');
+  await expect(tvImage).toBeVisible();
+  await tv.getByRole('button', { name: '打开设置', exact: true }).focus();
+  await expect.poll(() => channel(tvImage)).toBe(2);
+  await tvCard.focus();
+  await expect(tvImage).toHaveAttribute('data-preview', 'true');
+  await expect.poll(() => channel(tvImage)).toBe(0);
+  await expect.poll(() => channel(tvImage)).toBe(1);
+  await expect.poll(() => channel(tvImage)).toBe(0);
+  await tv.getByRole('button', { name: '打开设置', exact: true }).focus();
+  await expect.poll(() => channel(tvImage)).toBe(2);
+
+  expect((await choose('上传动态预览', 'still.png', 'image/png', poster)).status()).toBe(422);
+  await expect(tile.getByRole('alert')).toContainText('动态预览需要多帧');
+  await page.mouse.move(0, 0);
+  await expect.poll(() => channel(image)).toBe(2);
+  await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
+  await page.getByRole('menuitem', { name: '移除动态预览', exact: true }).click();
+  await expect.poll(async () => (await (await page.request.get('/api/manage/resources/series')).json()).hasOwnPreview).toBe(false);
+  await card.hover();
+  await expect(image).not.toHaveAttribute('data-preview', 'true');
+  expect(await channel(image)).toBe(2);
 });

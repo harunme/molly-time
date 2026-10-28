@@ -24,7 +24,7 @@ def test_default_limits_and_options(parent):
     assert settings.max_upload_bytes == settings.media_processing_max_bytes == VIDEO_LIMIT
     response = parent.get("/api/manage/uploads/options")
     assert response.status_code == 200
-    assert response.json() == {"video": VIDEO_LIMIT, "subtitle": 5 * 1024**2, "image": 20 * 1024**2}
+    assert response.json() == {"video": VIDEO_LIMIT, "subtitle": 5 * 1024**2, "image": 20 * 1024**2, "preview": 20 * 1024**2}
 
 
 @pytest.mark.parametrize("backend", ["local", "oss"])
@@ -61,6 +61,7 @@ def test_effective_limit_uses_smaller_processing_capacity(parent, monkeypatch):
 @pytest.mark.parametrize("kind,filename,size,limit", [
     ("subtitle", "captions.srt", 5 * 1024**2 + 1, "字幕不能超过 5 MB"),
     ("image", "cover.jpg", 20 * 1024**2 + 1, "封面不能超过 20 MB"),
+    ("preview", "preview.webp", 20 * 1024**2 + 1, "动态预览不能超过 20 MB"),
 ])
 def test_other_media_keep_their_size_limits(parent, kind, filename, size, limit):
     response = parent.post("/api/manage/uploads", json=body(size, kind, filename))

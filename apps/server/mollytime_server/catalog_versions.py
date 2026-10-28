@@ -40,7 +40,7 @@ def version(db, family, collection):
         )
     ).first()
     # Refresh cached rows and poster versions when motion preview references ship.
-    schema = "v3" if collection in ("catalog", "home") or collection.startswith("folder:") else "v1"
+    schema = "v4" if collection in ("catalog", "home") or collection.startswith("folder:") else "v1"
     return f"{schema}-{row.generation}-{row.revision}" if row else f"{schema}-initial"
 
 

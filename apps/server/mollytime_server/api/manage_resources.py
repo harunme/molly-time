@@ -75,7 +75,7 @@ def prime_resources(db, items, summary=False):
     db.info["manage_states"] = {key: states.get(key) for key in keys}
     if summary:
         return
-    files = db.query(MediaFile).filter(MediaFile.item_id.in_(keys), MediaFile.kind.in_(["video", "subtitle", "image"])).all()
+    files = db.query(MediaFile).filter(MediaFile.item_id.in_(keys), MediaFile.kind.in_(["video", "subtitle", "image", "preview"])).all()
     grouped = {key: [] for key in keys}
     for file in files:
         grouped[file.item_id].append(file)
@@ -103,7 +103,7 @@ def dto(db, item, include_files=True):
     if media is None:
         media = (
         db.query(MediaFile)
-        .filter(MediaFile.item_id == item.id, MediaFile.kind.in_(["video", "subtitle", "image"]))
+        .filter(MediaFile.item_id == item.id, MediaFile.kind.in_(["video", "subtitle", "image", "preview"]))
         .all()
         )
     options = db.info.get("manage_options", {})
@@ -125,6 +125,7 @@ def dto(db, item, include_files=True):
         "runtimeMs": (item.runtime_ticks or 0) // 10000,
         "imageUrl": cover + ("&" if "?" in cover else "?") + "w=320",
         "imagePreviewUrl": artwork.get("previewUrl"),
+        "hasOwnPreview": db.query(MediaFile.id).filter_by(item_id=item.id, family_id=item.family_id, kind="preview").first() is not None,
         "files": [
             {
                 "id": f.id,
@@ -609,8 +610,21 @@ class UploadBody(BaseModel):
     filename: str = Field(min_length=1, max_length=256)
     size: int = Field(gt=0)
     fingerprint: str = Field(min_length=1, max_length=128)
-    kind: str = Field(pattern="^(video|subtitle|image)$")
+    kind: str = Field(pattern="^(video|subtitle|image|preview)$")
     language: str = Field(default="und", max_length=32)
+
+
+@router.delete("/resources/{item_id}/preview")
+def remove_preview(item_id: str, user: Parent, db: DbSession):
+    serialize_sqlite_write(db)
+    item = owned(db, Item, item_id, user.family_id)
+    ensure_active(db, item)
+    for file in db.query(MediaFile).filter_by(item_id=item.id, family_id=user.family_id, kind="preview").all():
+        file.kind = "retired_preview"
+    cover = db.query(MediaFile).filter_by(item_id=item.id, family_id=user.family_id, kind="image").first()
+    item.primary_image_tag = cover.id if cover else ""
+    db.commit()
+    return {"ok": True}
 
 
 def upload_dto(db, row):
@@ -642,6 +656,7 @@ def upload_limits():
         "video": min(settings.max_upload_bytes, settings.media_processing_max_bytes),
         "subtitle": 5 * 1024**2,
         "image": 20 * 1024**2,
+        "preview": 20 * 1024**2,
     }
 
 
@@ -668,7 +683,7 @@ def uploads(
     if pending:
         query = query.filter(
             UploadSession.status.in_(["uploading", "processing", "failed"]),
-            UploadSession.kind != "image",
+            UploadSession.kind.notin_(["image", "preview"]),
         )
     def preload(rows):
         keys = [row.id for row in rows]
@@ -698,14 +713,15 @@ def create_upload(body, user, db):
         "video": {".mp4"},
         "subtitle": {".srt", ".vtt"},
         "image": {".jpg", ".jpeg", ".png", ".webp"},
+        "preview": {".webp", ".gif", ".png"},
     }
     limit = upload_limits()[body.kind]
     if body.size > limit:
-        label = {"video": "视频", "subtitle": "字幕", "image": "封面"}[body.kind]
+        label = {"video": "视频", "subtitle": "字幕", "image": "封面", "preview": "动态预览"}[body.kind]
         raise HTTPException(413, f"单个{label}不能超过 {limit / 1024**2:g} MB")
     if (
         ext not in extensions[body.kind]
-        or (body.kind != "image" and item.type != "Episode")
+        or (body.kind not in ("image", "preview") and item.type != "Episode")
     ):
         raise HTTPException(422, "请上传 MP4 视频、SRT/VTT 字幕或图片，并检查文件大小")
     if (
@@ -854,9 +870,19 @@ def complete_cover(db, row, target):
                     raise HTTPException(422, "封面文件缺失或大小不一致，请重新上传")
                 try:
                     with Image.open(source) as image:
-                        mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}.get(image.format)
+                        mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "GIF": "image/gif"}.get(image.format)
                         if mime is None:
                             raise ValueError("unsupported image format")
+                        if image.format == "GIF" and row.kind != "preview":
+                            raise ValueError("GIF is only accepted as a preview")
+                        if row.kind == "preview":
+                            count = getattr(image, "n_frames", 1)
+                            width = min(640, image.width)
+                            height = max(1, round(image.height * width / image.width))
+                            if count < 2:
+                                raise HTTPException(422, "动态预览需要多帧 WebP、GIF 或 APNG 动图")
+                            if count > 240 or count * width * height > 32_000_000:
+                                raise HTTPException(422, "动态预览过大，请使用较短的动图")
                         image.verify()
                 except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
                     raise HTTPException(422, "封面图片无效，请选择完整的 JPG、PNG 或 WebP 图片") from error
@@ -874,10 +900,10 @@ def complete_cover(db, row, target):
         item = owned(db, Item, row.item_id, row.family_id)
         db.refresh(item)
         ensure_active(db, item)
-        for old in db.query(MediaFile).filter_by(item_id=item.id, kind="image").all():
-            old.kind = "retired_image"
+        for old in db.query(MediaFile).filter_by(item_id=item.id, kind=row.kind).all():
+            old.kind = "retired_" + row.kind
         db.add(MediaFile(
-            id=row.id, family_id=row.family_id, item_id=item.id, kind="image",
+            id=row.id, family_id=row.family_id, item_id=item.id, kind=row.kind,
             storage="oss" if remote else "local",
             path=target.object_key if remote else str(destination.relative_to(root)),
             mime=mime, language=row.language, is_default=False, index=0,
@@ -927,7 +953,7 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMeta
                     size = store.size(target.object_key)
                 if size != row.size:
                     raise HTTPException(409, "云端文件大小不一致")
-            if row.kind == "image":
+            if row.kind in ("image", "preview"):
                 return complete_cover(db, row, target)
             row.offset = row.size
             row.status = "processing"
@@ -946,7 +972,7 @@ def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMeta
             raise HTTPException(410, "上传已过期")
         if row.status != "uploading" or row.offset != row.size:
             raise HTTPException(409, "文件尚未上传完整")
-        if row.kind == "image":
+        if row.kind in ("image", "preview"):
             return complete_cover(db, row, target)
         with external_io(db, row):
             accept_video_metadata(row, body)

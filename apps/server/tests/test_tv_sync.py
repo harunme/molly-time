@@ -95,6 +95,25 @@ def test_progress_does_not_invalidate_static_catalog(tv):
     assert after["playbackVersion"] != before["playbackVersion"]
 
 
+def test_separate_preview_keeps_its_own_version_in_static_catalog(tv):
+    from mollytime_server.api.tv_sync import static_images
+    from mollytime_server.images import image_ref
+
+    with Session(db.get_engine()) as session:
+        session.add_all([
+            MediaFile(id="poster", family_id="f1", item_id="e1", kind="image",
+                      storage="local", path="poster.jpg", mime="image/jpeg"),
+            MediaFile(id="motion", family_id="f1", item_id="e1", kind="preview",
+                      storage="local", path="motion.webp", mime="image/webp"),
+        ])
+        session.get(Item, "e1").primary_image_tag = "poster"
+        session.commit()
+        ref = image_ref(session, session.get(Item, "e1"))
+        rendered = static_images(session, {"image": ref})["image"]
+        assert rendered["version"] in rendered["url"]
+        assert rendered["previewUrl"] == "/api/items/e1/image?v=motion&preview=1"
+
+
 def test_rollback_and_bulk_updates(tv):
     before = state(tv)
     with Session(db.get_engine()) as s:

@@ -371,18 +371,22 @@ def test_browser_metadata_is_kept_for_retry_and_cleared_after_success(remote, mo
     assert not metadata_path(key).exists()
 
 
-@pytest.mark.parametrize("kind,filename", [("image", "cover.jpg"), ("subtitle", "en.srt")])
+@pytest.mark.parametrize("kind,filename", [("image", "cover.jpg"), ("preview", "motion.webp"), ("subtitle", "en.srt")])
 def test_small_remote_files_keep_server_validation(remote, kind, filename):
     import hashlib
     web, oss = remote
     output = io.BytesIO()
     Image.new("RGB", (64, 36), "blue").save(output, "JPEG")
-    content = output.getvalue() if kind == "image" else b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
+    if kind == "preview":
+        output = io.BytesIO()
+        Image.new("RGB", (64, 36), "red").save(output, "WEBP", save_all=True,
+            append_images=[Image.new("RGB", (64, 36), "blue")], duration=[100, 100], loop=0)
+    content = output.getvalue() if kind in ("image", "preview") else b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
     key, obj = start(web, len(content), kind=kind, filename=filename)
     oss.objects[obj] = content
     result = web.post(f"/api/manage/uploads/{key}/complete")
     assert result.status_code == 200
-    if kind == "image":
+    if kind in ("image", "preview"):
         assert result.json()["status"] == "ready"
         assert result.json()["taskId"] is None
         assert not run_once()
