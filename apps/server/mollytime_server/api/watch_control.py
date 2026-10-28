@@ -15,7 +15,6 @@ from ..device_presence import device_online
 from ..manage_auth import Parent, aware
 from ..management_models import (
     Device,
-    DeviceReminder,
     WatchControl,
     WatchControlCommand,
     WatchControlPin,
@@ -144,9 +143,6 @@ def perform(db, user, device_id, body):
         )
         if enabled and not db.get(WatchControlPin, user.family_id):
             raise HTTPException(409, "请先设置家长密码")
-        legacy = db.get(DeviceReminder, device_id)
-        if enabled and legacy and legacy.phase != "idle":
-            raise HTTPException(409, "请先结束现有家长提醒，再开启观看管理")
         if enabled != row.enabled and round:
             round.ended = True
         row.enabled, row.mode, row.amount = enabled, mode, amount

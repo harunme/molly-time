@@ -17,7 +17,7 @@ from ..config import get_settings
 from ..db import get_session_factory
 from ..deps import CurrentUser, DbSession
 from ..manage_auth import aware
-from ..management_models import DeviceDownload, DeviceReminder, WatchSession
+from ..management_models import DeviceDownload, WatchSession
 from ..models import Item, MediaFile
 from ..resource_policy import require_visible, visible_item_ids
 from .catalog_pagination import (
@@ -124,33 +124,29 @@ def sync_state(request: Request, user: CurrentUser, db: DbSession):
 
 def sync_state_data(user, db, device):
     now = int(dt.datetime.now(dt.UTC).timestamp() * 1000)
-    reminder = db.get(DeviceReminder, device)
-    blocked = reminder is not None and reminder.phase != "idle"
-    permissions = []
-    if not blocked:
-        rows = (
-            db.query(DeviceDownload, MediaFile, Item)
-            .join(MediaFile, MediaFile.id == DeviceDownload.media_id)
-            .join(Item, Item.id == MediaFile.item_id)
-            .filter(
-                DeviceDownload.device_id == device,
-                DeviceDownload.family_id == user.family_id,
-                DeviceDownload.desired == "saved",
-                MediaFile.kind == "video",
-                Item.id.in_(visible_item_ids(user.family_id)),
-            )
-            .all()
+    rows = (
+        db.query(DeviceDownload, MediaFile, Item)
+        .join(MediaFile, MediaFile.id == DeviceDownload.media_id)
+        .join(Item, Item.id == MediaFile.item_id)
+        .filter(
+            DeviceDownload.device_id == device,
+            DeviceDownload.family_id == user.family_id,
+            DeviceDownload.desired == "saved",
+            MediaFile.kind == "video",
+            Item.id.in_(visible_item_ids(user.family_id)),
         )
-        permissions = [
-            {
-                "episodeId": item.id,
-                "mediaId": file.id,
-                "version": file.sha256 or file.id,
-                "size": file.size_bytes,
-                "sha256": file.sha256,
-            }
-            for _, file, item in rows
-        ]
+        .all()
+    )
+    permissions = [
+        {
+            "episodeId": item.id,
+            "mediaId": file.id,
+            "version": file.sha256 or file.id,
+            "size": file.size_bytes,
+            "sha256": file.sha256,
+        }
+        for _, file, item in rows
+    ]
     grant = issue_grant(
         {
             "schema": 1,
@@ -171,7 +167,7 @@ def sync_state_data(user, db, device):
         "homeVersion": version(db, user.family_id, "home"),
         "playbackVersion": version(db, user.family_id, "playback"),
         "policyVersion": version(db, user.family_id, "policy"),
-        "offlineBlocked": blocked,
+        "offlineBlocked": False,
         "offlineGrant": grant,
     }
 

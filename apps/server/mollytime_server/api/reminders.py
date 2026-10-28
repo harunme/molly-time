@@ -4,7 +4,7 @@ import datetime as dt
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 
 from ..deps import CurrentUser, DbSession
@@ -135,6 +135,7 @@ def device_state(db, user, device_id):
         "requestId": row.request_id,
         "phase": row.phase,
         "episodeId": row.episode_id,
+        "sessionId": row.session_id,
         "warningPath": "/api/reminders/warning/playback",
         "farewellPath": "/api/reminders/farewell/playback",
     }
@@ -148,6 +149,24 @@ def reminder_state(request: Request, user: CurrentUser, db: DbSession):
 class RequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     deviceId: str
+
+
+def current_watch(db, device, at=None):
+    at = at or dt.datetime.now(dt.UTC)
+    if not device_online(device, at):
+        return None
+    watch = db.query(WatchSession).filter(
+        WatchSession.family_id == device.family_id,
+        WatchSession.device_id == device.id,
+        family_watch_clause(),
+    ).order_by(WatchSession.started_at.desc(), WatchSession.id.desc()).first()
+    boot = db.get(DeviceBootState, device.id)
+    if (watch and not watch.ended
+            and (not boot or aware(watch.started_at) >= aware(boot.started_at))
+            and aware(watch.last_reported_at or watch.started_at)
+            >= at - dt.timedelta(seconds=45)):
+        return watch
+    return None
 
 
 @router.get("/api/manage/reminders/devices")
@@ -167,21 +186,10 @@ def reminder_devices(user: Parent, db: DbSession):
     # before filtering ended sessions prevents an older session resurfacing.
     boots = {boot.device_id: boot for boot in db.query(DeviceBootState)
              .filter(DeviceBootState.device_id.in_([device.id for device in devices])).all()}
-    current = {}
-    for device in devices:
-        if not device_online(device, at):
-            continue
-        watch = db.query(WatchSession).filter(
-            WatchSession.family_id == user.family_id,
-            WatchSession.device_id == device.id,
-            family_watch_clause(),
-        ).order_by(WatchSession.started_at.desc(), WatchSession.id.desc()).first()
-        if (device_online(device, at) and watch and not watch.ended
-                and (device.id not in boots
-                     or aware(watch.started_at) >= aware(boots[device.id].started_at))
-                and aware(watch.last_reported_at or watch.started_at)
-                >= at - dt.timedelta(seconds=45)):
-            current[device.id] = watch
+    current = {
+        device.id: watch for device in devices
+        if (watch := current_watch(db, device, at)) is not None
+    }
     totals = dict(db.query(WatchInterval.session_id, func.sum(WatchInterval.played_ms))
         .filter(WatchInterval.session_id.in_([watch.id for watch in current.values()]))
         .group_by(WatchInterval.session_id).all())
@@ -219,35 +227,21 @@ def request_reminder(body: RequestBody, user: Parent, db: DbSession):
         raise HTTPException(404)
     if not device_online(device):
         raise HTTPException(409, "电视当前离线，请先打开电视上的 MollyTime，连接后再发起提醒")
-    from ..watch_control import control
-    managed = control(db, device.id)
-    if managed and managed.enabled:
-        raise HTTPException(409, "请使用观看管理中的看完这集休息")
+    watch = current_watch(db, device)
+    if watch is None:
+        raise HTTPException(409, "电视当前没有正在播放的视频，无需提醒休息")
     settings = db.get(FamilyReminders, user.family_id)
     if not settings or not all(clip_file(db, settings, kind) for kind in LABELS):
         raise HTTPException(422, "请先上传并处理好两段家长视频")
     row = db.get(DeviceReminder, device.id)
-    if row and row.phase != "idle":
-        raise HTTPException(409, "这台电视已有提醒，请先恢复播放")
-    # A stale or already ended session does not consume the next episode allowance.
-    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=45)
-    watch = (
-        db.query(WatchSession)
-        .filter(
-            WatchSession.family_id == user.family_id,
-            WatchSession.device_id == device.id,
-            WatchSession.ended.is_(False),
-            ((WatchSession.last_reported_at >= cutoff) | (WatchSession.started_at >= cutoff)),
-        )
-        .order_by(WatchSession.started_at.desc())
-        .first()
-    )
+    if row and row.phase != "idle" and row.session_id == watch.id:
+        raise HTTPException(409, "这次观看已安排休息")
     if row is None:
         row = DeviceReminder(device_id=device.id, family_id=user.family_id)
         db.add(row)
     row.request_id = uid()
-    row.episode_id = watch.item_id if watch else None
-    row.session_id = watch.id if watch else None
+    row.episode_id = watch.item_id
+    row.session_id = watch.id
     row.phase = "pending"
     settings.enabled = True
     db.commit()
@@ -257,14 +251,34 @@ def request_reminder(body: RequestBody, user: Parent, db: DbSession):
 @router.delete("/api/manage/reminders/devices/{device_id}")
 def restore_playback(device_id: str, user: Parent, db: DbSession):
     serialize_sqlite_write(db)
-    from ..watch_control import control
-    managed = control(db, device_id)
-    if managed and managed.enabled:
-        raise HTTPException(409, "请使用允许观看")
+    # Compatibility for old parent pages. Removing a one-shot reminder never
+    # changes the independent daily allowance.
     row = db.get(DeviceReminder, device_id)
     if not row or row.family_id != user.family_id:
         raise HTTPException(404)
     db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+class FinishBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sessionId: str = Field(min_length=1, max_length=36)
+
+
+@router.post("/api/reminders/finish")
+def finish_reminder(body: FinishBody, request: Request, user: CurrentUser, db: DbSession):
+    serialize_sqlite_write(db)
+    device_id = getattr(request.state, "device_id", None)
+    if not device_id:
+        raise HTTPException(403)
+    watch = db.get(WatchSession, body.sessionId)
+    if (not watch or watch.device_id != device_id or watch.family_id != user.family_id
+            or watch.user_id != user.id):
+        raise HTTPException(404)
+    reminder = db.get(DeviceReminder, device_id)
+    if reminder and reminder.session_id == watch.id:
+        db.delete(reminder)
     db.commit()
     return {"ok": True}
 

@@ -286,7 +286,7 @@ def test_live_time_excluded_from_reports_overview_and_boot_totals(operator):  # 
         )
 
 
-def test_device_reminder_blocks_live_start_and_active_session(operator):  # noqa: F811
+def test_old_episode_reminder_does_not_block_a_new_live_session(operator):  # noqa: F811
     data = operator.post(PATH + "/import", json={"content": PLAYLIST}).json()
     channel = data["channels"][0]["id"]
     with Session(db.get_engine()) as s:
@@ -300,12 +300,12 @@ def test_device_reminder_blocks_live_start_and_active_session(operator):  # noqa
     with Session(db.get_engine()) as s:
         s.add(DeviceReminder(device_id="d1", family_id="f1", phase="pending"))
         s.commit()
-    assert operator.post(route, headers=headers).status_code == 403
+    assert operator.post(route, headers=headers).status_code == 200
     assert (
         operator.get(
             "/api/live-tv/sessions/" + response.json()["sessionId"], headers=headers
         ).status_code
-        == 403
+        == 200
     )
 
 

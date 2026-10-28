@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/playback/sessions", tags=["watch"])
 class Start(BaseModel):
     episodeId: str
     childId: str | None = None
+    previousSessionId: str | None = Field(default=None, max_length=36)
 
 
 @router.post("")
@@ -32,10 +33,13 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
     _child(db, body.childId, user.family_id)
     device_id = getattr(request.state, "device_id", None)
     reminder = db.get(DeviceReminder, device_id) if device_id else None
-    if reminder and reminder.phase != "idle":
-        if reminder.phase == "done" or (reminder.episode_id and reminder.episode_id != episode.id):
-            raise HTTPException(403, "今天的最后一集已安排，请家长在后台恢复播放")
-        reminder.episode_id = episode.id
+    # Only an explicit player continuation carries a reminder forward. A new
+    # selection/reopened app starts a fresh viewing session, with the same quota.
+    continuing_reminder = bool(
+        reminder and reminder.phase in ("pending", "watching")
+        and body.previousSessionId and reminder.session_id == body.previousSessionId
+        and reminder.episode_id == episode.id
+    )
     from ..watch_control import attach_session, require_play
     arrangement = require_play(db, device_id, episode.id, bind=True)
     row = WatchSession(
@@ -52,8 +56,11 @@ def start(body: Start, request: Request, user: CurrentUser, db: DbSession):
     db.add(row)
     db.flush()
     attach_session(db, arrangement, row.id)
-    if reminder and reminder.phase != "idle":
-        reminder.session_id = row.id
+    if reminder:
+        if continuing_reminder:
+            reminder.session_id = row.id
+        else:
+            db.delete(reminder)
     if row.device_id:
         device = db.get(Device, row.device_id)
         device.last_seen = dt.datetime.now(dt.UTC)

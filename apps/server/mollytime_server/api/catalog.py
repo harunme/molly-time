@@ -329,6 +329,11 @@ def _get_item(db: Session, item_id: str, expected_type: str, family_id: str) -> 
 def next_episode(episode_id: str, request: Request, user: CurrentUser, db: DbSession):
     episode = _get_item(db, episode_id, "Episode", user.family_id)
     require_visible(db, episode, request)
+    from ..management_models import DeviceReminder
+    device_id = getattr(request.state, "device_id", None)
+    reminder = db.get(DeviceReminder, device_id) if device_id else None
+    if reminder and reminder.phase != "idle" and reminder.episode_id == episode_id:
+        return {"episodeId": None}
     from ..watch_control import control, current_round, normalize
     policy = control(db, getattr(request.state, "device_id", None))
     if policy and policy.enabled:

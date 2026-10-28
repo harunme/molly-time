@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
-from ..management_models import DeviceReminder, MediaOptions, WatchProgress, WatchSession
+from ..management_models import MediaOptions, WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
 from ..resource_policy import require_visible
 from ..storage import build_storage
@@ -85,11 +85,6 @@ def authorized_file(db, episode_id, request, user, mediaId=None, sessionId=None)
     device_id = getattr(request.state, "device_id", None)
     from ..watch_control import require_play
     require_play(db, device_id, episode_id)
-    reminder = db.get(DeviceReminder, device_id) if device_id else None
-    if reminder and reminder.phase != "idle" and (
-        reminder.phase == "done" or reminder.episode_id != episode_id
-    ):
-        raise HTTPException(403, "请家长在后台恢复播放")
     watch = db.get(WatchSession, sessionId) if sessionId else None
     valid_session = (
         watch

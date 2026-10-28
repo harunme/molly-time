@@ -80,6 +80,7 @@ class PlaybackActivity : AppCompatActivity() {
                     runCatching { app.watchControl.sync(); reminderState() }.onSuccess { state -> runOnUiThread {
                         if (active && generation == loadGeneration && !isFinishing && player != null &&
                             state.optString("phase") == "pending" && state.optString("episodeId") == episodeId &&
+                            (!state.has("sessionId") || state.optString("sessionId") == watchId) &&
                             state.optString("requestId") != reminderRequestId) {
                             reminderRequestId = state.getString("requestId")
                             report("stop")
@@ -131,10 +132,10 @@ class PlaybackActivity : AppCompatActivity() {
         awaitingNext = state?.getBoolean("awaitingNext", false) ?: false
         completed = awaitingNext
         managedClip = state?.getBoolean("managedClip", false) ?: false
-        parentClipPath = state?.getString("parentClipPath") ?: ""
+        parentClipPath = if (managedClip) state?.getString("parentClipPath") ?: "" else ""
         parentClipAfter = state?.getBoolean("parentClipAfter", false) ?: false
         parentClipPosition = state?.getLong("parentClipPosition", 0) ?: 0
-        reminderRequestId = state?.getString("reminderRequestId") ?: ""
+        watchId = state?.getString("watchId") ?: ""
         selectedSubtitle = state?.getString("selectedSubtitle")
         playbackSpeed = state?.getFloat("playbackSpeed", 1f) ?: 1f
         resumeFromProgress = state?.getBoolean("resumeFromProgress", true) ?: true
@@ -159,9 +160,10 @@ class PlaybackActivity : AppCompatActivity() {
         if (parentClipPath.isNotEmpty()) loadParentClip() else if (awaitingNext) advance() else load()
     }
 
-    private fun load() {
+    private fun load(continueReminder: Boolean = false) {
         val current = ++loadGeneration
         val loadingEpisode = episodeId
+        val previousSessionId = if (continueReminder) watchId else ""
         status.text = "正在加载视频…"
         app.playbackIo.execute {
             runCatching {
@@ -169,15 +171,10 @@ class PlaybackActivity : AppCompatActivity() {
                     app.watchControl.sync()
                     app.watchControl.requireEpisode(loadingEpisode)
                     app.watchControl.warningPath(loadingEpisode)?.let { return@online Triple(JSONObject().put("managedWarning", it), JSONObject(), "") }
-                    val reminder = reminderState()
-                    if (reminder.optString("phase") == "pending" &&
-                        (reminder.isNull("episodeId") || reminder.optString("episodeId") == loadingEpisode) &&
-                        reminder.optString("requestId") != reminderRequestId) {
-                        return@online Triple(JSONObject().put("parentReminder", reminder), JSONObject(), "")
-                    }
                     val detail = app.api.json("GET", "/api/episodes/$loadingEpisode")
                     val resume = app.api.json("GET", app.api.progressPath(loadingEpisode, child))
                     val body = JSONObject().put("episodeId", loadingEpisode)
+                    if (previousSessionId.isNotEmpty()) body.put("previousSessionId", previousSessionId)
                     if (child.isNotEmpty()) body.put("childId", child)
                     val watch = app.api.json("POST", "/api/playback/sessions", body)
                     app.watchControl.sync()
@@ -190,12 +187,6 @@ class PlaybackActivity : AppCompatActivity() {
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
                 if (active && current == loadGeneration && !isDestroyed && !isFinishing) {
                     if (detail.has("managedWarning")) { managedClip = true; showParentClip(detail.getString("managedWarning"), false); return@runOnUiThread }
-                    if (detail.has("parentReminder")) {
-                        val reminder = detail.getJSONObject("parentReminder")
-                        reminderRequestId = reminder.getString("requestId")
-                        showParentClip(reminder.getString("warningPath"), false)
-                        return@runOnUiThread
-                    }
                     offlineMode = detail.optJSONObject("playback")?.optBoolean("offline") == true
                     watchId = sessionId
                     watchStartedAt = resume.optLong("localSessionStartedAt", System.currentTimeMillis())
@@ -325,9 +316,10 @@ class PlaybackActivity : AppCompatActivity() {
             runCatching {
                 if (offlineMode) return@runCatching JSONObject().put("episodeId", (if (app.watchControl.managedEpisodes() && app.watchControl.snapshot().optString("status") != "allowed") null else app.catalog.store().nextEpisode(finishedEpisode)) ?: JSONObject.NULL)
                 app.watchControl.sync()
-                if (app.watchControl.managedEpisodes()) return@runCatching if (app.watchControl.snapshot().optString("status") != "allowed") JSONObject().put("episodeId", JSONObject.NULL) else app.api.json("GET", "/api/episodes/$finishedEpisode/next")
+                if (app.watchControl.snapshot().optBoolean("enabled") && app.watchControl.snapshot().optString("status") != "allowed") return@runCatching JSONObject().put("episodeId", JSONObject.NULL)
                 val reminder = reminderState()
-                if (reminder.optString("episodeId") == finishedEpisode && reminder.optString("phase") != "idle")
+                if (reminder.optString("episodeId") == finishedEpisode && reminder.optString("phase") != "idle" &&
+                    (!reminder.has("sessionId") || reminder.optString("sessionId") == watchId))
                     JSONObject().put("parentFarewell", reminder.getString("farewellPath"))
                 else app.api.json("GET", "/api/episodes/$finishedEpisode/next")
             }
@@ -425,7 +417,7 @@ class PlaybackActivity : AppCompatActivity() {
     private fun finishParentClip() {
         release()
         if (parentClipAfter) { finish(); return }
-        if (managedClip) { managedClip = false; parentClipPath = ""; parentClipPosition = 0L; load(); return }
+        if (managedClip) { managedClip = false; parentClipPath = ""; parentClipPosition = 0L; load(true); return }
         val generation = ++loadGeneration
         status.text = "正在返回最后一集…"
         app.playbackIo.execute {
@@ -435,10 +427,10 @@ class PlaybackActivity : AppCompatActivity() {
                     parentClipPath = ""
                     parentClipPosition = 0L
                     playOnResume = true
-                    if (completed) { awaitingNext = true; advance() } else load()
+                    if (completed) { awaitingNext = true; advance() } else load(true)
                 } }.onFailure { error -> runOnUiThread {
                     if (!active || generation != loadGeneration || isFinishing) return@runOnUiThread
-                    if (error is ApiFailure && error.status == 404) { parentClipPath = ""; load() }
+                    if (error is ApiFailure && error.status == 404) { parentClipPath = ""; load(true) }
                     else status.text = "提醒确认失败。按确定重试，返回退出"
                 } }
         }
@@ -534,11 +526,18 @@ class PlaybackActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    private fun finishReminder() {
+        val sessionId = watchId
+        if (sessionId.isEmpty() || offlineMode) return
+        app.playbackIo.execute { runCatching { app.api.json("POST", "/api/reminders/finish", JSONObject().put("sessionId", sessionId)) } }
+    }
+
     override fun finish() {
         // Activity results are captured by finish(), before onStop(). Capture the
         // final position now; reporting and engine cleanup must not delay return.
         if (!isFinishing && ::episodeId.isInitialized) {
             report("stop")
+            finishReminder()
             val runtime = if (parentClipPath.isEmpty()) player?.duration?.takeIf { it > 0 } ?: episodeRuntimeMs else episodeRuntimeMs
             setResult(RESULT_OK, Intent().putExtra("episodeId", episodeId)
                 .putExtra("positionMs", position).putExtra("completed", completed)
@@ -562,6 +561,10 @@ class PlaybackActivity : AppCompatActivity() {
         advancing = false
         loadGeneration++
         report("stop")
+        if (!isChangingConfigurations) {
+            finishReminder()
+            parentClipPath = ""; parentClipAfter = false; managedClip = false; reminderRequestId = ""
+        }
         release()
         super.onStop()
     }
@@ -571,6 +574,7 @@ class PlaybackActivity : AppCompatActivity() {
         outState.putBoolean("parentClipAfter", parentClipAfter)
         outState.putLong("parentClipPosition", if (parentClipPath.isNotEmpty()) player?.currentPosition ?: parentClipPosition else 0)
         outState.putString("reminderRequestId", reminderRequestId)
+        outState.putString("watchId", watchId)
         outState.putString("episodeId", episodeId)
         outState.putLong("position", if (parentClipPath.isEmpty()) player?.currentPosition ?: position else position)
         outState.putBoolean("play", player?.playWhenReady ?: playOnResume)
@@ -602,7 +606,7 @@ class PlaybackActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.repeatCount == 0 && keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER) &&
             (player == null || player?.playerError != null)) {
-            if (parentClipPath.isNotEmpty()) { release(); loadParentClip() } else if (awaitingNext) advance() else { report("stop"); release(); load() }
+            if (parentClipPath.isNotEmpty()) { release(); loadParentClip() } else if (awaitingNext) advance() else { report("stop"); release(); load(true) }
             return true
         }
         return super.onKeyDown(keyCode, event)

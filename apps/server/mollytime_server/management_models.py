@@ -79,7 +79,7 @@ class FamilyReminders(Base):
 
 
 class DeviceReminder(Base):
-    """A parent grants one last episode to one paired TV, then blocks replay."""
+    """One-shot rest reminder bound to a TV playback session; never a quota lock."""
 
     __tablename__ = "device_reminders"
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)

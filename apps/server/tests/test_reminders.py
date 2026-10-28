@@ -68,9 +68,9 @@ def headers(device):
     return {"Authorization": f"Bearer {token}"}
 
 
-def start(parent, tv, episode="e1"):
+def start(parent, tv, episode="e1", previous=None):
     response = parent.post(
-        "/api/playback/sessions", headers=tv, json={"episodeId": episode, "childId": "c1"}
+        "/api/playback/sessions", headers=tv, json={"episodeId": episode, "childId": "c1", "previousSessionId": previous}
     )
     assert response.status_code == 200
     return response.json()["sessionId"]
@@ -180,77 +180,67 @@ def test_reminder_clips_stay_out_of_resource_library(parent):
     assert parent.get("/api/manage/reminders").json()["warning"]["ready"] is True
 
 
-def test_active_episode_reminder_stops_next_and_replay_until_parent_restores(parent):
+def test_reminder_stops_autoplay_but_new_selection_needs_no_restore(parent):
     tv, other_tv = seed(parent)
     sid = start(parent, tv)
     response = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
     assert response.status_code == 200
     state = response.json()
-    assert state["episodeId"] == "e1" and state["phase"] == "pending"
-    assert (
-        parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).status_code == 409
-    )
+    assert state["sessionId"] == sid and state["phase"] == "pending"
+    assert parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).status_code == 409
     assert parent.get("/api/reminders/state", headers=other_tv).json()["phase"] == "idle"
-    assert (
-        parent.post(
-            f"/api/reminders/requests/{state['requestId']}/ack", headers=other_tv
-        ).status_code
-        == 404
-    )
-    assert (
-        parent.post(f"/api/reminders/requests/{state['requestId']}/ack", headers=tv).json()["phase"]
-        == "watching"
-    )
-    assert (
-        parent.post("/api/playback/sessions", headers=tv, json={"episodeId": "other"}).status_code
-        == 403
-    )
-    assert parent.get("/api/episodes/other/play", headers=tv).status_code == 403
-    assert (
-        parent.post(
-            f"/api/playback/sessions/{sid}/events",
-            headers=tv,
-            json=event(end=0, played=0, completed=True, stopped=True),
-        ).status_code
-        == 200
-    )
+    ack = f"/api/reminders/requests/{state['requestId']}/ack"
+    assert parent.post(ack, headers=other_tv).status_code == 404
+    assert parent.post(ack, headers=tv).json()["phase"] == "watching"
+    assert parent.get("/api/episodes/e1/next", headers=tv).json()["episodeId"] is None
+    assert parent.post(f"/api/playback/sessions/{sid}/events", headers=tv,
+        json=event(end=0, played=0, completed=True, stopped=True)).status_code == 200
     assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "done"
-    for episode in ["e1", "other"]:
-        assert (
-            parent.post(
-                "/api/playback/sessions", headers=tv, json={"episodeId": episode}
-            ).status_code
-            == 403
-        )
-        assert parent.get(f"/api/episodes/{episode}/play", headers=tv).status_code == 403
     assert parent.get("/api/reminders/farewell/play", headers=tv).status_code == 200
-    assert parent.delete("/api/manage/reminders/devices/tv1").status_code == 200
-    assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "idle"
+    assert parent.get("/api/episodes/e1/next", headers=tv).json()["episodeId"] is None
+    # A new selection clears even an old client's leftover completed reminder.
     start(parent, tv, "other")
+    assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "idle"
+    assert parent.get("/api/episodes/other/play", headers=tv).status_code == 200
 
 
-def test_idle_tv_gets_exactly_the_next_episode_and_request_survives_restart(parent):
+def test_idle_tv_cannot_schedule_a_reminder_for_future_viewing(parent):
     tv, _ = seed(parent)
-    result = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).json()
-    assert result["episodeId"] is None
-    sid = start(parent, tv, "other")
-    assert parent.get("/api/reminders/state", headers=tv).json()["episodeId"] == "other"
-    assert (
-        parent.post(
-            f"/api/playback/sessions/{sid}/events",
-            headers=tv,
-            json=event(end=0, played=0, stopped=True),
-        ).status_code
-        == 200
-    )
-    start(parent, tv, "other")  # Exit before completion may resume the same last episode.
-    assert (
-        parent.post("/api/playback/sessions", headers=tv, json={"episodeId": "e1"}).status_code
-        == 403
-    )
+    result = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
+    assert result.status_code == 409 and "没有正在播放" in result.json()["detail"]
+    start(parent, tv, "other")
+    assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "idle"
+
+
+@pytest.mark.parametrize("acknowledged", [False, True])
+def test_exit_finishes_only_its_own_reminder_and_cannot_clear_a_new_one(parent, acknowledged):
+    tv, other_tv = seed(parent)
+    sid = start(parent, tv)
+    reminder = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).json()
+    if acknowledged:
+        parent.post(f"/api/reminders/requests/{reminder['requestId']}/ack", headers=tv)
+    finish = {"sessionId": sid}
+    assert parent.post("/api/reminders/finish", headers=other_tv, json=finish).status_code == 404
+    assert parent.post("/api/reminders/finish", json=finish).status_code == 403
+    assert parent.post("/api/reminders/finish", headers=tv, json=finish).status_code == 200
+    assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "idle"
+    newer = start(parent, tv, "other")
+    next_reminder = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).json()
+    assert next_reminder["sessionId"] == newer
+    assert parent.post("/api/reminders/finish", headers=tv, json=finish).status_code == 200
+    assert parent.get("/api/reminders/state", headers=tv).json()["requestId"] == next_reminder["requestId"]
+
+
+@pytest.mark.parametrize("phase", ["pending", "watching", "done"])
+def test_reopening_or_selecting_again_discards_old_reminder(parent, phase):
+    tv, _ = seed(parent)
+    start(parent, tv)
+    parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
     with Session(db.get_engine()) as session:
-        row = session.get(DeviceReminder, "tv1")
-        assert row.episode_id == "other" and row.request_id == result["requestId"]
+        session.get(DeviceReminder, "tv1").phase = phase
+        session.commit()
+    start(parent, tv)  # Same video, explicitly selected again, is a new viewing session.
+    assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "idle"
 
 
 def test_stale_session_does_not_choose_an_old_last_episode(parent):
@@ -260,7 +250,7 @@ def test_stale_session_does_not_choose_an_old_last_episode(parent):
         session.get(WatchSession, sid).started_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
         session.commit()
     result = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).json()
-    assert result["episodeId"] is None
+    assert "没有正在播放" in result["detail"]
     start(parent, tv, "other")
 
 
@@ -276,20 +266,21 @@ def test_private_recordings_preview_range_and_no_watch_sessions(parent):
     )
     assert parent.get("/api/reminders/warning/play").content == b"0123456789"
     assert parent.get("/api/reminders/warning/playback", headers=tv).status_code == 404
+    start(parent, tv)
     parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
     info = parent.get("/api/reminders/warning/playback", headers=tv).json()
     assert info["url"] == "/api/reminders/warning/play" and info["subtitles"] == []
     response = parent.get(info["url"], headers={**tv, "Range": "bytes=2-5"})
     assert response.status_code == 206 and response.content == b"2345"
     with Session(db.get_engine()) as session:
-        assert session.query(WatchSession).count() == 0
+        assert session.query(WatchSession).count() == 1  # Clips create no sessions of their own.
 
 
 def test_delayed_completion_of_an_old_session_cannot_finish_the_new_last_episode(parent):
     tv, _ = seed(parent)
     old_session = start(parent, tv)
     parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
-    current_session = start(parent, tv)
+    current_session = start(parent, tv, previous=old_session)
     completion = event(end=0, played=0, completed=True, stopped=True)
     assert (
         parent.post(
@@ -310,6 +301,7 @@ def test_delayed_completion_of_an_old_session_cannot_finish_the_new_last_episode
 def test_authorization_csrf_readiness_and_other_family(parent):
     tv, _ = seed(parent)
     path = "/api/manage/reminders/requests"
+    start(parent, tv)
     assert (
         parent.post(path, json={"deviceId": "tv1"}, headers={"X-CSRF-Token": "wrong"}).status_code
         == 403
@@ -419,7 +411,7 @@ def test_idle_device_heartbeat_restores_presence_without_creating_watch_history(
     }
     assert devices["tv1"]["online"] and not devices["tv2"]["online"]
     assert (
-        parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).status_code == 200
+        parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).status_code == 409
     )
     with Session(db.get_engine()) as session:
         assert session.query(WatchSession).count() == 0

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..deps import CurrentUser, DbSession
 from ..live_tv import MAX_BYTES, download_playlist, parse_playlist
 from ..manage_auth import aware
-from ..management_models import DeviceReminder, LiveTvSettings, WatchSession
+from ..management_models import LiveTvSettings, WatchSession
 from ..models import Item
 from ..transactions import external_io, serialize_sqlite_write
 from .operations import Operator
@@ -93,9 +93,6 @@ def require_live_access(request, db, *, bind=False):
     device_id = getattr(request.state, "device_id", None)
     from ..watch_control import require_play
     require_play(db, device_id, live=True, bind=bind)
-    reminder = db.get(DeviceReminder, device_id) if device_id else None
-    if reminder and reminder.phase != "idle":
-        raise HTTPException(403, "家长已安排休息，请先在后台恢复播放")
     row = db.get(LiveTvSettings, "platform")
     if not row or not row.enabled:
         raise HTTPException(403, "运营管理员尚未开启电视直播")

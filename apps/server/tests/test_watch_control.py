@@ -198,6 +198,39 @@ def test_time_pause_duplicate_and_late_old_round(setup, quota_clock):
     assert state(client, headers)["round"]["remainingMs"] == 60000
 
 
+def test_session_reminder_never_spends_or_resets_daily_minutes(parent):
+    from test_reminders import seed
+
+    headers, _ = seed(parent)
+    parent.put("/api/manage/watch-control/pin", json={"pin": "1234"})
+    initial = enable(parent, headers, "minutes", 30)
+    session_id = start(parent, headers).json()["sessionId"]
+    parent.post("/api/watch-control/sync", headers=headers, json={
+        "roundId": initial["round"]["id"], "playedMs": 120000,
+    })
+    before = state(parent, headers)
+    reminder = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
+    assert reminder.status_code == 200, reminder.text
+    assert state(parent, headers)["round"] == before["round"]
+    for kind in ("warning", "farewell"):
+        assert parent.get(f"/api/reminders/{kind}/playback", headers=headers).status_code == 200
+    parent.post(f"/api/playback/sessions/{session_id}/events", headers=headers,
+                json=event(end=0, played=0, completed=True, stopped=True))
+    assert state(parent, headers)["round"]["remainingMs"] == 28 * 60000
+    assert start(parent, headers, "other").status_code == 200
+    after = state(parent, headers)
+    assert after["status"] == "allowed"
+    assert after["round"]["id"] == initial["round"]["id"]
+    assert after["round"]["remainingMs"] == before["round"]["remainingMs"]
+    assert parent.get("/api/reminders/state", headers=headers).json()["phase"] == "idle"
+    # Ending one viewing session cannot bypass actual quota exhaustion.
+    parent.post("/api/watch-control/sync", headers=headers, json={
+        "roundId": initial["round"]["id"], "playedMs": 30 * 60000,
+    })
+    assert start(parent, headers).status_code == 403
+    assert state(parent, headers)["round"]["remainingMs"] == 0
+
+
 def test_idempotency_versions_device_isolation_and_legacy_bypass(setup):
     client, headers = setup
     enable(client, headers, "minutes")
@@ -219,7 +252,7 @@ def test_idempotency_versions_device_isolation_and_legacy_bypass(setup):
         ).status_code
         == 409
     )
-    assert client.delete("/api/manage/reminders/devices/tv1").status_code == 409
+    assert client.delete("/api/manage/reminders/devices/tv1").status_code == 404
     assert (
         client.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).status_code == 409
     )

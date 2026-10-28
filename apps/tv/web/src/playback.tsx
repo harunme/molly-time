@@ -62,7 +62,7 @@ function ParentClip({ path, label, done, close, fallback = false }: { path: stri
   </div>;
 }
 
-type ReminderState = { requestId: string | null; phase: 'idle' | 'pending' | 'watching' | 'done'; episodeId: string | null; warningPath?: string; farewellPath?: string };
+type ReminderState = { requestId: string | null; phase: 'idle' | 'pending' | 'watching' | 'done'; episodeId: string | null; sessionId?: string | null; warningPath?: string; farewellPath?: string };
 function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) {
   const guard = useRef(new BrowserWatchGuard());
   const [watchNotice, setWatchNotice] = useState('');
@@ -76,7 +76,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     return state;
   };
   const showWarning = (state: ReminderState) => {
-    if (closed.current || activeClip.current || !state.requestId || state.phase !== 'pending' || state.episodeId !== episode || shownReminder.current === state.requestId) return;
+    if (closed.current || activeClip.current || !state.requestId || state.phase !== 'pending' || state.episodeId !== episode || (state.sessionId && state.sessionId !== session.current) || shownReminder.current === state.requestId) return;
     shownReminder.current = state.requestId;
     menuOpen.current = false; setMenu(false);
     sample(); playing.current = false; video.current?.pause();
@@ -132,6 +132,10 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
   }, [info, serial, clip, menu, nextError]);
   const seq = useRef(0), start = useRef(performance.now()), last = useRef(0), playing = useRef(false), retries = useRef(0);
   const chain = useRef(Promise.resolve());
+  const finishReminder = () => {
+    const sessionId = session.current;
+    if (sessionId) void browserRequest('/api/reminders/finish', 'POST', { sessionId }).catch(() => {});
+  };
   const sample = (stoppedEvent = false) => {
     if (!session.current || stopped.current) return;
     if (stoppedEvent) stopped.current = true;
@@ -154,6 +158,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     // Read the media position while the video is still mounted.
     guard.current.sample(false); void guard.current.sync().catch(() => {});
     sample(true); playing.current = false; video.current?.pause();
+    finishReminder();
     const runtime = (video.current?.duration ?? 0) * 1000;
     close(session.current ? { episodeId: episode, positionMs: Math.round(position.current * 1000),
       completed: completed.current || !!video.current?.ended,
@@ -224,7 +229,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
       const state = await readReminder();
       if (alive && !closed.current) { showWarning(state); setInfo(source); setError(''); }
     };
-    void load().catch((e) => { if (alive) setError(e.status === 403 ? '最后一集已经安排或看完了，请家长在后台恢复播放' : e.message); });
+    void load().catch((e) => { if (alive) setError(e.message); });
     return () => { alive = false; };
   }, [episode, serial]);
   useEffect(() => {
@@ -297,7 +302,7 @@ function BrowserPlayback({ episode, fromStart, playNext, close }: EpisodeProps) 
     }, 15000);
     window.addEventListener('keydown', key, true);
     window.addEventListener('molly:menu', remoteMenu, true);
-    return () => { closed.current = true; sample(true); window.mollyBack = oldBack; clearInterval(timer); clearInterval(reminderTimer); window.removeEventListener('keydown', key, true); window.removeEventListener('molly:menu', remoteMenu, true); };
+    return () => { closed.current = true; sample(true); finishReminder(); window.mollyBack = oldBack; clearInterval(timer); clearInterval(reminderTimer); window.removeEventListener('keydown', key, true); window.removeEventListener('molly:menu', remoteMenu, true); };
   }, []);
   return <div role="dialog" aria-label="视频播放" className="browser-player">
     {info && <video key={serial} ref={video} tabIndex={0} src={browserMediaUrl(info.url)} controls autoPlay={!clip} crossOrigin="anonymous"

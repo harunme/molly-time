@@ -45,64 +45,53 @@ export function useReminderData(includeDevices = false, enabled = true) {
 }
 
 const phases: Record<string, string> = {
-  pending: '已发起，等待电视播放提醒', watching: '提醒已播放，只能看完当前这一集',
-  done: '最后一集已结束，等待恢复播放', idle: '尚未发起提醒',
+  pending: '已安排，这集看完休息', watching: '提醒已播放，这集看完休息',
+  done: '本次观看已结束，再次选片可继续', idle: '仅提醒本次观看，不影响每日剩余额度',
 };
 
 export function ParentReminderActions({ data, readonly, run, notify }: {
   data: ReturnType<typeof useReminderData>; readonly: boolean; run: Run; notify: (value: string) => void;
 }) {
   const { settings, devices, error, reload } = data;
-  const online = devices?.filter((device) => device.online && !device.watchManagement) ?? [];
-  const [action, setAction] = useState<'remind' | 'restore'>();
-  const [busy, setBusy] = useState(false);
+  const online = devices?.filter((device) => device.online) ?? [];
+  const [choosing, setChoosing] = useState(false), [busy, setBusy] = useState(false);
   const clipsReady = !!settings?.warning.ready && !!settings?.farewell.ready;
-  const eligible = (device: Device, operation: 'remind' | 'restore') => device.online &&
-    (operation === 'remind' ? clipsReady && !device.requestId : !!device.requestId);
-  const perform = (device: Device, operation: 'remind' | 'restore') => {
-    if (readonly || busy || error || !eligible(device, operation)) return;
+  const eligible = (device: Device) => clipsReady && !!device.currentWatch && !device.requestId;
+  const perform = (device: Device) => {
+    if (readonly || busy || error || !eligible(device)) return;
     setBusy(true);
     void run(async () => {
-      if (operation === 'remind') {
-        await api('/reminders/requests', 'POST', { deviceId: device.id });
-        notify(`已向${device.name}发起提醒，当前这一集看完就结束。`);
-      } else {
-        await api(`/reminders/devices/${device.id}`, 'DELETE');
-        notify(`已恢复${device.name}的播放，可以重新选择视频。`);
-      }
-      setAction(undefined);
+      await api('/reminders/requests', 'POST', { deviceId: device.id });
+      notify(`已提醒${device.name}，这集看完休息；再次选片可使用今日剩余额度。`);
+      setChoosing(false);
       await reload();
     }).finally(() => setBusy(false));
   };
-  const start = (operation: 'remind' | 'restore') => {
-    if (online.length === 1) perform(online[0], operation);
-    else setAction(operation);
-  };
+  const start = () => { if (online.length === 1) perform(online[0]); else setChoosing(true); };
   useEffect(() => {
-    if (devices && !devices.some((device) => device.online)) setAction(undefined);
+    if (devices && !devices.some((device) => device.online)) setChoosing(false);
   }, [devices]);
   if (!online.length) return null;
   return <div className="overview-playback-control" role="group" aria-label="播放控制">
     {online.length === 1 && <p className="overview-playback-status" role="status">{online[0].name} · {phases[online[0].phase] ?? phases.idle}</p>}
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
     {!readonly && <div className="overview-playback-actions">
-      <Button type="button" size="sm" title="提醒后只看完当前这一集，结束时播放休息提醒视频并停止" disabled={busy || !!error || !online.some((device) => eligible(device, 'remind'))} onClick={() => start('remind')}>发起提醒</Button>
-      <Button type="button" size="sm" variant="bordered" disabled={busy || !!error || !online.some((device) => eligible(device, 'restore'))} onClick={() => start('restore')}>恢复播放</Button>
+      <Button type="button" size="sm" title="提醒当前正在观看的这一集，结束后停止连播；再次选片仍可使用今日剩余额度" disabled={busy || !!error || !online.some(eligible)} onClick={start}>这集看完休息</Button>
     </div>}
-    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/family/devices">电视管理</Link>上传剩余集数提醒和休息提醒视频。</p>}
-    <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(undefined); }}>
+    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/devices">我的电视</Link>上传剩余集数提醒和休息提醒视频。</p>}
+    <Dialog open={choosing} onOpenChange={(open) => { if (!busy) setChoosing(open); }}>
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>
-          <DialogTitle>{action === 'restore' ? '选择要恢复播放的电视' : '选择要提醒的电视'}</DialogTitle>
-          <DialogDescription>{action === 'restore' ? '选择电视后解除播放限制，可以重新选择视频。' : '选择电视后立即发起提醒，只看完当前这一集，结束时播放休息提醒视频并停止。没有正在播放时，接下来的一集就是最后一集。'}</DialogDescription>
+          <DialogTitle>选择要提醒的电视</DialogTitle>
+          <DialogDescription>只提醒当前正在观看的这一集，看完后停止连播。再次选片可继续使用当天剩余额度。</DialogDescription>
         </DialogHeader>
         <DialogBody className="overview-playback-devices">
-          {online.map((device) => <Button key={device.id} type="button" variant="bordered" className="overview-playback-device" disabled={busy || !!error || readonly || !action || !eligible(device, action)}
-            aria-label={`${action === 'restore' ? '恢复播放' : '提醒'}：${device.name}`} onClick={() => { if (action) perform(device, action); }}>
-            <span><strong>{device.name}</strong><small>{phases[device.phase] ?? phases.idle}</small></span><span>{action === 'restore' ? '恢复播放' : '发起提醒'}</span>
+          {online.map((device) => <Button key={device.id} type="button" variant="bordered" className="overview-playback-device" disabled={busy || !!error || readonly || !eligible(device)}
+            aria-label={`提醒：${device.name}`} onClick={() => perform(device)}>
+            <span><strong>{device.name}</strong><small>{device.currentWatch ? phases[device.phase] ?? phases.idle : '当前没有正在播放的视频'}</small></span><span>这集看完休息</span>
           </Button>)}
         </DialogBody>
-        <DialogFooter><Button type="button" variant="ghost" disabled={busy} onClick={() => setAction(undefined)}>取消</Button></DialogFooter>
+        <DialogFooter><Button type="button" variant="ghost" disabled={busy} onClick={() => setChoosing(false)}>取消</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;
@@ -134,7 +123,7 @@ export function ParentReminders({ readonly }: { readonly: boolean }) {
   };
   return <Card className="settings-card parent-reminders">
     <h2>家长视频提醒</h2>
-    <p className="muted">上传最后一集与休息提醒视频，观看时自动提示，也可在这里预览。未开启观看管理的电视可在<Link to="/overview">概览</Link>手动发起提醒。</p>
+    <p className="muted">上传最后一集与休息提醒视频，观看时自动提示，也可在这里预览。在<Link to="/overview">概览</Link>点击“这集看完休息”，仅结束本次观看，不影响今日剩余额度。</p>
     {uploadPolicy.limits && <p className="muted">单个视频上限：{bytes(uploadPolicy.limits.video)}</p>}
     {uploadPolicy.error && <Alert variant="destructive" role="alert"><AlertDescription>{uploadPolicy.error}</AlertDescription></Alert>}
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -157,7 +146,7 @@ export function ParentReminders({ readonly }: { readonly: boolean }) {
         {preview === kind && settings[kind].previewUrl && <video key={settings[kind].previewUrl} src={settings[kind].previewUrl!} controls autoPlay aria-label="家长提醒预览" />}
       </div>; })}
       {uploads.error && <p className="file-upload-error" role="alert">上传状态暂时无法更新：{uploads.error}</p>}
-      <p className="muted">上传 MP4 视频，进度和重试会显示在对应文件下方。不上传也能按观看安排休息；未开启观看管理的电视需两段视频就绪后才能手动提醒。提醒不计入观看记录。</p>
+      <p className="muted">上传 MP4 视频，进度和重试会显示在对应文件下方。不上传也能按观看安排休息；两段视频就绪后可手动提醒本次观看。提醒视频不计入观看时长。</p>
     </>}
   </Card>;
 }

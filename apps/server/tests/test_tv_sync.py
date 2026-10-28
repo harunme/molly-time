@@ -71,6 +71,20 @@ def test_static_versions_pages_and_stale_read(tv):
     )
 
 
+def test_one_shot_reminder_does_not_revoke_offline_permissions(tv):
+    from mollytime_server.api.tv_sync import read_grant
+    from mollytime_server.management_models import DeviceReminder
+
+    before = read_grant(state(tv)["offlineGrant"]["token"])["permissions"]
+    assert before
+    with Session(db.get_engine()) as session:
+        session.add(DeviceReminder(device_id="tv1", family_id="f1", phase="done"))
+        session.commit()
+    after = state(tv)
+    assert after["offlineBlocked"] is False
+    assert read_grant(after["offlineGrant"]["token"])["permissions"] == before
+
+
 def test_progress_does_not_invalidate_static_catalog(tv):
     before = state(tv)
     session = tv.post("/api/playback/sessions", json={"episodeId": "e1"}).json()["sessionId"]
