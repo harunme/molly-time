@@ -35,13 +35,13 @@ MOLLYTIME_OSS_INTERNAL_ENDPOINT=https://oss-cn-hangzhou-internal.aliyuncs.com
 MOLLYTIME_OSS_UPLOAD_TTL=900
 MOLLYTIME_OSS_SIGNED_URL_TTL=3600
 MOLLYTIME_UPLOAD_EXPIRY_HOURS=72
-MOLLYTIME_MAX_UPLOAD_BYTES=524288000
-MOLLYTIME_MEDIA_PROCESSING_MAX_BYTES=524288000
+MOLLYTIME_MAX_UPLOAD_BYTES=10737418240
+MOLLYTIME_MEDIA_PROCESSING_MAX_BYTES=10737418240
 # 0 表示不设置商业配额；非零时按家庭计算已存储文件和未结束上传的预留。
 MOLLYTIME_FAMILY_STORAGE_LIMIT_BYTES=0
 ```
 
-单个视频默认上限 500 MiB（界面显示 500 MB），创建上传任务前即拒绝超限文件，不创建 OSS 分片会话。前端从 `/api/manage/uploads/options` 获取大小限制，普通视频与两段家长提醒共用限制。有效视频上限取上传上限和处理上限的较小值，修改环境配置后需要重启 API/worker；已入库的视频不受影响。
+单个视频默认上限 10 GiB（界面显示 10.0 GB），创建上传任务前即拒绝超限文件，不创建 OSS 分片会话。前端从 `/api/manage/uploads/options` 获取大小限制，普通视频与两段家长提醒共用限制。有效视频上限取上传上限和处理上限的较小值，修改环境配置后需要重启 API/worker；已入库的视频不受影响。若环境中仍显式设置旧的 524288000（500 MiB），需同时更新上述两个变量，或删除它们以采用默认值。
 
 Bucket 使用私有权限。RAM 身份仅授予这个 Bucket 内 `families/*` 对象的上传、读取、分片完成/取消、列举分片及删除权限。不要下发长期密钥给浏览器或 TV。不要改写签名 URL 的主机名；保留的 CDN 配置暂不生效。
 

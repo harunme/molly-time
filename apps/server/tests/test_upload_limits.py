@@ -1,4 +1,6 @@
 # ruff: noqa: F811 -- imported pytest fixtures
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -9,7 +11,7 @@ from test_tv_playback import client  # noqa: F401
 from mollytime_server import config, db
 from mollytime_server.management_models import UploadSession, UploadTarget
 
-VIDEO_LIMIT = 500 * 1024**2
+VIDEO_LIMIT = 10 * 1024**3
 
 
 def body(size, kind="video", filename="sample.mp4"):
@@ -33,7 +35,7 @@ def test_oversize_upload_creates_no_session_or_cloud_multipart(remote, backend):
     config.get_settings().storage_backend = backend
     result = web.post("/api/manage/uploads", json=body(VIDEO_LIMIT + 1))
     assert result.status_code == 413
-    assert result.json()["detail"] == "单个视频不能超过 500 MB"
+    assert result.json()["detail"] == "单个视频不能超过 10 GB"
     with Session(db.get_engine()) as session:
         assert session.scalar(select(func.count()).select_from(UploadSession)) == 0
         assert session.scalar(select(func.count()).select_from(UploadTarget)) == 0
@@ -41,13 +43,17 @@ def test_oversize_upload_creates_no_session_or_cloud_multipart(remote, backend):
 
 
 @pytest.mark.parametrize("backend", ["local", "oss"])
-def test_file_at_exact_limit_is_allowed(remote, backend):
+@pytest.mark.parametrize("size", [2 * 1024**3, VIDEO_LIMIT])
+def test_large_files_up_to_limit_are_allowed(remote, backend, size, monkeypatch):
     web, _ = remote
     config.get_settings().storage_backend = backend
-    response = web.post("/api/manage/uploads", json=body(VIDEO_LIMIT))
+    # Size validation is independent of the runner's available disk space.
+    monkeypatch.setattr("mollytime_server.api.manage_resources.shutil.disk_usage",
+                        lambda _path: SimpleNamespace(free=3 * VIDEO_LIMIT))
+    response = web.post("/api/manage/uploads", json=body(size))
     assert response.status_code == 200
     assert response.json()["transport"] == backend
-    assert response.json()["size"] == VIDEO_LIMIT
+    assert response.json()["size"] == size
 
 
 def test_effective_limit_uses_smaller_processing_capacity(parent, monkeypatch):
