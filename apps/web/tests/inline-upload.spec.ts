@@ -73,16 +73,16 @@ test('reminder progress and errors stay under the matching file and recover afte
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.screenshot({ path: testInfo.outputPath('reminder-file-upload-mobile.png'), fullPage: true });
     await page.reload();
-    await expect(status.getByLabel('继续上传 最后一集提醒.mp4', { exact: true })).toBeAttached();
+    await expect(status.getByRole('button', { name: '暂停', exact: true })).toBeVisible();
+    await expect(status.getByLabel('继续上传 最后一集提醒.mp4', { exact: true })).toHaveCount(0);
     hold = false; release();
-    await status.getByLabel('继续上传 最后一集提醒.mp4', { exact: true }).setInputFiles(video('最后一集提醒.mp4'));
     await expect(warning.getByRole('button', { name: '预览提醒', exact: true })).toBeVisible({ timeout: 15000 });
     await expect(status).toHaveCount(0);
     await page.route('**/api/manage/reminders/farewell/upload-target', route => route.fulfill({ status: 503, json: { detail: '无法创建休息提醒，请重试' } }));
     await farewell.getByLabel('上传休息提醒视频', { exact: true }).setInputFiles(video('休息提醒.mp4'));
     await expect(farewell.getByRole('alert')).toHaveText('无法创建休息提醒，请重试');
     await expect(warning.getByRole('alert')).toHaveCount(0);
-    await expect(page).toHaveURL(/family\/devices$/);
+    await expect(page).toHaveURL(/\/devices$/);
   } finally {
     release();
     const settings = await (await page.request.get('/api/manage/reminders')).json();

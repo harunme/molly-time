@@ -10,12 +10,18 @@ let csrf = '';
 export function setSession(session: Session | undefined) { csrf = session?.csrfToken || ''; }
 export async function api<T>(path: string, method = 'GET', body?: unknown, extraHeaders?: Record<string, string>, signal?: AbortSignal): Promise<T> {
   const raw = body instanceof Blob;
-  const response = await fetch('/api/manage' + path, { method, signal, credentials: 'same-origin',
-    headers: { ...(raw ? { 'Content-Type': 'application/octet-stream' } : { 'Content-Type': 'application/json' }), 'X-CSRF-Token': csrf, ...extraHeaders },
+  const requestCsrf = csrf;
+  let response: Response;
+  try { response = await fetch('/api/manage' + path, { method, signal, credentials: 'same-origin',
+    headers: { ...(raw ? { 'Content-Type': 'application/octet-stream' } : { 'Content-Type': 'application/json' }), 'X-CSRF-Token': requestCsrf, ...extraHeaders },
     body: body === undefined ? undefined : raw ? body : JSON.stringify(body) });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new ApiError(navigator.onLine ? '连接中断，请检查网络后重试' : '网络已断开，恢复连接后可重试', 0);
+  }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) window.dispatchEvent(new Event('mollytime:unauthorized'));
+    if (response.status === 401 && requestCsrf && requestCsrf === csrf) window.dispatchEvent(new Event('mollytime:unauthorized'));
     const message = typeof data.detail === 'string' ? data.detail : response.status === 422 ? '请检查输入内容和文件格式' : '操作失败，请重试';
     throw new ApiError(message, response.status);
   }

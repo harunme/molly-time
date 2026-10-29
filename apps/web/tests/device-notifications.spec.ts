@@ -28,8 +28,8 @@ test('boot alerts work across management pages, avoid login and polling duplicat
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.overview-online .overview-metric-value')).toHaveText('1 台');
   await expect(page.getByText('客厅电视已开机', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '开启开机通知', exact: true }).click();
-  await expect(page.getByRole('button', { name: '开机通知已开启', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '开启页面运行期间通知', exact: true }).click();
+  await expect(page.getByRole('button', { name: '页面运行期间通知已开启', exact: true })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => (window as unknown as { permissionRequests: number }).permissionRequests)).toBe(1);
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
   await page.clock.install();

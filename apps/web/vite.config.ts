@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
+import { pwaPlugin } from "./pwa-plugin";
 import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
-  plugins: [tailwindcss()],
+  plugins: [tailwindcss(), pwaPlugin()],
   resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   base: "/manage/",
   build: { target: "chrome90" },

@@ -1,3 +1,4 @@
+import { useRevalidation } from "./lifecycle";
 import { useEffect, useState } from 'react';
 import { api, bytes } from './api';
 
@@ -18,6 +19,7 @@ export function validateUploadSize(file: Pick<File, 'name' | 'size'>, kind: stri
 }
 
 export function useUploadLimits() {
+  const revision = useRevalidation();
   const [limits, setLimits] = useState<UploadLimits>();
   const [error, setError] = useState('');
   useEffect(() => {
@@ -26,6 +28,6 @@ export function useUploadLimits() {
       .then((value) => { if (!controller.signal.aborted) setLimits(value); })
       .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
-  }, []);
+  }, [revision]);
   return { limits, error };
 }

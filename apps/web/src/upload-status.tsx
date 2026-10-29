@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, bytes, type Page, type Upload } from './api';
-import { hasFile, live, pause, resume } from './uploads';
+import { hasFile, live, pause, resume, forgetUpload } from './uploads';
 import { Button } from './components/ui/button';
 import { FileUploadField } from './components/ui/upload';
 import { Progress } from './components/ui/progress';
@@ -65,8 +65,9 @@ export function FileUploadStatus({ row, readonly, changed, showFilename = true }
   const current = live.get(row.id);
   const offset = Math.min(row.size, Math.max(row.offset, current?.offset ?? 0));
   const percent = row.size ? Math.min(100, Math.floor(offset / row.size * 100)) : 0;
+  const needsFile = row.status === 'uploading' && !hasFile(row.id);
   const failed = row.status === 'failed' || !!current?.error;
-  const status = failed ? (row.taskId ? '处理失败' : '上传失败') : current?.preparing ? '正在准备视频' : current?.paused ? '已暂停' : row.status === 'processing' ? '正在处理' : offset >= row.size ? '正在提交' : `上传中 ${percent}%`;
+  const status = needsFile ? '等待重新选择原文件' : failed ? (row.taskId ? '处理失败' : '上传失败') : current?.preparing ? '正在准备视频' : current?.paused ? '已暂停' : row.status === 'processing' ? '正在处理' : offset >= row.size ? '正在提交' : `上传中 ${percent}%`;
   const act = async (work: () => Promise<unknown>) => {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
@@ -83,9 +84,10 @@ export function FileUploadStatus({ row, readonly, changed, showFilename = true }
           if (current?.paused || current?.error) void act(() => resume(row)); else { pause(row.id); changed(); }
         }}>{current?.error ? '重试' : current?.paused ? '继续' : '暂停'}</Button>}
         {row.status === 'failed' && row.taskId && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void act(() => api(`/tasks/${row.taskId}/retry`, 'POST'))}>重试处理</Button>}
-        {['uploading', 'failed'].includes(row.status) && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void act(async () => { pause(row.id); await api(`/uploads/${row.id}/cancel`, 'POST'); })}>{row.status === 'failed' ? '移除' : '取消'}</Button>}
+        {['uploading', 'failed'].includes(row.status) && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void act(async () => { pause(row.id); await api(`/uploads/${row.id}/cancel`, 'POST'); forgetUpload(row.id); })}>{row.status === 'failed' ? '移除' : '取消'}</Button>}
       </div>}
     </div>
+    {current?.recovery && <p className="mt-1 text-muted-foreground">{current.recovery}</p>}
     {(error || current?.error || row.error) && <p className="file-upload-error" role="alert">{error || current?.error || row.error}</p>}
     {!readonly && row.status === 'uploading' && !hasFile(row.id) && <FileUploadField inputLabel={`继续上传 ${row.filename}`} placeholder="重新选择原文件继续" disabled={busy} onFileSelect={file => { void act(() => resume(row, file)); }} />}
   </section>;

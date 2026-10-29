@@ -1,3 +1,4 @@
+import { useRevalidation } from "./lifecycle";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Clock, Monitor, Play } from "lucide-react";
@@ -133,6 +134,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
   const watching = reminders.devices?.filter((device) => device.online && device.currentWatch) ?? [];
   const onlineDevices = reminders.devices?.filter((device) => device.online) ?? [];
   const bootKnown = onlineDevices.every((device) => typeof device.bootPlayedMs === "number");
+  const revision = useRevalidation();
   const liveDetail = watching.map((device) => `${device.name} · ${device.currentWatch!.name}`).join("；");
   useEffect(() => {
     const controller = new AbortController();
@@ -144,7 +146,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     void refresh();
     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 30000);
     return () => { controller.abort(); clearInterval(timer); };
-  }, [pairing.revision]);
+  }, [pairing.revision, revision]);
   const today = data?.watch.days[data.watch.days.length - 1]?.date ?? dateKey(new Date());
   const openWatch = (start?: string, end = today) => {
     opener.current = document.activeElement as HTMLElement;

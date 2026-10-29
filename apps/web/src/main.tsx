@@ -1,3 +1,5 @@
+import { startLifecycle, useRevalidation } from "./lifecycle";
+import { InstallApp, OfflineStart, PwaStatus, useOnline } from "./pwa";
 import { FileUploadStatus, useItemUploads } from "./upload-status";
 import { CoverArtwork } from "./cover-artwork";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -46,7 +48,7 @@ import {
   type Session,
   type Upload,
 } from "./api";
-import { enqueue, hasFile, live, pause, resume, stopUploads } from "./uploads";
+import { enqueue, hasFile, live, pause, resume, stopUploads, restoreUploads, forgetUpload } from "./uploads";
 import { getUploadLimits, useUploadLimits, validateUploadSize } from "./upload-limits";
 import {
   FolderOpen,
@@ -99,6 +101,7 @@ import "./style.css";
 
 export type Run = (action: () => Promise<void>) => Promise<void>;
 function useData<T>(path: string, initial: T, serial = 0) {
+  const revision = useRevalidation();
   const [data, setData] = useState(initial),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
@@ -122,7 +125,7 @@ function useData<T>(path: string, initial: T, serial = 0) {
       alive = false;
       controller.abort();
     };
-  }, [path, serial]);
+  }, [path, serial, revision]);
   return { data, error, loading };
 }
 function Icon({ name }: { name: string; }) {
@@ -200,6 +203,9 @@ function Badge({ value }: { value: string; }) {
 }
 
 function App() {
+  const revision = useRevalidation();
+  const online = useOnline();
+  const [sessionError, setSessionError] = useState(false);
   const navigation = useRef<HTMLElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -219,21 +225,27 @@ function App() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location.pathname]);
   useEffect(() => {
+    let alive = true;
     api<Session>("/auth/session")
       .then((value) => {
+        if (!alive) return;
+        setSessionError(false);
         setSession(value);
         updateSession(value);
       })
-      .catch(() => { })
-      .finally(() => setChecking(false));
+      .catch((failure) => { if (alive) setSessionError(failure.status !== 401); })
+      .finally(() => { if (alive) setChecking(false); });
     const expired = () => {
       stopUploads();
       updateSession(undefined);
       setSession(undefined);
     };
     window.addEventListener("mollytime:unauthorized", expired);
-    return () => window.removeEventListener("mollytime:unauthorized", expired);
-  }, []);
+    return () => { alive = false; window.removeEventListener("mollytime:unauthorized", expired); };
+  }, [revision]);
+  useEffect(() => {
+    if (session) void restoreUploads(`${session.family.id}:${session.user.id}`);
+  }, [session?.family.id, session?.user.id]);
   useEffect(() => {
     const nav = navigation.current;
     if (!nav) return;
@@ -263,6 +275,7 @@ function App() {
       );
     }
   };
+  if ((!online || sessionError) && !session) return <OfflineStart retry={() => window.dispatchEvent(new Event("mollytime:revalidate"))} />;
   if (checking) return <Loading variant="page" label="正在打开家庭媒体库…" />;
   if (/^\/share\/[^/]+$/.test(location.pathname))
     return <ShareReceive session={session} onSession={(value) => { setSession(value); updateSession(value); }} readonly={!!session && !["admin", "superadmin"].includes(session.user.role)} standalone />;
@@ -323,7 +336,7 @@ function App() {
             MollyTime<small>家庭媒体管理</small>
           </span>
         </Link>
-        <nav ref={navigation} aria-label="管理导航">
+        <nav ref={navigation} className={names.length > 5 ? "has-operations" : undefined} aria-label="管理导航">
           {[{ label: "媒体管理", items: names.slice(0, 4) }, { label: "家庭与设置", items: names.slice(4) }].map((group) => (
             <div className="sidebar-nav-group" key={group.label}>
               <span className="sidebar-nav-label">{group.label}</span>
@@ -345,6 +358,7 @@ function App() {
           ))}
         </nav>
         <div className="brandbar-identity">
+          <InstallApp />
           <DeviceNotifications key={session.family.id} familyId={session.family.id} devices={reminders.devices} />
           <a className="brandbar-tv-link" href="/tv/" target="_blank" rel="noreferrer" aria-label="打开 TV 网页">
             <ExternalLink className="size-3.5" />
@@ -749,7 +763,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
         </div>
       </div>
       <div className="resource-library-card">
-            <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing && !renaming && !publication.selecting && !publication.busy} canArrange
+            <ResourceDesktop items={filtered} enabled={!readonly && !list.loading && !renaming && !publication.selecting && !publication.busy} canArrange
               input={videoPicker}
               exitSelection={publication.selecting ? publication.exit : undefined}
               leadingTile={!readonly && !publication.selecting ? <LibraryAddTile onCreate={() => void createFolder()} onUpload={() => videoInput.current?.click()} creating={folderCreating || !!renaming} uploading={quickBusy} /> : undefined}
@@ -1185,6 +1199,8 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
               value={Math.min(100, (offset / row.size) * 100)}
               aria-label={`${row.filename} 上传进度`}
             />}
+            {current?.recovery && <p className="muted">{current.recovery}</p>}
+            {row.status === "uploading" && !hasFile(row.id) && <p className="muted">等待重新选择原文件以续传，已上传进度会保留。</p>}
             {current?.preparing && <p className="muted" role="status">正在准备视频…</p>}
             {row.expiresAt && ["uploading", "failed"].includes(row.status) && <p className="muted">未完成或失败的文件将在 {dateTime(row.expiresAt)} 后自动清理。</p>}
             {(row.error || current?.error) && (
@@ -1235,6 +1251,7 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
                           pause(row.id);
                           void run(async () => {
                             await api(`/uploads/${row.id}/cancel`, "POST");
+                            forgetUpload(row.id);
                             refresh((v) => v + 1);
                           });
                         }}
@@ -1250,6 +1267,7 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
                       onClick={() => {
                         void run(async () => {
                           await api(`/uploads/${row.id}/cancel`, "POST");
+                            forgetUpload(row.id);
                           refresh((v) => v + 1);
                         });
                       }}
@@ -1445,12 +1463,14 @@ function normalizeEntryLinks() {
     history.replaceState(history.state, "", entryUrl.pathname + entryUrl.search + entryUrl.hash);
   }
 }
+startLifecycle();
 normalizeEntryLinks();
 window.addEventListener("popstate", normalizeEntryLinks);
 window.addEventListener("hashchange", normalizeEntryLinks);
 
 createRoot(document.getElementById("root")!).render(
   <>
+    <PwaStatus />
     <HashRouter><App /></HashRouter>
     <FeedbackDialogs />
     <Toaster />

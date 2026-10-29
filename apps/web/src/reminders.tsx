@@ -1,3 +1,4 @@
+import { useRevalidation } from "./lifecycle";
 import { FileUploadStatus, useItemUploads } from "./upload-status";
 import { Loading } from "@/components/ui/loading";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -19,6 +20,7 @@ type Device = { watchManagement?: boolean; id: string; name: string; phase: stri
 type Settings = { enabled: boolean; warning: Clip; farewell: Clip; };
 
 export function useReminderData(includeDevices = false, enabled = true) {
+  const revision = useRevalidation();
   const [settings, setSettings] = useState<Settings>();
   const [devices, setDevices] = useState<Device[]>();
   const [error, setError] = useState('');
@@ -36,11 +38,11 @@ export function useReminderData(includeDevices = false, enabled = true) {
     if (!enabled) { setSettings(undefined); setDevices(undefined); setError(''); return; }
     alive.current = true;
     void reload();
-    const timer = setInterval(() => { void reload(); }, 5000);
+    const timer = setInterval(() => { if (!document.hidden && navigator.onLine) void reload(); }, 5000);
     const changed = () => { void reload(); };
     window.addEventListener('molly:watch-controlChanged', changed);
     return () => { alive.current = false; clearInterval(timer); window.removeEventListener('molly:watch-controlChanged', changed); };
-  }, [includeDevices, enabled]);
+  }, [includeDevices, enabled, revision]);
   return { settings, devices, error, reload };
 }
 

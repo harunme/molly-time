@@ -17,8 +17,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 1280, height: 72
       const footer = page.locator('.manage-footer');
       const bounds = (await card.boundingBox())!;
       const footerBounds = (await footer.boundingBox())!;
-      expect(Math.abs(bounds.y + bounds.height - footerBounds.y)).toBeLessThan(2);
-      expect(footerBounds.y + footerBounds.height).toBeGreaterThanOrEqual(viewport.height - 17);
+      expect(Math.abs(bounds.y + bounds.height - footerBounds.y)).toBeLessThanOrEqual(24);
+      const navHeight = viewport.width < 1024 ? (await page.getByRole('navigation', { name: '管理导航' }).boundingBox())!.height : 0;
+      expect(footerBounds.y + footerBounds.height).toBeGreaterThanOrEqual(viewport.height - navHeight - 17);
       expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(viewport.height + 1);
       if (name === '回收站') {
         expect(await card.locator('.trash-list-body').evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);

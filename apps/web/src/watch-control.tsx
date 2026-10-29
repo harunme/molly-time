@@ -1,3 +1,4 @@
+import { useRevalidation } from "./lifecycle";
 import { SelectField } from "./components/ui/select";
 import { Switch } from "./components/ui/switch";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -22,14 +23,15 @@ export function WatchControls({ readonly, devices, total, serial, pairing, listS
   const [editing, setEditing] = useState<Device>(), [mode, setMode] = useState<Device['mode']>('episodes'), [amount, setAmount] = useState(2);
   const [customAmount, setCustomAmount] = useState(false);
   const [enabled, setEnabled] = useState(true), [pin, setPin] = useState(''), [pinOpen, setPinOpen] = useState(false), [busy, setBusy] = useState(false);
+  const revision = useRevalidation();
   const lock = useRef(false);
   const reload = async () => { const result = await api<Data>('/watch-control'); setData(result); };
   useEffect(() => {
     let alive = true, loading = false;
-    const read = async () => { if (loading) return; loading = true; try { const result = await api<Data>('/watch-control'); if (alive) { setData(result); } } catch (e) { if (alive) setError((e as Error).message); } finally { loading = false; } };
-    void read(); const timer = setInterval(() => { void read(); }, 5000);
+    const read = async () => { if (loading) return; loading = true; try { const result = await api<Data>('/watch-control'); if (alive) { setData(result); setError(''); } } catch (e) { if (alive) setError((e as Error).message); } finally { loading = false; } };
+    void read(); const timer = setInterval(() => { if (!document.hidden && navigator.onLine) void read(); }, 5000);
     return () => { alive = false; clearInterval(timer); };
-  }, [serial]);
+  }, [serial, revision]);
   const execute = async (work: () => Promise<void>) => {
     if (lock.current) return; lock.current = true; setBusy(true); setError('');
     try { await work(); await reload(); window.dispatchEvent(new Event('molly:watch-controlChanged')); } catch (e) { setError((e as Error).message); await reload().catch(() => {}); }

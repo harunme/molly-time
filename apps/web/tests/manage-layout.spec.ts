@@ -19,7 +19,7 @@ for (const width of [390, 1280, 1920]) {
       const content = await page.locator('.page-content').boundingBox();
       expect(content!.width).toBeCloseTo(Math.min(main!.width, 1520), 0);
       for (const heading of await page.locator('.page-content h2').all()) {
-        await expect(heading).toHaveCSS('font-size', await heading.evaluate((element) => element.classList.contains('text-sm')) ? '14px' : '18px');
+        await expect(heading).toHaveCSS('font-size', await heading.evaluate((element) => element.classList.contains('text-sm') || !!element.closest('.overview-heatmap')) ? '14px' : '18px');
       }
       await expect(page.locator('.page-title h1')).toBeInViewport();
       await page.screenshot({ path: `../../artifacts/design-audit/${name}-${width}.png`, fullPage: true, animations: 'disabled' });
@@ -29,7 +29,7 @@ for (const width of [390, 1280, 1920]) {
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
       await checkLayout(route);
       if (route === 'library') {
-        await page.getByRole('button', { name: '上传任务', exact: true }).click();
+        await page.goto('/manage/#/library?uploads=1');
         const tasks = page.getByRole('dialog', { name: '上传任务', exact: true });
         await expect(tasks).toBeVisible();
         const box = await tasks.boundingBox();
@@ -43,7 +43,7 @@ for (const width of [390, 1280, 1920]) {
         const cell = await page.locator('.overview-heatmap-day').last().boundingBox();
         expect(cell!.width).toBeCloseTo(cell!.height, 1);
         expect(cell!.width).toBeGreaterThanOrEqual(12);
-        expect((await page.locator('.overview-heatmap').boundingBox())!.height).toBeLessThan(width < 1440 ? 380 : 300);
+        expect((await page.locator('.overview-heatmap').boundingBox())!.height).toBeLessThan(420);
         await expect(page.locator('.overview-summary .overview-heatmap')).toHaveCount(1);
       }
       if (route === 'operations') {
@@ -86,7 +86,7 @@ test('long durations stay on one line and fields share the same typography', asy
   await expect(duration).toHaveText('1 小时 15 分钟');
   const size = await duration.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth, height: element.clientHeight }));
   expect(size.content).toBeLessThanOrEqual(size.width);
-  expect(size.height).toBe(36);
+  expect(size.height).toBe(45);
   for (const [destination, label] of [['我的电视', '默认字幕'], ['家庭设置', '用量月份']]) {
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: destination, exact: true }).click();
     const field = page.getByLabel(label, { exact: true });

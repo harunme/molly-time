@@ -1,3 +1,4 @@
+import { useRevalidation } from "./lifecycle";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState } from 'react';
 import { Pagination as PaginationRoot, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
@@ -21,6 +22,7 @@ export type PagedDataCache<T, Response extends Page<T> = Page<T>> = {
 };
 
 export function usePagedData<T extends { id: string; }, Response extends Page<T> = Page<T>>(path: string, serial = 0, pageSize = 20, enabled = true, remember = false, cache?: PagedDataCache<T, Response>) {
+  const revision = useRevalidation();
   const [position, setPosition] = useState(() => ({ path, page: cache?.positions.get(path) ?? 1 }));
   const page = position.path === path ? position.page : 1;
   const setPage = (next: number) => {
@@ -54,7 +56,7 @@ export function usePagedData<T extends { id: string; }, Response extends Page<T>
       .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setRefreshing(false); });
     return () => controller.abort();
-  }, [path, page, pageSize, serial, key, enabled, remember, cache]);
+  }, [path, page, pageSize, serial, key, enabled, remember, cache, revision]);
   const current = result?.key === key ? result.value : cache?.pages.get(key);
   return {
     response: current, data: current?.items ?? [], total: current?.total ?? 0, page, pageSize, setPage,

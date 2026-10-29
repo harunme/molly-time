@@ -173,10 +173,10 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
       const bounds = grid.current.getBoundingClientRect();
       const nodes = tiles();
       const hit = nodes.find((node) => pointer.x >= bounds.x + node.offsetLeft && pointer.x <= bounds.x + node.offsetLeft + node.offsetWidth &&
-        pointer.y >= bounds.y + node.offsetTop && pointer.y <= bounds.y + node.offsetTop + node.offsetHeight);
+        pointer.y >= bounds.y + node.offsetTop - (grid.current?.scrollTop ?? 0) && pointer.y <= bounds.y + node.offsetTop - (grid.current?.scrollTop ?? 0) + node.offsetHeight);
       const item = orderRef.current.find((row) => row.id === hit?.dataset.resourceId);
       const center = hit && pointer.x > bounds.x + hit.offsetLeft + hit.offsetWidth * .22 && pointer.x < bounds.x + hit.offsetLeft + hit.offsetWidth * .78 &&
-        pointer.y > bounds.y + hit.offsetTop + 12 && pointer.y < bounds.y + hit.offsetTop + hit.offsetHeight * .68;
+        pointer.y > bounds.y + hit.offsetTop - (grid.current?.scrollTop ?? 0) + 12 && pointer.y < bounds.y + hit.offsetTop - (grid.current?.scrollTop ?? 0) + hit.offsetHeight * .68;
       const canGroup = source && item && source.id !== item.id && item.type !== 'Episode';
       if (canGroup) {
         const central = !!center;
@@ -208,8 +208,13 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
     };
     const scroll = () => {
       if (!dragRef.current || dragRef.current.keyboard) return;
-      const amount = hitsCancel() ? 0 : pointer.y < 72 ? -12 : pointer.y > innerHeight - 72 ? 12 : 0;
-      if (amount) window.scrollBy(0, amount);
+      // Scroll the list that owns the covers, including a folder's scroll body.
+      let scroller: HTMLElement | null = grid.current;
+      while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+      const box = scroller?.getBoundingClientRect();
+      const top = Math.max(0, box?.top ?? 0), bottom = Math.min(innerHeight, box?.bottom ?? innerHeight);
+      const amount = hitsCancel() ? 0 : pointer.y < top + 56 ? -12 : pointer.y > bottom - 56 ? 12 : 0;
+      if (amount) { if (scroller) scroller.scrollTop += amount; else window.scrollBy(0, amount); }
       update();
       frame = requestAnimationFrame(scroll);
     };
