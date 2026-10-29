@@ -108,5 +108,5 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
     {notice && <div className="library-publication-feedback" role="status"><div><p>{notice}</p>{skipped.length > 0 && <details><summary>查看跳过的视频</summary><ul>{skipped.map(item => <li key={item.id}>{item.name} · {item.reason}</li>)}</ul></details>}</div><Button variant="ghost" size="icon" aria-label="关闭操作结果" onClick={() => { setNotice(''); setSkipped([]); }}><X className="size-4" /></Button></div>}
   </>;
   const selector = (item: Resource) => selecting && item.type === 'Episode' ? <button ref={item.id === videos[0]?.id ? firstSelector : undefined} type="button" role="checkbox" aria-checked={selected.includes(item.id)} aria-label={`选择视频 ${item.name}`} disabled={disabled} className="library-video-selector" onClick={() => toggle(item.id)}><span>{selected.includes(item.id) && <Check aria-hidden="true" />}</span></button> : null;
-  return { selecting, selected, busy, toolbar, feedback, toggle, selector, changeItem, publishFolder, exit };
+  return { selecting, selected, busy, toolbar, feedback, toggle, selector, changeItem, publishFolder, exit, beginSelection: () => setSelecting(true), selectAll: () => setSelected(videos.map(item => item.id)), publishSelection: () => batch('publish'), unpublishSelection: () => batch('unpublish') };
 }

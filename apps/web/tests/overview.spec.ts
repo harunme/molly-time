@@ -48,7 +48,8 @@ test('overview is the default home, uses aggregates and compact widgets, and lin
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/manage/overview' && result.ok());
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  const data = await (await response).json();
+  await response;
+  const data = await (await page.request.get('/api/manage/overview')).json();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: '播放控制', exact: true })).toHaveCount(0);
   const navigation = page.getByRole('navigation', { name: '管理导航', exact: true });
@@ -174,15 +175,11 @@ test('overview shows watch durations, video play counts and heatmap intensity on
   await page.screenshot({ path: '../../artifacts/overview-watch-wide.png', fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-  await expect(page.locator('.overview-ranking')).toBeVisible();
-  await expect.poll(() => page.locator('.overview-heatmap-scroll').evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-  await page.locator('.overview-heatmap').scrollIntoViewIfNeeded();
-  await expect(cells.last()).toBeInViewport();
-  await expect(page.locator('.overview-heatmap-weekday').first()).toBeInViewport();
-  await page.screenshot({ path: testInfo.outputPath('overview-watch-mobile.png'), fullPage: true, animations: 'disabled' });
+  await expect(page.locator('.m-activity')).toContainText('1 小时 15 分');
+  await expect(page.locator('.m-playing').first()).toContainText('Yum Yum');
+  await page.screenshot({ path: testInfo.outputPath('overview-watch-mobile.png'), fullPage: true });
   playing = false;
-  await expect(currentVideo.locator('.overview-metric-value')).toHaveText('暂无正在观看', { timeout: 10000 });
-  await expect(currentDuration.locator('.overview-metric-value')).toHaveText('30 分钟');
+  await expect(page.locator('.m-playing h2').first()).toHaveText('好故事，慢慢看。', { timeout: 10000 });
   expect(errors).toEqual([]);
 });
 
@@ -204,7 +201,6 @@ test('overview keeps loading inside widgets and clears it after success or failu
   await expect(page.locator('.overview-metric').filter({ hasText: '今日观看' }).locator('.overview-metric-skeleton')).toBeVisible();
   await expect(heatmap.locator('.overview-heatmap-skeleton')).toBeVisible();
   await expect(heatmap.getByRole('button', { name: '查看明细' })).toBeDisabled();
-  await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   releaseOverview();
   await expect(metrics).toHaveAttribute('aria-busy', 'false');

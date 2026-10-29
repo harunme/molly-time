@@ -21,7 +21,7 @@ test('a file owns its progress and retry without opening the global task window'
   try {
     await page.goto(`/manage/#/library/${folder.id}`);
     await page.getByLabel('选择上传视频', { exact: true }).setInputFiles(video('新的故事.mp4'));
-    const tile = page.locator('.resource-tile').filter({ has: page.getByRole('button', { name: '新的故事', exact: true }) });
+    const tile = page.locator('.resource-tile, .m-content-item').filter({ has: page.getByRole('button', { name: '新的故事', exact: true }) });
     const status = tile.getByRole('region', { name: '新的故事.mp4 上传状态', exact: true });
     await expect(status).toBeVisible();
     await expect(status.getByRole('alert')).toContainText('测试网络中断');
@@ -42,7 +42,7 @@ test('a file owns its progress and retry without opening the global task window'
     await expect.poll(async () => (await (await page.request.get(`/api/manage/uploads?itemIds=${(await (await page.request.get(`/api/manage/resources?parentId=${folder.id}`)).json())[0].id}`)).json())[0].offset).toBeGreaterThan(0);
     await status.getByRole('button', { name: '继续', exact: true }).click();
     await expect(status).toHaveCount(0, { timeout: 15000 });
-    await expect(tile.locator('.library-item-status')).toBeVisible();
+    await expect(tile.locator('.library-item-status, .m-content-state')).toBeVisible();
   } finally {
     release();
     await page.request.post(`/api/manage/resources/${folder.id}/archive`, { headers, timeout: 5000 });
@@ -70,6 +70,8 @@ test('reminder progress and errors stay under the matching file and recover afte
     await expect(page.getByRole('dialog', { name: '上传任务', exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('reminder-file-upload.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('.m-app')).toBeVisible();
+    await page.goto('/manage/#/devices/settings');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.screenshot({ path: testInfo.outputPath('reminder-file-upload-mobile.png'), fullPage: true });
     await page.reload();
@@ -82,7 +84,7 @@ test('reminder progress and errors stay under the matching file and recover afte
     await farewell.getByLabel('上传休息提醒视频', { exact: true }).setInputFiles(video('休息提醒.mp4'));
     await expect(farewell.getByRole('alert')).toHaveText('无法创建休息提醒，请重试');
     await expect(warning.getByRole('alert')).toHaveCount(0);
-    await expect(page).toHaveURL(/\/devices$/);
+    await expect(page).toHaveURL(/\/devices\/settings$/);
   } finally {
     release();
     const settings = await (await page.request.get('/api/manage/reminders')).json();

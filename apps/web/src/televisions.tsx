@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import { WatchControls } from "./watch-control";
 
 export function Televisions({ readonly, run, notify }: { readonly: boolean; run: Run; notify: (value: string) => void }) {
   const pairing = usePairing();
+  const [preferencesOpen, setPreferencesOpen] = useState(() => matchMedia("(min-width: 1024px)").matches || new URLSearchParams(window.location.hash.split("?")[1]).get("preferences") === "1");
   const devices = usePagedData<{ id: string; name: string; revoked: boolean; lastSeen: string }>("/devices?activeOnly=true", pairing.revision);
   const [subtitle, setSubtitle] = useState("zh");
   const [loaded, setLoaded] = useState(false);
@@ -42,7 +44,10 @@ export function Televisions({ readonly, run, notify }: { readonly: boolean; run:
           await api(`/devices/${device.id}/revoke`, "POST"); pairing.refresh();
         }
       }} />
-    <div className="settings-grid television-settings"><div className="settings-column">
+    <button type="button" className="television-preferences-toggle" aria-expanded={preferencesOpen} aria-controls="television-preferences" onClick={() => setPreferencesOpen(open => !open)}>
+      <span><strong>播放与提醒设置</strong><small>默认字幕、家长提醒视频</small></span><ChevronDown aria-hidden="true" />
+    </button>
+    <div id="television-preferences" className="settings-grid television-settings" data-expanded={preferencesOpen}><div className="settings-column">
       <Card className="settings-card"><h2>播放偏好</h2>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         {!loaded && !error && <Loading variant="form" />}

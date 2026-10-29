@@ -41,7 +41,7 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
   const cancelZone = useRef<HTMLButtonElement>(null);
   const [overCancel, setOverCancel] = useState(false);
   const orderRef = useRef(order); orderRef.current = order;
-  const dragRef = useRef(drag); dragRef.current = drag;
+  const dragRef = useRef(drag);
   const dropRef = useRef(dropId); dropRef.current = dropId;
   const [escaped, setEscaped] = useState(false);
   const escapedRef = useRef(false);
@@ -144,7 +144,8 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
       if (!active || active.keyboard || !grid.current) return;
       const next = { ...active, x: pointer.x - active.offsetX, y: pointer.y - active.offsetY };
       dragRef.current = next;
-      if (next.x !== active.x || next.y !== active.y) setDrag(next);
+      // Follow the finger without re-rendering every cover on each animation frame.
+      if (ghost.current) ghost.current.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${dropRef.current ? .72 : .88})`;
       const cancelling = hitsCancel();
       setOverCancel(cancelling);
       if (cancelling) {
@@ -212,7 +213,11 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
       let scroller: HTMLElement | null = grid.current;
       while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
       const box = scroller?.getBoundingClientRect();
-      const top = Math.max(0, box?.top ?? 0), bottom = Math.min(innerHeight, box?.bottom ?? innerHeight);
+      const header = document.querySelector('.manage-sidebar')?.getBoundingClientRect();
+      const nav = document.querySelector('.manage-sidebar nav')?.getBoundingClientRect();
+      const phone = matchMedia('(max-width: 1023px)').matches;
+      const top = Math.max(0, box?.top ?? (phone ? header?.bottom ?? 0 : 0));
+      const bottom = Math.min(innerHeight, box?.bottom ?? (phone ? nav?.top ?? innerHeight : innerHeight));
       const amount = hitsCancel() ? 0 : pointer.y < top + 56 ? -12 : pointer.y > bottom - 56 ? 12 : 0;
       if (amount) { if (scroller) scroller.scrollTop += amount; else window.scrollBy(0, amount); }
       update();
@@ -390,6 +395,6 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
       <span>{overCancel ? '松开取消' : '拖到此处取消'}</span><span className="desktop-cancel-shortcut">Esc</span>
     </button>, document.body)}
     {drag && !drag.keyboard && dragged && createPortal(<div ref={ghost} aria-hidden="true" className={`desktop-drag-ghost resource-tile${dropId ? " is-grouping" : ""}${overCancel ? " is-cancelling" : ""}`}
-      style={{ width: drag.width, height: drag.height, transform: `translate3d(${drag.x}px, ${drag.y}px, 0) scale(${dropId ? .72 : .88})` }}>{render(dragged)}</div>, document.body)}
+      style={{ width: drag.width, height: drag.height, transform: `translate3d(${dragRef.current?.x ?? drag.x}px, ${dragRef.current?.y ?? drag.y}px, 0) scale(${dropId ? .72 : .88})` }}>{render(dragged)}</div>, document.body)}
   </>;
 }

@@ -14,6 +14,8 @@ test('production app installs a complete shell, starts offline and reconnects wi
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible();
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
   const cached = await page.evaluate(async () => {
@@ -26,7 +28,7 @@ test('production app installs a complete shell, starts offline and reconnects wi
   await page.reload();
   await expect(page.getByRole('heading', { name: '暂时无法连接' })).toBeVisible();
   await context.setOffline(false);
-  await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('pwa-reconnected.png') });
 });
 

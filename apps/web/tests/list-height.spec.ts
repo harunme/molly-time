@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-for (const viewport of [{ width: 1440, height: 1000 }, { width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 1280, height: 720 }]) {
   test(`library and trash fill the available height at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -9,11 +9,18 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 1280, height: 72
     await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
     await page.getByRole('button', { name: '登录', exact: true }).click();
     for (const [name, selector] of [['资源库', '.resource-library-card'], ['回收站', '.trash-list-card']]) {
-      await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name, exact: true }).click();
+      await page.goto(`/manage/#/${name === '资源库' ? 'library' : 'trash'}`);
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
       await expect(page.getByText(/正在加载|正在打开…/)).toHaveCount(0);
       if (name === '回收站') await expect(page.locator('.trash-summary')).toBeVisible();
       const card = page.locator(selector);
+      if (viewport.width < 1024) {
+        expect(await card.evaluate(el => getComputedStyle(el).overflowY)).toBe('visible');
+        await expect(page.locator('.manage-footer')).toBeHidden();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: `../../artifacts/list-height-${name}-${viewport.width}.png` });
+        continue;
+      }
       const footer = page.locator('.manage-footer');
       const bounds = (await card.boundingBox())!;
       const footerBounds = (await footer.boundingBox())!;

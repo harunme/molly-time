@@ -1,0 +1,16 @@
+/* Shared compact forms and sheet primitives. Handset pages live in mobile/. */
+.desktop-app-tools { display: contents; }
+.mobile-account-links, .mobile-app-settings, .mobile-add-label, .overview-single-device-name, .television-preferences-toggle { display: none; }
+.overview-live > .overview-playback-control { grid-column: 1 / -1; margin: 0; padding: 16px 20px; }
+@media (max-width: 1023px) {
+  [data-slot="dialog-content"]:not(.library-folder-panel) {
+    top: calc(var(--visible-top, 0px) + var(--visible-height, 100dvh)); left: 50%; translate: -50% -100%;
+    width: 100%; max-width: 100%; max-height: calc(var(--visible-height, 100dvh) - env(safe-area-inset-top) - 12px);
+    padding-bottom: env(safe-area-inset-bottom); border-radius: 22px 22px 0 0;
+  }
+  [data-slot="dialog-content"]:not(.library-folder-panel)[data-state="open"] { animation: mobile-sheet-in 200ms cubic-bezier(.2,.8,.2,1); }
+  [data-slot="dialog-content"]:not(.library-folder-panel)[data-state="closed"] { animation: mobile-sheet-out 150ms ease-in; }
+}
+@keyframes mobile-sheet-in { from { opacity: .5; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes mobile-sheet-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(24px); } }
+@media (prefers-reduced-motion: reduce) { [data-slot="dialog-content"]:not(.library-folder-panel)[data-state] { animation: none; } }

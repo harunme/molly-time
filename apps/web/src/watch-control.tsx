@@ -15,9 +15,10 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 type Device = { deviceId: string; name: string; online: boolean; supported: boolean; enabled: boolean; mode: 'episodes' | 'minutes'; amount: number; version: number; acknowledged: number; status: string; round: null | { mode: string; amount: number; remainingEpisodes?: number | null; cursor: number; playlist: string[]; episodeId: string | null; episodeName: string | null; remainingMs: number | null; ended: boolean } };
 type Data = { pinSet: boolean; devices: Device[] };
 type PairedDevice = { id: string; name: string; lastSeen: string | null };
-export function WatchControls({ readonly, devices, total, serial, pairing, listState, empty, footer, rename, revoke }: {
+export function WatchControls({ readonly, devices, total, serial, pairing, listState, empty, footer, rename, revoke, editDeviceId, onEditorClose }: {
   readonly: boolean; devices: PairedDevice[]; total: number; serial: number; pairing: ReactNode; listState: ReactNode; empty: boolean; footer: ReactNode;
   rename: (device: PairedDevice) => Promise<void>; revoke: (device: PairedDevice) => Promise<void>;
+  editDeviceId?: string; onEditorClose?: () => void;
 }) {
   const [data, setData] = useState<Data>(), [error, setError] = useState('');
   const [editing, setEditing] = useState<Device>(), [mode, setMode] = useState<Device['mode']>('episodes'), [amount, setAmount] = useState(2);
@@ -25,6 +26,7 @@ export function WatchControls({ readonly, devices, total, serial, pairing, listS
   const [enabled, setEnabled] = useState(true), [pin, setPin] = useState(''), [pinOpen, setPinOpen] = useState(false), [busy, setBusy] = useState(false);
   const revision = useRevalidation();
   const lock = useRef(false);
+  const openedFor = useRef('');
   const reload = async () => { const result = await api<Data>('/watch-control'); setData(result); };
   useEffect(() => {
     let alive = true, loading = false;
@@ -40,11 +42,18 @@ export function WatchControls({ readonly, devices, total, serial, pairing, listS
   const command = (device: Device, action: string, extra = {}) => api(`/watch-control/${device.deviceId}/commands`, 'POST', { requestId: crypto.randomUUID(), version: device.version, action, ...extra });
   const act = (device: Device, action: string) => { void execute(async () => { await command(device, action); }); };
   const edit = (device: Device) => { setEditing(device); setMode(device.mode); setAmount(device.amount); setCustomAmount(!(device.mode === 'episodes' ? [1, 2, 3] : [15, 30, 60]).includes(device.amount)); setEnabled(device.enabled || !device.version); setPin(''); };
+  useEffect(() => {
+    if (readonly || !editDeviceId || openedFor.current === editDeviceId) return;
+    const device = data?.devices.find(row => row.deviceId === editDeviceId);
+    if (!device) return;
+    openedFor.current = editDeviceId;
+    edit({ ...device, name: devices.find(row => row.id === editDeviceId)?.name ?? device.name });
+  }, [editDeviceId, data, devices, readonly]);
   const save = () => { if (editing) void execute(async () => {
     if (enabled && !data?.pinSet) { await api('/watch-control/pin', 'PUT', { pin }); }
-    await command(editing, 'settings', { enabled, mode: enabled ? mode : editing.mode, amount: enabled ? amount : editing.amount }); setEditing(undefined);
+    await command(editing, 'settings', { enabled, mode: enabled ? mode : editing.mode, amount: enabled ? amount : editing.amount }); setEditing(undefined); onEditorClose?.();
   }); };
-  return <Card className="watch-controls">
+  return <Card className={editDeviceId ? "watch-controls watch-controls-editor-only" : "watch-controls"}>
     <div className="section-heading"><div><h2>我的电视<span className="watch-device-count">{total} 台</span></h2><p className="muted">每台电视独立设置每日额度，北京时间每天 0 点恢复。</p></div>{pairing}</div>
     {error && !editing && !pinOpen && <p role="alert" className="error">{error}</p>}
     {listState}
@@ -87,7 +96,7 @@ export function WatchControls({ readonly, devices, total, serial, pairing, listS
     {data?.pinSet && <div className="watch-family-pin"><p className="muted">家长密码 · 所有电视共用</p>
       {!readonly && <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setPin(''); setPinOpen(true); }}>重设家长密码</Button>}
     </div>}
-    <Dialog open={!!editing} onOpenChange={open => { if (!open && !busy) setEditing(undefined); }}>
+    <Dialog open={!!editing} onOpenChange={open => { if (!open && !busy) { setEditing(undefined); onEditorClose?.(); } }}>
       <DialogContent className="watch-settings-dialog">
         <DialogHeader>
           <DialogTitle>{editing?.name} · 观看设置</DialogTitle>

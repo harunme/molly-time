@@ -78,16 +78,9 @@ test('desktop grid snaps, persists positions, cancels and restores failed moves'
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: '../../artifacts/library-desktop-mobile.png', fullPage: true, animations: 'disabled' });
     // Holding a cover lifts it; an ordinary swipe can still scroll.
-    const touchSource = grid.getByRole('button', { name: `打开 ${names[2]}`, exact: true });
-    await touchSource.scrollIntoViewIfNeeded();
-    const from = (await touchSource.boundingBox())!, to = (await grid.getByRole('button', { name: `打开 ${names[1]}`, exact: true }).boundingBox())!;
-    await touchSource.dispatchEvent('pointerdown', { pointerId: 9, pointerType: 'touch', button: 0, clientX: from.x + 10, clientY: from.y + 10 });
-    await expect(page.locator('.desktop-drag-ghost')).toBeVisible();
-    await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 9, pointerType: 'touch', clientX: x, clientY: y, cancelable: true })), { x: to.x + to.width / 2, y: to.y + to.height / 2 });
-    await expect(page.locator('.desktop-drag-ghost')).toBeVisible();
-    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, pointerType: 'touch' })));
-    await expect(grid).toHaveAttribute('aria-busy', 'false');
-    await expect(titles).toHaveText(ordered);
+    await page.getByRole('button', { name: `更多操作 ${names[1]}`, exact: true }).click();
+    await page.getByRole('dialog', { name: names[1], exact: true }).getByRole('button', { name: '上移一位', exact: true }).click();
+    await expect(page.locator('.m-content-name')).toHaveText(ordered);
   } finally {
     await page.request.post(`/api/manage/resources/${collection.id}/archive`, { headers });
     await page.request.delete(`/api/manage/trash/${collection.id}`, { headers });
@@ -254,7 +247,7 @@ test('folder overlays preserve a continuous drag out, cancel, retry and drop int
   }
 });
 
-test('folder overlay closes outside, follows history, and supports touch drag out', async ({ page }) => {
+test('folder detail closes outside on desktop and uses a full-screen route with explicit move on mobile', async ({ page }) => {
   const headers = await login(page);
   const outer = await (await page.request.post('/api/manage/resources', { headers, data: { type: 'Series', name: '手机浮层检查' } })).json();
   const inner = await (await page.request.post('/api/manage/resources', { headers, data: { type: 'Season', parentId: outer.id, name: '第一季' } })).json();
@@ -271,35 +264,17 @@ test('folder overlay closes outside, follows history, and supports touch drag ou
     await page.getByRole('button', { name: '第一季', exact: true }).click();
     await page.reload();
     await page.setViewportSize({ width: 390, height: 844 });
-    const dialog = page.getByRole('dialog', { name: '第一季', exact: true });
-    await expect(dialog).toBeVisible();
+    await expect(page.getByRole('heading', { name: '第一季', exact: true })).toBeVisible();
+    await expect(page.locator('.library-folder-panel')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: '../../artifacts/library-folder-overlay-mobile.png', fullPage: true, animations: 'disabled' });
-    const cover = dialog.getByRole('button', { name: `打开 ${video.name}`, exact: true });
-    const from = (await cover.boundingBox())!;
-    await cover.dispatchEvent('pointerdown', { pointerId: 21, pointerType: 'touch', button: 0, clientX: from.x + 20, clientY: from.y + 20 });
-    await expect(page.locator('.desktop-drag-ghost')).toBeVisible();
-    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 21, pointerType: 'touch', clientX: 3, clientY: 200, cancelable: true })));
-    await expect(dialog).not.toBeVisible();
-    await expect(page.locator('.desktop-drag-ghost')).toBeVisible();
-    const cancel = page.locator('.desktop-cancel-drop');
-    const cancelBox = (await cancel.boundingBox())!;
-    await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 21, pointerType: 'touch', clientX: x, clientY: y, cancelable: true })), { x: cancelBox.x + cancelBox.width / 2, y: cancelBox.y + cancelBox.height / 2 });
-    await expect(cancel).toHaveAttribute('data-active', 'true');
-    await page.screenshot({ path: '../../artifacts/library-cancel-mobile.png', fullPage: true, animations: 'disabled' });
-    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 21, pointerType: 'touch' })));
-    await expect(dialog).toBeVisible();
-    await expect(cancel).toHaveCount(0);
-    expect((await (await page.request.get(`/api/manage/resources/${video.id}`)).json()).parentId).toBe(inner.id);
-    const retry = (await cover.boundingBox())!;
-    await cover.dispatchEvent('pointerdown', { pointerId: 21, pointerType: 'touch', button: 0, clientX: retry.x + 20, clientY: retry.y + 20 });
-    await expect(page.locator('.desktop-drag-ghost')).toBeVisible();
-    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 21, pointerType: 'touch', clientX: 3, clientY: 200, cancelable: true })));
-    await expect(dialog).not.toBeVisible();
-    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 21, pointerType: 'touch', clientX: 370, clientY: 700, cancelable: true })));
-    await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 21, pointerType: 'touch' })));
-    await expect(page).toHaveURL(new RegExp(`/library/${outer.id}$`));
+    await page.getByRole('button', { name: `更多操作 ${video.name}`, exact: true }).click();
+    await page.getByRole('dialog', { name: video.name, exact: true }).getByRole('button', { name: '移动', exact: true }).click();
+    await page.getByRole('dialog', { name: `移动“${video.name}”`, exact: true }).getByRole('button', { name: outer.name, exact: true }).click();
+    await expect(page.getByRole('button', { name: `打开 ${video.name}`, exact: true })).toHaveCount(0);
     expect((await (await page.request.get(`/api/manage/resources/${video.id}`)).json()).parentId).toBe(outer.id);
+    await page.getByRole('link', { name: '返回', exact: true }).click();
+    await expect(page.getByRole('heading', { name: outer.name, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: video.name, exact: true })).toBeVisible();
   } finally {
     await page.request.post(`/api/manage/resources/${outer.id}/archive`, { headers });
     await page.request.delete(`/api/manage/trash/${outer.id}`, { headers });

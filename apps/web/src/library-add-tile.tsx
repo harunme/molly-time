@@ -6,7 +6,7 @@ export function LibraryAddTile({ onCreate, onUpload, creating = false, uploading
   onCreate?: () => void; onUpload?: () => void; creating?: boolean; uploading?: boolean;
 }) {
   const creatingFolder = useRef(false);
-  const content = <span className="desktop-add-cover"><span className="desktop-add-art"><Plus aria-hidden="true" /></span></span>;
+  const content = <span className="desktop-add-cover"><span className="desktop-add-art"><Plus aria-hidden="true" /><span className="mobile-add-label">添加内容</span></span></span>;
   return <div className="desktop-add-tile">
     {onCreate && onUpload ? <DropdownMenu>
       <DropdownMenuTrigger asChild><button type="button" className="desktop-add-trigger" aria-label="添加内容">{content}</button></DropdownMenuTrigger>

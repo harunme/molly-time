@@ -10,6 +10,20 @@ for (const width of [390, 1280, 1920]) {
     await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
     await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
     await page.getByRole('button', { name: '登录', exact: true }).click();
+    if (width < 1024) {
+      await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible();
+      await expect(page.locator('.workspace')).toHaveCount(0);
+      const nav = page.getByRole('navigation', { name: '手机导航' });
+      for (const label of ['内容', '电视', '家庭']) {
+        await nav.getByRole('link', { name: label, exact: true }).click();
+        await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+      await page.getByRole('link', { name: '运营管理', exact: true }).click();
+      await expect(page.getByRole('heading', { name: '运营管理', exact: true })).toBeVisible();
+      expect(errors).toEqual([]);
+      return;
+    }
     await expect(page.getByRole('heading', { name: '概览', exact: true })).toBeVisible();
     const checkLayout = async (name: string) => {
       await expect(page.getByText(/^正在加载/)).toHaveCount(0);
@@ -19,13 +33,16 @@ for (const width of [390, 1280, 1920]) {
       const content = await page.locator('.page-content').boundingBox();
       expect(content!.width).toBeCloseTo(Math.min(main!.width, 1520), 0);
       for (const heading of await page.locator('.page-content h2').all()) {
-        await expect(heading).toHaveCSS('font-size', await heading.evaluate((element) => element.classList.contains('text-sm') || !!element.closest('.overview-heatmap')) ? '14px' : '18px');
+        await expect(heading).toHaveCSS('font-size', width < 1024 ? '17px' : await heading.evaluate((element) => element.classList.contains('text-sm') || !!element.closest('.overview-heatmap')) ? '14px' : '18px');
       }
       await expect(page.locator('.page-title h1')).toBeInViewport();
       await page.screenshot({ path: `../../artifacts/design-audit/${name}-${width}.png`, fullPage: true, animations: 'disabled' });
     };
     for (const [route, name] of [['overview', '概览'], ['library', '资源库'], ['family', '家庭设置'], ['operations', '运营设置']]) {
-      await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name, exact: true }).click();
+      if (width < 1024 && route === 'operations') {
+        await page.getByRole('button', { name: '账号菜单' }).click();
+        await page.getByRole('menuitem', { name, exact: true }).click();
+      } else await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name, exact: true }).click();
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
       await checkLayout(route);
       if (route === 'library') {

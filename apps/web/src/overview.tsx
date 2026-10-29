@@ -164,9 +164,9 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
     else routerNavigate(background, { replace: true });
   };
   const metrics = [
-    { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${pairing.deviceCount ?? data.devices.active} 台 · 每 5 秒更新` : "最近 90 秒内有连接", icon: Monitor, page: "devices" },
+    { label: "在线设备", value: onlineCount !== undefined ? `${onlineCount} 台` : "—", detail: data ? `共绑定 ${pairing.deviceCount ?? data.devices.active} 台` : "最近 90 秒内有连接", icon: Monitor, page: "devices" },
     { label: "本次观看时长", value: reminders.devices && bootKnown ? duration(onlineDevices.reduce((sum, device) => sum + (device.bootPlayedMs ?? 0), 0)) : "—", detail: !bootKnown ? "请更新电视客户端，以统计本次开机观看时长" : onlineDevices.length > 1 ? `${onlineDevices.length} 台电视本次开机观看合计 · 每 5 秒更新` : "本次开机累计观看 · 切换视频继续累计", icon: Clock, page: "watch" },
-    { label: "正在观看", value: reminders.devices ? watching.map((device) => device.currentWatch!.name).join("、") || "暂无正在观看" : "—", detail: liveDetail || "电视播放后显示 · 每 5 秒更新", icon: Play, page: "watch" },
+    { label: "正在观看", value: reminders.devices ? watching.map((device) => device.currentWatch!.name).join("、") || "暂无正在观看" : "—", detail: liveDetail || "选好故事后，在电视上开始观看。", icon: Play, page: "watch" },
     { label: "今日观看", value: data ? duration(data.watch.todayPlayedMs) : "—", detail: "今天 00:00 至现在", icon: Clock, page: "watch" },
     { label: "本周观看", value: data ? duration(data.watch.weekPlayedMs) : "—", detail: "本周一至现在", icon: Clock, page: "watch" },
   ] as const;
@@ -177,8 +177,8 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
         <strong className={`overview-metric-value${metric.label === "正在观看" ? " overview-current-value" : ""}`} title={metric.value}>
           {(metric.label === "本次观看时长" || metric.label === "正在观看" ? !reminders.devices && !reminders.error : loading && !(metric.label === "在线设备" && onlineCount !== undefined)) ? <span className="overview-skeleton overview-metric-skeleton" aria-hidden="true" /> : metric.label === "正在观看" ? metric.value : metric.value.split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? part : <span className="overview-metric-unit" key={index}>{part}</span>)}
         </strong>
-        <div className="overview-metric-bottom"><span title={metric.detail}>{metric.detail}</span>{metric.label === "在线设备" && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button>}</div>
-        {metric.label === "在线设备" && <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />}
+        <div className="overview-metric-bottom"><span title={metric.detail}>{metric.label === "正在观看" && watching.length === 1 ? <><span className="overview-single-device-detail">{metric.detail}</span><span className="overview-single-device-name">{watching[0].name}</span></> : metric.detail}</span>{metric.label === "在线设备" && <Button variant="ghost" size="icon" aria-label={`查看${metric.label}`} onClick={() => navigate(metric.page)}><ArrowRight className="size-4" /></Button>}</div>
+
       </div>;
   return <>
     <WatchHistoryDialog open={watchOpen} onClose={closeWatch} today={today} watch={data?.watch}
@@ -187,7 +187,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       restoreFocus={() => { const target = opener.current?.isConnected ? opener.current : heatmap.current?.querySelector<HTMLButtonElement>(".section-heading button"); target?.focus(); }} />
     <div className="page-title">
       <div><h1>概览</h1><p>{familyName}的设备在线状态与观看习惯。</p></div>
-      <Button variant="bordered" onClick={() => pairing.open()}>{readonly ? "如何绑定电视" : "绑定电视"}</Button>
+      {pairing.deviceCount !== 0 && <Button variant="bordered" onClick={() => pairing.open()}>{readonly ? "如何绑定电视" : "绑定电视"}</Button>}
     </div>
     {pairing.deviceCount === 0 && <Card className="television-onboarding" aria-label="连接第一台电视">
       <div className="television-onboarding-icon" aria-hidden="true"><Monitor /></div>
@@ -213,6 +213,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
         {renderMetric(metrics[2])}
         {renderMetric(metrics[1])}
         {renderMetric(metrics[0])}
+        <ParentReminderActions data={reminders} readonly={readonly} run={run} notify={notify} />
       </Card>
       <Card className="overview-summary">
         <div className="overview-duration-stats">{metrics.slice(3).map(renderMetric)}</div>

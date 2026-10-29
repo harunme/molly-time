@@ -80,7 +80,7 @@ export function ParentReminderActions({ data, readonly, run, notify }: {
     {!readonly && <div className="overview-playback-actions">
       <Button type="button" size="sm" title="提醒当前正在观看的这一集，结束后停止连播；再次选片仍可使用今日剩余额度" disabled={busy || !!error || !online.some(eligible)} onClick={start}>这集看完休息</Button>
     </div>}
-    {!clipsReady && <p className="overview-playback-note">请先在<Link to="/devices">我的电视</Link>上传剩余集数提醒和休息提醒视频。</p>}
+    {!clipsReady && <p className="overview-playback-note">在<Link to="/devices?preferences=1">我的电视</Link>设置提醒视频后可启用。</p>}
     <Dialog open={choosing} onOpenChange={(open) => { if (!busy) setChoosing(open); }}>
       <DialogContent showCloseButton={!busy}>
         <DialogHeader>

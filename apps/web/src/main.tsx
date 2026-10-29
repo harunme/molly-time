@@ -1,3 +1,6 @@
+import { WatchControls } from "./watch-control";
+import { useMobileLayout } from "./mobile/layout";
+import { useDocumentScroll } from "./scroll-restoration";
 import { startLifecycle, useRevalidation } from "./lifecycle";
 import { InstallApp, OfflineStart, PwaStatus, useOnline } from "./pwa";
 import { FileUploadStatus, useItemUploads } from "./upload-status";
@@ -76,6 +79,7 @@ import {
   KeyRound,
   LoaderCircle,
   ScrollText,
+  Smartphone,
 } from "lucide-react";
 import {
   Dialog,
@@ -98,6 +102,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import "./style.css";
+import "./styles/mobile.css";
+
+const MobileApp = React.lazy(() => import("./mobile/app").then(module => ({ default: module.MobileApp })));
 
 export type Run = (action: () => Promise<void>) => Promise<void>;
 function useData<T>(path: string, initial: T, serial = 0) {
@@ -203,6 +210,7 @@ function Badge({ value }: { value: string; }) {
 }
 
 function App() {
+  const mobileLayout = useMobileLayout();
   const revision = useRevalidation();
   const online = useOnline();
   const [sessionError, setSessionError] = useState(false);
@@ -221,9 +229,7 @@ function App() {
     setError("");
     setNotice("");
   }, [location.pathname, location.search]);
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [location.pathname]);
+  useDocumentScroll(location.pathname, session?.user.id);
   useEffect(() => {
     let alive = true;
     api<Session>("/auth/session")
@@ -326,6 +332,23 @@ function App() {
   if (session.user.role === "superadmin")
     names.push(["operations", "运营设置"], ["logs", "系统日志"]);
   const readonly = !["admin", "superadmin"].includes(session.user.role);
+  if (mobileLayout) return <PairingProvider key={session.family.id} session={session} devices={reminders.devices} devicesError={reminders.error}>
+    {error && <div className="m-global-error" role="alert">{error}</div>}
+    <React.Suspense fallback={<Loading variant="page" label="正在打开家庭应用…" />}><MobileApp session={session} readonly={readonly} reminders={reminders} run={run}
+      logout={() => { void run(async () => { await api('/auth/logout', 'POST'); stopUploads(); setSession(undefined); updateSession(undefined); }); }}
+      family={<Family embedded run={run} readonly={readonly} notify={setNotice} session={session} familyRenamed={name => updateSession(current => current && ({ ...current, family: { ...current.family, name } }))} />}
+      televisions={<Televisions run={run} readonly={readonly} notify={setNotice} />}
+      deviceControls={deviceId => <WatchControls key={deviceId} editDeviceId={deviceId} onEditorClose={() => { navigate('/devices', { replace: true }); void reminders.reload(); }} readonly={readonly} devices={(reminders.devices ?? []).filter(device => device.id === deviceId)} total={1} serial={0} pairing={null} listState={null} empty={false} footer={null}
+        rename={async device => { const name = await promptText('设备名称', device.name); if (name && name !== device.name) { await api(`/devices/${device.id}`, 'PATCH', { name }); await reminders.reload(); } }}
+        revoke={async device => { if (await confirmAction(`取消“${device.name}”的配对？电视将无法继续访问家庭媒体库。`)) { await api(`/devices/${device.id}/revoke`, 'POST'); await reminders.reload(); } }} />}
+
+      trash={<Trash readonly={readonly} />} operations={<Operations notify={setNotice} />} logs={<DeviceErrorLogs />} uploads={<Uploads run={run} readonly={readonly} />}
+      editor={(kind, item, close) => kind === 'preview' ? <Preview item={item} close={close} /> : kind === 'upload' ? <UploadDialog item={item} initialKind="video" close={close} /> : kind === 'share' ? <ShareDialog resource={item} close={close} /> : <Modal title={`字幕设置 · ${item.name}`} close={close}><SubtitleSettings item={item} readonly={readonly} /></Modal>}
+    /></React.Suspense>
+    {notice && <button className="m-notice" role="status" onClick={() => setNotice('')}>{notice}</button>}
+  </PairingProvider>;
+  const primaryPages = new Set(["overview", "devices", "library", "family"]);
+  const secondaryActive = !primaryPages.has(page);
   return (
     <PairingProvider key={session.family.id} session={session} devices={reminders.devices} devicesError={reminders.error}>
     <div className="workspace">
@@ -345,9 +368,14 @@ function App() {
                   variant="ghost"
                   asChild
                   key={id}
-                  className={page === id ? "nav-link active" : "nav-link"}
+                  className={`nav-link${page === id ? " active" : ""}${primaryPages.has(id) ? "" : " nav-secondary"}`}
                 >
-                  <NavLink to={`/${id}`}>
+                  <NavLink to={`/${id}`} onClick={event => {
+                    if (location.pathname === `/${id}`) {
+                      event.preventDefault();
+                      window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+                    }
+                  }}>
                     <Icon name={id} />
                     {name}
                     {page === id && <ChevronRight className="ml-auto size-3.5" />}
@@ -358,15 +386,14 @@ function App() {
           ))}
         </nav>
         <div className="brandbar-identity">
-          <InstallApp />
-          <DeviceNotifications key={session.family.id} familyId={session.family.id} devices={reminders.devices} />
+          <div className="desktop-app-tools"><InstallApp /><DeviceNotifications key={session.family.id} familyId={session.family.id} devices={reminders.devices} /></div>
           <a className="brandbar-tv-link" href="/tv/" target="_blank" rel="noreferrer" aria-label="打开 TV 网页">
             <ExternalLink className="size-3.5" />
             <span>打开 TV 网页</span>
           </a>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="sidebar-account-button" aria-label="账号菜单">
+              <Button variant="ghost" className={`sidebar-account-button${secondaryActive ? " is-secondary-active" : ""}`} aria-label="账号菜单">
                 <Avatar className="size-7"><AvatarFallback className="bg-accent text-foreground">{session.user.name[0].toUpperCase()}</AvatarFallback></Avatar>
                 <strong>{session.user.name}</strong>
                 <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
@@ -379,6 +406,11 @@ function App() {
               <DropdownMenuLabel>{session.user.email}</DropdownMenuLabel>
               <DropdownMenuLabel>账号 ID：{session.user.accountId}</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <div className="mobile-account-links">
+                {names.filter(([id]) => !primaryPages.has(id)).map(([id, label]) => <DropdownMenuItem asChild key={id}><Link to={`/${id}`}><Icon name={id} />{label}</Link></DropdownMenuItem>)}
+                <DropdownMenuItem onSelect={() => navigate('/family?app=1')}><Smartphone />应用与通知</DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </div>
               <DropdownMenuItem variant="destructive" className="rounded-full" onSelect={() => {
                 void run(async () => {
                   await api("/auth/logout", "POST");
@@ -421,6 +453,7 @@ function App() {
             <Route index element={<Navigate to="/overview" replace />} />
             <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} reminders={reminders} />} />
             <Route path="devices" element={<Televisions run={run} readonly={readonly} notify={setNotice} />} />
+            <Route path="devices/settings" element={<Televisions run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<LibraryDataProvider key={`${session.user.id}:${session.family.id}`} />}>
               <Route index element={<Library run={run} readonly={readonly} />} />
               <Route path=":folderId" element={<FolderLibrary run={run} readonly={readonly} />} />
@@ -1288,6 +1321,7 @@ function Uploads({ run: execute, readonly }: { run: Run; readonly: boolean; }) {
 
 
 function Family({
+  embedded = false,
   run,
   readonly,
   notify,
@@ -1299,6 +1333,7 @@ function Family({
   notify: (value: string) => void;
   session: Session;
   familyRenamed: (name: string) => void;
+  embedded?: boolean;
 }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -1308,6 +1343,11 @@ function Family({
   const [familyName, setFamilyName] = useState(session.family.name);
   const [savingFamilyName, setSavingFamilyName] = useState(false);
   useEffect(() => setFamilyName(session.family.name), [session.family.name]);
+  useEffect(() => {
+    if (params.get('app') !== '1') return;
+    const frame = requestAnimationFrame(() => document.querySelector('.mobile-app-settings')?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [location.search]);
   const [currentPassword, setCurrentPassword] = useState(""),
     [newPassword, setNewPassword] = useState("");
   const settings = useData<
@@ -1332,9 +1372,13 @@ function Family({
     }
   }, [settings.data]);
   if (["devices", "watching"].includes(requestedSection)) return <Navigate to={`/devices${location.search}`} replace />;
-  if (location.pathname !== "/family") return <Navigate to={`/family${location.search}`} replace />;
+  if (!embedded && location.pathname !== "/family") return <Navigate to={`/family${location.search}`} replace />;
   return <>
     <div className="page-title"><div><h1>家庭设置</h1><p>管理家庭资料、存储和账号安全。</p></div></div>
+    <div className="mobile-app-settings settings-card" data-requested={params.get('app') === '1'}>
+      <h2>应用与通知</h2><p className="muted">添加到主屏幕，或设置应用运行期间的电视开机提醒。</p>
+      <div className="mobile-app-settings-actions"><InstallApp /><DeviceNotifications devices={undefined} familyId={session.family.id} /></div>
+    </div>
     <div className="family-settings-grid">
       <div className="settings-column family-settings-account">
           <Card className="settings-card family-info-card">

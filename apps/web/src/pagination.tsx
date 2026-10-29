@@ -68,12 +68,19 @@ export function Pagination({ page, pageSize = 20, total, setPage, loading = fals
   page: number; pageSize?: number; total: number; setPage: (page: number) => void; loading?: boolean; label?: string;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  const turnPage = (next: number, button: HTMLButtonElement) => {
+    setPage(next);
+    if (!matchMedia('(max-width: 1023px)').matches) return;
+    const body = button.closest('.folder-panel-body');
+    if (body) body.scrollTo({ top: 0, behavior: 'instant' });
+    else button.closest('.resource-library-card, .trash-list-card')?.scrollIntoView({ block: 'start' });
+  };
   if (loading && !total) return null;
   return <PaginationRoot className="pagination" aria-label={label}>
     <span className="pagination-total">共 {total} 条</span>
-    <PaginationPrevious type="button" variant="bordered" size="sm" aria-label={`${label}：上一页`} disabled={loading || page <= 1} onClick={() => setPage(page - 1)} />
+    <PaginationPrevious type="button" variant="bordered" size="sm" aria-label={`${label}：上一页`} disabled={loading || page <= 1} onClick={event => turnPage(page - 1, event.currentTarget)} />
     <span aria-live="polite" className="pagination-position">第 {page} / {pages} 页</span>
-    <PaginationNext type="button" variant="bordered" size="sm" aria-label={`${label}：下一页`} disabled={loading || page >= pages} onClick={() => setPage(page + 1)} />
+    <PaginationNext type="button" variant="bordered" size="sm" aria-label={`${label}：下一页`} disabled={loading || page >= pages} onClick={event => turnPage(page + 1, event.currentTarget)} />
   </PaginationRoot>;
 }
 
