@@ -15,7 +15,7 @@ export function publicationLabel(item: Resource) {
 }
 
 export function showPublicationStatus(item: Resource) {
-  return item.type === 'Episode' || !item.ready || item.status !== 'published' || !!item.hiddenByFolder;
+  return !item.ready || item.status !== 'published' || !!item.hiddenByFolder;
 }
 
 export function useLibraryPublication({ items, parent, scope, readonly, refreshing, changed }: {

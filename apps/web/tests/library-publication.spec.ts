@@ -56,7 +56,7 @@ test('publication separates folder visibility, supports selection and explains s
     await page.getByRole('button', { name: '更多操作 第 1 季', exact: true }).click();
     await page.getByRole('menuitem', { name: '上架目录', exact: true }).click();
     await page.getByRole('button', { name: '第 1 季', exact: true }).click();
-    await expect(dialog.locator('.library-item-status[data-published="true"]')).toHaveCount(3);
+    await expect(dialog.locator('.library-item-status[data-published="true"]')).toHaveCount(0);
   } finally {
     await page.request.post('/api/manage/resources/season/publish', { headers });
     await page.request.post('/api/manage/resources/publication', { headers, data: { action: 'publish', ids: ['episode', 'browser-episode', 'browser-next'] } });

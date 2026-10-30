@@ -960,6 +960,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                   <Button
                     variant="bordered"
                     className="name-button"
+                    title={item.name}
                     onClick={() => openItem(item)}
                   >
                     {item.name}
