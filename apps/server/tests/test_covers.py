@@ -11,6 +11,7 @@ from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import config, db
 from mollytime_server.covers import extract_cover, is_black_cover
+from mollytime_server.images import image_url
 from mollytime_server.management_models import UploadSession
 from mollytime_server.models import Item, MediaFile
 from mollytime_server.repair_covers import main, repair
@@ -113,6 +114,8 @@ def seed_automatic_cover(session):
 def test_repair_dry_run_replacement_and_resize_cache(client, monkeypatch):  # noqa: F811
     with Session(db.get_engine()) as session:
         cover_id = seed_automatic_cover(session)
+        original_url = image_url(session, session.get(Item, "e1"))
+        original_etag = client.get(original_url).headers["etag"]
         before = client.get("/api/items/e1/image?w=480").content
         assert is_black_cover(before)
         monkeypatch.setattr(
@@ -122,6 +125,11 @@ def test_repair_dry_run_replacement_and_resize_cache(client, monkeypatch):  # no
         assert session.get(MediaFile, cover_id).path == "black.jpg"
         assert repair(session, apply=True)[0]["status"] == "repaired"
         assert session.get(Item, "e1").primary_image_tag != cover_id
+        repaired_url = image_url(session, session.get(Item, "e1"))
+        assert repaired_url != original_url
+        updated = client.get(repaired_url, headers={"If-None-Match": original_etag})
+        assert updated.status_code == 200
+        assert updated.headers["cache-control"] == "private, max-age=86400"
         assert (config.get_settings().resolved_media_dir() / "black.jpg").is_file()
         assert not is_black_cover(client.get("/api/items/e1/image?w=480").content)
         assert repair(session, apply=True) == []

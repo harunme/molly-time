@@ -28,18 +28,26 @@ def image_files(db, item):
     return None, None
 
 
+def image_version(db, file):
+    # Cover repair replaces the contents of an existing MediaFile and updates
+    # the owner's tag. The media ID alone would leave the browser's URL stale.
+    owner = db.get(Item, file.item_id)
+    return owner.primary_image_tag if file.kind == "image" and owner and owner.primary_image_tag else file.id
+
+
 def image_url(db, item):
     current, visited = item, set()
     while current and current.id not in visited:
         visited.add(current.id)
         if current.primary_image_tag:
             return f"/api/items/{item.id}/image?v={current.primary_image_tag}"
-        if db.query(MediaFile.id).filter(
+        cover = db.query(MediaFile).filter(
             MediaFile.item_id == current.id,
             MediaFile.family_id == item.family_id,
             MediaFile.kind.in_(["image", "preview"]),
-        ).first():
-            return f"/api/items/{item.id}/image"
+        ).order_by(MediaFile.kind).first()
+        if cover:
+            return f"/api/items/{item.id}/image?v={image_version(db, cover)}"
         current = db.get(Item, current.parent_id) if current.parent_id else None
         if current and current.family_id != item.family_id:
             break
@@ -68,8 +76,9 @@ def image_url(db, item):
             .limit(1).all()
         )
         for candidate in candidates:
-            version = f"?v={candidate.primary_image_tag}" if candidate.primary_image_tag else ""
-            return f"/api/items/{candidate.id}/image{version}"
+            cover, _ = image_files(db, candidate)
+            if cover:
+                return f"/api/items/{candidate.id}/image?v={image_version(db, cover)}"
     return f"/api/items/{item.id}/image"
 
 
@@ -81,7 +90,7 @@ def image_ref(db, item, *, direct=True):
     source = db.get(Item, image_id)
     file, preview = image_files(db, source) if source and source.family_id == item.family_id else (None, None)
     if preview:
-        result["previewUrl"] = f"/api/items/{image_id}/image?v={preview.id}&preview=1"
+        result["previewUrl"] = f"/api/items/{image_id}/image?v={image_version(db, preview)}&preview=1"
     if file and file.kind == "image" and file.storage == "oss" and not animated_format(file) and direct and not db.info.get("static_catalog"):
         signing = db.info.get("cover_oss_signing")
         if signing is None:

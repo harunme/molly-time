@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
-from ..images import image_files
+from ..images import image_files, image_version
 from ..management_models import MediaOptions, WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
 from ..oss_usage import media_url
@@ -389,16 +389,29 @@ def image(
             return Response(status_code=204, headers={"Cache-Control": "private, no-cache"})
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
+    target_w = min(1280, max(64, w)) if w else 800
+    variant = "motion-full-v1.webp" if preview else "first-v1.jpg"
+    tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}:first-v1".encode()).hexdigest()
+    etag = '"' + hashlib.sha256(f"{tag}:{target_w}:{variant}".encode()).hexdigest() + '"'
+    headers = {
+        "Cache-Control": "private, max-age=86400" if request.query_params.get("v") == image_version(db, file) else "private, no-cache",
+        "ETag": etag,
+        "Vary": "Authorization, Cookie",
+        "X-Molly-Image-Version": tag,
+    }
+    # Authorization and visibility must be checked before returning even a 304.
+    validators = request.headers.get("if-none-match", "")
+    if any(value.strip().removeprefix("W/") in ("*", etag) for value in validators.split(",")):
+        return Response(status_code=304, headers=headers)
+
     with external_io(db):
         storage = build_storage(file.storage)
-        target_w = min(1280, max(64, w)) if w else 800
         if h is not None and h <= 0:
             h = None
 
         settings = get_settings()
         cache_dir = settings.data_dir / "image-cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        variant = "motion-full-v1.webp" if preview else "first-v1.jpg"
         cache_path = cache_dir / f"{file.id}_{file.sha256 or 'original'}_{target_w}_{variant}"
         if not cache_path.exists():
             if preview:
@@ -413,8 +426,5 @@ def image(
         # PNG/WebP containers can be still images. Keep their poster unchanged
         # and let the UI remember that this cover has no animation to fetch again.
         if preview and not data:
-            return Response(status_code=204, headers={"Cache-Control": "private, no-cache"})
-        tag = hashlib.sha256(f"{file.id}:{file.sha256}:{file.path}:first-v1".encode()).hexdigest()
-        return Response(content=data, media_type="image/webp" if preview else "image/jpeg", headers={
-            "Cache-Control": "private, no-cache", "X-Molly-Image-Version": tag,
-        })
+            return Response(status_code=204, headers=headers)
+        return Response(content=data, media_type="image/webp" if preview else "image/jpeg", headers=headers)

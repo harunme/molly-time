@@ -66,7 +66,17 @@ def create_app() -> FastAPI:
     async def private_api(request: Request, call_next):
         response = await call_next(request)
         if request.url.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-store"
+            # Only authenticated artwork may opt into browser caching. Keep all
+            # other API responses, including artwork errors, out of caches.
+            artwork = (
+                request.method in ("GET", "HEAD")
+                and request.url.path.startswith("/api/items/")
+                and request.url.path.endswith("/image")
+                and response.status_code in (200, 204, 304)
+                and response.headers.get("X-Molly-Image-Version")
+            )
+            if not artwork:
+                response.headers["Cache-Control"] = "no-store"
         return response
 
     app.add_middleware(UsageMeter)
