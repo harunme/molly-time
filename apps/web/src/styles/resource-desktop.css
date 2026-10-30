@@ -91,9 +91,17 @@ button.desktop-add-trigger:focus-visible .desktop-add-art { outline: 2px solid v
   border-top: 1px solid rgb(255 255 255 / .85);
 }
 .desktop-cover-art > img { position: absolute; z-index: 1; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-.desktop-folder:has(img[data-loaded])::before { display: none; }
+.desktop-cover-art > img:not([data-loaded]) { opacity: 0; }
+/* Pending artwork is not a missing cover. Keep a neutral, stable rectangle
+   until decoding completes; show the folder fallback only after an error. */
+.desktop-folder:has(img:not([data-error]))::before { display: none; }
+.desktop-cover:has(img:not([data-loaded]):not([data-error])) .desktop-cover-art {
+  border-top: 0;
+  background: var(--color-muted);
+  box-shadow: none;
+}
+.desktop-cover:has(img:not([data-error])) .desktop-fallback-icon { visibility: hidden; }
 .desktop-folder:has(img[data-loaded]) .desktop-cover-art { border-top: 0; background: transparent; }
-.desktop-folder:has(img[data-loaded]) .desktop-fallback-icon { visibility: hidden; }
 .desktop-folder-badge { display: none; }
 .desktop-folder:has(img[data-loaded]) .desktop-folder-badge {
   position: absolute;

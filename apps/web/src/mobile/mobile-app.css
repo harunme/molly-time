@@ -136,6 +136,9 @@ body:has(.m-library) { background: var(--color-background); }
 .m-cover-wrap { position: relative; }
 .m-cover { display: grid; place-items: center; position: relative; width: 100%; aspect-ratio: 1.28; overflow: hidden; border: 0; border-radius: 15px; background: #F2EFE7; color: #A89B7A; padding: 0; }
 .m-cover.collection { background: var(--color-primary-soft); }
+.m-cover:has(img:not([data-loaded]):not([data-error])) { background: var(--color-muted); }
+.m-cover:has(img:not([data-error])) > svg { visibility: hidden; }
+.m-cover > img:not([data-loaded]) { opacity: 0; }
 .m-cover > img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
 .m-media-tag { position: absolute; right: 8px; bottom: 8px; padding: 3px 5px; border-radius: 5px; font-size: 10px; background: rgb(0 0 0 / .35); color: #fff; }
 .m-content-info { padding: 10px 27px 0 1px; min-width: 0; }

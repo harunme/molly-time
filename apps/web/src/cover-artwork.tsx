@@ -14,8 +14,17 @@ export function CoverArtwork({ src, preview }: { src: string; preview?: string |
       return response.blob();
     });
   }, [src, preview]);
-  return <img ref={ref} src={src} alt="" loading="lazy" draggable={false}
-    onLoad={event => { event.currentTarget.dataset.loaded = 'true'; event.currentTarget.style.display = ''; }}
+  return <img key={src} ref={ref} src={src} alt="" loading="lazy" decoding="async" draggable={false}
+    onLoad={event => {
+      const image = event.currentTarget;
+      const loadedSrc = image.src;
+      void image.decode().catch(() => {}).then(() => {
+        if (!image.isConnected || image.src !== loadedSrc) return;
+        delete image.dataset.error;
+        image.dataset.loaded = 'true';
+        image.style.display = '';
+      });
+    }}
     onError={event => { if (event.currentTarget.src.startsWith('blob:')) return;
-      delete event.currentTarget.dataset.loaded; event.currentTarget.style.display = 'none'; }} />;
+      delete event.currentTarget.dataset.loaded; event.currentTarget.dataset.error = 'true'; event.currentTarget.style.display = 'none'; }} />;
 }
