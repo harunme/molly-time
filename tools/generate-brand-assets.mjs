@@ -37,6 +37,7 @@ const banner = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><
 const assets = {
   'mollytime-mark.svg': mark,
   'mollytime-icon.svg': icon,
+  'mollytime-icon-transparent.svg': await read('icons/app-icon-transparent.svg'),
   'mollytime-banner.svg': banner,
   'mollytime-horizontal.svg': horizontal,
   'mollytime-horizontal-on-dark.svg': onDark,
@@ -86,10 +87,10 @@ const vector = (width, height, viewportWidth, viewportHeight, contents) => `<?xm
 </vector>
 `;
 await write('apps/tv/client/src/main/res/drawable/app_mark.xml', vector(108, 108, 256, 256,
-  `<group android:pivotX="128" android:pivotY="128" android:scaleX="0.55" android:scaleY="0.55">${nativeSymbol}</group>`));
+  `<group android:pivotX="128" android:pivotY="128" android:rotation="-25" android:scaleX="0.70" android:scaleY="0.70">${nativeSymbol}</group>`));
 await write('apps/tv/client/src/main/res/drawable/app_logo.xml', vector(108, 108, 256, 256,
   `<path android:fillColor="${ivory}" android:pathData="M60 0H196A60 60 0 0 1 256 60V196A60 60 0 0 1 196 256H60A60 60 0 0 1 0 196V60A60 60 0 0 1 60 0Z" />
-    <group android:translateX="20" android:translateY="20" android:scaleX="0.84" android:scaleY="0.84">${nativeSymbol}</group>`));
+    <group android:pivotX="128" android:pivotY="128" android:rotation="-25" android:translateX="-8" android:translateY="2" android:scaleX="1.02" android:scaleY="1.02">${nativeSymbol}</group>`));
 await write('apps/tv/client/src/main/res/drawable/app_banner.xml', vector(320, 180, 1280, 720,
   `<path android:fillColor="${ivory}" android:pathData="M0 0H1280V720H0Z" />
     <group android:translateX="192" android:translateY="${bannerY}" android:scaleX="${bannerScale}" android:scaleY="${bannerScale}">

@@ -501,7 +501,7 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
     <main className="login">
       <section className="login-story">
         <header className="login-brand">
-          <div className="wordmark"><BrandMark /><BrandWordmark /></div>
+          <div className="wordmark"><BrandMark transparent /><BrandWordmark /></div>
           <span className="login-brand-divider" aria-hidden="true" />
           <p>家庭放映室</p>
         </header>

@@ -31,13 +31,18 @@ for(const [name,color] of Object.entries(colors)){
 }
 const coloredReverse=group(mPath,colors.ivory)+group(flowerPath,jasmine);
 const iconMark=group(symbol,jasmine);
-const icon=svg(256,256,`<rect width="256" height="256" rx="60" fill="${colors.ivory}"/>`+`<g transform="translate(20 20) scale(.84)">${iconMark}</g>`);
-const maskable=svg(256,256,`<rect width="256" height="256" fill="${colors.ivory}"/>`+`<g transform="translate(38.4 38.4) scale(.70)">${iconMark}</g>`);
+// Launcher composition: preserve the approved paths, with a fuller, playful tilt.
+// Horizontal/stacked brand lockups retain their upright geometry.
+const iconTransform='translate(120 130) rotate(-25) scale(1.02) translate(-128 -128)';
+const maskableTransform='translate(128 128) rotate(-25) scale(.70) translate(-128 -128)';
+const icon=svg(256,256,`<rect width="256" height="256" rx="60" fill="${colors.ivory}"/>`+`<g transform="${iconTransform}">${iconMark}</g>`);
+await write('icons/app-icon-transparent.svg',svg(256,256,`<g transform="${iconTransform}">${iconMark}</g>`));
+const maskable=svg(256,256,`<rect width="256" height="256" fill="${colors.ivory}"/>`+`<g transform="${maskableTransform}">${iconMark}</g>`);
 await write('icons/app-icon.svg',icon);
 await write('icons/app-icon-maskable.svg',maskable);
 for(const size of [64,128,180,192,256,512,1024])await png(`icons/app-icon-${size}.png`,icon,size);
 for(const size of [192,512])await png(`icons/app-icon-maskable-${size}.png`,maskable,size);
-const favicon=svg(256,256,`<rect width="256" height="256" rx="52" fill="${colors.ivory}"/>`+`<g transform="translate(8 8) scale(.94)">${iconMark}</g>`);
+const favicon=svg(256,256,`<rect width="256" height="256" rx="52" fill="${colors.ivory}"/>`+`<g transform="${iconTransform}">${iconMark}</g>`);
 await write('web/favicon.svg',favicon);
 const sizes=[16,32,48,64];const frames=[];
 for(const size of sizes){const frame=await sharp(Buffer.from(favicon)).resize(size,size).png().toBuffer();frames.push(frame);await write(`web/favicon-${size}.png`,frame)}
