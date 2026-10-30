@@ -168,11 +168,13 @@ class ShellActivity : AppCompatActivity() {
         if (!startupSoundAttempted) {
             startupSoundAttempted = true
             startupSound = StartupSound(this, app.api.http).also { sound ->
-                sound.start(app.session.server) {
+                sound.start(app.session.server, onReady = {
+                    if (generation == current && !isDestroyed) loading?.startMotion()
+                }) {
                     generation == current && resumed && loading?.visibility == View.VISIBLE && !isDestroyed
                 }
             }
-        }
+        } else loading?.startMotion()
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -488,7 +490,7 @@ class ShellActivity : AppCompatActivity() {
         startupSound = null
     }
 
-    override fun onPause() { startupSound?.stop(); startupSound = null; loading?.pause(); if (!playing) app.catalog.pause(); resumed = false; web?.onPause(); super.onPause() }
+    override fun onPause() { startupSound?.stop(); startupSound = null; loading?.startMotion(); loading?.pause(); if (!playing) app.catalog.pause(); resumed = false; web?.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); resumed = true; loading?.resume(); web?.onResume(); if (!playing) app.catalog.resume() }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)

@@ -25,6 +25,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
     private val position = FloatArray(2)
     private var time = 0f
     private var reported = false
+    private var requested = false
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 2800; interpolator = LinearInterpolator(); repeatCount = ValueAnimator.INFINITE
         addUpdateListener { time = it.animatedValue as Float; invalidate() }
@@ -51,6 +52,11 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
     }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (requested) startMotion()
+    }
+    fun startMotion() {
+        requested = true
+        if (!isAttachedToWindow || animator.isStarted || reported) return
         val reduced = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
         if (reduced) { reported = true; post { cycleFinished() } } else animator.start()
     }
