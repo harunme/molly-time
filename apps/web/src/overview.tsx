@@ -114,8 +114,8 @@ function MostPlayedList({ videos }: { videos: OverviewData["watch"]["mostPlayedV
   </div>;
 }
 
-export function Overview({ familyName, navigate, run, readonly, notify, reminders }: {
-  familyName: string; navigate: (page: Destination) => void;
+export function Overview({ navigate, run, readonly, notify, reminders }: {
+  navigate: (page: Destination) => void;
   run: Run; readonly: boolean; notify: (value: string) => void;
   reminders: ReturnType<typeof useReminderData>;
 }) {
@@ -186,7 +186,7 @@ export function Overview({ familyName, navigate, run, readonly, notify, reminder
       end={parseDateKey(params.get("end") ?? "") ? params.get("end")! : undefined}
       restoreFocus={() => { const target = opener.current?.isConnected ? opener.current : heatmap.current?.querySelector<HTMLButtonElement>(".section-heading button"); target?.focus(); }} />
     <div className="page-title">
-      <div><h1>概览</h1><p>{familyName}的设备在线状态与观看习惯。</p></div>
+      <div><h1>概览</h1></div>
       {pairing.deviceCount !== 0 && <Button variant="bordered" onClick={() => pairing.open()}>{readonly ? "如何绑定电视" : "绑定电视"}</Button>}
     </div>
     {pairing.deviceCount === 0 && <Card className="television-onboarding" aria-label="连接第一台电视">

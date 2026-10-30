@@ -84,7 +84,7 @@ export function MonthPicker({ value, onValueChange, min = "1970-01", max = "2100
           </Button>;
         })}
       </div>
-      <div className="mt-3 flex justify-end border-t pt-2">
+      <div className="mt-3 flex justify-end pt-2">
         <Button type="button" variant="ghost" size="sm" disabled={!allowed(current)}
           onClick={() => choose(current)}>本月</Button>
       </div>

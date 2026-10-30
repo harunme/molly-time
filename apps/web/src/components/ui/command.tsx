@@ -11,7 +11,7 @@ function CommandDialog({ title = "命令菜单", children, className, ...props }
   return <Dialog {...props}><DialogContent className={cn("overflow-hidden p-0", className)}><DialogTitle className="sr-only">{title}</DialogTitle><Command>{children}</Command></DialogContent></Dialog>;
 }
 function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>) {
-  return <div className="flex h-control items-center border-b-[0.0625rem] border-border px-3"><Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" /><CommandPrimitive.Input className={cn("h-full w-full bg-transparent text-sm outline-none placeholder:text-placeholder disabled:opacity-50", className)} {...props} /></div>;
+  return <div className="flex h-control items-center px-3"><Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" /><CommandPrimitive.Input className={cn("h-full w-full bg-transparent text-sm outline-none placeholder:text-placeholder disabled:opacity-50", className)} {...props} /></div>;
 }
 function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
   return <CommandPrimitive.List className={cn("max-h-75 overflow-y-auto overflow-x-hidden p-1.5", className)} {...props} />;

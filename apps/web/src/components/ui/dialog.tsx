@@ -19,7 +19,7 @@ function DialogContent({ className, children, showCloseButton = true, closeButto
       <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        className={cn("fixed top-1/2 left-1/2 z-(--z-dialog) grid max-h-[90vh] w-[calc(100%-2rem)] max-w-130 -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-dialog border-0 bg-card shadow-dialog outline-none", dialogMotionClassName, className)}
+        className={cn("fixed top-1/2 left-1/2 z-(--z-dialog) grid max-h-[90vh] w-[calc(100%-2rem)] max-w-130 -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-dialog bg-card shadow-dialog outline-none", dialogMotionClassName, className)}
         {...props}
       >
         {children}

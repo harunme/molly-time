@@ -36,10 +36,10 @@ function SheetContent({ side = "right", className, children, closeButtonTestId, 
   );
 }
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("flex shrink-0 flex-col border-b-[0.0625rem] border-border px-5 py-4.5 pr-14", className)} {...props} />;
+  return <div className={cn("flex shrink-0 flex-col px-5 py-4.5 pr-14", className)} {...props} />;
 }
 function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("mt-auto flex gap-2 border-t-[0.0625rem] border-border p-5", className)} {...props} />;
+  return <div className={cn("mt-auto flex gap-2 p-5", className)} {...props} />;
 }
 function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {
   return <SheetPrimitive.Title className={cn("text-lg font-semibold leading-[normal] text-foreground", className)} {...props} />;

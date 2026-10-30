@@ -47,7 +47,7 @@ function PopoverContent({ className, align = "center", sideOffset = 4, ...props 
         align={align}
         sideOffset={sideOffset}
         aria-hidden={!open || undefined}
-        className={cn("z-(--z-popover) w-80 rounded-popover border border-card-border bg-card p-3 text-foreground shadow-popover outline-none", menuMotionClassName, className)}
+        className={cn("z-(--z-popover) w-80 rounded-popover bg-card p-3 text-foreground shadow-popover outline-none", menuMotionClassName, className)}
         {...props}
       />
     </PopoverPrimitive.Portal>

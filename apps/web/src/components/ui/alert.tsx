@@ -3,13 +3,13 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
-  "relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-ui border px-3 py-2.5 text-sm has-[>svg]:grid-cols-[1rem_1fr] has-[>svg]:gap-x-3 [&>svg]:h-4 [&>svg]:w-4",
+  "relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-ui px-3 py-2.5 text-sm has-[>svg]:grid-cols-[1rem_1fr] has-[>svg]:gap-x-3 [&>svg]:h-4 [&>svg]:w-4",
   {
     variants: {
       variant: {
-        default: "border-info-border bg-info-surface text-info",
-        destructive: "border-destructive-border bg-destructive-surface text-destructive-hover",
-        warning: "border-warning-border bg-warning-surface text-warning-foreground",
+        default: "bg-info-surface text-info",
+        destructive: "bg-destructive-surface text-destructive-hover",
+        warning: "bg-warning-surface text-warning-foreground",
       },
     },
     defaultVariants: { variant: "default" },

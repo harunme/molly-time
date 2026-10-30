@@ -15,7 +15,7 @@ function SelectTrigger({ className, size = "default", children, ...props }: Reac
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "group/select flex min-w-0 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-[20px] border border-border bg-card px-4 text-left text-foreground outline-none focus-visible:border-focus-ring focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-placeholder [&>span]:min-w-0 [&>span]:flex-1 [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+        "group/select flex min-w-0 w-full cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-[20px] bg-card px-4 text-left text-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-placeholder [&>span]:min-w-0 [&>span]:flex-1 [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
         controlMotionClassName,
         fieldErrorMotionClassName,
         size === "default" && "h-control text-base",
@@ -34,7 +34,7 @@ function SelectContent({ className, children, position = "popper", sideOffset = 
   return (
     <SelectContentSizeContext.Provider value={size}>
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Content data-slot="select-content" data-size={size} position={position} sideOffset={sideOffset} className={cn("relative z-(--z-popover) max-h-75 min-w-32 overflow-hidden rounded-popover border border-card-border bg-card text-foreground shadow-popover", menuMotionClassName, className)} {...props}>
+        <SelectPrimitive.Content data-slot="select-content" data-size={size} position={position} sideOffset={sideOffset} className={cn("relative z-(--z-popover) max-h-75 min-w-32 overflow-hidden rounded-popover bg-card text-foreground shadow-popover", menuMotionClassName, className)} {...props}>
           <SelectScrollUpButton />
           <SelectPrimitive.Viewport className={cn("w-full", size === "default" ? "p-1.5" : "p-1", position === "popper" && "min-w-[var(--radix-select-trigger-width)]")}>{children}</SelectPrimitive.Viewport>
           <SelectScrollDownButton />

@@ -2,10 +2,10 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 function Card({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="card" className={cn("flex flex-col rounded-card border border-card-border bg-card shadow-card", className)} {...props} />;
+  return <div data-slot="card" className={cn("flex flex-col rounded-card bg-card shadow-card", className)} {...props} />;
 }
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="card-header" className={cn("grid gap-1.5 border-b-[0.0625rem] border-border px-4 py-3", className)} {...props} />;
+  return <div data-slot="card-header" className={cn("grid gap-1.5 px-4 py-3", className)} {...props} />;
 }
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="card-title" className={cn("font-semibold", className)} {...props} />;

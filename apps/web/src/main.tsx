@@ -355,9 +355,9 @@ function App() {
     <div className="workspace">
       <aside className="manage-sidebar">
         <Link className="wordmark" to="/overview">
-          <BrandMark />
+          <BrandMark transparent />
           <span className="brand-copy">
-            <BrandWordmark /><small>家庭媒体管理</small>
+            <BrandWordmark onDark />
           </span>
         </Link>
         <nav ref={navigation} className={names.length > 5 ? "has-operations" : undefined} aria-label="管理导航">
@@ -452,7 +452,7 @@ function App() {
           )}
           <Routes>
             <Route index element={<Navigate to="/overview" replace />} />
-            <Route path="overview" element={<Overview familyName={session.family.name} navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} reminders={reminders} />} />
+            <Route path="overview" element={<Overview navigate={(destination) => navigate(destination === "upload" ? "/library?uploads=1" : `/${destination}`)} run={run} readonly={readonly} notify={setNotice} reminders={reminders} />} />
             <Route path="devices" element={<Televisions run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="devices/settings" element={<Televisions run={run} readonly={readonly} notify={setNotice} />} />
             <Route path="library" element={<LibraryDataProvider key={`${session.user.id}:${session.family.id}`} />}>
@@ -482,7 +482,6 @@ function App() {
             <Route path="*" element={<Navigate to="/overview" replace />} />
           </Routes>
           <footer className="manage-footer">
-            <span>MollyTime · 家庭放映室</span>
             <span>为下一次一起观看做准备</span>
           </footer>
         </div>
@@ -501,7 +500,7 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
     <main className="login">
       <section className="login-story">
         <header className="login-brand">
-          <div className="wordmark"><BrandMark transparent /><BrandWordmark /></div>
+          <div className="wordmark"><BrandMark transparent /><BrandWordmark onDark /></div>
           <span className="login-brand-divider" aria-hidden="true" />
           <p>家庭放映室</p>
         </header>

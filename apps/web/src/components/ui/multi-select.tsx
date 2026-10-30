@@ -101,7 +101,7 @@ function MultiSelect({
           data-testid={testId}
           disabled={disabled}
           className={cn(
-            "group/multi-select h-control w-full min-w-0 justify-between px-3 text-base font-normal aria-invalid:border-destructive",
+            "group/multi-select h-control w-full min-w-0 justify-between px-3 text-base font-normal",
             className,
           )}
         >
@@ -178,7 +178,7 @@ function MultiSelect({
             )}
           </CommandList>
           {showSelectAll || value.length > 0 ? (
-            <div className="flex items-center justify-between border-t-[0.0625rem] border-border px-3 py-1.5">
+            <div className="flex items-center justify-between px-3 py-1.5">
               <span className="text-xs text-muted-foreground">
                 已选择 {value.length} 项
               </span>

@@ -161,7 +161,7 @@ function Calendar({ className, classNames, locale = zhCN, showOutsideDays = true
               day: "relative h-9 w-9 p-0 text-center text-sm",
               day_button: cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-9 w-9 min-w-0 font-normal"),
               selected: "[&>button]:bg-selection [&>button]:text-foreground [&>button]:hover:bg-selection",
-              today: "[&>button]:border [&>button]:border-info",
+              today: "[&>button]:font-semibold [&>button]:text-info",
               outside: "text-placeholder opacity-50",
               disabled: "text-placeholder opacity-50",
               hidden: "invisible",
