@@ -72,11 +72,12 @@ const manifest = JSON.parse(await readFile(resolve(root, manifestPath), 'utf8'))
 manifest.background_color = ivory;
 manifest.theme_color = ivory;
 await write(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-await copy('icons/app-icon-1024.png', 'apps/tv/client/src/main/res/drawable-nodpi/mollytime_icon.png');
+await write('apps/tv/client/src/main/res/drawable-nodpi/mollytime_icon.png',
+  await sharp(Buffer.from(await read('icons/app-icon-transparent.svg'))).resize(1024, 1024).png().toBuffer());
 await write('apps/tv/client/src/main/res/drawable-nodpi/mollytime_banner.png', await sharp(Buffer.from(banner)).resize(1280, 720).png().toBuffer());
 await write('apps/tv/client/src/main/res/values/colors.xml', `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_background">${ivory}</color>
+    <color name="launcher_background">#00000000</color>
 </resources>
 `);
 const nativePaths = (data, color) => data.map(d => `<path android:pathData="${d}" android:fillColor="${color}" />`).join('\n        ');
@@ -90,8 +91,18 @@ const vector = (width, height, viewportWidth, viewportHeight, contents) => `<?xm
 await write('apps/tv/client/src/main/res/drawable/app_mark.xml', vector(108, 108, 256, 256,
   `<group android:pivotX="128" android:pivotY="128" android:rotation="-25" android:scaleX="0.70" android:scaleY="0.70">${nativeSymbol}</group>`));
 await write('apps/tv/client/src/main/res/drawable/app_logo.xml', vector(108, 108, 256, 256,
-  `<path android:fillColor="${ivory}" android:pathData="M60 0H196A60 60 0 0 1 256 60V196A60 60 0 0 1 196 256H60A60 60 0 0 1 0 196V60A60 60 0 0 1 60 0Z" />
-    <group android:pivotX="128" android:pivotY="128" android:rotation="-25" android:translateX="-8" android:translateY="2" android:scaleX="1.02" android:scaleY="1.02">${nativeSymbol}</group>`));
+  `<group android:pivotX="128" android:pivotY="128" android:rotation="-25" android:translateX="-8" android:translateY="2" android:scaleX="1.02" android:scaleY="1.02">${nativeSymbol}</group>`));
+// Use the same transparent drawable on every API level. An adaptive icon
+// introduces a launcher background/mask even when the logo itself has alpha.
+const launcher = `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="48dp" android:height="48dp" android:gravity="center"
+        android:drawable="@drawable/app_logo" />
+</layer-list>
+`;
+for (const directory of ['mipmap-anydpi', 'mipmap-anydpi-v26']) {
+  await write(`apps/tv/client/src/main/res/${directory}/ic_launcher.xml`, launcher);
+}
 await write('apps/tv/client/src/main/res/drawable/app_banner.xml', vector(320, 180, 1280, 720,
   `<path android:fillColor="${ivory}" android:pathData="M0 0H1280V720H0Z" />
     <group android:translateX="192" android:translateY="${bannerY}" android:scaleX="${bannerScale}" android:scaleY="${bannerScale}">

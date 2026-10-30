@@ -25,28 +25,39 @@ export function useClientUpdate() {
   const [update, setUpdate] = useState<Update>();
   const current = useRef<Update | undefined>(undefined);
   const commit = (next: Update) => { current.current = next; setUpdate(next); };
-  const check = async () => {
-    // Keep a running download and a verified package when reopening the panel.
-    if (current.current && ['checking', 'downloading', 'preparing', 'ready', 'installing'].includes(current.current.phase)) return;
+  const download = async (previous: Update) => {
+    commit({ ...previous, phase: 'downloading', percent: 0, message: '正在下载 0%', retry: undefined });
+    try { await call('downloadUpdate'); }
+    catch (failure) {
+      commit({ ...previous, phase: 'error', message: failure instanceof Error ? failure.message : '下载失败，请重试', retry: 'download' });
+    }
+  };
+  const check = async (force = false) => {
+    // Startup notifications and settings share one operation. Never replace an
+    // active download or a verified package waiting for installation.
+    const previous = current.current;
+    if (previous && (['checking', 'downloading', 'preparing', 'ready', 'installing', 'installed'].includes(previous.phase) || !force)) return;
     commit({ phase: 'checking', message: '正在检查更新…' });
     try {
       const result = await call<{ release: Release | null; progress?: Progress }>('checkUpdate');
       const next: Update = result.release ? { phase: 'available', message: `发现新版本 ${result.release.versionName}`, release: result.release }
         : { phase: 'latest', message: '当前已是最新版本' };
-      commit(result.progress && result.release ? progressUpdate(next, result.progress) : next);
+      const restored = result.progress && result.release ? progressUpdate(next, result.progress) : next;
+      if (restored.phase === 'available') await download(restored);
+      else commit(restored);
     } catch (failure) {
       commit({ phase: 'error', message: failure instanceof Error ? failure.message : '检查更新失败', retry: 'check' });
     }
   };
   const act = async () => {
     const previous = current.current;
-    if (!previous || ['checking', 'downloading', 'preparing', 'installing', 'installed'].includes(previous.phase)) return;
-    if (previous.retry === 'check' || !previous.release) { await check(); return; }
-    const install = previous.phase === 'ready' || previous.retry === 'install';
-    commit({ ...previous, phase: install ? 'installing' : 'downloading', percent: install ? 100 : 0, message: install ? '正在准备安装…' : '正在下载 0%' });
-    try { await call(install ? 'installUpdate' : 'downloadUpdate'); }
+    if (!previous || !['ready', 'error'].includes(previous.phase)) return;
+    if (previous.retry === 'check' || !previous.release) { await check(true); return; }
+    if (previous.retry === 'download') { await download(previous); return; }
+    commit({ ...previous, phase: 'installing', percent: 100, message: '正在准备安装…' });
+    try { await call('installUpdate'); }
     catch (failure) {
-      commit({ ...previous, phase: 'error', message: failure instanceof Error ? failure.message : '更新失败，请重试', retry: install ? 'install' : 'download' });
+      commit({ ...previous, phase: 'error', message: failure instanceof Error ? failure.message : '安装失败，请重试', retry: 'install' });
     }
   };
   useEffect(() => {
@@ -54,7 +65,7 @@ export function useClientUpdate() {
     window.addEventListener('molly:clientUpdateProgress', progress);
     return () => window.removeEventListener('molly:clientUpdateProgress', progress);
   }, []);
-  const actionable = !!update && ['available', 'ready', 'error'].includes(update.phase);
-  const actionLabel = update?.phase === 'error' ? '重试' : update?.phase === 'ready' ? '立即安装' : '立即更新';
+  const actionable = !!update && ['ready', 'error'].includes(update.phase);
+  const actionLabel = update?.phase === 'error' ? '重试' : '立即安装';
   return { update, check, act, actionable, actionLabel };
 }

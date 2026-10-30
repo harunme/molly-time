@@ -41,7 +41,7 @@ for (const supported of [true, false]) {
     await page.keyboard.press('ContextMenu');
     await expect(page.getByRole('button', { name: /检查网页更新/ })).toHaveCount(0);
     await expect(page.locator('[data-focus="check-web-update"]')).toHaveCount(0);
-    await expect(page.locator(`[data-focus="re-pair"]`)).toBeFocused();
+    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
     await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
     if (supported) {
       await expect(page.getByRole('region', { name: '软件更新' })).toContainText('当前版本 0.4.0');
@@ -49,7 +49,7 @@ for (const supported of [true, false]) {
       await expect.poll(() => page.evaluate(() => (window as unknown as { updateChecks: number }).updateChecks)).toBe(1);
       await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
       await expect(page.getByRole('heading', { name: '客户端更新' })).toHaveCount(0);
-      await expect(page.getByText('发现新版本 0.5.0')).toBeVisible();
+      await expect(page.getByRole('status')).toHaveText('正在下载 0%');
       await expect(page.getByText('网页显示更新说明')).toBeVisible();
       await expect(page.getByRole('dialog')).toHaveCount(1);
       await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
@@ -63,15 +63,20 @@ for (const supported of [true, false]) {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
       await page.keyboard.press('ContextMenu');
-      await expect(page.getByText('发现新版本 0.5.0')).toBeVisible();
+      await expect(page.getByRole('status')).toHaveText('正在下载 0%');
       await page.evaluate(() => window.mollyBack?.());
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
-      // A direct update notification has no settings page to return to.
+      // Background update notifications never open UI outside settings.
       await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:clientUpdateAvailable', {
         detail: { versionName: '0.5.0', size: 2097152, notes: '网页显示更新说明' },
       })));
-      await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:clientUpdateProgress', { detail: { state: 'downloaded' } })));
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
+      await page.keyboard.press('ContextMenu');
+      await expect(page.getByRole('button', { name: '立即安装', exact: true })).toBeFocused();
       await expect(page.getByRole('button', { name: '返回设置' })).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -739,9 +744,8 @@ for (const outcome of ['cancel', 'error'] as const) {
     await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
     await open();
     const action = page.locator('[data-focus="client-update-action"]');
-    await expect(action).toHaveText('立即更新');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
-    await action.click();
+    await expect.poll(calls).toEqual(['checkUpdate', 'downloadUpdate']);
+    await expect(page.getByRole('status')).toHaveText('正在下载 0%');
     await expect(action).toHaveCount(0);
     await expect(page.getByRole('button', { name: '重新检查' })).toHaveCount(0);
     await emit({ state: 'downloading', received: 100, total: 100 });
@@ -751,18 +755,18 @@ for (const outcome of ['cancel', 'error'] as const) {
     await expect(page.getByRole('status')).toHaveText('正在准备安装…');
     await emit({ state: 'downloaded' });
     await expect(action).toHaveText('立即安装');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+    await expect(page.locator('[data-focus="client-update-action"]')).toBeFocused();
     await page.keyboard.press('Escape');
     await open();
     await expect(action).toHaveText('立即安装');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+    await expect(page.locator('[data-focus="client-update-action"]')).toBeFocused();
     await action.click();
     await expect(action).toHaveCount(0);
     await emit(outcome === 'cancel'
       ? { state: '尚未安装，更新包已保留', phase: 'ready' }
       : { state: '安装失败，请重试', phase: 'error' });
     await expect(action).toHaveText(outcome === 'cancel' ? '立即安装' : '重试');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+    await expect(page.locator('[data-focus="client-update-action"]')).toBeFocused();
     await action.click();
     await expect.poll(calls).toEqual(['checkUpdate', 'downloadUpdate', 'installUpdate', 'installUpdate']);
   });
