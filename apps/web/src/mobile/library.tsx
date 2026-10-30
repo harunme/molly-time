@@ -6,7 +6,7 @@ import { api, type Resource, type ResourceOption, type Upload } from '../api';
 import { useDebounced, usePagedData } from '../pagination';
 import { useContinuousData, ContinuousListStatus } from '../continuous-list';
 import { useLibraryData } from '../library-data';
-import { publicationLabel, useLibraryPublication } from '../library-publication';
+import { publicationLabel, showPublicationStatus, useLibraryPublication } from '../library-publication';
 import { CoverArtwork } from '../cover-artwork';
 import { confirmAction, promptText } from '../feedback';
 import { queueVideoFiles, type VideoUploadBatch } from '../video-upload';
@@ -83,7 +83,7 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
         onPointerMove={event => { if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 8) clearTimeout(hold.current); }}
         onPointerUp={() => { clearTimeout(hold.current); press.current = undefined; }} onPointerCancel={() => { clearTimeout(hold.current); press.current = undefined; }}
         onContextMenu={event => { event.preventDefault(); setActions(item); }}>{item.type === 'Episode' ? <Play size={29} strokeWidth={1.2} /> : <Folder size={38} strokeWidth={1.15} />}{item.imageUrl && <CoverArtwork src={item.imageUrl} preview={item.imagePreviewUrl} />}{item.type === 'Episode' && <span className="m-media-tag">{item.runtimeMs ? `${Math.floor(item.runtimeMs / 60000)}:${String(Math.floor(item.runtimeMs / 1000) % 60).padStart(2, '0')}` : '视频'}</span>}</button>{publication.selector(item)}</div>
-      <div className="m-content-info"><button className="m-content-name" disabled={publication.selecting && item.type !== 'Episode'} onClick={() => void open(item)}>{item.name}</button><p className="m-content-state">{publicationLabel(item)}</p>{fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />)}</div>
+      <div className="m-content-info"><button className="m-content-name" disabled={publication.selecting && item.type !== 'Episode'} onClick={() => void open(item)}>{item.name}</button>{showPublicationStatus(item) && <p className="m-content-state">{publicationLabel(item)}</p>}{fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />)}</div>
       {!publication.selecting && <button className="m-content-more" aria-label={`更多操作 ${item.name}`} onClick={() => setActions(item)}><MoreHorizontal size={20} /></button>}
     </article>)}</div>
     {publication.selecting && <div className="m-selection-bar" role="group" aria-label="已选视频操作"><div><strong>已选 {publication.selected.length} 个</strong><button disabled={list.refreshing || !!list.error || publication.busy} onClick={publication.selectAll}>全选当前列表</button></div><button disabled={!list.data.some(item => publication.selected.includes(item.id) && item.status === 'published') || publication.busy} onClick={() => void publication.unpublishSelection()}>下架</button><button className="publish" disabled={!list.data.some(item => publication.selected.includes(item.id) && item.ready && item.status !== 'published') || publication.busy} onClick={() => void publication.publishSelection()}>上架</button></div>}

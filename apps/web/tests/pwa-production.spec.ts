@@ -32,7 +32,8 @@ test('production app installs a complete shell, starts offline and reconnects wi
   await page.screenshot({ path: test.info().outputPath('pwa-reconnected.png') });
 });
 
-test('a new shell waits for explicit update and cleans obsolete shell caches', async ({ page }) => {
+test('an installed app waits for explicit update and cleans obsolete shell caches', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
   const { readFile, writeFile } = await import('node:fs/promises');
   const path = 'dist/sw.js';
   const original = await readFile(path, 'utf8');
@@ -47,5 +48,23 @@ test('a new shell waits for explicit update and cleans obsolete shell caches', a
     await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: '更新应用', exact: true }).click()]);
     await expect.poll(() => page.evaluate(async () => (await caches.keys()).filter(key => key.startsWith('mollytime-shell-')))).toEqual([expect.stringContaining('-update-test')]);
     await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
+  } finally { await writeFile(path, original); }
+});
+
+test('a browser tab activates a new shell without an update banner or reload', async ({ page }) => {
+  const { readFile, writeFile } = await import('node:fs/promises');
+  const path = 'dist/sw.js';
+  const original = await readFile(path, 'utf8');
+  try {
+    await page.goto('/manage/');
+    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+    await page.getByLabel('账号', { exact: true }).fill('keep-my-input@example.test');
+    await writeFile(path, original.replace(/mollytime-shell-([a-f0-9]+)/g, 'mollytime-shell-$1-browser-update'));
+    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration('/manage/'))!.update(); });
+    await expect.poll(() => page.evaluate(async () => (await caches.keys()).filter(key => key.startsWith('mollytime-shell-')))).toEqual([expect.stringContaining('-browser-update')]);
+    await expect(page.getByRole('button', { name: '更新应用', exact: true })).toHaveCount(0);
+    await expect(page.getByText('新版本已准备好')).toHaveCount(0);
+    await expect(page.getByLabel('账号', { exact: true })).toHaveValue('keep-my-input@example.test');
   } finally { await writeFile(path, original); }
 });

@@ -22,7 +22,7 @@ import { SelectField } from "@/components/ui/select";
 import { Operations } from "./operations";
 import { FamilyUsage } from "./usage";
 import { Trash, TrashRetentionSettings } from "./trash";
-import { publicationLabel, useLibraryPublication } from "./library-publication";
+import { publicationLabel, showPublicationStatus, useLibraryPublication } from "./library-publication";
 import { ResourceDesktop } from "./resource-desktop";
 import { LibraryDataProvider, useLibraryData } from "./library-data";
 import { useContinuousData, ContinuousListStatus } from "./continuous-list";
@@ -965,7 +965,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                     {item.name}
                   </Button>}
                 </div>
-                {fileUploads.forItem(item.id).length ? fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />) : <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
+                {fileUploads.forItem(item.id).length ? fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />) : showPublicationStatus(item) && <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
                   title={item.hiddenByFolder ? `上级目录“${item.hiddenByFolder.name}”已下架` : undefined}>
                   <span>{publicationLabel(item)}</span>
                 </p>}

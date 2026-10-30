@@ -14,6 +14,10 @@ export function publicationLabel(item: Resource) {
   return item.status === 'published' ? '已上架' : '已下架';
 }
 
+export function showPublicationStatus(item: Resource) {
+  return item.type === 'Episode' || !item.ready || item.status !== 'published' || !!item.hiddenByFolder;
+}
+
 export function useLibraryPublication({ items, parent, scope, readonly, refreshing, changed }: {
   items: Resource[]; parent?: Resource; scope: string; readonly: boolean; refreshing: boolean; changed: () => void;
 }) {

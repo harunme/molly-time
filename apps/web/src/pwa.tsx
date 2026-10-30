@@ -50,6 +50,7 @@ export function OfflineStart({ retry }: { retry: () => void }) {
 
 export function PwaStatus() {
   const online = useOnline();
+  const standalone = matchMedia('(display-mode: standalone)').matches || !!(navigator as Navigator & { standalone?: boolean }).standalone;
   const status = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const measure = () => document.documentElement.style.setProperty('--app-status-height', `${status.current?.offsetHeight ?? 0}px`);
@@ -72,9 +73,20 @@ export function PwaStatus() {
     }).catch(() => { /* The online application remains usable when installation is unavailable. */ });
     return () => { alive = false; navigator.serviceWorker.removeEventListener('controllerchange', activated); };
   }, []);
+  useEffect(() => {
+    if (!waiting || standalone) return;
+    const activate = () => {
+      if (!hasActiveUploads() && waiting.state === 'installed') waiting.postMessage('ACTIVATE_UPDATE');
+    };
+    // Browser navigation already fetches fresh HTML. Activate the shell quietly
+    // for the next visit, without reloading or interrupting the current page.
+    activate();
+    window.addEventListener('mollytime:uploads', activate);
+    return () => window.removeEventListener('mollytime:uploads', activate);
+  }, [waiting, standalone]);
   return <div ref={status} className="app-status">
     {!online && <div className="connection-banner" role="status">网络已断开，恢复连接后自动重试。上传可能暂停。</div>}
-    {waiting && <div className="connection-banner" role="status">新版本已准备好<Button size="sm" disabled={busy} onClick={() => {
+    {standalone && waiting && <div className="connection-banner" role="status">新版本已准备好<Button size="sm" disabled={busy} onClick={() => {
       if (hasActiveUploads()) {
         setBusy(true); setTimeout(() => setBusy(false), 2000); return;
       }
