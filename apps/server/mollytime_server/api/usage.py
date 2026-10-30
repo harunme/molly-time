@@ -5,17 +5,34 @@ import io
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 
 from ..accounts import AccountIdentity
 from ..db import get_session_factory
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..models import Family, User
+from ..oss_usage import sync_status
 from ..transactions import external_io
 from ..usage import family_usage, month_bounds
+from ..usage_models import OssLogRequest
 from .operations import Operator
 
 router = APIRouter(prefix="/api/manage", tags=["family-usage"])
+
+
+@router.get("/operations/usage/oss")
+def oss_usage(user: Operator, db: DbSession, month: str | None = None):
+    month, lower, upper = month_bounds(month)
+    query = db.query(OssLogRequest).filter(
+        OssLogRequest.occurred_at >= lower, OssLogRequest.occurred_at < upper,
+    )
+    total = query.with_entities(func.coalesce(func.sum(OssLogRequest.bytes_sent), 0)).scalar()
+    unmatched = query.filter(OssLogRequest.family_id.is_(None)).with_entities(
+        func.coalesce(func.sum(OssLogRequest.bytes_sent), 0),
+    ).scalar()
+    return {"month": month, "publicBytes": total, "unattributedBytes": unmatched,
+            "sync": sync_status(db)}
 
 
 @router.get("/usage")

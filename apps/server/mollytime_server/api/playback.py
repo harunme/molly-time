@@ -16,6 +16,7 @@ from ..deps import CurrentUser, DbSession
 from ..images import image_files
 from ..management_models import MediaOptions, WatchProgress, WatchSession
 from ..models import ChildProfile, Item, MediaFile, PlaybackEvent
+from ..oss_usage import media_url
 from ..resource_policy import require_visible
 from ..storage import build_storage
 from ..storage.local import LocalStorage
@@ -156,7 +157,7 @@ def playback_info(db, file, session_id=None):
             url = f"/api/episodes/{file.item_id}/play?{urlencode(query)}"
             expires = None
         else:
-            url = storage.signed_url(file.path, ttl)
+            url = media_url(storage, file.path, ttl, file.family_id)
             expires = (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=ttl)).isoformat()
         return {
             "mediaId": file.id,
@@ -199,7 +200,7 @@ def stream_file(file, request, family_id=None, *, db=None):
     storage = build_storage(file.storage)
     if not isinstance(storage, LocalStorage):
         return RedirectResponse(
-            storage.signed_url(file.path, get_storage_settings().oss_signed_url_ttl),
+            media_url(storage, file.path, get_storage_settings().oss_signed_url_ttl, family_id),
             status_code=302,
             headers={"Cache-Control": "no-store"},
         )

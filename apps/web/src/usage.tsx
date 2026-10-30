@@ -18,11 +18,20 @@ type Usage = {
     usedBytes: number; localBytes: number; ossBytes: number; pendingBytes: number;
     reservedBytes: number; objectCount: number; unknownSizeCount: number
    };
+  ossSync?: OssSync;
   traffic: {
     totalBytes: number; localBytes: number; ossBytes: number; requestCount: number;
     lastOssImportAt: string | null
    };
 };
+
+type OssSync = { enabled: boolean; lastSuccessAt: string | null; lastAttemptAt: string | null; error: string | null };
+
+function OssStatus({ status }: { status?: OssSync }) {
+  return <p className="muted">{!status?.enabled
+    ? "OSS 自动统计未启用，当前数值仅包含已入账记录，不代表完整用量。"
+    : <>OSS 日志最近同步成功：{dateTime(status.lastSuccessAt)}。{status.error || "日志可能延迟 48 小时，部分中断请求不会记录；费用以阿里云账单为准。"}</>}</p>;
+}
 
 const currentMonth = () => new Intl.DateTimeFormat("sv-SE", {
   timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit",
@@ -32,7 +41,7 @@ const bytes = (value: number) => value < 1024 ? `${value} B`
   : value < 1024 ** 2 ? `${(value / 1024).toFixed(1)} KB` : largeBytes(value);
 
 function UsageNotes() {
-  return <p className="muted">存储为当前家庭引用的文件容量，包含旧版本和有效分享保留的文件，同一文件在家庭内仅计算一次；家庭之间可能共用文件，家庭容量之和不代表平台实际存储。流量按北京时间自然月汇总，包含播放、下载、字幕和封面。OSS 公网下行仅显示历史已入账数据，不代表当前完整用量。</p>;
+  return <p className="muted">存储为当前家庭引用的文件容量，包含旧版本和有效分享保留的文件，同一文件在家庭内仅计算一次；家庭之间可能共用文件，家庭容量之和不代表平台实际存储。流量按北京时间自然月汇总，包含播放、下载、字幕和封面。OSS 公网下行按访问日志实际返回字节入账，缓存重播不重复计算；日志存在延迟和遗漏，不作为结算账单。</p>;
 }
 
 export function FamilyUsage() {
@@ -55,6 +64,7 @@ export function FamilyUsage() {
       <p>当前文件占用 <strong title={exactBytes(row.storage.usedBytes)}>{bytes(row.storage.usedBytes)}</strong> · 待处理上传 {bytes(row.storage.pendingBytes)}</p>
       <p>本月已统计流量 <strong title={exactBytes(row.traffic.totalBytes)}>{bytes(row.traffic.totalBytes)}</strong></p>
       <p className="muted">服务器下行 {bytes(row.traffic.localBytes)} · OSS 公网下行 {bytes(row.traffic.ossBytes)}<br />计量启用时间：{dateTime(row.statisticsSince)}</p>
+      <OssStatus status={row.ossSync} />
       {row.storage.unknownSizeCount > 0 && <p className="error">{row.storage.unknownSizeCount} 个文件大小尚未确认，存储统计不完整。</p>}
     </>}
     <UsageNotes />
@@ -65,12 +75,26 @@ export function OperationsUsage() {
   const [month, setMonth] = useState(currentMonth), [search, setSearch] = useState("");
   const query = useDebounced(search);
   const params = new URLSearchParams({ month, q: query }).toString();
+  const [oss, setOss] = useState<{ month: string; publicBytes: number; unattributedBytes: number; sync: OssSync }>();
+  const [ossError, setOssError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    setOss(undefined);
+    setOssError("");
+    api<{ month: string; publicBytes: number; unattributedBytes: number; sync: OssSync }>(
+      `/operations/usage/oss?month=${encodeURIComponent(month)}`, "GET", undefined, undefined, controller.signal,
+    ).then((value) => { if (!controller.signal.aborted) setOss(value); })
+      .catch((failure) => { if (!controller.signal.aborted) setOssError(failure.message); });
+    return () => controller.abort();
+  }, [month]);
   const list = usePagedData<Usage>(`/operations/usage?${params}`);
   return <Card className="settings-card usage-card">
     <div className="section-heading"><h2>家庭用量</h2><div className="actions">
       <Button variant="bordered" asChild><a href={`/api/manage/operations/usage/export?${params}`} download>导出月度 CSV</a></Button>
     </div></div>
     <UsageNotes />
+    {ossError && <p className="error" role="alert">OSS 汇总加载失败：{ossError}</p>}
+    {oss && <><p>所选月份 OSS 日志公网下行 <strong title={exactBytes(oss.publicBytes)}>{bytes(oss.publicBytes)}</strong> · 未归属家庭 {bytes(oss.unattributedBytes)}（含无标记的历史请求及平台文件，不计入任一家庭）</p><OssStatus status={oss.sync} /></>}
     <div className="grid w-full max-w-[37rem] grid-cols-1 gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
       <Label>用量月份<MonthPicker aria-label="用量月份" value={month} onValueChange={setMonth} /></Label>
       <Label>搜索家庭或账号<Input placeholder="家庭名称、家庭 ID、邮箱或账号 ID" value={search} onChange={(event) => setSearch(event.target.value)} /></Label>

@@ -58,10 +58,12 @@ def test_oss_cover_reference_includes_direct_and_fallback_urls(catalog, monkeypa
     cover = catalog.get(MediaFile, "image-episode")
     assert image_ref(catalog, episode) == {"url": "/api/items/episode/image?v=frame"}
     cover.storage = "oss"
-    assert image_ref(catalog, episode) == {
-        "url": "/api/items/episode/image?v=frame",
-        "directUrl": "https://covers.oss-cn-test.aliyuncs.com/episode.jpg?OSSAccessKeyId=id&Expires=1&Signature=sig",
-    }
+    ref = image_ref(catalog, episode)
+    assert ref["url"] == "/api/items/episode/image?v=frame"
+    assert ref["directUrl"].startswith(FakeOss().signed_url("episode.jpg", 3600) + "&")
+    from urllib.parse import parse_qs, urlsplit
+    query = parse_qs(urlsplit(ref["directUrl"]).query)
+    assert query["x-molly-usage"][0].startswith("f.")
 
 
 def test_continue_row_exposes_real_position_for_selected_child(catalog):

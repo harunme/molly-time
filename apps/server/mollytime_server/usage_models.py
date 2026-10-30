@@ -24,3 +24,27 @@ class TrafficEvent(Base):
         CheckConstraint("source IN ('local', 'oss')", name="ck_traffic_source"),
         Index("ix_family_traffic_period", "family_id", "occurred_at"),
     )
+
+
+class OssLogRequest(Base):
+    """Public GetObject bytes, including traffic that cannot be assigned safely."""
+    __tablename__ = "oss_log_requests"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    family_id: Mapped[str | None] = mapped_column(ForeignKey("families.id"))
+    bytes_sent: Mapped[int] = mapped_column(BigInteger)
+    occurred_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+
+
+class OssLogImport(Base):
+    __tablename__ = "oss_log_imports"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    imported_at: Mapped[dt.datetime] = mapped_column(DateTime,
+                                                  default=lambda: dt.datetime.now(dt.UTC))
+
+
+class OssLogSync(Base):
+    __tablename__ = "oss_log_sync"
+    id: Mapped[str] = mapped_column(String(16), primary_key=True, default="oss")
+    last_success_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    last_attempt_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    error: Mapped[str | None] = mapped_column(String(160))

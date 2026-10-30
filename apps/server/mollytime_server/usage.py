@@ -144,9 +144,12 @@ def family_usage(db, families, month=None):
         User.family_id.in_(keys),
     ).group_by(User.family_id).all())
     revision = db.get(SchemaRevision, "family-usage-v1")
+    from .oss_usage import sync_status
+    oss_status = sync_status(db)
     return [{"id": family.id, "name": family.name, "accountCount": accounts.get(family.id, 0),
              "month": month, "timezone": str(BILLING_ZONE),
              "storage": storage[family.id], "traffic": traffic[family.id],
+             "ossSync": oss_status,
              "storageMeasuredAt": dt.datetime.now(dt.UTC).isoformat(),
              "statisticsSince": revision.applied_at.replace(tzinfo=dt.UTC).isoformat()
              if revision else None} for family in families]

@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     family_storage_limit_bytes: int = Field(default=0, ge=0)  # 0 = unlimited
     media_processing_max_bytes: int = Field(default=10 * 1024**3, gt=0)
     oss_signed_url_ttl: int = Field(default=3600, ge=60, le=14400)
+    oss_log_bucket: str | None = None  # Same-region access-log destination; opt-in.
+    oss_log_prefix: str = "molly-access/"
+    oss_log_sync_seconds: int = Field(default=3600, ge=300)
+    oss_log_lookback_days: int = Field(default=7, ge=3, le=366)
 
     # ---- Helpers ---------------------------------------------------------------
     def resolved_db_url(self) -> str:

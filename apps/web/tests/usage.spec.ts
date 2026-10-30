@@ -37,11 +37,13 @@ test("operator filters usage, exports exact bytes and opens the route directly o
   await page.getByRole("navigation").getByRole("link", { name: "运营设置", exact: true }).click();
   await page.getByRole("tab", { name: "家庭用量", exact: true }).click();
   const table = page.locator(".family-usage-table");
-  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table.locator("tbody tr")).toHaveCount(2);
   await expect(table).toContainText("我们的家庭");
   await expect(table).toContainText("3 个账号");
   await chooseMonth(page, "2020", 1);
   await expect(table.locator("tbody tr td").nth(3)).toContainText("0 B");
+  await expect(page.getByText("OSS 自动统计未启用", { exact: false })).toBeVisible();
+  await expect(page.getByText("所选月份 OSS 日志公网下行", { exact: false })).toContainText("未归属家庭 0 B");
   const download = page.waitForEvent("download");
   await page.getByRole("link", { name: "导出月度 CSV", exact: true }).click();
   expect((await download).suggestedFilename()).toBe("family-usage-2020-01.csv");
@@ -64,4 +66,30 @@ test("operator filters usage, exports exact bytes and opens the route directly o
   await page.screenshot({ path: "../../artifacts/family-usage-mobile.png", fullPage: true, animations: "disabled" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "../../artifacts/family-usage-desktop.png", fullPage: true, animations: "disabled" });
+});
+
+test("OSS reports show attributed bytes, unmatched traffic and synchronization failures", async ({ page }) => {
+  const sync = { enabled: true, lastSuccessAt: "2026-10-30T01:00:00Z", lastAttemptAt: "2026-10-30T02:00:00Z", error: "OSS 日志同步失败，请检查日志格式、存储配置及读取权限" };
+  await page.route("**/api/manage/operations/usage/oss?*", async (route) => {
+    const month = new URL(route.request().url()).searchParams.get("month");
+    await route.fulfill({ json: { month, publicBytes: 128 * 1024 ** 2, unattributedBytes: 24 * 1024 ** 2, sync } });
+  });
+  await page.route(/\/api\/manage\/usage(?:\?|$)/, async (route) => {
+    const response = await route.fetch();
+    const row = await response.json();
+    row.traffic.ossBytes = 104 * 1024 ** 2;
+    row.traffic.totalBytes = row.traffic.localBytes + row.traffic.ossBytes;
+    row.ossSync = sync;
+    await route.fulfill({ response, json: row });
+  });
+  await login(page, true);
+  await page.getByRole("navigation").getByRole("link", { name: "家庭设置", exact: true }).click();
+  await expect(page.getByText("OSS 公网下行 104.0 MB", { exact: false })).toBeVisible();
+  await expect(page.getByText(sync.error, { exact: false })).toBeVisible();
+  await page.getByRole("navigation").getByRole("link", { name: "运营设置", exact: true }).click();
+  await page.getByRole("tab", { name: "家庭用量", exact: true }).click();
+  const summary = page.getByText("所选月份 OSS 日志公网下行", { exact: false });
+  await expect(summary).toContainText("128.0 MB");
+  await expect(summary).toContainText("未归属家庭 24.0 MB");
+  await expect(page.getByText(sync.error, { exact: false })).toBeVisible();
 });

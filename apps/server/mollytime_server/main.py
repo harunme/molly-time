@@ -74,6 +74,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _startup() -> None:
         init_db()
+        if settings.oss_log_bucket:
+            from .oss_usage import start_worker as start_oss_usage_worker
+
+            app.state.oss_usage_worker = start_oss_usage_worker()
         if settings.media_worker_enabled:
             from .media_worker import start_worker
 
@@ -89,6 +93,10 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     def _shutdown() -> None:
+        oss_worker = getattr(app.state, "oss_usage_worker", None)
+        if oss_worker:
+            oss_worker[0].set()
+            oss_worker[1].join(timeout=5)
         worker = getattr(app.state, "media_worker", None)
         if worker:
             worker[0].set()

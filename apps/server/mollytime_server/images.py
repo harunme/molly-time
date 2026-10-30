@@ -88,5 +88,6 @@ def image_ref(db, item, *, direct=True):
             with external_io(db):
                 signing = (build_storage("oss"), get_storage_settings().oss_signed_url_ttl)
             db.info["cover_oss_signing"] = signing
-        result["directUrl"] = signing[0].signed_url(file.path, signing[1])
+        from .oss_usage import media_url
+        result["directUrl"] = media_url(signing[0], file.path, signing[1], item.family_id)
     return result
