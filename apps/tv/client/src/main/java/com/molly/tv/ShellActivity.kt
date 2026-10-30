@@ -167,13 +167,15 @@ class ShellActivity : AppCompatActivity() {
         view.setBackgroundColor(Color.rgb(33, 31, 27))
         if (!startupSoundAttempted) {
             startupSoundAttempted = true
-            startupSound = StartupSound(this, app.api.http).also { sound ->
-                sound.start(app.session.server, onReady = {
+            val sound = StartupSound(this)
+            startupSound = sound
+            sound.start(onReady = {
                     if (generation == current && !isDestroyed) loading?.startMotion()
+                }, onFinished = {
+                    if (generation == current && !isDestroyed) finishStartupIfReady()
                 }) {
                     generation == current && resumed && loading?.visibility == View.VISIBLE && !isDestroyed
                 }
-            }
         } else loading?.startMotion()
         view.settings.apply {
             javaScriptEnabled = true
@@ -483,7 +485,7 @@ class ShellActivity : AppCompatActivity() {
     }
 
     private fun finishStartupIfReady() {
-        if (!pageReady || !startupLogoDone) return
+        if (!pageReady || !startupLogoDone || startupSound?.finished == false) return
         loading?.stop()
         loading?.visibility = View.GONE
         startupSound?.stop()

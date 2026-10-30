@@ -1,4 +1,5 @@
 import java.io.File
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -18,6 +19,23 @@ val prepareTvWebAssets = tasks.register<Sync>("prepareTvWebAssets") {
     from("../web/dist")
     exclude("web-bundle.zip")
     into(layout.buildDirectory.dir("generated/tvWebAssets"))
+}
+val startupAssets = layout.buildDirectory.dir("generated/startupSoundAssets")
+val validateStartupSoundAssets = tasks.register("validateStartupSoundAssets") {
+    doLast {
+        val directory = startupAssets.get().dir("startup").asFile
+        val manifest = directory.resolve("config.json")
+        check(manifest.isFile) { "Startup assets missing; run tools/package-startup-sound.py before building the client" }
+        val config = groovy.json.JsonSlurper().parse(manifest) as Map<*, *>
+        check(config["configured"] is Boolean) { "Invalid startup sound manifest" }
+        if (config["configured"] == true) {
+            val audio = directory.resolve("sound.mp3")
+            check(audio.isFile && audio.length() in 1L..131072L) { "Bundled startup sound is missing or too large" }
+            val digest = MessageDigest.getInstance("SHA-256").digest(audio.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            check(digest == config["version"]) { "Bundled startup sound checksum mismatch" }
+        }
+    }
 }
 
 // Signing material stays outside versioned source. An override also supports CI.
@@ -60,6 +78,8 @@ android {
     buildFeatures { buildConfig = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
     sourceSets.getByName("main").assets.srcDir(prepareTvWebAssets.map { it.destinationDir })
+    sourceSets.getByName("main").assets.srcDir(startupAssets)
+    androidResources { noCompress += "mp3" }
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
@@ -85,7 +105,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
-tasks.named("preBuild").configure { dependsOn(prepareTvWebAssets) }
+tasks.named("preBuild").configure { dependsOn(prepareTvWebAssets, validateStartupSoundAssets) }
 // Never silently produce an unsigned release when signing material is absent.
 tasks.configureEach {
     if (name == "preReleaseBuild" || name == "validateSigningRelease") {

@@ -20,13 +20,13 @@ test('operator uploads, previews, persists and removes the launch sound', async 
   await page.getByLabel('选择音频').setInputFiles({ name: 'welcome.wav', mimeType: 'audio/wav', buffer: wav() });
   await expect(page.locator('audio')).toHaveAttribute('src', /^blob:/);
   await page.getByRole('button', { name: '保存启动音效' }).click();
-  await expect(page.getByText('当前音效：welcome.wav · 0.2 秒')).toBeVisible();
+  await expect(page.getByText('待发布音效：welcome.wav · 0.2 秒')).toBeVisible();
   await expect(page.locator('audio')).toHaveAttribute('src', /^\/api\/startup\/audio\/[a-f0-9]{64}$/);
   await page.reload();
-  await expect(page.getByText('当前音效：welcome.wav · 0.2 秒')).toBeVisible();
+  await expect(page.getByText('待发布音效：welcome.wav · 0.2 秒')).toBeVisible();
   await page.screenshot({ path: '/tmp/mollytime-startup-sound-operations.png', fullPage: true });
   await page.getByRole('button', { name: '移除音效' }).click();
-  await expect(page.getByText('当前未配置启动音效')).toBeVisible();
+  await expect(page.getByText('未配置待发布音效')).toBeVisible();
   await expect(page.locator('audio')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

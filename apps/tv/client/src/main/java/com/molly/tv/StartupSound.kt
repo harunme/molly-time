@@ -3,106 +3,87 @@ package com.molly.tv
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
-import okhttp3.Call
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
-import java.io.File
-import java.security.MessageDigest
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import org.json.JSONObject
 
-/** Independent, bounded startup work must never queue behind catalog sync or hold up launch. */
-class StartupSound(private val context: Context, http: OkHttpClient) {
-    private val client = http.newBuilder().callTimeout(1500, TimeUnit.MILLISECONDS)
-        .followRedirects(false).followSslRedirects(false).build()
-    private val worker = Executors.newSingleThreadExecutor()
+/** Immutable APK assets: no network, cache eviction, or 600 ms silent cutoff at launch. */
+class StartupSound(context: Context, private val configure: (MediaPlayer) -> Boolean = { audio ->
+    val config = JSONObject(context.assets.open("startup/config.json").bufferedReader().use { it.readText() })
+    if (!config.getBoolean("configured")) false else {
+        context.assets.openFd("startup/sound.mp3").use {
+            audio.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+        }
+        true
+    }
+}) {
     private val handler = Handler(Looper.getMainLooper())
-    @Volatile private var stopped = false
-    @Volatile private var call: Call? = null
+    private var stopped = false
     private var player: MediaPlayer? = null
     private var cue: StartupCue? = null
+    var finished = false
+        private set
+    private var finishCallback: () -> Unit = {}
 
-    fun start(server: String, onReady: () -> Unit = {}, active: () -> Boolean) {
+    fun start(onReady: () -> Unit = {}, onFinished: () -> Unit = {}, active: () -> Boolean) {
         val launch = StartupCue(onReady)
         cue = launch
-        // Wait briefly with a static logo. Past this deadline the launch is silent,
-        // even if a download or decoder finishes later; keep the file for next time.
-        handler.postDelayed({
-            if (!stopped && active() && launch.ready()) release()
-        }, 600)
-        worker.execute {
-            val file = runCatching {
-                val config = JSONObject(fetch(server + "/api/startup", 4096).toString(Charsets.UTF_8))
-                if (!config.optBoolean("configured") || stopped) return@runCatching null
-                val version = config.getString("version")
-                require(Regex("[0-9a-f]{64}").matches(version))
-                val directory = File(context.cacheDir, "startup-sound").apply { mkdirs() }
-                val target = File(directory, "$version.mp3")
-                if (!target.isFile) {
-                    // Construct the path locally; never follow a config URL to another host.
-                    val bytes = fetch(server + "/api/startup/audio/$version", 128 * 1024)
-                    val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-                    require(digest == version)
-                    if (stopped) return@runCatching null
-                    val temp = File.createTempFile(".startup-", ".mp3", directory)
-                    try { temp.writeBytes(bytes); check(temp.renameTo(target)) } finally { temp.delete() }
-                }
-                directory.listFiles()?.filter { it != target }?.forEach { it.delete() }
-                target
-            }.getOrNull()
-            handler.post {
-                if (stopped || !active()) return@post
-                if (file == null) { launch.ready(); return@post }
-                if (launch.started) return@post
-                val audio = MediaPlayer()
-                player = audio
-                runCatching {
-                    audio.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                    audio.setDataSource(file.absolutePath)
-                    audio.isLooping = false
-                    audio.setOnPreparedListener {
-                        runCatching {
-                            if (stopped || !active() || !launch.ready { it.start() }) release()
-                        }.onFailure { release() }
-                    }
-                    audio.setOnCompletionListener { release() }
-                    audio.setOnErrorListener { _, _, _ ->
-                        file.delete(); release()
-                        if (!stopped && active()) launch.ready()
-                        true
-                    }
-                    audio.prepareAsync()
-                }.onFailure { release(); if (!stopped && active()) launch.ready() }
-            }
-        }
+        finishCallback = onFinished
+        prepare(launch, active, true)
     }
-    private fun fetch(url: String, limit: Int): ByteArray {
-        check(!stopped)
-        val request = client.newCall(Request.Builder().url(url).build())
-        call = request
-        if (stopped) request.cancel()
-        return request.execute().use { response ->
-            check(response.isSuccessful)
-            val stream = response.body!!.byteStream()
-            val out = java.io.ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            while (true) {
-                val count = stream.read(buffer)
-                if (count < 0) break
-                check(out.size() + count <= limit)
-                out.write(buffer, 0, count)
-            }
-            out.toByteArray()
+    private fun prepare(launch: StartupCue, active: () -> Boolean, retry: Boolean) {
+        if (stopped) return
+        val audio = MediaPlayer()
+        player = audio
+        val timeout = Runnable { failed(launch, active, retry) }
+        val playbackTimeout = Runnable {
+            if (player === audio) { release(); complete(launch) }
         }
+        runCatching {
+            audio.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            if (!configure(audio)) { release(); complete(launch); return }
+            audio.isLooping = false
+            audio.setOnPreparedListener {
+                handler.removeCallbacks(timeout)
+                if (stopped) { release(); return@setOnPreparedListener }
+                runCatching {
+                    if (active()) launch.ready {
+                        it.start()
+                        handler.postDelayed(playbackTimeout, 6500)
+                    } else { release(); complete(launch) }
+                }.onFailure { failed(launch, active, retry) }
+            }
+            audio.setOnCompletionListener {
+                handler.removeCallbacks(timeout); handler.removeCallbacks(playbackTimeout)
+                release(); complete(launch)
+            }
+            audio.setOnErrorListener { _, _, _ ->
+                handler.removeCallbacks(timeout); handler.removeCallbacks(playbackTimeout)
+                failed(launch, active, retry); true
+            }
+            audio.prepareAsync()
+            handler.postDelayed(timeout, 4000)
+        }.onFailure { handler.removeCallbacks(timeout); failed(launch, active, retry) }
+    }
+    private fun failed(launch: StartupCue, active: () -> Boolean, retry: Boolean) {
+        release()
+        if (stopped) return
+        if (retry && !launch.started) prepare(launch, active, false)
+        else { Log.w("MollyStartup", "包内启动音效播放失败"); complete(launch) }
+    }
+    private fun complete(launch: StartupCue) {
+        if (stopped || finished) return
+        finished = true
+        launch.ready()
+        finishCallback()
     }
     private fun release() { player?.release(); player = null }
     fun stop() {
-        stopped = true; call?.cancel(); handler.removeCallbacksAndMessages(null)
+        stopped = true
+        handler.removeCallbacksAndMessages(null)
         cue?.cancel()
-        release(); worker.shutdownNow()
+        release()
     }
 }

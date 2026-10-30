@@ -28,6 +28,7 @@ def repository(tmp_path):
         "tools/ci_tv_apk.py": "decision-recipe",
         "tools/tv-apk-build.json": "sdk-recipe",
         "tools/build-tv-client.sh": "build-recipe",
+        "tools/package-startup-sound.py": "startup-sound-recipe",
         "tools/android-env.sh": "build-environment",
     }
     for name, content in files.items():
@@ -68,7 +69,7 @@ def test_web_api_docs_tests_and_build_outputs_do_not_require_apk(repository):
     "apps/tv/client/src/main/java/Player.kt", "apps/tv/client/src/main/res/raw/icon.xml",
     "apps/tv/client/src/main/AndroidManifest.xml", "apps/tv/client/build.gradle.kts",
     "apps/tv/gradle/libs.versions.toml", "apps/tv/gradle/wrapper/gradle-wrapper.jar",
-    "apps/tv/buildSrc/src/main/kotlin/Build.kt", "tools/tv-apk-build.json", "tools/build-tv-client.sh",
+    "apps/tv/buildSrc/src/main/kotlin/Build.kt", "tools/tv-apk-build.json", "tools/build-tv-client.sh", "tools/package-startup-sound.py",
 ])
 def test_native_input_changes_allocate_above_history(repository, name):
     digest, _ = ci.fingerprint(repository)

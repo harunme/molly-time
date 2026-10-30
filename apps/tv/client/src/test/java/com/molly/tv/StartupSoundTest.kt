@@ -1,57 +1,70 @@
 package com.molly.tv
 
 import android.app.Application
-import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okio.Buffer
+import android.os.Looper
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import java.io.File
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
+import org.robolectric.shadows.ShadowMediaPlayer
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class StartupSoundTest {
-    @Test fun unconfiguredLaunchDoesNotRequestAudioOrCredentials() {
-        val server = MockWebServer()
-        server.enqueue(MockResponse().setBody("""{"configured":false}"""))
-        server.start()
-        val sound = StartupSound(RuntimeEnvironment.getApplication(), OkHttpClient())
+    private val context get() = RuntimeEnvironment.getApplication()
+    @Test fun unconfiguredPackageStartsSilentAnimationWithoutWaiting() {
+        var animations = 0
+        val sound = StartupSound(context) { false }
         try {
-            sound.start(server.url("/").toString().trimEnd('/')) { false }
-            val request = server.takeRequest(2, TimeUnit.SECONDS)!!
-            assertEquals("/api/startup", request.path)
-            assertNull(request.getHeader("Authorization"))
-            assertNull(server.takeRequest(150, TimeUnit.MILLISECONDS))
-        } finally { sound.stop(); server.shutdown() }
+            sound.start(onReady = { animations++ }) { true }
+            assertTrue(sound.finished); assertEquals(1, animations)
+        } finally { sound.stop() }
     }
-
-    @Test fun configuredAudioUsesLocalVersionPathAndCachesVerifiedBytes() {
-        val server = MockWebServer()
-        val bytes = "ID3-test-launch-sound".toByteArray()
-        val version = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val context = RuntimeEnvironment.getApplication()
-        val directory = File(context.cacheDir, "startup-sound").apply { deleteRecursively() }
-        // The server-supplied URL must not be followed, even if it points elsewhere.
-        server.enqueue(MockResponse().setBody("""{"configured":true,"version":"$version","audioUrl":"https://example.invalid/unsafe"}"""))
-        server.enqueue(MockResponse().setBody(Buffer().write(bytes)))
-        server.start()
-        val sound = StartupSound(context, OkHttpClient())
+    @Test fun bundledAudioWaitsForSlowDecoderAndPlaysToCompletion() {
+        val players = mutableListOf<ShadowMediaPlayer>()
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(5000, 1000) }
+        ShadowMediaPlayer.setCreateListener { _, player -> players.add(player) }
+        var animations = 0
+        var completions = 0
+        val sound = StartupSound(context) { audio -> audio.setDataSource("bundled.mp3"); true }
         try {
-            sound.start(server.url("/").toString().trimEnd('/')) { false }
-            assertEquals("/api/startup", server.takeRequest(2, TimeUnit.SECONDS)!!.path)
-            assertEquals("/api/startup/audio/$version", server.takeRequest(2, TimeUnit.SECONDS)!!.path)
-            val target = File(directory, "$version.mp3")
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
-            while (!target.isFile && System.nanoTime() < deadline) Thread.sleep(10)
-            assertTrue(target.isFile)
-            assertArrayEquals(bytes, target.readBytes())
-        } finally { sound.stop(); server.shutdown(); directory.deleteRecursively() }
+            sound.start(onReady = { animations++ }, onFinished = { completions++ }) { true }
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
+            assertEquals(0, animations)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+            assertEquals(1, animations); assertTrue(players.single().isReallyPlaying)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2800))
+            assertFalse(sound.finished); assertTrue(players.single().isReallyPlaying)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2200))
+            assertTrue(sound.finished); assertEquals(1, completions); assertEquals(1, animations)
+        } finally { sound.stop(); ShadowMediaPlayer.setCreateListener(null) }
+    }
+    @Test fun transientLocalPreparationFailureRetriesBeforeStartingLogo() {
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(1000, 0) }
+        var attempts = 0
+        var animations = 0
+        val sound = StartupSound(context) { audio ->
+            attempts++
+            if (attempts == 1) throw java.io.IOException("temporary decoder failure")
+            audio.setDataSource("bundled.mp3"); true
+        }
+        try {
+            sound.start(onReady = { animations++ }) { true }
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, attempts); assertEquals(1, animations); assertFalse(sound.finished)
+        } finally { sound.stop() }
+    }
+    @Test fun leavingAppDuringPreparationCancelsSoundAndCallbacks() {
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(5000, 1000) }
+        var animations = 0
+        val sound = StartupSound(context) { audio -> audio.setDataSource("bundled.mp3"); true }
+        sound.start(onReady = { animations++ }) { true }
+        sound.stop()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10))
+        assertEquals(0, animations)
     }
 }

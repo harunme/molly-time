@@ -87,18 +87,20 @@ debug 模式可通过 WebView 调试接口运行 `apps/tv/web/tests/smoke-androi
 
 ### 启动 Logo 与音效
 
-壳层启动 loading 使用原生 `StartupLogoView` 绘制已确认的 M + 茉莉花路径，
-不依赖 WebView 加载。先显示静态 Logo，最多给音效 600 毫秒准备时间，
-解码准备完成后，音效与动画在主线程同一触发点启动；未配置或处理失败立即静音播放动画。
-超时则直接无声播放动画，迟到的音效不再插入，下载仍可缓存供下次启动使用。
-动画为 2.8 秒；网页准备好且首轮动画完成后进入首页。
-系统关闭动画时显示静态标志，不额外等待动画。
+原生 `StartupLogoView` 绘制 M 与茉莉花，启动音效是 APK 数据资源的一部分。
+客户端启动不请求音效配置、不下载音频，也不依赖可被清理的缓存。
+包内音频解码准备好后，与 2.8 秒动画一起开始；网页就绪、首轮动画与音效
+都结束后进入首页，不再用 600 毫秒超时跳过声音，也不会在动画结束时截断音效。
+退出或退到后台会停止音效。系统关闭动画时显示静态 Logo。
 
-平台超管可在管理端「运营设置 → 启动音效」上传、试听、替换或移除音效。
-支持最长 5 秒、最大 5 MB 的 MP3/WAV/M4A/OGG，服务端转为 MP3，配置存于
-数据目录的 `startup-sound.json`（随数据目录持久化）。建议使用 2 秒左右音效。
-`GET /api/startup` 与版本化音频允许未绑定设备读取，不包含凭证。
-客户端每次启动先确认当前配置，按内容哈希缓存音频；不循环播放，
-页面显示、退入后台或退出时停止。配置/下载失败静音启动，不阻塞网页。
-旧版服务端没有该接口时也静音。更换此原生 loading 需要更新电视 APK，
-仅更新 TV 网页不会改变已安装客户端的转圈。
+平台超管在「运营设置 → 启动音效」保存待发布素材，可试听、替换或移除。
+支持最长 5 秒、最大 5 MB 的 MP3/WAV/M4A/OGG，服务端转为 MP3，存于
+数据目录的 `startup-sound.json`。更改随下一版 APK 发布，已安装客户端不会实时切换。
+
+`tools/build-tv-client.sh` 在编译前调用 `tools/package-startup-sound.py`，从
+`MOLLYTIME_STARTUP_SOURCE`（默认 `https://mollytime.app`）快照素材，写入
+`client/build/generated/startupSoundAssets/startup/`。Gradle 再次校验清单与音频哈希。
+下载失败或校验失败会中止打包，不能悄悄发布缺少音效的客户端；服务器明确未配置时
+才会生成静音清单。`MOLLYTIME_STARTUP_CONFIG` 可指定服务器导出的配置 JSON 文件，
+用于不联网打包。开发环境可显式运行 `python3 tools/package-startup-sound.py --silent`
+准备静音素材；正式构建入口会重新快照运营配置。

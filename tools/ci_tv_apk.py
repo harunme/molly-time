@@ -70,6 +70,7 @@ def native_inputs(root):
         "ci_tv_apk.py",
         "tv-apk-build.json",
         "build-tv-client.sh",
+        "package-startup-sound.py",
         "android-env.sh",
     ):
         path = root / "tools" / name
