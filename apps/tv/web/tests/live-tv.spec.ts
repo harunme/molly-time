@@ -4,6 +4,7 @@ async function setup(page: Page, { enabled = true, liveTv = true } = {}) {
   await page.addInitScript(({ enabled, liveTv }) => {
     const w = window as any;
     w.liveCalls = [];
+    w.liveTvResponses = 0;
     w.MollyBridge = { postMessage(raw: string) {
       const { id, method, args } = JSON.parse(raw);
       let result: any = { ok: true };
@@ -15,12 +16,19 @@ async function setup(page: Page, { enabled = true, liveTv = true } = {}) {
         if (args.path === '/api/live-tv') result = { enabled, channels: enabled ? Array.from({ length: 30 }, (_, i) => ({ id: String(i).padStart(32, '0'), name: `测试频道 ${i + 1}`, group: i < 25 ? '央视' : '地方台' })) : [] };
       }
       if (method === 'playLiveChannel') w.liveCalls.push(args);
-      setTimeout(() => w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) }), 5);
+      setTimeout(() => {
+        w.MollyBridge.onmessage?.({ data: JSON.stringify({ id, result }) });
+        if (method === 'request' && args.path === '/api/live-tv') w.liveTvResponses++;
+      }, 5);
     } };
   }, { enabled, liveTv });
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-one"]')).toBeFocused();
   await page.keyboard.press('ContextMenu');
+  if (!enabled) {
+    await expect.poll(() => page.evaluate(() => (window as any).liveTvResponses)).toBe(1);
+    return;
+  }
   await page.getByRole('button', { name: /电视直播（实验）/ }).click();
   await expect(page.getByRole('heading', { name: '电视直播（实验）' })).toBeVisible();
   await expect(page.locator('[data-focus="live-refresh"]')).toBeFocused();
@@ -44,9 +52,10 @@ test('settings entry opens paginated channels; native playback returns to the se
   await expect(page.locator('[data-focus="open-live-tv"]')).toBeFocused();
 });
 
-test('operator-disabled live TV has no import controls on the TV', async ({ page }) => {
+test('operator-disabled live TV hides the settings entry', async ({ page }) => {
   await setup(page, { enabled: false });
-  await expect(page.getByText('电视直播尚未开启，请联系运营管理员导入直播源。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '电视设置', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /电视直播（实验）/ })).toHaveCount(0);
   await expect(page.locator('input')).toHaveCount(0);
   await expect(page.locator('.live-channel')).toHaveCount(0);
 });

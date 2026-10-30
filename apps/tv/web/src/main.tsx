@@ -67,6 +67,7 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>();
   const [reload, setReload] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [liveTvEnabled, setLiveTvEnabled] = useState(false);
   const { update: clientUpdate, check: checkClientUpdate, act: updateClient, actionable: updateActionable, actionLabel: updateActionLabel } = useClientUpdate();
   const [bridgeCompatible, setBridgeCompatible] = useState(true);
   const canOpenSettings = authenticated || !!(window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl);
@@ -106,10 +107,22 @@ function App() {
     overlayPage.current = next;
     setError(''); setOverlay(next);
   });
+  const checkSettingsUpdate = useCatalogCallback(() => { void checkClientUpdate(); });
+  useEffect(() => {
+    if (overlay !== 'settings') return;
+    if (window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl) checkSettingsUpdate();
+    setLiveTvEnabled(false);
+    if (!authenticated) return;
+    let alive = true;
+    void request<{ enabled: boolean }>('/api/live-tv').then((data) => {
+      if (alive) setLiveTvEnabled(data.enabled === true);
+    }).catch(() => { if (alive) setLiveTvEnabled(false); });
+    return () => { alive = false; };
+  }, [overlay, authenticated, capabilities?.clientUpdates, capabilities?.serverUrl, checkSettingsUpdate]);
   const parentOverlay = overlayHistory.current[overlayHistory.current.length - 1]?.page;
   useEffect(() => {
     if (overlay === 'settings' && !updateActionable && getCurrentFocusKey() === 'client-update-action') {
-      const frame = requestAnimationFrame(() => setFocus('check-update'));
+      const frame = requestAnimationFrame(() => setFocus(authenticated ? 're-pair' : 'close-overlay'));
       return () => cancelAnimationFrame(frame);
     }
     if (overlay !== 'client-update') return;
@@ -313,7 +326,7 @@ function App() {
       if (navigationInput.current !== input) { restore.current = undefined; setReadyToAppend(true); return; }
       const saved = restore.current;
       const fallback = overlay === 're-pair' ? 'cancel-re-pair' : overlay === 'pairing' ? 'pairing-refresh' :
-        overlay === 'watch-rest' ? 'watch-rest-home' : overlay === 'watch-control' ? 'watch-parent-main' : overlay === 'live-tv' ? 'live-refresh' : overlay === 'settings' ? (window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl ? 'check-update' : authenticated ? 're-pair' : 'close-overlay') : overlay === 'client-update' ? (updateActionable ? 'client-update-action' : 'close-overlay') : !authenticated ? (capabilities?.devicePairing ? 'pairing-refresh' : 'pairing-settings') : error ? 'retry' :
+        overlay === 'watch-rest' ? 'watch-rest-home' : overlay === 'watch-control' ? 'watch-parent-main' : overlay === 'live-tv' ? 'live-refresh' : overlay === 'settings' ? (authenticated ? 're-pair' : 'close-overlay') : overlay === 'client-update' ? (updateActionable ? 'client-update-action' : 'close-overlay') : !authenticated ? (capabilities?.devicePairing ? 'pairing-refresh' : 'pairing-settings') : error ? 'retry' :
         (folder ? (entries.length ? playlistFocus(entries[0]) : 'folder-back') : home.rows[0]?.items[0] ? homeFocus(0, home.rows[0].items[0]) : 'content');
       const has = (key: string) => !!document.querySelector(`[data-focus="${key}"]`);
       const canRestore = saved && has(saved.focus);
@@ -512,7 +525,6 @@ function App() {
   const updateCard = <section className="update-card" aria-label="软件更新">
     <div className="update-card-heading">
       <div><h2>软件更新</h2><p className="update-current">当前版本 {capabilities?.shellVersion}</p></div>
-      {overlay === 'settings' && <FocusButton focusKey="check-update" ariaLabel="检查客户端更新" className="update-check" onClick={() => { void checkClientUpdate(); }}>检查更新</FocusButton>}
     </div>
     {(clientUpdate || overlay === 'client-update') && updateDetails}
   </section>;
@@ -585,12 +597,12 @@ function App() {
           </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '今日观看已结束，明天 0 点自动恢复。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary settings-action" onClick={() => { setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" className="settings-action settings-secondary" onClick={() => openOverlay('watch-control')}>家长加看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} close={closeOverlay} backLabel={parentOverlay === 'settings' ? '返回设置' : '返回媒体库'} changed={(state, keepOpen) => { watch.setState(state); if (!keepOpen) { setFolder(undefined); folderHistory.current = []; resetOverlay(null); } }} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
             {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && updateCard}
             {authenticated && <PlaybackSettings />}
-            {authenticated && <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" disabled={busy} onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
+            {authenticated && <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
             {authenticated && (!window.MollyBridge || capabilities?.watchControl) && <FocusButton focusKey="open-watch-control" className="settings-item" onClick={() => openOverlay('watch-control')}><Icon name="play" /><span><strong>观看安排</strong><small>每日额度、加看或结束今日观看</small></span><span>›</span></FocusButton>}
-            {authenticated && <FocusButton focusKey="open-live-tv" className="settings-item" onClick={() => openOverlay('live-tv')}><Icon name="play" /><span><strong>电视直播（实验）</strong><small>观看运营提供的直播频道</small></span><span>›</span></FocusButton>}
+            {authenticated && liveTvEnabled && <FocusButton focusKey="open-live-tv" className="settings-item" onClick={() => openOverlay('live-tv')}><Icon name="play" /><span><strong>电视直播（实验）</strong><small>观看运营提供的直播频道</small></span><span>›</span></FocusButton>}
           </div>}
           {error && <p role="alert" className="error">{error}</p>}
-          {overlay !== 're-pair' && overlay !== 'watch-rest' && overlay !== 'watch-control' && <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={closeOverlay}>{parentOverlay === 'settings' ? '返回设置' : authenticated ? '返回媒体库' : '返回绑定页'}</FocusButton>}
+          {!(overlay === 'settings' && authenticated) && overlay !== 're-pair' && overlay !== 'watch-rest' && overlay !== 'watch-control' && <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={closeOverlay}>{parentOverlay === 'settings' ? '返回设置' : authenticated ? '返回媒体库' : '返回绑定页'}</FocusButton>}
         </div>
       </FocusRegion>
     </div>}
