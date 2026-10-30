@@ -26,7 +26,7 @@ function Toaster(props: ToasterProps) {
           error:
             "!border-l-[0.1875rem] !border-l-toast-error-border [&_[data-icon]]:!text-toast-error-icon",
           warning:
-            "!border-l-[0.1875rem] !border-l-primary [&_[data-icon]]:!text-primary",
+            "!border-l-[0.1875rem] !border-l-primary [&_[data-icon]]:!text-primary-text",
           info: "!border-l-[0.1875rem] !border-l-toast-info-border [&_[data-icon]]:!text-toast-info-icon",
         },
       }}

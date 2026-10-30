@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '../../../../../assets/brand/mollytime-flower/palette.css';
 
 @plugin "@tailwindcss/typography";
 
@@ -12,6 +13,8 @@
 @theme {
   --color-primary: var(--aw-color-primary);
   --color-primary-hover: var(--aw-color-primary-hover);
+  --color-primary-text: var(--aw-color-primary-text);
+  --color-focus: var(--aw-color-focus);
   --color-secondary: var(--aw-color-secondary);
   --color-accent: var(--aw-color-accent);
   --color-heading: var(--aw-color-text-heading);
@@ -56,7 +59,7 @@
 }
 
 @utility btn {
-  @apply inline-flex items-center justify-center rounded-full border-gray-400 border bg-transparent font-medium text-center text-base text-page leading-snug transition py-3.5 px-6 md:px-8 ease-in duration-200 focus:ring-primary/60 focus:ring-offset-primary/20 focus:ring-2 focus:ring-offset-2 hover:bg-gray-100 hover:border-gray-600 dark:text-slate-300 dark:border-slate-500 dark:hover:bg-slate-800 dark:hover:border-slate-800 cursor-pointer;
+  @apply inline-flex items-center justify-center rounded-full border-gray-400 border bg-transparent font-medium text-center text-base text-page leading-snug transition py-3.5 px-6 md:px-8 ease-in duration-200 focus:ring-focus focus:ring-offset-background focus:ring-2 focus:ring-offset-2 hover:bg-gray-100 hover:border-gray-600 dark:text-slate-300 dark:border-slate-500 dark:hover:bg-slate-800 dark:hover:border-slate-800 cursor-pointer;
 }
 
 @utility btn-primary {

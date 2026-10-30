@@ -22,7 +22,7 @@ const buttonVariants = cva(
           "border border-transparent bg-border text-foreground hover:bg-border-strong",
         ghost:
           "border border-transparent bg-transparent text-foreground hover:bg-muted",
-        link: "h-auto bg-transparent px-1 text-info underline-offset-[0.25rem] hover:underline",
+        link: "h-auto bg-transparent px-1 text-primary-text underline-offset-[0.25rem] hover:underline",
       },
       size: {
         default: "h-control min-w-button px-4 text-ui",

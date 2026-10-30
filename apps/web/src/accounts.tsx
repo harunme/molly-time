@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, dateTime, type Session } from "./api";
-import { BrandMark } from "./brand";
+import { BrandMark, BrandWordmark } from "./brand";
 
 type Preview = { email: string | null; familyName: string | null; expiresAt: string; };
 type Activated = { email: string; accountId: string; familyName: string; };
@@ -29,7 +29,7 @@ export function InviteActivation({ token, login }: { token: string; login: (emai
     return () => { alive = false; };
   }, [token]);
   return <main className="pairing-page"><Card className="pairing-card account-card">
-    <div className="wordmark"><BrandMark />MollyTime</div>
+    <div className="wordmark"><BrandMark /><BrandWordmark /></div>
     <h1>{result ? "注册成功" : preview ? "创建账号" : "使用邀请码"}</h1>
     {result ? <>
       <p>你的家庭「{result.familyName}」已创建。邮箱和数字 ID 都可以登录。</p>
@@ -78,7 +78,7 @@ export function BindEmail({ session, bound, logout }: { session: Session; bound:
   const [email, setEmail] = useState(""), [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   return <main className="pairing-page"><Card className="pairing-card account-card">
-    <div className="wordmark"><BrandMark />MollyTime</div><h1>为账号绑定邮箱</h1>
+    <div className="wordmark"><BrandMark /><BrandWordmark /></div><h1>为账号绑定邮箱</h1>
     <p>账号已升级为邮箱登录。绑定后可使用邮箱或数字 ID 登录，原有密码和家庭数据保留。</p>
     <div className="account-summary"><span>账号 ID</span><strong className="account-number">{session.user.accountId}</strong></div>
     <form onSubmit={(event) => {

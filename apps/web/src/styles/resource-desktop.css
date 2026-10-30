@@ -322,7 +322,7 @@ button.desktop-add-trigger:focus-visible .desktop-add-art { outline: 2px solid v
 .folder-path svg { width: 12px; height: 12px; flex-shrink: 0; }
 .folder-path button { flex-shrink: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
 .folder-path button:hover { color: var(--color-foreground); text-decoration: underline; }
-.folder-path button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; border-radius: 2px; }
+.folder-path button:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: -2px; border-radius: 2px; }
 .folder-dismiss { width: 28px; height: 28px; color: var(--color-icon-muted); }
 .folder-panel-body {
   min-height: 0;

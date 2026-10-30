@@ -17,6 +17,9 @@ async function playing(page: Page) {
 test('mobile mounts its own app, home, family, devices and settings independently of desktop', async ({ page }) => {
   await playing(page); await login(page, 'operator');
   await expect(page.locator('.workspace')).toHaveCount(0);
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 244)');
+  await expect(page.locator('.m-tab.selected')).toHaveCSS('background-color', 'rgb(248, 222, 126)');
+  await expect(page.locator('.m-tab.selected')).toHaveCSS('color', 'rgb(63, 58, 50)');
   await expect(page.locator('.m-playing')).toContainText('一起去野餐');
   await expect(page.locator('.m-week > div')).toHaveCount(7);
   await expect(page.getByRole('navigation', { name: '手机导航' }).getByRole('link')).toHaveCount(4);

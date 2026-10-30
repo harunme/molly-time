@@ -14,7 +14,7 @@ function Switch({
     <SwitchPrimitive.Root
       data-slot="switch"
       className={cn(
-        "group/switch inline-flex shrink-0 cursor-pointer items-center rounded-full bg-switch-track outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-foreground",
+        "group/switch inline-flex shrink-0 cursor-pointer items-center rounded-full bg-switch-track outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary",
         size === "sm"
           ? "h-4 w-7"
           : "h-5 w-9",
@@ -34,7 +34,7 @@ function Switch({
       >
         <span
           data-slot="switch-thumb-face"
-          className="block size-full origin-left rounded-full bg-card shadow-thumb transition-transform duration-[var(--motion-duration-quick)] ease-[var(--motion-ease-standard)] group-active/switch:scale-x-[1.18] group-active/switch:scale-y-[0.9] group-data-[state=checked]/switch:origin-right motion-reduce:transition-none motion-reduce:group-active/switch:scale-100"
+          className="block size-full origin-left rounded-full bg-card group-data-[state=checked]/switch:bg-primary-foreground shadow-thumb transition-transform duration-[var(--motion-duration-quick)] ease-[var(--motion-ease-standard)] group-active/switch:scale-x-[1.18] group-active/switch:scale-y-[0.9] group-data-[state=checked]/switch:origin-right motion-reduce:transition-none motion-reduce:group-active/switch:scale-100"
         />
       </SwitchPrimitive.Thumb>
     </SwitchPrimitive.Root>

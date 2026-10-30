@@ -71,14 +71,14 @@ const badges = layout === 'badges';
                 icon && (
                   <Icon
                     name={icon}
-                    class:list={['shrink-0', color || 'text-primary', badges ? 'h-5 w-5' : 'h-8 w-8']}
+                    class:list={['shrink-0', color || 'text-primary-text', badges ? 'h-5 w-5' : 'h-8 w-8']}
                   />
                 )
               )}
               <span class:list={badges ? 'flex items-baseline gap-1.5' : 'text-left'}>
                 <span
                   class:list={[
-                    'font-bold leading-tight text-heading group-hover:text-primary',
+                    'font-bold leading-tight text-heading group-hover:text-primary-text',
                     badges ? 'text-sm' : 'block text-lg',
                   ]}
                 >

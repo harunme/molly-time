@@ -25,6 +25,7 @@ import { Trash, TrashRetentionSettings } from "./trash";
 import { publicationLabel, useLibraryPublication } from "./library-publication";
 import { ResourceDesktop } from "./resource-desktop";
 import { LibraryDataProvider, useLibraryData } from "./library-data";
+import { useContinuousData, ContinuousListStatus } from "./continuous-list";
 import { LibraryAddTile } from "./library-add-tile";
 import { queueVideoFiles, type VideoUploadBatch } from "./video-upload";
 import { MediaPreview, SubtitleSettings } from "./media";
@@ -33,7 +34,7 @@ import { PairingProvider } from "./pairing";
 import { Televisions } from "./televisions";
 import { BindEmail, InviteActivation } from "./accounts";
 import { Overview } from "./overview";
-import { BrandMark } from "./brand";
+import { BrandMark, BrandWordmark } from "./brand";
 import { useReminderData } from "./reminders";
 import { DeviceNotifications } from "./device-notifications";
 import { DeviceErrorLogs } from "./device-error-logs";
@@ -356,7 +357,7 @@ function App() {
         <Link className="wordmark" to="/overview">
           <BrandMark />
           <span className="brand-copy">
-            MollyTime<small>家庭媒体管理</small>
+            <BrandWordmark /><small>家庭媒体管理</small>
           </span>
         </Link>
         <nav ref={navigation} className={names.length > 5 ? "has-operations" : undefined} aria-label="管理导航">
@@ -500,7 +501,7 @@ function Login({ done, initialAccount, invite }: { done: (session: Session) => v
     <main className="login">
       <section className="login-story">
         <header className="login-brand">
-          <div className="wordmark"><BrandMark />MollyTime</div>
+          <div className="wordmark"><BrandMark /><BrandWordmark /></div>
           <span className="login-brand-divider" aria-hidden="true" />
           <p>家庭放映室</p>
         </header>
@@ -666,13 +667,13 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
       navigate(background, { replace: true });
     }
   };
-  const list = usePagedData<Resource>(
+  const list = useContinuousData<Resource>(
     `/resources?${parent ? `parentId=${encodeURIComponent(parent.id)}&` : ""}sort=manual`,
-    serial, 20, true, false, libraryData,
+    serial, true, libraryData,
   );
-  const backgroundList = usePagedData<Resource>(
+  const backgroundList = useContinuousData<Resource>(
     `/resources?${parent?.parentId ? `parentId=${encodeURIComponent(parent.parentId)}&` : ""}sort=manual`,
-    serial, 20, !!parent, false, libraryData,
+    serial, !!parent, libraryData,
   );
   const parentName = parent?.ancestors?.[parent.ancestors.length - 1]?.name || "全部文件夹";
   const closeFolder = () => navigate(parent?.parentId ? `/library/${encodeURIComponent(parent.parentId)}` : "/library");
@@ -693,13 +694,12 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
       setCreatedFolder(undefined);
     }
   }, [list.data, createdFolder, renaming]);
-  useEffect(() => { setCreatedFolder(undefined); setRenaming(undefined); }, [list.page]);
   const changed = () => {
     refresh((v) => v + 1);
   };
   const publication = useLibraryPublication({
-    items: filtered, parent, scope: `${parent?.id || "root"}:${list.page}`, readonly,
-    refreshing: list.refreshing, changed: () => { changed(); parentChanged?.(); },
+    items: filtered, parent, scope: parent?.id || "root", readonly,
+    refreshing: list.refreshing || !!list.error, changed: () => { changed(); parentChanged?.(); },
   });
   const openItem = (item: Resource) => {
     if (publication.selecting && item.type === "Episode") { publication.toggle(item.id); return; }
@@ -796,14 +796,14 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
         </div>
       </div>
       <div className="resource-library-card">
-            <ResourceDesktop items={filtered} enabled={!readonly && !list.loading && !renaming && !publication.selecting && !publication.busy} canArrange
+            <ResourceDesktop items={filtered} enabled={!readonly && !list.refreshing && !list.error && !renaming && !publication.selecting && !publication.busy} canArrange
               input={videoPicker}
               exitSelection={publication.selecting ? publication.exit : undefined}
               leadingTile={!readonly && !publication.selecting ? <LibraryAddTile onCreate={() => void createFolder()} onUpload={() => videoInput.current?.click()} creating={folderCreating || !!renaming} uploading={quickBusy} /> : undefined}
               toolbar={toolbar} feedback={<>{publication.feedback}{quickFeedback}{fileUploads.error && <Alert variant="destructive" role="alert"><AlertDescription>上传状态暂时无法更新：{fileUploads.error}</AlertDescription></Alert>}{folderError && <Alert variant="destructive" role="alert"><AlertDescription>{folderError}</AlertDescription></Alert>}</>}
               suspended={!!(upload || preview || share || subtitleSettings || tasksOpen || publication.busy)}
               loading={list.loading} loadError={list.error}
-              footer={<Pagination {...list} loading={list.refreshing || publication.busy} label="资源库分页" />}
+              footer={<ContinuousListStatus {...list} />}
               empty={<Empty className="empty"><FolderOpen className="size-9" /><h3>还没有内容</h3><p>新建文件夹或上传视频。</p></Empty>}
               folder={parent ? {
                 id: parent.id, name: parent.name, parentId: parent.parentId, parentName,
@@ -815,7 +815,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                   <Button variant="bordered"><ListTodo className="size-4" />查看全部上传</Button>
                 </div>}</>,
                 backgroundError: backgroundList.error,
-                backgroundFooter: <Pagination {...backgroundList} loading={backgroundList.refreshing} label="上级文件夹分页" />,
+                backgroundFooter: <ContinuousListStatus {...backgroundList} />,
                 close: closeFolder,
                 path: parent.ancestors || [],
                 open: id => navigate(id ? `/library/${encodeURIComponent(id)}` : "/library"),

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Generate launcher artwork and favicons from the single flat M vector.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+// Publish the approved filled m + flower and outlined Nunito ExtraBold wordmark.
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,87 +8,92 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(resolve(root, 'apps/site/package.json'));
 const sharp = require('sharp');
-const mark = await readFile(resolve(root, 'assets/brand/mollytime-mark.svg'), 'utf8');
-const path = mark.match(/<path\b[^>]*\/>/)?.[0];
-if (!path) throw new Error('The brand mark must contain one SVG path.');
-const attribute = name => {
-  const value = path.match(new RegExp(`${name}="([^"]+)"`))?.[1];
-  if (!value) throw new Error(`Missing mark attribute: ${name}`);
-  return value;
-};
-const background = '#22864B';
-const icon = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none"><title>MollyTime</title><rect width="128" height="128" rx="28" fill="${background}"/>${path}</svg>\n`;
-const banner = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none"><title>MollyTime</title><rect width="1280" height="720" fill="${background}"/><g transform="translate(320 40) scale(5)">${path}</g></svg>\n`;
-const write = async (destination, contents) => {
-  const target = resolve(root, destination);
+await import('../assets/brand/mollytime-flower/build-kit.mjs');
+const kit = 'assets/brand/mollytime-flower';
+const read = file => readFile(resolve(root, kit, file), 'utf8');
+const write = async (file, data) => {
+  const target = resolve(root, file);
   await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, contents);
+  await writeFile(target, data);
 };
-const raster = (source, size) => sharp(Buffer.from(source)).resize(size, size).png().toBuffer();
-
-await write('assets/brand/mollytime-icon.svg', icon);
-await write('assets/brand/mollytime-banner.svg', banner);
-await write('apps/tv/client/src/main/res/drawable-nodpi/mollytime_icon.png', await raster(icon, 1024));
-await write('apps/tv/client/src/main/res/drawable-nodpi/mollytime_banner.png', await sharp(Buffer.from(banner)).png().toBuffer());
-await write('apps/site/src/assets/favicons/favicon.svg', icon);
-await write('apps/site/src/assets/favicons/mask-icon.svg', mark);
-await write('apps/site/src/assets/favicons/apple-touch-icon.png', await raster(icon, 180));
-await write('apps/web/public/favicon.svg', icon);
-await write('apps/tv/web/public/favicon.svg', icon);
-for (const app of ['web', 'tv/web', 'site']) {
-  await write(`apps/${app}/public/brand/mollytime-mark.svg`, mark);
-  await write(`apps/${app}/public/brand/mollytime-icon.svg`, icon);
-  await write(`apps/${app}/public/brand/mollytime-banner.svg`, banner);
+const copy = async (from, to) => write(to, await readFile(resolve(root, kit, from)));
+const { jasmine, ivory, ink } = JSON.parse(await read('palette.json'));
+const mark = await read('digital/mollytime-symbol-primary.svg');
+const icon = await read('icons/app-icon.svg');
+const horizontal = await read('digital/mollytime-horizontal-primary.svg');
+const wordmark = await read('digital/mollytime-wordmark-ink.svg');
+const wordmarkOnDark = await read('digital/mollytime-wordmark-ivory.svg');
+const inner = source => source.replace(/^[\s\S]*?<svg\b[^>]*>/, '').replace(/<\/svg>\s*$/, '').replace(/<title\b[^>]*>[\s\S]*?<\/title>/g, '');
+const paths = source => [...source.matchAll(/<path\b[^>]*\bd="([^"]+)"[^>]*\/>/g)].map(match => match[1]);
+const markPaths = paths(mark);
+const wordPaths = paths(wordmark);
+if (markPaths.length !== 2 || wordPaths.length !== 9) throw new Error('Expected two symbol paths and nine outlined wordmark letters.');
+const onDark = horizontal.replaceAll(ink, ivory);
+const logoWidth = Number(horizontal.match(/viewBox="0 0 ([\d.]+)/)?.[1]);
+if (!Number.isFinite(logoWidth) || logoWidth <= 0) throw new Error('Invalid horizontal logo viewBox.');
+const bannerScale = 896 / logoWidth;
+const bannerY = (720 - 256 * bannerScale) / 2;
+const banner = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><title>MollyTime</title><rect width="1280" height="720" fill="${ivory}"/><g transform="translate(192 ${bannerY}) scale(${bannerScale})">${inner(horizontal)}</g></svg>\n`;
+const assets = {
+  'mollytime-mark.svg': mark,
+  'mollytime-icon.svg': icon,
+  'mollytime-banner.svg': banner,
+  'mollytime-horizontal.svg': horizontal,
+  'mollytime-horizontal-on-dark.svg': onDark,
+  'mollytime-stacked.svg': await read('digital/mollytime-stacked-primary.svg'),
+  'mollytime-wordmark.svg': wordmark,
+  'mollytime-wordmark-on-dark.svg': wordmarkOnDark,
+};
+for (const file of await readdir(resolve(root, kit, 'digital'))) {
+  if (file.endsWith('.svg')) assets[file] = await read(`digital/${file}`);
 }
-
-// ICO supports PNG-compressed frames; keep small browser sizes crisp.
-const sizes = [16, 32, 48, 64];
-const frames = await Promise.all(sizes.map(size => raster(icon, size)));
-const directory = Buffer.alloc(6 + 16 * frames.length);
-directory.writeUInt16LE(1, 2);
-directory.writeUInt16LE(frames.length, 4);
-let offset = directory.length;
-frames.forEach((frame, index) => {
-  const entry = 6 + index * 16;
-  directory[entry] = sizes[index]; directory[entry + 1] = sizes[index];
-  directory.writeUInt16LE(1, entry + 4); directory.writeUInt16LE(32, entry + 6);
-  directory.writeUInt32LE(frame.length, entry + 8); directory.writeUInt32LE(offset, entry + 12);
-  offset += frame.length;
-});
-await write('apps/site/src/assets/favicons/favicon.ico', Buffer.concat([directory, ...frames]));
+for (const [name, svg] of Object.entries(assets)) {
+  await write(`assets/brand/${name}`, svg);
+  for (const app of ['site', 'web', 'tv/web']) await write(`apps/${app}/public/brand/${name}`, svg);
+}
+for (const app of ['web', 'tv/web']) {
+  await copy('web/favicon.svg', `apps/${app}/public/favicon.svg`);
+  await copy('web/favicon.ico', `apps/${app}/public/favicon.ico`);
+}
+await copy('web/favicon.svg', 'apps/site/src/assets/favicons/favicon.svg');
+await copy('web/favicon.ico', 'apps/site/src/assets/favicons/favicon.ico');
+await copy('web/apple-touch-icon.png', 'apps/site/src/assets/favicons/apple-touch-icon.png');
+await copy('digital/mollytime-symbol-black.svg', 'apps/site/src/assets/favicons/mask-icon.svg');
+for (const [from, to] of Object.entries({
+  'web/icon-192.png': 'icon-192.png',
+  'web/icon-512.png': 'icon-512.png',
+  'web/icon-maskable-512.png': 'maskable-512.png',
+  'web/apple-touch-icon.png': 'apple-touch-icon.png',
+})) await copy(from, `apps/web/public/icons/${to}`);
+const manifestPath = 'apps/web/public/manifest.webmanifest';
+const manifest = JSON.parse(await readFile(resolve(root, manifestPath), 'utf8'));
+manifest.background_color = ivory;
+manifest.theme_color = ivory;
+await write(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+await copy('icons/app-icon-1024.png', 'apps/tv/client/src/main/res/drawable-nodpi/mollytime_icon.png');
+await write('apps/tv/client/src/main/res/drawable-nodpi/mollytime_banner.png', await sharp(Buffer.from(banner)).resize(1280, 720).png().toBuffer());
 await write('apps/tv/client/src/main/res/values/colors.xml', `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_background">${background}</color>
+    <color name="launcher_background">${ivory}</color>
 </resources>
 `);
-
-// Keep the foreground inside Android's adaptive-icon safe circle.
-await write('apps/tv/client/src/main/res/drawable/app_mark.xml', `<?xml version="1.0" encoding="utf-8"?>
+const nativePaths = (data, color) => data.map(d => `<path android:pathData="${d}" android:fillColor="${color}" />`).join('\n        ');
+const nativeSymbol = nativePaths(markPaths, jasmine);
+const vector = (width, height, viewportWidth, viewportHeight, contents) => `<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="128" android:viewportHeight="128">
-    <group android:pivotX="64" android:pivotY="64" android:scaleX="0.55" android:scaleY="0.55">
-        <path android:pathData="${attribute('d')}"
-            android:fillColor="#00000000" android:strokeColor="${attribute('stroke')}"
-            android:strokeWidth="${attribute('stroke-width')}" android:strokeLineCap="round" android:strokeLineJoin="round" />
-    </group>
+    android:width="${width}dp" android:height="${height}dp" android:viewportWidth="${viewportWidth}" android:viewportHeight="${viewportHeight}">
+    ${contents}
 </vector>
-`);
-const nativeMark = `android:pathData="${attribute('d')}" android:fillColor="#00000000" android:strokeColor="${attribute('stroke')}" android:strokeWidth="${attribute('stroke-width')}" android:strokeLineCap="round" android:strokeLineJoin="round"`;
-await write('apps/tv/client/src/main/res/drawable/app_logo.xml', `<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="128" android:viewportHeight="128">
-    <path android:fillColor="${background}" android:pathData="M28 0H100A28 28 0 0 1 128 28V100A28 28 0 0 1 100 128H28A28 28 0 0 1 0 100V28A28 28 0 0 1 28 0Z" />
-    <path ${nativeMark} />
-</vector>
-`);
-await write('apps/tv/client/src/main/res/drawable/app_banner.xml', `<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="320dp" android:height="180dp" android:viewportWidth="1280" android:viewportHeight="720">
-    <path android:fillColor="${background}" android:pathData="M0 0H1280V720H0Z" />
-    <group android:translateX="320" android:translateY="40" android:scaleX="5" android:scaleY="5">
-        <path ${nativeMark} />
-    </group>
-</vector>
-`);
-process.stdout.write('Generated MollyTime M launcher artwork and web favicons.\n');
+`;
+await write('apps/tv/client/src/main/res/drawable/app_mark.xml', vector(108, 108, 256, 256,
+  `<group android:pivotX="128" android:pivotY="128" android:scaleX="0.55" android:scaleY="0.55">${nativeSymbol}</group>`));
+await write('apps/tv/client/src/main/res/drawable/app_logo.xml', vector(108, 108, 256, 256,
+  `<path android:fillColor="${ivory}" android:pathData="M60 0H196A60 60 0 0 1 256 60V196A60 60 0 0 1 196 256H60A60 60 0 0 1 0 196V60A60 60 0 0 1 60 0Z" />
+    <group android:translateX="20" android:translateY="20" android:scaleX="0.84" android:scaleY="0.84">${nativeSymbol}</group>`));
+await write('apps/tv/client/src/main/res/drawable/app_banner.xml', vector(320, 180, 1280, 720,
+  `<path android:fillColor="${ivory}" android:pathData="M0 0H1280V720H0Z" />
+    <group android:translateX="192" android:translateY="${bannerY}" android:scaleX="${bannerScale}" android:scaleY="${bannerScale}">
+      ${nativeSymbol}
+      <group android:translateX="288" android:translateY="52" android:scaleX="1.5" android:scaleY="1.5">${nativePaths(wordPaths, ink)}</group>
+    </group>`));
+process.stdout.write('Published MollyTime jasmine logo, wordmarks, web icons and Android artwork.\n');

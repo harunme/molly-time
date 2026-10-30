@@ -17,7 +17,8 @@ test("management layout, accessible dialogs, subtitle shortcut and mobile naviga
   await expect(page.getByRole("heading", { name: "概览", exact: true })).toBeVisible();
   await expect(page.locator('.workspace-brandbar')).toHaveCount(0);
   await expect(page.locator('.manage-sidebar > .wordmark')).toBeVisible();
-  await expect(page.locator('.manage-sidebar > .wordmark img')).toHaveAttribute('src', '/manage/brand/mollytime-icon.svg');
+  await expect(page.locator('.manage-sidebar > .wordmark .brand-mark')).toHaveAttribute('src', '/manage/brand/mollytime-icon.svg');
+  await expect(page.locator('.manage-sidebar > .wordmark .brand-wordmark')).toHaveAttribute('src', '/manage/brand/mollytime-wordmark.svg');
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "英语启蒙", exact: true }),

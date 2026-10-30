@@ -51,5 +51,6 @@ test('reduced motion keeps a clear static focus ring on media and controls', asy
   const entry = page.locator('[data-focus="open-live-tv"]');
   await entry.focus();
   await expect(entry).not.toHaveCSS('box-shadow', 'none');
+  await expect(entry).toHaveCSS('border-color', 'rgb(248, 222, 126)');
   expect((await ringStyle(entry)).display).toBe('none');
 });

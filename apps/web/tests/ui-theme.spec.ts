@@ -3,11 +3,14 @@ import { expect, test } from "@playwright/test";
 test("global Tailwind tokens update inputs, buttons and cards together", async ({ page }) => {
   await page.route('**/api/manage/uploads?*', route => route.fulfill({ json: { items: [], total: 1, page: 1, pageSize: 20 } }));
   await page.goto("/manage/");
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toHaveCSS('background-color', 'rgb(248, 222, 126)');
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toHaveCSS('color', 'rgb(63, 58, 50)');
   await page.getByLabel("账号", { exact: true }).fill("parent@example.test");
   await page.getByLabel("密码", { exact: true }).fill("parent-e2e");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
   await expect(page.getByRole('button', { name: '添加内容', exact: true })).toBeVisible();
+  await expect(page.locator('.manage-sidebar .nav-link.active')).toHaveCSS('background-color', 'rgb(248, 222, 126)');
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(() => {
     const theme = document.documentElement.style;

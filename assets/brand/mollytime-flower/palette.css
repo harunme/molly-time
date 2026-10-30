@@ -1,0 +1,17 @@
+:root {
+  --molly-primary: #F8DE7E;
+  --molly-primary-rgb: 248 222 126;
+  --molly-ivory: #FAFAF4;
+  --molly-jasmine: #F8DE7E;
+  --molly-ink: #3F3A32;
+  --molly-primary-hover: #EACB69;
+  --molly-primary-soft: #FFF5D6;
+  --molly-primary-text: #755A1D;
+  --molly-focus: #A27B22;
+  --molly-muted: #797266;
+  --molly-border: #E7E2D6;
+  --molly-night: #211F1B;
+  --molly-night-surface: #33302A;
+  --molly-night-muted: #B8B1A3;
+  --molly-night-line: #5B5447;
+}

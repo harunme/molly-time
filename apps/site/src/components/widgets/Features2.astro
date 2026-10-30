@@ -44,7 +44,7 @@ const cardClass =
                   'transition hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)] hover:border-primary/40',
               ]}
             >
-              {(icon || defaultIcon) && <Icon name={icon || defaultIcon} class="mb-6 w-12 h-12 text-primary" />}
+              {(icon || defaultIcon) && <Icon name={icon || defaultIcon} class="mb-6 w-12 h-12 text-primary-text" />}
               <h3 class="text-xl font-bold">{itemTitle}</h3>
               {description && <p class="text-muted mt-2" set:html={description} />}
               {callToAction && !href && (

@@ -12,7 +12,7 @@ function Checkbox({
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer h-4 w-4 shrink-0 cursor-pointer rounded-control-mark border border-control-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-focus-ring active:not-disabled:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-white data-[state=indeterminate]:border-foreground data-[state=indeterminate]:bg-foreground data-[state=indeterminate]:text-white motion-reduce:active:not-disabled:scale-100",
+        "peer h-4 w-4 shrink-0 cursor-pointer rounded-control-mark border border-control-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-focus-ring active:not-disabled:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-focus-ring data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=indeterminate]:border-focus-ring data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground motion-reduce:active:not-disabled:scale-100",
         controlMotionClassName,
         className,
       )}

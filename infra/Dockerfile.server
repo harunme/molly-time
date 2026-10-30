@@ -1,17 +1,21 @@
 FROM node:22-slim AS frontend-build
 WORKDIR /tv-web
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+# All three frontend stylesheets import the same brand palette above their app root.
+COPY assets/brand/mollytime-flower/palette.css /assets/brand/mollytime-flower/palette.css
 COPY apps/tv/web/package.json apps/tv/web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY apps/tv/web/index.html apps/tv/web/tsconfig.json apps/tv/web/vite.config.ts ./
 COPY apps/tv/web/src ./src
+COPY apps/tv/web/public ./public
 RUN pnpm build
 
 WORKDIR /web
 COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
-COPY apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts ./
+COPY apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts apps/web/pwa-plugin.ts ./
 COPY apps/web/src ./src
+COPY apps/web/public ./public
 RUN pnpm build
 
 WORKDIR /site

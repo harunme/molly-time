@@ -22,6 +22,9 @@ test('homepage has working navigation, metadata, FAQ and no browser errors', asy
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('让孩子的每次观看，都有你的用心在里面。');
   await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', 'https://mollytime.app');
   await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveAttribute('href', '/manage/');
+  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveCSS('background-color', 'rgb(248, 222, 126)');
+  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveCSS('color', 'rgb(63, 58, 50)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 244)');
   await page.getByRole('navigation', { name: '主要导航', exact: true }).getByRole('link', { name: '产品功能' }).click();
   await expect(page).toHaveURL(/#features$/);
   await expect(page.locator('#features > div').last()).toHaveCSS('opacity', '1');
@@ -30,6 +33,7 @@ test('homepage has working navigation, metadata, FAQ and no browser errors', asy
   await expect(page.locator('#faqs details').first()).not.toHaveAttribute('open', '');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
+  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveCSS('color', 'rgb(63, 58, 50)');
   await capture(page, 'test-results/dark.png');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);

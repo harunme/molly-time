@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 
 // Precache exactly this build's public shell. Never cache APIs, media or user data.
@@ -8,13 +9,18 @@ export function pwaPlugin(): Plugin {
     apply: 'build',
     generateBundle(_, bundle) {
       const assets = Object.keys(bundle).filter(name => !name.endsWith('.map'));
-      const version = createHash('sha256').update(assets.map(name => {
+      const publicShell = ['manifest.webmanifest', 'favicon.svg', 'brand/mollytime-icon.svg',
+        'brand/mollytime-wordmark.svg', 'brand/mollytime-wordmark-on-dark.svg',
+        'icons/maskable-512.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+      const hash = createHash('sha256').update(assets.map(name => {
         const item = bundle[name];
         return item.type === 'chunk' ? item.code : String(item.source);
-      }).join('')).digest('hex').slice(0, 16);
+      }).join(''));
+      // A logo-only change must also invalidate previously installed shell artwork.
+      for (const file of publicShell) hash.update(file).update(readFileSync(new URL(`./public/${file}`, import.meta.url)));
+      const version = hash.digest('hex').slice(0, 16);
       const shell = ['/manage/', ...assets.filter(name => name !== 'index.html').map(name => `/manage/${name}`),
-        '/manage/manifest.webmanifest', '/manage/favicon.svg', '/manage/brand/mollytime-icon.svg',
-        '/manage/icons/maskable-512.png', '/manage/icons/icon-192.png', '/manage/icons/icon-512.png', '/manage/icons/apple-touch-icon.png'];
+        ...publicShell.map(file => `/manage/${file}`)];
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: `
 const CACHE = 'mollytime-shell-${version}';
 const SHELL = ${JSON.stringify(shell)};

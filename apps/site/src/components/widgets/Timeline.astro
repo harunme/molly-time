@@ -60,8 +60,8 @@ const alternate = layout === 'alternate';
               ghost
                 ? 'border-dashed border-slate-400/70 text-muted'
                 : highlight
-                  ? 'border-primary bg-primary text-white'
-                  : 'border-primary/40 text-primary',
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-primary/40 text-primary-text',
               alternate ? (index % 2 === 0 ? 'lg:left-auto lg:-right-5' : 'lg:-left-5') : '',
             ]}
             aria-hidden="true"
@@ -72,7 +72,7 @@ const alternate = layout === 'alternate';
             <time
               class:list={[
                 'block text-sm font-semibold uppercase tracking-wide',
-                ghost ? 'text-muted' : 'text-primary',
+                ghost ? 'text-muted' : 'text-primary-text',
               ]}
             >
               {date}

@@ -33,7 +33,7 @@ const {
     class:list={[
       'text-center',
       layout === 'banner'
-        ? 'mx-auto rounded-2xl bg-primary px-6 py-12 md:py-16 text-white'
+        ? 'mx-auto rounded-2xl bg-primary px-6 py-12 md:py-16 text-primary-foreground'
         : 'max-w-3xl mx-auto p-6 rounded-md shadow-xl dark:shadow-none dark:border dark:border-slate-600',
     ]}
   >
@@ -43,8 +43,8 @@ const {
       tagline={tagline}
       classes={{
         container: 'mb-0 md:mb-0',
-        title: `text-4xl md:text-4xl font-bold tracking-tighter mb-4 font-heading ${layout === 'banner' ? 'text-white' : ''}`,
-        subtitle: layout === 'banner' ? 'text-xl text-white' : 'text-xl text-muted dark:text-slate-400',
+        title: `text-4xl md:text-4xl font-bold tracking-tighter mb-4 font-heading ${layout === 'banner' ? 'text-primary-foreground' : ''}`,
+        subtitle: layout === 'banner' ? 'text-xl text-primary-foreground' : 'text-xl text-muted dark:text-slate-400',
         ...((classes?.headline as Record<string, string>) ?? {}),
       }}
     />
@@ -59,9 +59,9 @@ const {
                   class:list={[
                     'w-full sm:mb-0 whitespace-nowrap',
                     layout === 'banner' && action?.variant === 'primary'
-                      ? 'bg-white text-primary border-white hover:bg-white/90 hover:border-white/90 hover:text-primary dark:bg-white dark:text-primary dark:border-white'
+                      ? 'bg-white text-primary-text border-white hover:bg-white/90 hover:border-white/90 hover:text-primary-text dark:bg-white dark:text-primary-text dark:border-white'
                       : layout === 'banner'
-                        ? 'text-white border-white/70 hover:bg-white/10 hover:border-white hover:text-white dark:text-white dark:border-white/70'
+                        ? 'text-primary-foreground border-white/70 hover:bg-white/10 hover:border-white hover:text-primary-foreground dark:text-primary-foreground dark:border-white/70'
                         : '',
                   ]}
                 />

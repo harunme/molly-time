@@ -10,7 +10,7 @@
   --focus-ring-breath: 2.6s;
 }
 .settings-panel { --focus-ring-surface: var(--settings-surface); --focus-ring-border: .12rem; }
-.player-menu { --focus-ring-surface: #242a32; }
+.player-menu { --focus-ring-surface: var(--surface); }
 .card-art { --focus-ring-border: 0rem; }
 button { position: relative; }
 
@@ -23,8 +23,8 @@ button { position: relative; }
 :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
     .poster.focused > .card-art, .poster:focus-visible > .card-art) {
   outline: none;
-  border-color: #ffffff80;
-  box-shadow: 0 0 0 .15rem var(--focus-ring-surface), 0 0 0 .26rem #ffffff60, 0 .3rem 1rem #0004;
+  border-color: rgb(var(--molly-primary-rgb) / .5);
+  box-shadow: 0 0 0 .15rem var(--focus-ring-surface), 0 0 0 .26rem rgb(var(--molly-primary-rgb) / .4), 0 .3rem 1rem #0004;
 }
 @supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
   :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
@@ -36,7 +36,7 @@ button { position: relative; }
     padding: var(--focus-ring-width);
     border-radius: calc(var(--focus-ring-radius) + var(--focus-ring-gap));
     pointer-events: none;
-    background: conic-gradient(from var(--tv-focus-angle), #ffffff00 0deg 180deg, #ffffff20 235deg, #ffffff99 285deg, #fff 320deg, #ffffff00 360deg);
+    background: conic-gradient(from var(--tv-focus-angle), rgb(var(--molly-primary-rgb) / 0) 0deg 180deg, rgb(var(--molly-primary-rgb) / .12) 235deg, rgb(var(--molly-primary-rgb) / .6) 285deg, var(--focus) 320deg, rgb(var(--molly-primary-rgb) / 0) 360deg);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -50,7 +50,7 @@ button { position: relative; }
   :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
       .poster.focused > .card-art, .poster:focus-visible > .card-art) {
     border-color: var(--focus);
-    box-shadow: 0 0 0 .15rem var(--focus-ring-surface), 0 0 0 .26rem #ffffffb8, 0 .3rem 1rem #0004;
+    box-shadow: 0 0 0 .15rem var(--focus-ring-surface), 0 0 0 .26rem rgb(var(--molly-primary-rgb) / .72), 0 .3rem 1rem #0004;
   }
   :is(button.focused:not(.poster), button:focus-visible:not(.poster), button[role="option"]:focus,
       .poster.focused > .card-art, .poster:focus-visible > .card-art)::before { display: none; animation: none; }

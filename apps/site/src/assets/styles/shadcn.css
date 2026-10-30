@@ -43,7 +43,7 @@
 
   --border: color-mix(in oklab, var(--aw-color-text-default) 15%, var(--aw-color-bg-page));
   --input: color-mix(in oklab, var(--aw-color-text-default) 15%, var(--aw-color-bg-page));
-  --ring: var(--aw-color-primary);
+  --ring: var(--aw-color-focus);
 
   --radius: 0.625rem;
 
@@ -60,7 +60,7 @@
   --sidebar-accent: color-mix(in oklab, var(--aw-color-text-default) 6%, var(--aw-color-bg-page));
   --sidebar-accent-foreground: var(--aw-color-text-default);
   --sidebar-border: color-mix(in oklab, var(--aw-color-text-default) 15%, var(--aw-color-bg-page));
-  --sidebar-ring: var(--aw-color-primary);
+  --sidebar-ring: var(--aw-color-focus);
 }
 
 /*
