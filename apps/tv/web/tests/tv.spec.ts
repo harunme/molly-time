@@ -41,18 +41,19 @@ for (const supported of [true, false]) {
     await page.keyboard.press('ContextMenu');
     await expect(page.getByRole('button', { name: /检查网页更新/ })).toHaveCount(0);
     await expect(page.locator('[data-focus="check-web-update"]')).toHaveCount(0);
-    await expect(page.locator(`[data-focus="re-pair"]`)).toBeFocused();
+    await expect(page.locator(`[data-focus="${supported ? 'check-update' : 're-pair'}"]`)).toBeFocused();
     await expect(page.getByRole('button', { name: /连接设置/ })).toHaveCount(0);
     if (supported) {
       await expect(page.getByRole('region', { name: '软件更新' })).toContainText('当前版本 0.4.0');
-      await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+      await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
+      await page.keyboard.press('Enter');
       await expect.poll(() => page.evaluate(() => (window as unknown as { updateChecks: number }).updateChecks)).toBe(1);
       await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
       await expect(page.getByRole('heading', { name: '客户端更新' })).toHaveCount(0);
       await expect(page.getByText('发现新版本 0.5.0')).toBeVisible();
       await expect(page.getByText('网页显示更新说明')).toBeVisible();
       await expect(page.getByRole('dialog')).toHaveCount(1);
-      await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+      await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
       await expect(page.getByRole('button', { name: '返回设置' })).toHaveCount(0);
       // Notifications during an inline check must also stay in settings.
       await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:clientUpdateAvailable')));
@@ -73,7 +74,7 @@ for (const supported of [true, false]) {
       })));
       await expect(page.getByRole('heading', { name: '客户端更新' })).toBeVisible();
       await expect(page.getByRole('button', { name: '返回设置' })).toHaveCount(0);
-      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: '返回媒体库' }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
     } else await expect(page.locator('[data-focus="check-update"]')).toHaveCount(0);
@@ -156,9 +157,7 @@ test('unbound native TV settings only offer updates and return to pairing', asyn
   await expect(page.locator('.pairing-code')).toHaveText('0123');
   await page.getByRole('button', { name: '打开设置', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '电视设置', exact: true });
-  await expect(dialog.getByRole('button', { name: '检查客户端更新', exact: true })).toHaveCount(0);
-  await expect(dialog.getByRole('status')).toHaveText('当前已是最新版本');
-  await expect(dialog.getByRole('button', { name: '返回绑定页', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('button', { name: '检查客户端更新', exact: true })).toBeFocused();
   await expect(dialog.getByRole('button', { name: '绑定电视', exact: true })).toHaveCount(0);
   await expect(page.locator('[data-focus="connect-home"]')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: '返回媒体库', exact: true })).toHaveCount(0);
@@ -293,7 +292,7 @@ test('remote navigation, playback return, folder restoration and durable binding
   await expect(page.locator('[data-focus="cancel-re-pair"]')).toBeFocused();
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '返回媒体库' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.poster').first()).toBeVisible();
 });
@@ -733,36 +732,36 @@ for (const outcome of ['cancel', 'error'] as const) {
     const calls = () => page.evaluate(() => (window as unknown as { updateCalls: string[] }).updateCalls);
     const open = async () => {
       await page.keyboard.press('ContextMenu');
-      await expect(page.getByRole('heading', { name: '电视设置', exact: true })).toBeVisible();
+      await page.locator('[data-focus="check-update"]').click();
     };
     await page.goto('/tv/');
     await expect(page.locator('[data-focus="series-story"]')).toBeFocused();
     await open();
     const action = page.locator('[data-focus="client-update-action"]');
     await expect(action).toHaveText('立即更新');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+    await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
     await action.click();
     await expect(action).toHaveCount(0);
     await expect(page.getByRole('button', { name: '重新检查' })).toHaveCount(0);
     await emit({ state: 'downloading', received: 100, total: 100 });
     await expect(page.getByRole('status')).toHaveText('正在准备安装…');
-    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '返回媒体库' }).click();
     await open();
     await expect(page.getByRole('status')).toHaveText('正在准备安装…');
     await emit({ state: 'downloaded' });
     await expect(action).toHaveText('立即安装');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
-    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
+    await page.getByRole('button', { name: '返回媒体库' }).click();
     await open();
     await expect(action).toHaveText('立即安装');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+    await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
     await action.click();
     await expect(action).toHaveCount(0);
     await emit(outcome === 'cancel'
       ? { state: '尚未安装，更新包已保留', phase: 'ready' }
       : { state: '安装失败，请重试', phase: 'error' });
     await expect(action).toHaveText(outcome === 'cancel' ? '立即安装' : '重试');
-    await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+    await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
     await action.click();
     await expect.poll(calls).toEqual(['checkUpdate', 'downloadUpdate', 'installUpdate', 'installUpdate']);
   });

@@ -120,7 +120,7 @@ const choices = [
   { mode: 'minutes', amount: 60, label: '60 分钟' },
 ] as const;
 
-export function WatchControlPanel({ state, changed, close, backLabel }: { state?: Watching; changed: (state: Watching, keepOpen?: boolean) => void; close: () => void; backLabel: string }) {
+export function WatchControlPanel({ state, changed, close, backLabel, playbackName }: { state?: Watching; changed: (state: Watching, keepOpen?: boolean, action?: 'settings' | 'add' | 'stop') => void; close: () => void; backLabel: string; playbackName?: string }) {
   const initial = { mode: state?.mode ?? ('episodes' as const), amount: state?.amount ?? 2 };
   const [selection, setSelection] = useState<{ mode: Watching['mode']; amount: number }>({ mode: initial.mode, amount: initial.amount });
   const touched = useRef(false);
@@ -143,7 +143,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
       if (!pinKnown.current && !state.pinSet) { await request('/api/watch-control/pin', 'POST', { pin: pinRef.current }); pinKnown.current = true; }
       attempt.current ??= { requestId: crypto.randomUUID(), version: version.current, ...selection };
       const next = await request<Watching>('/api/watch-control/commands', 'POST', { requestId: attempt.current.requestId, version: attempt.current.version, ...(pinAction === 'settings' ? { mode: attempt.current.mode, amount: attempt.current.amount, enabled: true } : {}), action: pinAction, pin: pinRef.current });
-      changed({ ...next, pinSet: true });
+      changed({ ...next, pinSet: true }, false, pinAction);
     } catch (e) {
       setError(e instanceof Error ? e.message : '请连接网络后再试');
       pinRef.current = ''; setPin('');
@@ -183,7 +183,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
   const settings = () => { setEditing(true); requestAnimationFrame(() => setFocus('watch-parent-main')); };
   if (enteringPin) return <FocusRegion focusKey="watch-pin" boundary className="watch-parent-panel watch-pin-view">
     <h2>{state.pinSet || pinKnown.current ? '输入家长密码' : '设置家长密码'}</h2>
-    <p className="watch-pin-summary">{pinAction === 'settings' ? `每日可看 ${label}${state.enabled ? '，明天起生效' : '，保存后今天即可观看'}` : pinAction === 'add' ? `加看 ${state.round?.mode === 'episodes' ? '1 集' : '10 分钟'}` : '结束今日观看'}</p>
+    <p className="watch-pin-summary">{pinAction === 'settings' ? `每日可看 ${label}${state.enabled ? '，明天起生效' : '，保存后今天即可观看'}` : pinAction === 'add' ? `加看 ${state.round?.mode === 'episodes' ? '1 集' : '10 分钟'}${playbackName ? `，继续观看《${playbackName}》` : ''}` : '结束今日观看'}</p>
     <div aria-label={`已输入 ${pin.length} 位密码`} className="watch-pin-dots">{[0, 1, 2, 3].map(index => <span key={index} className={index < pin.length ? 'filled' : ''} />)}</div>
     <div className="watch-pin-pad">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map(value => <FocusButton key={value} focusKey={`watch-digit-${value}`} disabled={busy} onClick={() => digit(String(value))}>{value}</FocusButton>)}
       <FocusButton focusKey="watch-pin-delete" disabled={busy} onClick={() => { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }}>删除</FocusButton>
@@ -196,7 +196,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
     <h2>今日观看</h2><p>{watchLabel(state)}</p>
     {state.round.episodeName && <p className="watch-current">当前一集：{state.round.episodeName}（可继续）</p>}
     <div className="watch-parent-actions">
-      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{state.round.mode === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</FocusButton>
+      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{state.round.mode === 'episodes' ? '加看 1 集' : '加看 10 分钟'}{playbackName ? '并继续观看' : ''}</FocusButton>
       <FocusButton focusKey="watch-end" className="settings-action settings-secondary" onClick={() => authorize('stop')}>结束今日观看</FocusButton>
     </div>
     <div className="watch-parent-actions"><FocusButton focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton></div>
@@ -210,7 +210,7 @@ export function WatchControlPanel({ state, changed, close, backLabel }: { state?
     <h2>今日观看已结束</h2><p>每日可看 {ruleLabel}，明天 0 点自动恢复。</p>
     <p className="watch-current">北京时间 · 剩余额度不结转，重新打开不会重置。</p>
     <div className="watch-parent-actions">
-      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{(state.round?.mode ?? state.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}</FocusButton>
+      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{(state.round?.mode ?? state.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}{playbackName ? '并继续观看' : ''}</FocusButton>
       <FocusButton focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton>
     </div>
     <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>

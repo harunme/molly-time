@@ -60,7 +60,7 @@ test('slow loading explains the wait and settings stays navigable before content
   await expect(page.getByRole('status')).toHaveText('加载较慢，请稍候…');
   await page.keyboard.press('ContextMenu');
   await expect(page.getByRole('heading', { name: '电视设置' })).toBeVisible();
-  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await reply(page);
