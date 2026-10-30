@@ -63,8 +63,9 @@ test('canceling authorization returns to the selected video and clears playback 
   await page.locator('[data-focus="episode-episode"]').click();
   await page.locator('[data-focus="watch-parent-main"]').click();
   await expect(page.locator('.watch-pin-summary')).toContainText('森林里的故事');
-  await page.locator('[data-focus="watch-pin-cancel"]').click();
-  await page.locator('[data-focus="close-overlay"]').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-focus="watch-parent-main"]')).toBeFocused();
+  await page.evaluate(() => window.mollyBack?.());
   await expect(page.locator('[data-focus="episode-episode"]')).toBeFocused();
   await page.keyboard.press('ContextMenu');
   await page.locator('[data-focus="open-watch-control"]').click();
@@ -119,4 +120,54 @@ test('resuming rechecks current allowance instead of trusting an earlier command
   await authorize(page);
   await expect(page.locator('[data-focus="watch-parent-main"]')).toBeVisible();
   expect(await page.evaluate(() => (window as any).played)).toEqual([]);
+});
+
+
+test('remote Back returns from viewing settings to today, then to TV settings', async ({ page }) => {
+  await setup(page, 'episodes', true);
+  await page.keyboard.press('ContextMenu');
+  await page.locator('[data-focus="open-watch-control"]').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: '今日观看', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /返回/ })).toHaveCount(0);
+  await page.locator('[data-focus="watch-settings"]').click();
+  await expect(dialog.getByRole('heading', { name: '观看设置', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /返回/ })).toHaveCount(0);
+  await page.evaluate(() => window.mollyBack?.());
+  await expect(dialog.getByRole('heading', { name: '今日观看', exact: true })).toBeVisible();
+  await expect(page.locator('[data-focus="watch-settings"]')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog.getByRole('heading', { name: '电视设置', exact: true })).toBeVisible();
+  await expect(page.locator('[data-focus="open-watch-control"]')).toBeFocused();
+});
+
+test('remote selects episode and minute allowances and returns from PIN entry', async ({ page }) => {
+  await setup(page, 'episodes', true);
+  await page.keyboard.press('ContextMenu');
+  await page.locator('[data-focus="open-watch-control"]').click();
+  await page.locator('[data-focus="watch-settings"]').click();
+  await expect(page.locator('[data-focus="watch-parent-main"]')).toBeFocused();
+  const move = async (key: string, target: string) => {
+    await page.keyboard.press(key);
+    await expect(page.locator(`[data-focus="${target}"]`)).toBeFocused();
+  };
+  await move('ArrowUp', 'watch-choice-minutes-15');
+  await move('ArrowRight', 'watch-choice-minutes-30');
+  await move('ArrowRight', 'watch-choice-minutes-60');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: '60 分钟', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await move('ArrowLeft', 'watch-choice-minutes-30');
+  await move('ArrowLeft', 'watch-choice-minutes-15');
+  await move('ArrowUp', 'watch-choice-episodes-1');
+  await move('ArrowRight', 'watch-choice-episodes-2');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: '2 集', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await move('ArrowDown', 'watch-choice-minutes-30');
+  await page.keyboard.press('Enter');
+  await move('ArrowDown', 'watch-parent-main');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.watch-pin-summary')).toContainText('每日可看 30 分钟');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-focus="watch-parent-main"]')).toBeFocused();
+  await move('ArrowUp', 'watch-choice-minutes-15');
 });

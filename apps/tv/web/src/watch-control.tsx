@@ -1,5 +1,5 @@
 import { demoEnabled } from './demo';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { ApiError, browserRequest, request, type Capabilities } from './api';
 import { FocusButton, FocusRegion } from './focus';
@@ -120,7 +120,7 @@ const choices = [
   { mode: 'minutes', amount: 60, label: '60 分钟' },
 ] as const;
 
-export function WatchControlPanel({ state, changed, close, backLabel, playbackName }: { state?: Watching; changed: (state: Watching, keepOpen?: boolean, action?: 'settings' | 'add' | 'stop') => void; close: () => void; backLabel: string; playbackName?: string }) {
+export function WatchControlPanel({ state, changed, backRef, playbackName }: { state?: Watching; changed: (state: Watching, keepOpen?: boolean, action?: 'settings' | 'add' | 'stop') => void; backRef: Ref<() => boolean>; playbackName?: string }) {
   const initial = { mode: state?.mode ?? ('episodes' as const), amount: state?.amount ?? 2 };
   const [selection, setSelection] = useState<{ mode: Watching['mode']; amount: number }>({ mode: initial.mode, amount: initial.amount });
   const touched = useRef(false);
@@ -176,52 +176,64 @@ export function WatchControlPanel({ state, changed, close, backLabel, playbackNa
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [enteringPin]);
-  if (!state) return <section className="watch-parent-panel"><p role="status">请连接网络后设置观看数量。</p><FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton></section>;
+  useImperativeHandle(backRef, () => () => {
+    if (lock.current) return true;
+    if (enteringPin) {
+      setEnteringPin(false); setPin(''); pinRef.current = ''; attempt.current = undefined; setError('');
+      requestAnimationFrame(() => setFocus('watch-parent-main'));
+      return true;
+    }
+    if (editing && state?.enabled) {
+      setEditing(false);
+      requestAnimationFrame(() => setFocus('watch-settings'));
+      return true;
+    }
+    return false;
+  }, [enteringPin, editing, state?.enabled]);
+  // Each view owns its focus registrations; useFocusable registers keys on mount.
+  // View transitions restore focus explicitly, so buttons must not schedule a second restore.
+  if (!state) return <section key="unavailable" className="watch-parent-panel"><p role="status">请连接网络后设置观看数量。</p></section>;
   const label = `${selection.amount} ${selection.mode === 'episodes' ? '集' : '分钟'}`;
   const ruleLabel = `${state.amount} ${state.mode === 'episodes' ? '集' : '分钟'}`;
   const authorize = (action: typeof pinAction) => { setPinAction(action); attempt.current = undefined; setEnteringPin(true); setError(''); };
   const settings = () => { setEditing(true); requestAnimationFrame(() => setFocus('watch-parent-main')); };
-  if (enteringPin) return <FocusRegion focusKey="watch-pin" boundary className="watch-parent-panel watch-pin-view">
+  if (enteringPin) return <FocusRegion key="pin" focusKey="watch-pin" boundary className="watch-parent-panel watch-pin-view">
     <h2>{state.pinSet || pinKnown.current ? '输入家长密码' : '设置家长密码'}</h2>
     <p className="watch-pin-summary">{pinAction === 'settings' ? `每日可看 ${label}${state.enabled ? '，明天起生效' : '，保存后今天即可观看'}` : pinAction === 'add' ? `加看 ${state.round?.mode === 'episodes' ? '1 集' : '10 分钟'}${playbackName ? `，继续观看《${playbackName}》` : ''}` : '结束今日观看'}</p>
     <div aria-label={`已输入 ${pin.length} 位密码`} className="watch-pin-dots">{[0, 1, 2, 3].map(index => <span key={index} className={index < pin.length ? 'filled' : ''} />)}</div>
-    <div className="watch-pin-pad">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map(value => <FocusButton key={value} focusKey={`watch-digit-${value}`} disabled={busy} onClick={() => digit(String(value))}>{value}</FocusButton>)}
-      <FocusButton focusKey="watch-pin-delete" disabled={busy} onClick={() => { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }}>删除</FocusButton>
-      <FocusButton focusKey="watch-digit-0" disabled={busy} onClick={() => digit('0')}>0</FocusButton>
-      <FocusButton focusKey="watch-pin-cancel" disabled={busy} onClick={() => { setEnteringPin(false); setPin(''); pinRef.current = ''; attempt.current = undefined; setError(''); requestAnimationFrame(() => setFocus('watch-parent-main')); }}>返回</FocusButton>
+    <div className="watch-pin-pad">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map(value => <FocusButton autoRestoreFocus={false} key={value} focusKey={`watch-digit-${value}`} disabled={busy} onClick={() => digit(String(value))}>{value}</FocusButton>)}
+      <FocusButton autoRestoreFocus={false} focusKey="watch-pin-delete" disabled={busy} onClick={() => { pinRef.current = pinRef.current.slice(0, -1); setPin(pinRef.current); }}>删除</FocusButton>
+      <FocusButton autoRestoreFocus={false} focusKey="watch-digit-0" disabled={busy} onClick={() => digit('0')}>0</FocusButton>
+      <FocusButton autoRestoreFocus={false} focusKey="watch-pin-cancel" disabled={busy} onClick={() => { setEnteringPin(false); setPin(''); pinRef.current = ''; attempt.current = undefined; setError(''); requestAnimationFrame(() => setFocus('watch-parent-main')); }}>返回</FocusButton>
     </div>
     <div className="watch-pin-feedback" aria-live="polite">{error ? <p role="alert" className="error">{error}</p> : <p role="status">{busy ? '正在处理…' : '输入 4 位数字后自动确认'}</p>}</div>
   </FocusRegion>;
-  if (!editing && state.enabled && state.status === 'allowed' && state.round) return <section className="watch-parent-panel watch-quantity-view">
+  if (!editing && state.enabled && state.status === 'allowed' && state.round) return <section key="today" className="watch-parent-panel watch-quantity-view">
     <h2>今日观看</h2><p>{watchLabel(state)}</p>
     {state.round.episodeName && <p className="watch-current">当前一集：{state.round.episodeName}（可继续）</p>}
     <div className="watch-parent-actions">
-      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{state.round.mode === 'episodes' ? '加看 1 集' : '加看 10 分钟'}{playbackName ? '并继续观看' : ''}</FocusButton>
-      <FocusButton focusKey="watch-end" className="settings-action settings-secondary" onClick={() => authorize('stop')}>结束今日观看</FocusButton>
+      <FocusButton autoRestoreFocus={false} focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{state.round.mode === 'episodes' ? '加看 1 集' : '加看 10 分钟'}{playbackName ? '并继续观看' : ''}</FocusButton>
+      <FocusButton autoRestoreFocus={false} focusKey="watch-end" className="settings-action settings-secondary" onClick={() => authorize('stop')}>结束今日观看</FocusButton>
     </div>
-    <div className="watch-parent-actions"><FocusButton focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton></div>
-    <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
+    <div className="watch-parent-actions"><FocusButton autoRestoreFocus={false} focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton></div>
   </section>;
-  if (!editing && state.needsSync) return <section className="watch-parent-panel watch-quantity-view">
+  if (!editing && state.needsSync) return <section key="needs-sync" className="watch-parent-panel watch-quantity-view">
     <h2>请联网更新今日额度</h2><p>连接网络后会自动恢复今天的观看额度，无需输入密码。</p>
-    <FocusButton focusKey="watch-parent-main" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
   </section>;
-  if (!editing && state.enabled) return <section className="watch-parent-panel watch-quantity-view">
+  if (!editing && state.enabled) return <section key="resting" className="watch-parent-panel watch-quantity-view">
     <h2>今日观看已结束</h2><p>每日可看 {ruleLabel}，明天 0 点自动恢复。</p>
     <p className="watch-current">北京时间 · 剩余额度不结转，重新打开不会重置。</p>
     <div className="watch-parent-actions">
-      <FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{(state.round?.mode ?? state.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}{playbackName ? '并继续观看' : ''}</FocusButton>
-      <FocusButton focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton>
+      <FocusButton autoRestoreFocus={false} focusKey="watch-parent-main" className="primary settings-action" onClick={() => authorize('add')}>{(state.round?.mode ?? state.mode) === 'episodes' ? '加看 1 集' : '加看 10 分钟'}{playbackName ? '并继续观看' : ''}</FocusButton>
+      <FocusButton autoRestoreFocus={false} focusKey="watch-settings" className="settings-action settings-secondary" onClick={settings}>观看设置</FocusButton>
     </div>
-    <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={close}>{backLabel}</FocusButton>
   </section>;
-  return <section className="watch-parent-panel watch-quantity-view">
+  return <section key="settings" className="watch-parent-panel watch-quantity-view">
     <h2>观看设置</h2>
     <p>每天可看多少？北京时间每天 0 点自动恢复。</p>
-    <div className="watch-amount-grid" role="group" aria-label="观看数量">{choices.map(choice => <FocusButton key={choice.label} ariaLabel={choice.label} focusKey={`watch-choice-${choice.mode}-${choice.amount}`} selected={selection.mode === choice.mode && selection.amount === choice.amount} className={selection.mode === choice.mode && selection.amount === choice.amount ? 'primary' : ''} onClick={() => { touched.current = true; setSelection({ mode: choice.mode, amount: choice.amount }); }}>{choice.label}</FocusButton>)}</div>
+    <div className="watch-amount-grid" role="group" aria-label="观看数量">{choices.map(choice => <FocusButton autoRestoreFocus={false} key={choice.label} ariaLabel={choice.label} focusKey={`watch-choice-${choice.mode}-${choice.amount}`} selected={selection.mode === choice.mode && selection.amount === choice.amount} className={selection.mode === choice.mode && selection.amount === choice.amount ? 'primary' : ''} onClick={() => { touched.current = true; setSelection({ mode: choice.mode, amount: choice.amount }); }}>{choice.label}</FocusButton>)}</div>
     <p className="watch-current">{selection.mode === 'episodes' ? '开始一个视频计 1 集，续播不重复计数。' : '只计算播放时间，暂停和选片不计时。'}</p>
-    <div className="watch-parent-actions"><FocusButton focusKey="watch-parent-main" className="primary settings-action" onClick={() => { touched.current = true; authorize('settings'); }}>{state.enabled ? '保存设置' : '保存并开始观看'}</FocusButton></div>
+    <div className="watch-parent-actions"><FocusButton autoRestoreFocus={false} focusKey="watch-parent-main" className="primary settings-action" onClick={() => { touched.current = true; authorize('settings'); }}>{state.enabled ? '保存设置' : '保存并开始观看'}</FocusButton></div>
     <p className="watch-current">每日可看 {label} · {state.enabled ? '明天起生效，今日额度不变' : '保存后今天即可观看'}</p>
-    <FocusButton focusKey="close-overlay" className="settings-action settings-secondary" onClick={() => { if (editing && state.enabled) { setEditing(false); requestAnimationFrame(() => setFocus('watch-parent-main')); } else close(); }}>{editing && state.enabled ? '返回' : backLabel}</FocusButton>
   </section>;
 }

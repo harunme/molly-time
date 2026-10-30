@@ -153,11 +153,11 @@ export function revealCard(node: HTMLElement) {
   }
 }
 
-export function FocusButton({ focusKey, children, onClick, className = '', disabled = false, onFocus, onArrow, ariaLabel, selected }: {
+export function FocusButton({ focusKey, children, onClick, className = '', disabled = false, onFocus, onArrow, ariaLabel, selected, autoRestoreFocus = true }: {
   focusKey: string; children: ReactNode; onClick: () => void; className?: string; disabled?: boolean;
-  onFocus?: () => void; onArrow?: (direction: string) => boolean; ariaLabel?: string; selected?: boolean;
+  autoRestoreFocus?: boolean; onFocus?: () => void; onArrow?: (direction: string) => boolean; ariaLabel?: string; selected?: boolean;
 }) {
-  const { ref, focused, focusSelf } = useFocusable({ focusKey, focusable: !disabled, onEnterPress: onClick,
+  const { ref, focused, focusSelf } = useFocusable({ focusKey, focusable: !disabled, autoRestoreFocus, onEnterPress: onClick,
     onArrowPress: (direction) => {
       if (onArrow?.(direction) === false) return false;
       const node = ref.current as HTMLButtonElement | null;

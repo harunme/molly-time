@@ -62,6 +62,7 @@ function App() {
   const homeFocus = (row: number, item: Series, rows = home.rows) => capabilities?.catalogSync && rows[row]?.id
     ? `home-${rows[row].id}-${item.id}` : legacyHomeFocus(row, item);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  const watchPanelBack = useRef<(() => boolean) | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [refreshError, setRefreshError] = useState('');
@@ -395,6 +396,7 @@ function App() {
     openOverlay('watch-rest');
   }, [watch.state, playing, overlay]);
   const back = useCallback(() => {
+    if (overlay === 'watch-control' && watchPanelBack.current?.()) return true;
     if (overlay) { closeOverlay(); return true; }
     if (folder) {
       const previous = folderHistory.current.pop();
@@ -632,7 +634,7 @@ function App() {
             {window.MollyBridge && !capabilities?.devicePairingReset && <p className="error">请先更新电视客户端，再重新配对。</p>}
             <div className="re-pair-actions"><FocusButton focusKey="cancel-re-pair" className="settings-action settings-secondary" disabled={busy} onClick={closeOverlay}>取消</FocusButton>
               <FocusButton focusKey="confirm-re-pair" className="primary settings-action" disabled={busy || (!!window.MollyBridge && !capabilities?.devicePairingReset)} onClick={() => { void rePair(); }}>{busy ? '正在断开…' : '确认重新配对'}</FocusButton></div>
-          </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '今日观看已结束，明天 0 点自动恢复。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary settings-action" onClick={() => { pendingPlayback.current = interruptedPlayback.current = undefined; setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" className="settings-action settings-secondary" onClick={() => { pendingPlayback.current = watch.state?.round?.mode === 'minutes' ? interruptedPlayback.current : undefined; openOverlay('watch-control'); }}>家长加看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} close={closeOverlay} backLabel={parentOverlay === 'settings' ? '返回设置' : '返回媒体库'} playbackName={pendingPlayback.current?.name} changed={watchChanged} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
+          </div> : overlay === 'watch-rest' ? <section className="watch-parent-panel"><p>{watch.state?.round?.mode === 'minutes' ? '已保存进度，下次可以接着看。' : '今日观看已结束，明天 0 点自动恢复。'}</p><div className="watch-parent-actions"><FocusButton focusKey="watch-rest-home" className="primary settings-action" onClick={() => { pendingPlayback.current = interruptedPlayback.current = undefined; setFolder(undefined); folderHistory.current = []; closeOverlay(); }}>返回首页</FocusButton><FocusButton focusKey="watch-rest-parent" className="settings-action settings-secondary" onClick={() => { pendingPlayback.current = watch.state?.round?.mode === 'minutes' ? interruptedPlayback.current : undefined; openOverlay('watch-control'); }}>家长加看</FocusButton></div></section> : overlay === 'watch-control' ? <WatchControlPanel state={watch.state} backRef={watchPanelBack} playbackName={pendingPlayback.current?.name} changed={watchChanged} /> : overlay === 'live-tv' ? <LiveTv capabilities={capabilities} /> : overlay === 'client-update' ? updateCard : overlay === 'pairing' ? <PairingPanel capabilities={capabilities} done={completePairing} /> : <div className="settings-list">
             {window.MollyBridge && capabilities?.clientUpdates && capabilities.serverUrl && updateCard}
             {authenticated && <PlaybackSettings />}
             {authenticated && <FocusButton focusKey="re-pair" ariaLabel="重新配对" className="settings-item" onClick={() => { openOverlay('re-pair'); }}><Icon name="people" /><span><strong>重新配对</strong><small>换一个家庭媒体库</small></span><span>›</span></FocusButton>}
