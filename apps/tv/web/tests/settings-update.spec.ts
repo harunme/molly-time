@@ -20,8 +20,8 @@ async function setup(page: import('@playwright/test').Page) {
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-maisy"]')).toBeFocused();
   await page.keyboard.press('ContextMenu');
-  await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
-  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await expect(page.getByRole('button', { name: '检查客户端更新' })).toHaveCount(0);
   await expect(page.getByText('发现新版本 0.1.9')).toBeVisible();
 }
 
@@ -33,15 +33,17 @@ test('release notes are grouped with update actions and remote focus matches the
   await expect(software.getByRole('button', { name: '立即更新' })).toBeVisible();
   await expect(software.getByRole('region', { name: '默认字幕' })).toHaveCount(0);
   await expect(page.locator('[data-focus="subtitle-default"]')).toBeVisible();
-  await expect(page.getByRole('button', { name: '返回媒体库' })).toBeInViewport();
+  await expect(page.getByRole('button', { name: '返回媒体库' })).toHaveCount(0);
   const focusStyle = (node: Element) => {
     const style = getComputedStyle(node);
     return { border: style.borderTopColor, shadow: style.boxShadow };
   };
-  const reference = await page.locator('[data-focus="check-update"]').evaluate(focusStyle);
+  const reference = await page.locator('[data-focus="re-pair"]').evaluate(focusStyle);
   const rest = await action.evaluate(node => ({ fill: getComputedStyle(node).backgroundColor, border: getComputedStyle(node).borderTopColor }));
   await page.screenshot({ path: '/tmp/molly-tv-update-available.png' });
-  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-focus="subtitle-default"]')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
   await expect(action).toBeFocused();
   expect(await action.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(rest.fill);
   expect((await action.evaluate(focusStyle)).border).not.toBe(rest.border);
@@ -56,8 +58,10 @@ test('release notes are grouped with update actions and remote focus matches the
   await page.screenshot({ path: '/tmp/molly-tv-update-downloading.png' });
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('molly:clientUpdateProgress', { detail: { state: 'downloaded' } })));
   await expect(action).toHaveText('立即安装');
-  await expect(page.locator('[data-focus="check-update"]')).toBeFocused();
-  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-focus="re-pair"]')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-focus="subtitle-default"]')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
   await expect(action).toBeFocused();
   await page.screenshot({ path: '/tmp/molly-tv-update-ready.png' });
   await page.keyboard.press('ArrowDown');
@@ -71,6 +75,6 @@ test('settings remain usable at 720p', async ({ page }) => {
   await setup(page);
   await expect(page.locator('[data-focus="client-update-action"]')).toBeInViewport();
   await expect(page.locator('[data-focus="subtitle-default"]')).toBeInViewport();
-  await expect(page.getByRole('button', { name: '返回媒体库' })).toBeInViewport();
+  await expect(page.getByRole('button', { name: '返回媒体库' })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/molly-tv-update-720p.png' });
 });
