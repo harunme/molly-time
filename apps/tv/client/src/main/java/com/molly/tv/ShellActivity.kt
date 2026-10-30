@@ -26,7 +26,10 @@ import java.io.ByteArrayInputStream
 class ShellActivity : AppCompatActivity() {
     private val app get() = application as MollyTimeApplication
     private var web: WebView? = null
-    private var loading: ProgressBar? = null
+    private var loading: StartupLogoView? = null
+    private var startupSound: StartupSound? = null
+    private var startupSoundAttempted = false
+    private var startupLogoDone = false
     private var pageReady = false
     private var playing = false
     private var resumed = false
@@ -79,7 +82,7 @@ class ShellActivity : AppCompatActivity() {
         }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (!pageReady) { finish(); return }
+                if (!pageReady || loading?.visibility == View.VISIBLE) { finish(); return }
                 web?.evaluateJavascript("Boolean(window.mollyBack && window.mollyBack())") { handled ->
                     if (handled != "true") finish()
                 }
@@ -91,6 +94,11 @@ class ShellActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (loading?.visibility == View.VISIBLE && event.keyCode in setOf(
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_MENU
+        )) return true
         if (event.keyCode == KeyEvent.KEYCODE_MENU && pageReady && !playing) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 web?.evaluateJavascript("window.dispatchEvent(new CustomEvent('molly:menu'))", null)
@@ -101,6 +109,10 @@ class ShellActivity : AppCompatActivity() {
     }
 
     private fun destroyWeb() {
+        startupSound?.stop()
+        startupSound = null
+        loading?.stop()
+        loading = null
         generation++
         pageReady = false
         web?.stopLoading()
@@ -144,9 +156,23 @@ class ShellActivity : AppCompatActivity() {
         web = view
         val frame = FrameLayout(this)
         frame.addView(view, FrameLayout.LayoutParams(-1, -1))
-        loading = ProgressBar(this).also { frame.addView(it, FrameLayout.LayoutParams(64, 64, android.view.Gravity.CENTER)) }
+        startupLogoDone = false
+        loading = StartupLogoView(this) {
+            if (generation == current) {
+                startupLogoDone = true
+                finishStartupIfReady()
+            }
+        }.also { frame.addView(it, FrameLayout.LayoutParams(-1, -1)) }
         setContentView(frame)
-        view.setBackgroundColor(Color.rgb(15, 27, 46))
+        view.setBackgroundColor(Color.rgb(33, 31, 27))
+        if (!startupSoundAttempted) {
+            startupSoundAttempted = true
+            startupSound = StartupSound(this, app.api.http).also { sound ->
+                sound.start(app.session.server) {
+                    generation == current && resumed && loading?.visibility == View.VISIBLE && !isDestroyed
+                }
+            }
+        }
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -175,7 +201,7 @@ class ShellActivity : AppCompatActivity() {
                 }
                 if (method == "ready") {
                     pageReady = true
-                    loading?.visibility = View.GONE
+                    finishStartupIfReady()
                     app.webBundles.confirmLoaded(app.session.server, args.optString("webVersion").takeIf { it.isNotEmpty() })
                     checkWebUpdateAsync()
                     checkStartupClientUpdate()
@@ -454,8 +480,16 @@ class ShellActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() { if (!playing) app.catalog.pause(); resumed = false; web?.onPause(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; web?.onResume(); if (!playing) app.catalog.resume() }
+    private fun finishStartupIfReady() {
+        if (!pageReady || !startupLogoDone) return
+        loading?.stop()
+        loading?.visibility = View.GONE
+        startupSound?.stop()
+        startupSound = null
+    }
+
+    override fun onPause() { startupSound?.stop(); startupSound = null; loading?.pause(); if (!playing) app.catalog.pause(); resumed = false; web?.onPause(); super.onPause() }
+    override fun onResume() { super.onResume(); resumed = true; loading?.resume(); web?.onResume(); if (!playing) app.catalog.resume() }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)
         if (intent.action == ClientUpdateInstaller.INSTALL_RESULT) handleInstallResult(intent)

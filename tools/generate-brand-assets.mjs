@@ -38,6 +38,7 @@ const assets = {
   'mollytime-mark.svg': mark,
   'mollytime-icon.svg': icon,
   'mollytime-icon-transparent.svg': await read('icons/app-icon-transparent.svg'),
+  'mollytime-animated.svg': await read('motion/mollytime-animated.svg'),
   'mollytime-banner.svg': banner,
   'mollytime-horizontal.svg': horizontal,
   'mollytime-horizontal-on-dark.svg': onDark,

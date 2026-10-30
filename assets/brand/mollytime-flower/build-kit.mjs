@@ -98,4 +98,5 @@ direction+=text(1040,810,'Jasmine / #F8DE7E',17,'#797266')+text(1220,850,'Ivory 
 direction+=text(92,1053,'MollyTime · 已确认的 m、五片大花瓣与 M/T 大写字标。',18,'#797266');
 await write('direction.svg',svg(1600,1120,direction,'MollyTime — jasmine identity'));
 await png('direction.png',svg(1600,1120,direction));
+await import('./motion/build-motion.mjs');
 console.log('Built MollyTime identity kit');
