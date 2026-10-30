@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('management library turns pages on the server', async ({ page }) => {
+test('management library shows a continuous directory without page controls', async ({ page }) => {
   const errors: string[] = [];
   const resourceRequests: URL[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -29,15 +29,10 @@ test('management library turns pages on the server', async ({ page }) => {
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '概览', exact: true }).click();
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
     const rows = page.locator('.resource-tile');
-    await expect(rows).toHaveCount(20);
-    const pagination = page.getByRole('navigation', { name: '资源库分页', exact: true });
-    await pagination.getByRole('button', { name: /下一页/ }).click();
-    await expect(pagination).toContainText('第 2 / 2 页');
+    await expect(rows).toHaveCount(26);
+    await expect(page.getByRole('navigation', { name: '资源库分页', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '分页资源24', exact: true })).toBeVisible();
     await expect(page.locator('.selection-bar')).toHaveCount(0);
-    await pagination.getByRole('button', { name: /上一页/ }).click();
-    await expect(rows).toHaveCount(20);
-    await expect(pagination).toContainText('第 1 / 2 页');
-    await page.screenshot({ path: '../../artifacts/manage-paginated-library.png', fullPage: true });
 
     await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '家庭设置' }).click();
     await expect(page.getByRole('heading', { name: '儿童档案', exact: true })).toHaveCount(0);
@@ -45,7 +40,7 @@ test('management library turns pages on the server', async ({ page }) => {
     await page.screenshot({ path: '../../artifacts/manage-paginated-settings.png', fullPage: true });
     expect(resourceRequests.length).toBeGreaterThan(0);
     expect(resourceRequests.every((url) => url.searchParams.has('page'))).toBeTruthy();
-    expect(resourceRequests.some((url) => url.searchParams.get('page') === '2')).toBeTruthy();
+    expect(resourceRequests.some((url) => url.searchParams.get('pageSize') === '100')).toBeTruthy();
     expect(errors).toEqual([]);
   } finally {
     for (const folder of folders) {

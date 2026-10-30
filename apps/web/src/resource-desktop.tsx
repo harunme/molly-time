@@ -10,6 +10,7 @@ import './styles/resource-desktop.css';
 type Drag = { id: string; x: number; y: number; width: number; height: number; offsetX: number; offsetY: number; keyboard?: boolean };
 type FolderContext = {
   id: string; name: string; parentId: string | null; parentName: string;
+  scrollTop?: number; rememberScroll?: (top: number) => void;
   background: Resource[]; backgroundLoading: boolean; backgroundError: string;
   backgroundToolbar: ReactNode; backgroundLeadingTile?: ReactNode; backgroundFooter: ReactNode; close: () => void;
   path: { id: string; name: string }[]; open: (id: string | null) => void; dismiss: () => void;
@@ -381,12 +382,12 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
           </div>
           <DialogClose asChild><Button variant="ghost" size="icon" className="folder-dismiss" aria-label="关闭" title="关闭文件夹，返回资源库"><X /></Button></DialogClose>
         </DialogHeader>
-        <div className="folder-panel-body">
+        <FolderBody folder={folder} loading={loading}>
           {toolbar}
           {feedback}
           {desktop}
           {footer}
-        </div></>}
+        </FolderBody></>}
       </DialogContent>
     </Dialog>}
     <span className="sr-only" role="status" aria-live="polite">{message}</span>
@@ -397,4 +398,13 @@ export function ResourceDesktop({ items, enabled, canArrange, render, reorder, m
     {drag && !drag.keyboard && dragged && createPortal(<div ref={ghost} aria-hidden="true" className={`desktop-drag-ghost resource-tile${dropId ? " is-grouping" : ""}${overCancel ? " is-cancelling" : ""}`}
       style={{ width: drag.width, height: drag.height, transform: `translate3d(${dragRef.current?.x ?? drag.x}px, ${dragRef.current?.y ?? drag.y}px, 0) scale(${dropId ? .72 : .88})` }}>{render(dragged)}</div>, document.body)}
   </>;
+}
+
+// This mounts inside the dialog portal, after its scroll container exists.
+function FolderBody({ folder, loading, children }: { folder: FolderContext; loading?: boolean; children: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (body.current && !loading) body.current.scrollTop = folder.scrollTop ?? 0;
+  }, [folder.id, loading]);
+  return <div ref={body} className="folder-panel-body" onScroll={event => folder.rememberScroll?.(event.currentTarget.scrollTop)}>{children}</div>;
 }

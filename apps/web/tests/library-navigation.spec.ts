@@ -60,7 +60,7 @@ test('opening a folder preserves the add tile and grid during a slow detail requ
   }
 });
 
-test('closing a folder restores the current library page while a slow refresh runs', async ({ page }) => {
+test('closing a folder restores the complete directory while a slow refresh runs', async ({ page }) => {
   await page.goto('/manage/#/library');
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
@@ -77,9 +77,7 @@ test('closing a folder restores the current library page while a slow refresh ru
       folders.push(await response.json());
     }
     await page.reload();
-    const pagination = page.getByRole('navigation', { name: '资源库分页', exact: true });
-    await pagination.getByRole('button', { name: /下一页/ }).click();
-    await expect(pagination).toContainText('第 2 / 2 页');
+    await expect(page.locator('.resource-tile')).toHaveCount(22);
     const names = await page.locator('.resource-desktop .name-button').allTextContents();
     const target = folders.find(folder => names.includes(folder.name))!;
     expect(target).toBeDefined();
@@ -100,7 +98,7 @@ test('closing a folder restores the current library page while a slow refresh ru
     await refreshing;
     await expect(page.locator('.library-folder-panel')).toHaveCount(0);
     await expect(page.locator('.resource-desktop .name-button')).toHaveText(names);
-    await expect(pagination).toContainText('第 2 / 2 页');
+    await expect(page.getByRole('navigation', { name: '资源库分页', exact: true })).toHaveCount(0);
     await expect(page.getByText('正在打开…', { exact: true })).toHaveCount(0);
     const updatedName = `${target.name}（已更新）`;
     expect((await page.request.patch(`/api/manage/resources/${target.id}`, { headers, data: { name: updatedName } })).ok()).toBeTruthy();
@@ -218,7 +216,7 @@ test('nested folders have compact navigation, contextual creation and a separate
     await path.getByRole('button', { name: 'Super Simple Songs', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Super Simple Songs', exact: true })).toBeVisible();
     await page.goBack();
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 1100, height: 844 });
     await expect(folder).toBeVisible();
     await expect(folder.getByRole('button', { name: '添加内容', exact: true })).toBeInViewport();
     await expect(folder.getByRole('button', { name: '关闭', exact: true })).toBeInViewport();

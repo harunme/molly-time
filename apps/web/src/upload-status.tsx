@@ -21,14 +21,19 @@ export function useItemUploads(itemIds: string[], settled?: () => void) {
       if (busy) { dirty = true; return; }
       busy = true;
       try {
-        const params = new URLSearchParams({ pending: 'true', pageSize: '100' });
-        for (const id of key.split(',')) params.append('itemIds', id);
         const rows: Upload[] = [];
-        for (let page = 1; ; page++) {
-          params.set('page', String(page));
-          const response = await api<Page<Upload>>(`/uploads?${params}`, 'GET', undefined, undefined, controller.signal);
-          rows.push(...response.items);
-          if (rows.length >= response.total || !response.items.length) break;
+        const itemIds = key.split(',');
+        // The upload API accepts at most 100 item IDs per request.
+        for (let start = 0; start < itemIds.length; start += 100) {
+          const params = new URLSearchParams({ pending: 'true', pageSize: '100' });
+          for (const id of itemIds.slice(start, start + 100)) params.append('itemIds', id);
+          let loaded = 0;
+          for (let page = 1; ; page++) {
+            params.set('page', String(page));
+            const response = await api<Page<Upload>>(`/uploads?${params}`, 'GET', undefined, undefined, controller.signal);
+            rows.push(...response.items); loaded += response.items.length;
+            if (loaded >= response.total || !response.items.length) break;
+          }
         }
         if (controller.signal.aborted) return;
         const removed = previous.some(old => !rows.some(row => row.id === old.id));

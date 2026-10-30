@@ -53,7 +53,24 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
     if (!folderId && !ids.length) return;
     await perform(async () => {
       setBatchMode(action);
-      const result = await api<Result>('/resources/publication', 'POST', { action, ...(folderId ? { folderId } : { ids }) });
+      const result: Result = { changed: 0, unchanged: 0, hidden: 0, skipped: [] };
+      // The API limits explicit selections to 200; folder operations remain server scoped.
+      const batches = folderId ? [{ folderId }] : Array.from({ length: Math.ceil(ids.length / 200) }, (_, index) => ({ ids: ids.slice(index * 200, (index + 1) * 200) }));
+      let completed = 0;
+      for (const target of batches) {
+        try {
+          const part = await api<Result>('/resources/publication', 'POST', { action, ...target });
+          result.changed += part.changed; result.unchanged += part.unchanged;
+          result.hidden += part.hidden; result.skipped.push(...part.skipped);
+          completed++;
+        } catch (failure) {
+          if (completed) {
+            changed();
+            throw new Error(`部分视频已处理，请刷新后检查结果并重试。${(failure as Error).message}`);
+          }
+          throw failure;
+        }
+      }
       const verb = action === 'publish' ? '上架' : '下架';
       const parts = [`已${verb} ${result.changed} 个视频`];
       if (result.unchanged) parts.push(`${result.unchanged} 个已是此状态`);
@@ -87,7 +104,7 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
       {selecting ? <>
         <span className="library-selection-count">已选 {selection.length} 个视频</span>
         <Button variant="ghost" size="sm" disabled={disabled || !videos.length} onClick={() => setSelected(selection.length === videos.length ? [] : videos.map(item => item.id))}>
-          {selection.length === videos.length && videos.length ? '取消全选' : '全选当前页'}
+          {selection.length === videos.length && videos.length ? '取消全选' : '全选当前列表'}
         </Button>
         <div className="library-selection-actions">
           <Button variant="bordered" size="sm" disabled={disabled || !selection.some(item => item.status === 'published')} onClick={() => void batch('unpublish')}>{batchMode === 'unpublish' && <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />}下架</Button>
@@ -108,5 +125,5 @@ export function useLibraryPublication({ items, parent, scope, readonly, refreshi
     {notice && <div className="library-publication-feedback" role="status"><div><p>{notice}</p>{skipped.length > 0 && <details><summary>查看跳过的视频</summary><ul>{skipped.map(item => <li key={item.id}>{item.name} · {item.reason}</li>)}</ul></details>}</div><Button variant="ghost" size="icon" aria-label="关闭操作结果" onClick={() => { setNotice(''); setSkipped([]); }}><X className="size-4" /></Button></div>}
   </>;
   const selector = (item: Resource) => selecting && item.type === 'Episode' ? <button ref={item.id === videos[0]?.id ? firstSelector : undefined} type="button" role="checkbox" aria-checked={selected.includes(item.id)} aria-label={`选择视频 ${item.name}`} disabled={disabled} className="library-video-selector" onClick={() => toggle(item.id)}><span>{selected.includes(item.id) && <Check aria-hidden="true" />}</span></button> : null;
-  return { selecting, selected, busy, toolbar, feedback, toggle, selector, changeItem, publishFolder, exit, beginSelection: () => setSelecting(true), selectAll: () => setSelected(videos.map(item => item.id)), publishSelection: () => batch('publish'), unpublishSelection: () => batch('unpublish') };
+  return { selecting, selected, busy, toolbar, feedback, toggle, selector, changeItem, publishFolder, exit, beginSelection: () => setSelecting(true), selectAll: () => { if (!disabled) setSelected(videos.map(item => item.id)); }, publishSelection: () => batch('publish'), unpublishSelection: () => batch('unpublish') };
 }

@@ -807,6 +807,8 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
               empty={<Empty className="empty"><FolderOpen className="size-9" /><h3>还没有内容</h3><p>新建文件夹或上传视频。</p></Empty>}
               folder={parent ? {
                 id: parent.id, name: parent.name, parentId: parent.parentId, parentName,
+                scrollTop: libraryData?.positions.get(`scroll:${parent.id}`),
+                rememberScroll: top => { libraryData?.positions.set(`scroll:${parent.id}`, top); },
                 background: backgroundList.data, backgroundLoading: backgroundList.loading,
                 backgroundLeadingTile: !readonly ? <LibraryAddTile /> : undefined,
                 backgroundToolbar: !parent.parentId && <>

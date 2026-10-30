@@ -47,17 +47,16 @@ test('recycle bin supports archive, storage totals, restore, retention and perma
     await page.getByRole('button', { name: '回收站检查容器', exact: true }).click();
     const rows = page.locator('.resource-tile');
     const pagination = page.getByRole('navigation', { name: '资源库分页', exact: true });
-    await expect(pagination).toContainText('共 21 条');
+    await expect(rows).toHaveCount(21);
+    await expect(pagination).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await pagination.getByRole('button', { name: /下一页/ }).click();
-    await expect(rows).toHaveCount(1);
-    await rows.first().getByRole('button', { name: '更多操作 回收站检查20' }).click();
+
+    await page.getByRole('button', { name: '更多操作 回收站检查20', exact: true }).click();
     await page.getByRole('menuitem', { name: '移入回收站', exact: true }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: '确认', exact: true }).click();
-    await expect(pagination).toContainText('共 20 条');
-    await expect(pagination).toContainText('第 1 / 1 页');
+    await expect(pagination).toHaveCount(0);
     await expect(rows).toHaveCount(20);
     await expect(page.locator('.selection-bar')).toHaveCount(0);
     await page.getByRole('button', { name: '返回全部文件夹', exact: true }).click();
@@ -98,7 +97,6 @@ test('recycle bin supports archive, storage totals, restore, retention and perma
     await expect(row).toHaveCount(0);
     await navigation.getByRole('link', { name: '资源库', exact: true }).click();
     await page.getByRole('button', { name: '回收站检查容器', exact: true }).click();
-    await pagination.getByRole('button', { name: /下一页/ }).click();
     await page.getByRole('button', { name: '更多操作 回收站检查20', exact: true }).click();
     await expect(page.getByRole('menuitem', { name: '下架目录', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');

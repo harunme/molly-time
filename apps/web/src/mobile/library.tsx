@@ -3,7 +3,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ArrowDownToLine, ArrowUp, ArrowDown, Archive, Captions, Check, ChevronRight, Folder, FolderPlus, Grid2X2, Image, List, MoreHorizontal, MoveRight, Pencil, Play, Plus, Search, Share2, UploadCloud, X } from 'lucide-react';
 import { api, type Resource, type ResourceOption, type Upload } from '../api';
-import { useDebounced, usePagedData, Pagination } from '../pagination';
+import { useDebounced, usePagedData } from '../pagination';
+import { useContinuousData, ContinuousListStatus } from '../continuous-list';
+import { useLibraryData } from '../library-data';
 import { publicationLabel, useLibraryPublication } from '../library-publication';
 import { CoverArtwork } from '../cover-artwork';
 import { confirmAction, promptText } from '../feedback';
@@ -34,10 +36,11 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
   const lock = useRef(false);
   const query = useDebounced(search);
   const parent = useMobileData<Resource>(folderId ? `/resources/${encodeURIComponent(folderId)}` : '', serial);
-  const list = usePagedData<Resource>(`/resources?sort=manual${folderId ? `&parentId=${encodeURIComponent(folderId)}` : ''}${query ? `&q=${encodeURIComponent(query)}` : ''}`, serial, 20);
+  const cache = useLibraryData();
+  const list = useContinuousData<Resource>(`/resources?sort=manual${folderId ? `&parentId=${encodeURIComponent(folderId)}` : ''}${query ? `&q=${encodeURIComponent(query)}` : ''}`, serial, true, cache);
   const pending = usePagedData<Upload>('/uploads?pending=true', serial + pendingSerial, 1);
   const fileUploads = useItemUploads(list.data.filter(item => item.type === 'Episode').map(item => item.id), () => refresh(value => value + 1));
-  const publication = useLibraryPublication({ items: list.data, parent: parent.data, scope: `${folderId}:${list.page}`, readonly, refreshing: list.refreshing, changed: () => refresh(value => value + 1) });
+  const publication = useLibraryPublication({ items: list.data, parent: parent.data, scope: `${folderId}:${query}`, readonly, refreshing: list.refreshing || !!list.error, changed: () => refresh(value => value + 1) });
   const tasks = new URLSearchParams(location.search).get('uploads') === '1';
   useEffect(() => { setSearch(''); setError(''); setMessage(''); batch.current = { folderId: folderId || undefined, rows: [] }; }, [folderId]);
   useEffect(() => { const timer = setInterval(() => { if (!document.hidden && navigator.onLine) refreshPending(value => value + 1); }, 15000); return () => clearInterval(timer); }, []);
@@ -83,7 +86,7 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
       <div className="m-content-info"><button className="m-content-name" disabled={publication.selecting && item.type !== 'Episode'} onClick={() => void open(item)}>{item.name}</button><p className="m-content-state">{publicationLabel(item)}</p>{fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />)}</div>
       {!publication.selecting && <button className="m-content-more" aria-label={`更多操作 ${item.name}`} onClick={() => setActions(item)}><MoreHorizontal size={20} /></button>}
     </article>)}</div>
-    {publication.selecting && <div className="m-selection-bar" role="group" aria-label="已选视频操作"><div><strong>已选 {publication.selected.length} 个</strong><button onClick={publication.selectAll}>全选本页</button></div><button disabled={!list.data.some(item => publication.selected.includes(item.id) && item.status === 'published') || publication.busy} onClick={() => void publication.unpublishSelection()}>下架</button><button className="publish" disabled={!list.data.some(item => publication.selected.includes(item.id) && item.ready && item.status !== 'published') || publication.busy} onClick={() => void publication.publishSelection()}>上架</button></div>}
+    {publication.selecting && <div className="m-selection-bar" role="group" aria-label="已选视频操作"><div><strong>已选 {publication.selected.length} 个</strong><button disabled={list.refreshing || !!list.error || publication.busy} onClick={publication.selectAll}>全选当前列表</button></div><button disabled={!list.data.some(item => publication.selected.includes(item.id) && item.status === 'published') || publication.busy} onClick={() => void publication.unpublishSelection()}>下架</button><button className="publish" disabled={!list.data.some(item => publication.selected.includes(item.id) && item.ready && item.status !== 'published') || publication.busy} onClick={() => void publication.publishSelection()}>上架</button></div>}
     <MobileActionSheet open={adding} close={() => setAdding(false)} title="添加到内容库" detail={folderId ? title : '为下一次观看准备故事'} groups={[[
       { label: '新建文件夹', icon: <FolderPlus size={20} />, onSelect: () => { void run(async () => { const name = await promptText('新建文件夹', ''); if (name) await api('/resources', 'POST', { name, type: folderId ? 'Season' : 'Series', parentId: folderId || null }); }); } },
       { label: '上传视频', icon: <UploadCloud size={20} />, onSelect: () => videoInput.current?.click() },
@@ -111,12 +114,12 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
           ...(actions.status === 'published' && !actions.shared && actions.type !== 'Season' ? [{ label: '分享内容', icon: <Share2 size={19} />, onSelect: () => setEditing({ kind: 'share', item: actions }) }] : []),
         ],
         [
-          { label: '上移一位', icon: <ArrowUp size={19} />, disabled: busy || list.data[0]?.id === actions.id, onSelect: () => { void run(async () => { const previous = list.data[list.data.findIndex(item => item.id === actions.id) - 1]; if (previous) await api(`/resources/${actions.id}/position`, 'PUT', { beforeId: previous.id, afterId: null }); }); } },
-          { label: '下移一位', icon: <ArrowDown size={19} />, disabled: busy || list.data[list.data.length - 1]?.id === actions.id, onSelect: () => { void run(async () => { const next = list.data[list.data.findIndex(item => item.id === actions.id) + 1]; if (next) await api(`/resources/${actions.id}/position`, 'PUT', { beforeId: null, afterId: next.id }); }); } },
+          { label: '上移一位', icon: <ArrowUp size={19} />, disabled: busy || list.refreshing || !!list.error || list.data[0]?.id === actions.id, onSelect: () => { void run(async () => { const previous = list.data[list.data.findIndex(item => item.id === actions.id) - 1]; if (previous) await api(`/resources/${actions.id}/position`, 'PUT', { beforeId: previous.id, afterId: null }); }); } },
+          { label: '下移一位', icon: <ArrowDown size={19} />, disabled: busy || list.refreshing || !!list.error || list.data[list.data.length - 1]?.id === actions.id, onSelect: () => { void run(async () => { const next = list.data[list.data.findIndex(item => item.id === actions.id) + 1]; if (next) await api(`/resources/${actions.id}/position`, 'PUT', { beforeId: null, afterId: next.id }); }); } },
         ],
         [{ label: '移入最近删除', icon: <Archive size={19} />, destructive: true, disabled: busy, onSelect: () => { void run(async () => { if (await confirmAction(`将“${actions.name}”移入最近删除？保留期内可以恢复。`)) await api(`/resources/${actions.id}/archive`, 'POST'); }); } }],
       ]} />}
-    <Pagination {...list} loading={list.refreshing} label="手机内容分页" />
+    <ContinuousListStatus {...list} />
     <input type="file" hidden multiple ref={videoInput} accept="video/mp4,.mp4" aria-label="选择上传视频" onChange={event => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; if (files.length) void uploadVideos(files); }} />
     <input type="file" hidden ref={coverInput} accept="image/jpeg,image/png,image/webp,image/gif" aria-label="选择封面或动态预览" onChange={event => { const file = event.currentTarget.files?.[0], target = coverTarget.current; event.currentTarget.value = ''; if (file && target) void run(async () => { await enqueue(file, target.item.id, target.kind); }); }} />
     {editing && editor(editing.kind, editing.item, () => { setEditing(undefined); refresh(value => value + 1); })}
@@ -127,8 +130,8 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
 function MobileMove({ item, close, moved }: { item: Resource; close: () => void; moved: () => void }) {
   const [search, setSearch] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const query = useDebounced(search);
-  const folders = usePagedData<ResourceOption>(`/resources?summary=true&q=${encodeURIComponent(query)}`);
+  const folders = useContinuousData<ResourceOption>(`/resources?summary=true&q=${encodeURIComponent(query)}`);
   const candidates = folders.data.filter(row => row.type !== 'Episode' && row.id !== item.id && row.id !== item.parentId);
   const move = async (folderId: string | null) => { if (busy) return; setBusy(true); setError(''); try { await api(`/resources/${item.id}/move`, 'POST', { folderId }); moved(); } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); } };
-  return <Dialog open onOpenChange={open => { if (!open && !busy) close(); }}><DialogContent className="m-sheet"><DialogHeader><DialogTitle>移动“{item.name}”</DialogTitle><DialogDescription>选择目标文件夹。原有内容会一起移动。</DialogDescription></DialogHeader><DialogBody><div className="m-search"><Search size={18} /><input aria-label="搜索目标文件夹" placeholder="搜索文件夹" value={search} onChange={event => setSearch(event.target.value)} /></div><MobileError message={error || folders.error} /><div className="m-group">{item.type === 'Series' && item.parentId && <button className="m-row" disabled={busy} onClick={() => void move(null)}><Folder size={20} /><span>全部收藏</span></button>}{candidates.map(folder => <button className="m-row" disabled={busy} key={folder.id} onClick={() => void move(folder.id)}><Folder size={20} /><span>{folder.name}</span><ChevronRight size={16} /></button>)}</div>{!folders.loading && !candidates.length && <p className="m-footnote">这一页没有可用的目标文件夹。请换一页或换个名称。</p>}<Pagination {...folders} loading={folders.refreshing} label="目标文件夹分页" /></DialogBody></DialogContent></Dialog>;
+  return <Dialog open onOpenChange={open => { if (!open && !busy) close(); }}><DialogContent className="m-sheet"><DialogHeader><DialogTitle>移动“{item.name}”</DialogTitle><DialogDescription>选择目标文件夹。原有内容会一起移动。</DialogDescription></DialogHeader><DialogBody><div className="m-search"><Search size={18} /><input aria-label="搜索目标文件夹" placeholder="搜索文件夹" value={search} onChange={event => setSearch(event.target.value)} /></div><MobileError message={error || folders.error} /><div className="m-group">{item.type === 'Series' && item.parentId && <button className="m-row" disabled={busy} onClick={() => void move(null)}><Folder size={20} /><span>全部收藏</span></button>}{candidates.map(folder => <button className="m-row" disabled={busy} key={folder.id} onClick={() => void move(folder.id)}><Folder size={20} /><span>{folder.name}</span><ChevronRight size={16} /></button>)}</div>{!folders.loading && !candidates.length && <p className="m-footnote">没有可用的目标文件夹。请尝试其他名称。</p>}<ContinuousListStatus {...folders} /></DialogBody></DialogContent></Dialog>;
 }

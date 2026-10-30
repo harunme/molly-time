@@ -1,3 +1,4 @@
+import { useContinuousData, ContinuousListStatus } from './continuous-list';
 import { useRevalidation } from "./lifecycle";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState } from 'react';
@@ -90,12 +91,12 @@ export function ResourcePicker({ value = '', onChange, placeholder, label, exclu
 }) {
   const [search, setSearch] = useState('');
   const query = useDebounced(search);
-  const list = usePagedData<ResourceOption>(`/resources?summary=true&q=${encodeURIComponent(query)}${parentId ? `&parentId=${encodeURIComponent(parentId)}` : ""}${resourceType ? `&resourceType=${resourceType}` : ""}`, 0, 20, true, true);
+  const list = useContinuousData<ResourceOption>(`/resources?summary=true&q=${encodeURIComponent(query)}${parentId ? `&parentId=${encodeURIComponent(parentId)}` : ""}${resourceType ? `&resourceType=${resourceType}` : ""}`);
   const selected = list.known[value] ?? (initial?.id === value ? initial : undefined);
   return <div className="paged-picker">
     <Input aria-label="检索候选名称" placeholder={resourceType === "Season" ? "搜索季名称…" : "搜索动画片名称…"} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
     {list.loading && !selected ? <div role="status" aria-label="正在加载候选资源"><Skeleton className="h-control w-full rounded-full" /></div> : <SelectField aria-label={label} value={value} disabled={list.loading} onValueChange={(value) => onChange(value, list.known[value])} options={[({ value: "", label: <> {placeholder} </> }), selected && !list.data.some((item) => item.id === value) && ({ value: value, label: <> {selected.name} </> }), list.data.filter((item) => !exclude.includes(item.id) || item.id === value).map((item) => ({ value: item.id, label: <> {item.name}{item.status !== 'published' ? '（未发布）' : ''} </> }))]} />}
     {list.error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{list.error}</AlertDescription></Alert>}
-    <Pagination {...list} loading={list.refreshing} label="候选资源分页" />
+    <ContinuousListStatus {...list} />
   </div>;
 }

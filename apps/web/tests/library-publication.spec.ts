@@ -15,11 +15,11 @@ test('publication separates folder visibility, supports selection and explains s
     const dialog = page.getByRole('dialog', { name: '第 1 季', exact: true });
     await expect(dialog.getByRole('switch')).toHaveCount(0);
     await dialog.getByRole('button', { name: '选择视频', exact: true }).click();
-    await dialog.getByRole('button', { name: '全选当前页', exact: true }).click();
+    await dialog.getByRole('button', { name: '全选当前列表', exact: true }).click();
     await expect(dialog.getByRole('checkbox')).toHaveCount(4);
     await expect(dialog.getByText('已选 4 个视频', { exact: true })).toBeVisible();
     await page.screenshot({ path: '../../artifacts/library-publication-selection.png', animations: 'disabled' });
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 1100, height: 844 });
     await page.screenshot({ path: '../../artifacts/library-publication-selection-mobile.png', animations: 'disabled' });
     expect(await dialog.getByRole('group', { name: '视频批量操作' }).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -30,7 +30,7 @@ test('publication separates folder visibility, supports selection and explains s
     await page.unroute('**/api/manage/resources/publication');
     await dialog.getByRole('button', { name: '下架', exact: true }).click();
     await expect(dialog.getByRole('status').filter({ hasText: '已下架 3 个视频' })).toBeVisible();
-    await dialog.getByRole('button', { name: '全选当前页', exact: true }).click();
+    await dialog.getByRole('button', { name: '全选当前列表', exact: true }).click();
     await dialog.getByRole('button', { name: '上架', exact: true }).click();
     await expect(dialog.getByRole('status').filter({ hasText: '1 个尚未就绪，已跳过' })).toBeVisible();
     await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(1);
@@ -44,7 +44,7 @@ test('publication separates folder visibility, supports selection and explains s
     await expect(dialog.getByText('此目录已下架。请先上架目录，才能在电视观看其中已上架的视频。', { exact: true })).toBeVisible();
     await expect(dialog.locator('.library-item-status').filter({ hasText: '随目录下架' })).toHaveCount(3);
     await expect(dialog.locator('.library-item-status[data-published="true"]')).toHaveCount(0);
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 1100, height: 844 });
     await page.screenshot({ path: '../../artifacts/library-publication-mobile.png', animations: 'disabled' });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const toolbar = dialog.getByRole('group', { name: '视频批量操作' });
@@ -64,7 +64,7 @@ test('publication separates folder visibility, supports selection and explains s
   }
 });
 
-test('selection is limited to the current page and clears when paging', async ({ page }) => {
+test('selection covers the complete directory and can exit', async ({ page }) => {
   await page.goto('/manage/#/library');
   await page.getByLabel('账号', { exact: true }).fill('parent@example.test');
   await page.getByLabel('密码', { exact: true }).fill('parent-e2e');
@@ -78,10 +78,10 @@ test('selection is limited to the current page and clears when paging', async ({
     await page.goto(`/manage/#/library/${folder.id}`);
     const dialog = page.getByRole('dialog', { name: folder.name, exact: true });
     await dialog.getByRole('button', { name: '选择视频', exact: true }).click();
-    await dialog.getByRole('button', { name: '全选当前页', exact: true }).click();
-    await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(20);
+    await dialog.getByRole('button', { name: '全选当前列表', exact: true }).click();
+    await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(21);
     await expect(dialog.getByRole('button', { name: '上架', exact: true })).toBeDisabled();
-    await dialog.getByRole('button', { name: '资源库分页：下一页', exact: true }).click();
+    await dialog.getByRole('button', { name: '完成', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '选择视频', exact: true })).toBeVisible();
     await expect(dialog.getByRole('checkbox')).toHaveCount(0);
     await dialog.getByRole('button', { name: '上架目录内全部视频', exact: true }).click();

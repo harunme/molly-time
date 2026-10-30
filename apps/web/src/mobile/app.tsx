@@ -11,6 +11,7 @@ import type { useReminderData } from '../reminders';
 import { ParentReminderActions } from '../reminders';
 import { InstallApp } from '../pwa';
 import { DeviceNotifications } from '../device-notifications';
+import { LibraryDataProvider } from '../library-data';
 import { MobileLibrary, type ResourceEditor } from './library';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody } from '../components/ui/dialog';
 import './mobile-app.css';
@@ -28,8 +29,10 @@ export function MobileApp(props: Props) {
     <main className="m-main">
       <Routes>
         <Route path="overview" element={<MobileHome {...props} notify={setMessage} />} />
-        <Route path="library" element={<MobileLibrary readonly={props.readonly} editor={props.editor} uploads={props.uploads} />} />
-        <Route path="library/:folderId" element={<MobileLibrary readonly={props.readonly} editor={props.editor} uploads={props.uploads} />} />
+        <Route path="library" element={<LibraryDataProvider key={`${props.session.user.id}:${props.session.family.id}`} />}>
+          <Route index element={<MobileLibrary readonly={props.readonly} editor={props.editor} uploads={props.uploads} />} />
+          <Route path=":folderId" element={<MobileLibrary readonly={props.readonly} editor={props.editor} uploads={props.uploads} />} />
+        </Route>
         <Route path="devices" element={<MobileDevices {...props} notify={setMessage} />} />
         <Route path="devices/settings" element={<><MobileTitle title="播放与提醒" back="/devices" /><div className="m-shared-form m-preference-form">{props.televisions}</div></>} />
         <Route path="family" element={<MobileFamily {...props} />} />
