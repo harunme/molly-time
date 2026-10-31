@@ -200,7 +200,7 @@ test('recent playback precedes library and supports remote playback and return',
   });
   await page.goto('/tv/');
   await expect(page.locator('.shelf-heading h2')).toHaveText(['最近播放', '我的媒体库']);
-  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)$/);
+  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|中午好|下午好|晚上好|夜深啦)$/);
   await expect(page.getByRole('region', { name: '文件夹详情' })).toHaveCount(0);
   const recent = page.locator('[data-focus="series-recent"]');
   await expect(recent).toBeFocused();
@@ -245,7 +245,7 @@ test('remote navigation, playback return, folder restoration and durable binding
   });
   await page.goto('/tv/');
   await expect(page.locator('[data-focus="series-s1"]')).toBeFocused();
-  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|下午好|晚上好)$/);
+  await expect(page.locator('.home-greeting h1')).toHaveText(/^(早上好|中午好|下午好|晚上好|夜深啦)$/);
   await expect(page.locator('.sidebar')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '打开菜单' })).toHaveCount(0);
   expect(await page.locator('.content-shell').evaluate((node) => node.getBoundingClientRect().left)).toBe(0);

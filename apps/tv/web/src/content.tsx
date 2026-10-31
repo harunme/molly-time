@@ -4,6 +4,7 @@ import { imageSource, imagePreview, type Episode, type Series } from './api';
 import { observeCoverPreview } from '../../../shared/cover-preview';
 import { FocusButton, observeNavigation } from './focus';
 import { VirtualGrid, VirtualRail } from './virtual-grid';
+import { salutation, type Greeting } from './greeting';
 
 // One observer for the entire catalog, rather than one observer per cover.
 const visibleCovers = new Map<Element, () => void>();
@@ -201,18 +202,11 @@ export function Shelf({ focusKey, title, children, kind = '', virtualize = false
   </section></FocusContext.Provider>;
 }
 
-export function HomeGreeting({ name }: { name?: string }) {
-  const [hour, setHour] = useState(() => new Date().getHours());
-  useEffect(() => {
-    const update = () => setHour(new Date().getHours());
-    const timer = setInterval(update, 60000);
-    document.addEventListener('visibilitychange', update);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', update); };
-  }, []);
-  const greeting = hour >= 5 && hour < 12 ? '早上好' : hour >= 12 && hour < 18 ? '下午好' : '晚上好';
+export function HomeGreeting({ name, greeting }: { name?: string; greeting?: Greeting }) {
+  const [initialSalutation] = useState(() => salutation(new Date()));
   return <section className="home-greeting" aria-label="首页问候">
-    <h1>{greeting}{name ? `，${name}` : ''}</h1>
-    <p>，一起看个喜欢的故事吧。</p>
+    <h1>{greeting?.salutation ?? initialSalutation}{name ? `，${name}` : ''}</h1>
+    {greeting && <p>，{greeting.message}</p>}
   </section>;
 }
 

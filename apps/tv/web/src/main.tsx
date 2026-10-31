@@ -15,6 +15,7 @@ import { Brand } from './brand';
 import { useClientUpdate } from './client-update';
 import { useTvMotion } from './motion';
 import { HomeLoading } from './home-loading';
+import { chooseGreeting, type Greeting } from './greeting';
 import './style.css';
 import './focus-ring.css';
 
@@ -64,6 +65,16 @@ function App() {
   const [overlay, setOverlay] = useState<Overlay>(null);
   const watchPanelBack = useRef<(() => boolean) | null>(null);
   const [busy, setBusy] = useState(true);
+  const [greeting, setGreeting] = useState<Greeting>();
+  useEffect(() => {
+    if (!authenticated || busy || greeting) return;
+    const hasResume = home.rows.some(row => row.items.some(item => item.type === 'episode'
+      && !item.completed && Number.isFinite(item.positionMs) && (item.positionMs ?? 0) > 0
+      && (!item.runtimeMs || item.positionMs! < item.runtimeMs)));
+    let storage: Storage | undefined;
+    try { storage = window.localStorage; } catch { /* WebView storage may be disabled. */ }
+    setGreeting(chooseGreeting(new Date(), hasResume, storage));
+  }, [authenticated, busy, home, greeting]);
   const [error, setError] = useState('');
   const [refreshError, setRefreshError] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>();
@@ -592,7 +603,7 @@ function App() {
         {authenticated && (folder ? <DetailHeader series={folder} path={folderHistory.current.map(entry => entry.folder)} total={playlist?.total ?? folder.episodeCount} loading={busy} onBack={back} onDown={() => {
           const saved = folderGridFocus.current;
           setFocus(entries.some(item => playlistFocus(item) === saved) ? saved : entries[0] ? playlistFocus(entries[0]) : 'folder-back');
-        }} /> : <HomeGreeting />)}
+        }} /> : <HomeGreeting greeting={greeting} />)}
         <FocusRegion focusKey="shelves" className="shelf-list">
           {refreshError && <div className="catalog-notice"><span role="status">{refreshError}</span><FocusButton focusKey="refresh-retry" onClick={() => setReload((value) => value + 1)} className="text-button">重试更新</FocusButton></div>}
           {!bridgeCompatible && !busy ? <div className="state connect-state"><h1>网页需要更新电视客户端</h1><p>当前网页与客户端能力不兼容，请检查并安装客户端更新。</p><FocusButton focusKey="check-client-compat" className="primary" onClick={() => openOverlay('settings')}>打开设置</FocusButton></div> : !authenticated && !busy ? <div className="state connect-state"><h1><Brand /></h1><p>用手机绑定电视，开始观看。</p></div> : busy ? (!folder ? <HomeLoading /> : <div role="status" className="state">正在加载内容…</div>) : (!error || overlay) && (folder ? <Shelf focusKey="folder-videos" title="文件夹与视频" kind="episode-shelf" initialFocusKey={restore.current?.focus ?? (entries[0] ? playlistFocus(entries[0]) : undefined)} virtualize={!!capabilities?.catalogSync}>
