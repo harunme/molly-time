@@ -27,6 +27,10 @@ class ShellActivity : AppCompatActivity() {
     private val app get() = application as MollyTimeApplication
     private var web: WebView? = null
     private var loading: StartupLogoView? = null
+    private var pageFrame: FrameLayout? = null
+    private val startupEntry = StartupEntry()
+    private var startupGeneration = 0
+    private var startupCuePending = false
     private var startupSound: StartupSound? = null
     private var startupSoundAttempted = false
     private var startupLogoDone = false
@@ -109,10 +113,13 @@ class ShellActivity : AppCompatActivity() {
     }
 
     private fun destroyWeb() {
+        startupGeneration++
+        startupCuePending = false
         startupSound?.stop()
         startupSound = null
         loading?.stop()
         loading = null
+        pageFrame = null
         generation++
         pageReady = false
         web?.stopLoading()
@@ -155,28 +162,11 @@ class ShellActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) view.defaultFocusHighlightEnabled = false
         web = view
         val frame = FrameLayout(this)
+        pageFrame = frame
         frame.addView(view, FrameLayout.LayoutParams(-1, -1))
-        startupLogoDone = false
-        loading = StartupLogoView(this) {
-            if (generation == current) {
-                startupLogoDone = true
-                finishStartupIfReady()
-            }
-        }.also { frame.addView(it, FrameLayout.LayoutParams(-1, -1)) }
         setContentView(frame)
         view.setBackgroundColor(Color.rgb(33, 31, 27))
-        if (!startupSoundAttempted) {
-            startupSoundAttempted = true
-            val sound = StartupSound(this)
-            startupSound = sound
-            sound.start(onReady = {
-                    if (generation == current && !isDestroyed) loading?.startMotion()
-                }, onFinished = {
-                    if (generation == current && !isDestroyed) finishStartupIfReady()
-                }) {
-                    generation == current && resumed && loading?.visibility == View.VISIBLE && !isDestroyed
-                }
-        } else loading?.startMotion()
+        showStartup()
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -213,7 +203,7 @@ class ShellActivity : AppCompatActivity() {
                 }
                 inFlight++
                 val local = method in setOf("catalogRead", "catalogStatus", "catalogSync", "getCapabilities", "ready")
-                (if (local) app.catalog.reads else if (method == "playEpisode") app.playbackIo else app.io).execute {
+                val task = Runnable {
                     val response = JSONObject().put("id", id)
                     try {
                         if (generation == current) response.put("result", handle(method, args, current))
@@ -229,6 +219,11 @@ class ShellActivity : AppCompatActivity() {
                         }
                     }
                 }
+                // Launching the activity needs no network preflight. Its own loader
+                // enforces authorization and reports errors on the playback screen.
+                // Do not queue the launch behind a previous video's network requests.
+                if (method == "playEpisode") runOnUiThread(task)
+                else (if (local) app.catalog.reads else app.io).execute(task)
             })
         view.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean =
@@ -370,16 +365,19 @@ class ShellActivity : AppCompatActivity() {
         "playEpisode" -> {
             val id = args.getString("episodeId")
             require(BridgePolicy.id.matches(id)) { "无效的剧集 ID" }
-            PlaybackAccess.load(
-                online = { app.api.json("GET", "/api/episodes/$id") },
-                offline = { app.media.offline(id, app.catalog.store()) },
-            )
             runOnUiThread {
-                if (!playing && !isDestroyed && generation == current) {
+                if (!isDestroyed && generation == current) {
+                    check(!playing) { "播放器仍在运行，请返回后重试" }
                     playing = true
                     app.catalog.pause()
-                    player.launch(Intent(this, PlaybackActivity::class.java).putExtra("episodeId", id)
-                        .putExtra("childId", app.session.childId))
+                    try {
+                        player.launch(Intent(this, PlaybackActivity::class.java).putExtra("episodeId", id)
+                            .putExtra("childId", app.session.childId))
+                    } catch (error: Exception) {
+                        playing = false
+                        app.catalog.resume()
+                        throw error
+                    }
                 }
             }
             JSONObject().put("ok", true)
@@ -484,6 +482,41 @@ class ShellActivity : AppCompatActivity() {
         }
     }
 
+    private fun showStartup(replaySound: Boolean = false) {
+        val frame = pageFrame ?: return
+        val current = ++startupGeneration
+        startupSound?.stop()
+        startupSound = null
+        loading?.let { it.stop(); frame.removeView(it) }
+        if (replaySound) startupSoundAttempted = false
+        startupLogoDone = false
+        loading = StartupLogoView(this) {
+            if (startupGeneration == current && !isDestroyed) {
+                startupLogoDone = true
+                finishStartupIfReady()
+            }
+        }.also { frame.addView(it, FrameLayout.LayoutParams(-1, -1)) }
+        startupCuePending = true
+        if (resumed) startStartupCue()
+    }
+
+    private fun startStartupCue() {
+        if (!startupCuePending || loading?.visibility != View.VISIBLE) return
+        startupCuePending = false
+        val current = startupGeneration
+        if (startupSoundAttempted) { loading?.startMotion(); return }
+        startupSoundAttempted = true
+        val sound = StartupSound(this)
+        startupSound = sound
+        sound.start(onReady = {
+            if (startupGeneration == current && !isDestroyed) loading?.startMotion()
+        }, onFinished = {
+            if (startupGeneration == current && !isDestroyed) finishStartupIfReady()
+        }) {
+            startupGeneration == current && resumed && loading?.visibility == View.VISIBLE && !isDestroyed
+        }
+    }
+
     private fun finishStartupIfReady() {
         if (!pageReady || !startupLogoDone || startupSound?.finished == false) return
         loading?.stop()
@@ -493,10 +526,25 @@ class ShellActivity : AppCompatActivity() {
     }
 
     override fun onPause() { startupSound?.stop(); startupSound = null; loading?.startMotion(); loading?.pause(); if (!playing) app.catalog.pause(); resumed = false; web?.onPause(); super.onPause() }
-    override fun onResume() { super.onResume(); resumed = true; loading?.resume(); web?.onResume(); if (!playing) app.catalog.resume() }
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        if (startupEntry.takeRequest()) showStartup(replaySound = true)
+        else { loading?.resume(); startStartupCue() }
+        web?.onResume()
+        if (!playing) app.catalog.resume()
+    }
+    override fun onUserLeaveHint() {
+        startupEntry.userLeave(playing, installAfterPermission || installReady)
+        super.onUserLeaveHint()
+    }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)
         if (intent.action == ClientUpdateInstaller.INSTALL_RESULT) handleInstallResult(intent)
+        else {
+            startupEntry.newIntent(intent)
+            if (resumed && startupEntry.takeRequest()) showStartup(replaySound = true)
+        }
     }
     override fun onDestroy() { app.catalogListener = null; destroyWeb(); super.onDestroy() }
 }

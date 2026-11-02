@@ -17,6 +17,22 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class MollyTimeApiTest {
+    @Test fun playbackProgressCanFinishBeyondTheCatalogDeadline() {
+        val server = MockWebServer().apply { start() }
+        val session = SessionStore(RuntimeEnvironment.getApplication())
+        session.clear()
+        session.connect(server.url("/").toString())
+        session.save(JSONObject().put("accessToken", "a").put("refreshToken", "r").put("deviceId", "test-tv"))
+        server.enqueue(MockResponse().setBody("""{"positionMs":12345,"completed":false}""")
+            .setBodyDelay(11, TimeUnit.SECONDS))
+        try {
+            val api = MollyTimeApi(session) { "Test TV" }
+            assertEquals(0, api.http.callTimeoutMillis)
+            assertEquals(12345, api.json("GET", "/api/episodes/next-video/progress").getInt("positionMs"))
+            assertEquals(1, server.requestCount)
+        } finally { session.clear(); server.shutdown() }
+    }
+
     @Test fun subtitlePreferenceIsSavedAndPutIsPreservedAfterTokenRefresh() {
         val server = MockWebServer()
         var preference = "zh"

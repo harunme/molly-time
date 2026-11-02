@@ -40,8 +40,9 @@ class PlaybackActivity : AppCompatActivity() {
     private var advancing = false
     private var resumeFromProgress = true
     private var playOnResume = true
-    private var active = false
-    private var loadGeneration = 0
+    @Volatile private var active = false
+    @Volatile private var loadGeneration = 0
+    @Volatile private var playbackCall: okhttp3.Call? = null
     private var watchId = ""
     private var sourceInfo: JSONObject? = null
     private var episodeRuntimeMs = 0L
@@ -99,6 +100,9 @@ class PlaybackActivity : AppCompatActivity() {
         catch (error: ApiFailure) { if (error.status == 404) JSONObject().put("phase", "idle") else throw error }
     private var refreshAttempts = 0
     private var skipCacheWrites = false
+    private var bypassCache = false
+    private var streamRecoveries = 0
+    private var bufferingTimeout: Runnable? = null
     private var selectedSubtitle: String? = null
     private var playbackSpeed = 1f
     private var playbackMenu: AlertDialog? = null
@@ -162,28 +166,43 @@ class PlaybackActivity : AppCompatActivity() {
 
     private fun load(continueReminder: Boolean = false) {
         val current = ++loadGeneration
+        playbackCall?.cancel()
         val loadingEpisode = episodeId
         val previousSessionId = if (continueReminder) watchId else ""
+        streamRecoveries = 0
+        bypassCache = false
         status.text = "正在加载视频…"
         app.playbackIo.execute {
+            var stage = "WATCH_SYNC"
+            fun read(name: String, path: String): JSONObject {
+                stage = name
+                return readPlayback(current, path)
+            }
             runCatching {
+                requireCurrentLoad(current)
                 PlaybackAccess.load(online = online@{
                     app.watchControl.sync()
+                    requireCurrentLoad(current)
                     app.watchControl.requireEpisode(loadingEpisode)
                     app.watchControl.warningPath(loadingEpisode)?.let { return@online Triple(JSONObject().put("managedWarning", it), JSONObject(), "") }
-                    val detail = app.api.json("GET", "/api/episodes/$loadingEpisode")
-                    val resume = app.api.json("GET", app.api.progressPath(loadingEpisode, child))
+                    val detail = read("DETAIL", "/api/episodes/$loadingEpisode")
+                    val resume = read("PROGRESS", app.api.progressPath(loadingEpisode, child))
                     val body = JSONObject().put("episodeId", loadingEpisode)
                     if (previousSessionId.isNotEmpty()) body.put("previousSessionId", previousSessionId)
                     if (child.isNotEmpty()) body.put("childId", child)
-                    val watch = app.api.json("POST", "/api/playback/sessions", body)
+                    stage = "SESSION"
+                    val watch = app.api.json("POST", "/api/playback/sessions", body, register = { call ->
+                        playbackCall = call
+                        if (!active || current != loadGeneration) call.cancel()
+                    })
+                    stage = "WATCH_SYNC"
                     app.watchControl.sync()
                     val sessionId = watch.getString("sessionId")
                     val mediaId = Uri.parse(detail.getJSONArray("sources").optJSONObject(0)?.optString("url") ?: "").getQueryParameter("mediaId")
-                    val info = app.api.json("GET", "/api/episodes/$loadingEpisode/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
+                    val info = read("SOURCE", "/api/episodes/$loadingEpisode/playback?sessionId=$sessionId" + (mediaId?.let { "&mediaId=$it" } ?: ""))
                     detail.put("playback", info)
                     Triple(detail, resume, sessionId)
-                }, offline = { offlineLoad(loadingEpisode) })
+                }, offline = { requireCurrentLoad(current); offlineLoad(loadingEpisode) })
             }.onSuccess { (detail, resume, sessionId) -> runOnUiThread {
                 if (active && current == loadGeneration && !isDestroyed && !isFinishing) {
                     if (detail.has("managedWarning")) { managedClip = true; showParentClip(detail.getString("managedWarning"), false); return@runOnUiThread }
@@ -198,10 +217,27 @@ class PlaybackActivity : AppCompatActivity() {
                     prepare(detail)
                 }
             } }.onFailure { error -> runOnUiThread {
-                if (active && current == loadGeneration) status.text = (error.message ?: "视频加载失败") + "。按确定重试，返回退出"
+                if (active && current == loadGeneration) {
+                    reportRequestError(stage, error)
+                    status.text = PlaybackAccess.message(error, "视频加载失败") + "。按确定重试，返回退出"
+                }
             } }
         }
     }
+
+    private fun requireCurrentLoad(current: Int) {
+        if (!active || current != loadGeneration) throw java.util.concurrent.CancellationException()
+    }
+
+    private fun readPlayback(current: Int, path: String): JSONObject =
+        PlaybackAccess.read(active = { active && current == loadGeneration }) {
+            try {
+                app.api.json("GET", path, register = { call ->
+                    playbackCall = call
+                    if (!active || current != loadGeneration) call.cancel()
+                })
+            } finally { playbackCall = null }
+        }
 
     private fun offlineLoad(id: String): Triple<JSONObject, JSONObject, String> {
         app.watchControl.requireEpisode(id, true)
@@ -234,7 +270,7 @@ class PlaybackActivity : AppCompatActivity() {
         val owner = ThreadedPlayer(applicationContext)
         playerOwner = owner
         owner.connect({ looper ->
-            val dataSource = if (offline) app.media.offlineFactory() else app.media.factory(cacheWrites)
+            val dataSource = if (offline) app.media.offlineFactory() else if (bypassCache) app.media.upstream() else app.media.factory(cacheWrites)
             ExoPlayer.Builder(applicationContext).setLooper(looper)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource)).build()
         }, { connected ->
@@ -242,8 +278,10 @@ class PlaybackActivity : AppCompatActivity() {
             else ready(connected)
         }, { error ->
             if (playerOwner === owner && active && !isFinishing) {
+                reportRequestError("CONNECT", error)
                 release()
-                status.text = (error.message ?: "播放器初始化失败") + "。按确定重试，返回退出"
+                val message = if (PlaybackAccess.isTimeout(error)) "播放器初始化超时" else "播放器初始化失败"
+                status.text = message + "。按确定重试，返回退出"
             }
         })
     }
@@ -269,6 +307,8 @@ class PlaybackActivity : AppCompatActivity() {
             override fun onTracksChanged(tracks: Tracks) { applySubtitle() }
             override fun onPlaybackParametersChanged(parameters: PlaybackParameters) { playbackSpeed = parameters.speed }
             override fun onPlayerError(error: PlaybackException) {
+                if (!active || player !== exo) return
+                cancelBufferingTimeout()
                 reportPlaybackError(error, source.optString("mediaId"), episodeId)
                 if (error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED && !skipCacheWrites) {
                     // A failed cache write is one possible cause. Retry once without writing cache.
@@ -276,13 +316,29 @@ class PlaybackActivity : AppCompatActivity() {
                     refreshSource()
                 } else if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && refreshAttempts < 2) {
                     refreshSource()
-                } else status.text = "播放失败（${error.errorCodeName}）。按确定重试，返回退出"
+                } else if (error.errorCode in listOf(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) && recoverStream()) {
+                    return
+                } else {
+                    position = exo.currentPosition.coerceAtLeast(0)
+                    report("stop")
+                    release()
+                    status.text = "播放失败（${error.errorCodeName}）。按确定重试，返回退出"
+                }
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) status.text = ""
-                if (state == Player.STATE_ENDED) { completed = true; awaitingNext = true; advance() }
+                if (!active || player !== exo) return
+                if (state == Player.STATE_BUFFERING) armBufferingTimeout(exo)
+                if (state == Player.STATE_READY) { cancelBufferingTimeout(); status.text = "" }
+                if (state == Player.STATE_ENDED) { cancelBufferingTimeout(); completed = true; awaitingNext = true; advance() }
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!active || player !== exo) return
+                if (!playWhenReady) cancelBufferingTimeout()
+                else if (exo.playbackState == Player.STATE_BUFFERING) armBufferingTimeout(exo)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!active || player !== exo) return
                 if (BuildConfig.DEBUG) android.util.Log.d("MollyTimePlayback", "isPlaying=$isPlaying")
                 if (!runCatching { app.watchControl.tick(isPlaying) }.getOrDefault(false)) { endManaged(); return }
                 sample(isPlaying)
@@ -298,8 +354,46 @@ class PlaybackActivity : AppCompatActivity() {
             .setMediaId(episodeId).setSubtitleConfigurations(configs).build(), position)
         exo.prepare()
         exo.playWhenReady = playOnResume
+        armBufferingTimeout(exo)
         handler.postDelayed(heartbeat, 15000)
         playerView.requestFocus()
+    }
+
+    private fun cancelBufferingTimeout() {
+        bufferingTimeout?.let(handler::removeCallbacks)
+        bufferingTimeout = null
+    }
+
+    private fun armBufferingTimeout(exo: Player) {
+        if (bufferingTimeout != null || !exo.playWhenReady) return
+        bufferingTimeout = Runnable {
+            bufferingTimeout = null
+            if (!active || player !== exo || !exo.playWhenReady || exo.playbackState == Player.STATE_READY) return@Runnable
+            reportRequestError("BUFFER", java.net.SocketTimeoutException())
+            if (!recoverStream()) {
+                position = exo.currentPosition.coerceAtLeast(0)
+                report("stop")
+                release()
+                status.text = "视频缓冲超时。按确定重试，返回退出"
+            }
+        }.also { handler.postDelayed(it, 30000) }
+    }
+
+    /** Retry the same session and position; never allocate another episode allowance. */
+    private fun recoverStream(): Boolean {
+        val source = sourceInfo ?: return false
+        if (offlineMode || streamRecoveries >= 2 || !active) return false
+        streamRecoveries++
+        position = player?.currentPosition?.coerceAtLeast(0) ?: position
+        playOnResume = player?.playWhenReady ?: playOnResume
+        sample(false)
+        release()
+        // A stuck cache writer can otherwise hold a new reader indefinitely.
+        // Direct streaming avoids that lock without deleting any cached media.
+        bypassCache = true
+        status.text = "连接中断，正在继续播放…（$streamRecoveries/2）"
+        prepare(JSONObject().put("playback", source))
+        return true
     }
 
     private fun advance() {
@@ -314,14 +408,15 @@ class PlaybackActivity : AppCompatActivity() {
         status.text = "正在准备下一集…"
         (if (offlineMode) app.catalog.reads else app.playbackIo).execute {
             runCatching {
+                requireCurrentLoad(current)
                 if (offlineMode) return@runCatching JSONObject().put("episodeId", (if (app.watchControl.managedEpisodes() && app.watchControl.snapshot().optString("status") != "allowed") null else app.catalog.store().nextEpisode(finishedEpisode)) ?: JSONObject.NULL)
                 app.watchControl.sync()
                 if (app.watchControl.snapshot().optBoolean("enabled") && app.watchControl.snapshot().optString("status") != "allowed") return@runCatching JSONObject().put("episodeId", JSONObject.NULL)
-                val reminder = reminderState()
+                val reminder = PlaybackAccess.read(active = { active && current == loadGeneration }) { reminderState() }
                 if (reminder.optString("episodeId") == finishedEpisode && reminder.optString("phase") != "idle" &&
                     (!reminder.has("sessionId") || reminder.optString("sessionId") == watchId))
                     JSONObject().put("parentFarewell", reminder.getString("farewellPath"))
-                else app.api.json("GET", "/api/episodes/$finishedEpisode/next")
+                else readPlayback(current, "/api/episodes/$finishedEpisode/next")
             }
                 .onSuccess { result -> runOnUiThread {
                     if (!active || current != loadGeneration || isFinishing || isDestroyed) return@runOnUiThread
@@ -354,8 +449,9 @@ class PlaybackActivity : AppCompatActivity() {
                 } }.onFailure { error -> runOnUiThread {
                     if (!active || current != loadGeneration || isFinishing) return@runOnUiThread
                     advancing = false
+                    reportRequestError("NEXT", error)
                     if (error is ApiFailure && error.status in listOf(401, 403, 404)) finish()
-                    else status.text = "下一集加载失败。按确定重试，返回退出"
+                    else status.text = PlaybackAccess.message(error, "下一集加载失败") + "。按确定重试，返回退出"
                 } }
         }
     }
@@ -447,25 +543,37 @@ class PlaybackActivity : AppCompatActivity() {
         status.text = "正在刷新播放地址…"
         val current = ++loadGeneration
         app.playbackIo.execute {
-            runCatching { app.api.json("GET", "/api/episodes/$episodeId/playback?mediaId=$mediaId&sessionId=$watchId") }
+            runCatching { readPlayback(current, "/api/episodes/$episodeId/playback?mediaId=$mediaId&sessionId=$watchId") }
                 .onSuccess { info -> runOnUiThread {
                     if (active && current == loadGeneration) prepare(JSONObject().put("playback", info))
                 } }.onFailure { error -> runOnUiThread {
-                    if (active && current == loadGeneration) status.text = (error.message ?: "播放地址刷新失败") + "。按确定重试"
+                    if (active && current == loadGeneration) {
+                        reportRequestError("REFRESH", error)
+                        status.text = PlaybackAccess.message(error, "播放地址刷新失败") + "。按确定重试，返回退出"
+                    }
                 } }
         }
     }
 
     private fun reportPlaybackError(error: PlaybackException, mediaId: String?, episode: String?) {
+        reportFailure(error.errorCodeName, error, mediaId, episode)
+    }
+
+    private fun reportRequestError(stage: String, error: Throwable) {
+        val code = "PLAYBACK_${stage}_${if (PlaybackAccess.isTimeout(error)) "TIMEOUT" else "FAILED"}"
+        reportFailure(code, error, sourceInfo?.optString("mediaId"), episodeId)
+    }
+
+    private fun reportFailure(code: String, error: Throwable, mediaId: String?, episode: String?) {
         // Only structured diagnostics leave the TV; exception messages may contain signed URLs.
-        val causes = generateSequence(error.cause) { it.cause }.take(6).toList()
+        val causes = generateSequence(error) { it.cause }.take(6).toList()
         val types = org.json.JSONArray(causes.map { it.javaClass.name })
         val httpStatus = causes.filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
-            .firstOrNull()?.responseCode
+            .firstOrNull()?.responseCode ?: causes.filterIsInstance<ApiFailure>().firstOrNull()?.status
         android.util.Log.e("MollyTimePlayback",
-            "Playback failed: ${error.errorCodeName}, causes=${causes.joinToString(" -> ") { it.javaClass.simpleName }}, http=$httpStatus")
+            "Playback failed: $code, causes=${causes.joinToString(" -> ") { it.javaClass.simpleName }}, http=$httpStatus")
         val body = JSONObject().put("id", java.util.UUID.randomUUID().toString())
-            .put("category", "playback").put("code", error.errorCodeName)
+            .put("category", "playback").put("code", code)
             .put("causeTypes", types).put("positionMs", player?.currentPosition?.coerceAtLeast(0) ?: 0)
             .put("availableBytes", filesDir.usableSpace).put("appVersion", BuildConfig.VERSION_NAME)
         if (!episode.isNullOrEmpty()) body.put("episodeId", episode)
@@ -515,6 +623,7 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun release() {
+        cancelBufferingTimeout()
         runCatching { app.watchControl.tick(false) }
         playbackMenu?.dismiss()
         playbackMenu = null
@@ -560,6 +669,8 @@ class PlaybackActivity : AppCompatActivity() {
         if (parentClipPath.isNotEmpty()) parentClipPosition = player?.currentPosition?.coerceAtLeast(0) ?: parentClipPosition
         advancing = false
         loadGeneration++
+        playbackCall?.cancel()
+        playbackCall = null
         report("stop")
         if (!isChangingConfigurations) {
             finishReminder()

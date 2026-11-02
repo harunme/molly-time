@@ -16,7 +16,7 @@ import java.util.concurrent.Executor
 
 /** UI commands use a main-thread controller; decoder/surface teardown never waits on the UI thread. */
 @UnstableApi
-class ThreadedPlayer(context: Context) {
+class ThreadedPlayer(context: Context, private val connectTimeoutMs: Long = 12000) {
     private val context = context.applicationContext
     private val thread = HandlerThread("MollyTimePlayer").apply { start() }
     private val worker = Handler(thread.looper)
@@ -27,9 +27,16 @@ class ThreadedPlayer(context: Context) {
     private var engine: ExoPlayer? = null
     private var session: MediaSession? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var connectionTimeout: Runnable? = null
 
     fun connect(create: (Looper) -> ExoPlayer, ready: (Player) -> Unit, failed: (Throwable) -> Unit) {
         check(Looper.myLooper() == Looper.getMainLooper())
+        connectionTimeout = Runnable {
+            if (!closed) {
+                release()
+                failed(java.net.SocketTimeoutException("播放器初始化超时"))
+            }
+        }.also { main.postDelayed(it, connectTimeoutMs) }
         worker.post {
             if (closed) return@post
             try {
@@ -52,7 +59,12 @@ class ThreadedPlayer(context: Context) {
                         controllerFuture = future
                         future.addListener({
                             if (!closed) {
-                                try { ready(future.get()) }
+                                try {
+                                    val controller = future.get()
+                                    connectionTimeout?.let(main::removeCallbacks)
+                                    connectionTimeout = null
+                                    ready(controller)
+                                }
                                 catch (error: Exception) { release(); failed(error) }
                             }
                         }, mainExecutor)
@@ -68,6 +80,8 @@ class ThreadedPlayer(context: Context) {
         check(Looper.myLooper() == Looper.getMainLooper())
         if (closed) return
         closed = true
+        connectionTimeout?.let(main::removeCallbacks)
+        connectionTimeout = null
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         // MediaSession and ExoPlayer share this looper. Releasing the controller

@@ -25,6 +25,35 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class ThreadedPlayerTest {
+    @Test fun stalledInitializationTimesOutAndCannotPublishALateController() {
+        val context = RuntimeEnvironment.getApplication()
+        val owner = ThreadedPlayer(context, connectTimeoutMs = 100)
+        val started = CountDownLatch(1)
+        val allowInitialization = CountDownLatch(1)
+        val workerLooper = AtomicReference<Looper>()
+        val failures = AtomicInteger()
+        val connected = AtomicReference<Player>()
+        owner.connect({ looper ->
+            workerLooper.set(looper)
+            started.countDown()
+            check(allowInitialization.await(10, TimeUnit.SECONDS))
+            ExoPlayer.Builder(context).setLooper(looper).build()
+        }, { connected.set(it) }, {
+            assertTrue(it is java.net.SocketTimeoutException)
+            failures.incrementAndGet()
+        })
+        try {
+            assertTrue(started.await(10, TimeUnit.SECONDS))
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(101))
+            assertEquals(1, failures.get())
+            assertNull(connected.get())
+        } finally { allowInitialization.countDown() }
+        until { !workerLooper.get().thread.isAlive }
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+        assertEquals(1, failures.get())
+        assertNull(connected.get())
+    }
+
     private fun until(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         while (!condition() && System.nanoTime() < deadline) {

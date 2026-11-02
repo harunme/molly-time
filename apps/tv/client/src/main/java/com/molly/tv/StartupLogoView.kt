@@ -26,6 +26,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
     private var time = 0f
     private var reported = false
     private var requested = false
+    private var reducedCompletion: Runnable? = null
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 2800; interpolator = LinearInterpolator(); repeatCount = ValueAnimator.INFINITE
         addUpdateListener { time = it.animatedValue as Float; invalidate() }
@@ -39,6 +40,12 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
         setBackgroundColor(0xFF211F1B.toInt())
         contentDescription = "MollyTime 正在启动"
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+        readLogoPaths()
+    }
+    // This is intentionally a vector drawable: the animation needs its individual
+    // pathData values rather than an inflated Drawable.
+    @android.annotation.SuppressLint("ResourceType")
+    private fun readLogoPaths() {
         resources.getXml(R.drawable.app_mark).use { xml ->
             while (xml.eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
                 if (xml.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && xml.name == "path") {
@@ -56,14 +63,24 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
     }
     fun startMotion() {
         requested = true
-        if (!isAttachedToWindow || animator.isStarted || reported) return
+        if (!isAttachedToWindow || animator.isStarted || reducedCompletion != null || reported) return
         val reduced = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-        if (reduced) { reported = true; post { cycleFinished() } } else animator.start()
+        if (reduced) {
+            // Respect disabled motion, while keeping the static logo visible
+            // long enough to avoid a one-frame flash on a cached warm launch.
+            reducedCompletion = Runnable {
+                reducedCompletion = null
+                if (!reported) { reported = true; cycleFinished() }
+            }.also { postDelayed(it, 600) }
+        } else animator.start()
     }
-    override fun onDetachedFromWindow() { animator.cancel(); super.onDetachedFromWindow() }
-    fun pause() { animator.pause() }
-    fun resume() { if (animator.isPaused) animator.resume() }
-    fun stop() { animator.cancel() }
+    override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
+    fun pause() { animator.pause(); reducedCompletion?.let(::removeCallbacks) }
+    fun resume() {
+        if (animator.isPaused) animator.resume()
+        reducedCompletion?.let { removeCallbacks(it); postDelayed(it, 600) }
+    }
+    fun stop() { animator.cancel(); reducedCompletion?.let(::removeCallbacks); reducedCompletion = null }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

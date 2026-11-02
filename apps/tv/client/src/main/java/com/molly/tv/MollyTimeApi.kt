@@ -75,8 +75,12 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
 
     // Every response is closed, including errors and a retried 401.
     fun response(method: String, path: String, body: JSONObject? = null,
-                 authenticated: Boolean = true): Response = perform(catalogHttp, method, path, body, authenticated)
+                 authenticated: Boolean = true, register: (okhttp3.Call) -> Unit = {}): Response =
+        perform(requestHttp, method, path, body, authenticated, register)
 
+    // Bound metadata calls independently of catalog snapshots. The shared media
+    // client must not inherit a total deadline that cuts off a healthy video stream.
+    private val requestHttp by lazy { http.newBuilder().callTimeout(25, TimeUnit.SECONDS).build() }
     private val catalogHttp by lazy { http.newBuilder().callTimeout(10, TimeUnit.SECONDS).build() }
     fun catalogResponse(path: String, register: (okhttp3.Call) -> Unit = {}): Response =
         perform(catalogHttp, "GET", path, null, true, register)
@@ -155,8 +159,8 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
     }
 
     fun json(method: String, path: String, body: JSONObject? = null,
-             authenticated: Boolean = true): JSONObject =
-        response(method, path, body, authenticated).use { JSONObject(it.body!!.string()) }
+             authenticated: Boolean = true, register: (okhttp3.Call) -> Unit = {}): JSONObject =
+        response(method, path, body, authenticated, register).use { JSONObject(it.body!!.string()) }
 
     fun progressPath(id: String, child: String) = "/api/episodes/$id/progress" +
         if (child.isEmpty()) "" else "?childId=$child"
