@@ -24,7 +24,10 @@ test('a file owns its progress and retry without opening the global task window'
     const tile = page.locator('.resource-tile, .m-content-item').filter({ has: page.getByRole('button', { name: '新的故事', exact: true }) });
     const status = tile.getByRole('region', { name: '新的故事.mp4 上传状态', exact: true });
     await expect(status).toBeVisible();
-    await expect(status.getByRole('alert')).toContainText('测试网络中断');
+    await expect(status.getByRole('status')).toHaveAttribute('title', /测试网络中断/);
+    await expect(status.getByRole('button', { name: '暂停', exact: true })).toHaveCount(0);
+    await expect(status.getByRole('button', { name: '取消', exact: true })).toHaveCount(0);
+    expect(await tile.evaluate(node => (node as HTMLElement).offsetHeight)).toBeLessThan(230);
     await expect(page.getByRole('dialog', { name: '上传任务', exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`/library/${folder.id}$`));
     const failedHeight = await tile.evaluate(node => (node as HTMLElement).offsetHeight);
@@ -37,14 +40,11 @@ test('a file owns its progress and retry without opening the global task window'
     expect(await page.getByRole('dialog', { name: '文件进度检查', exact: true }).evaluate(node => (node as HTMLElement).offsetHeight)).toBe(folderHeight);
     await page.screenshot({ path: testInfo.outputPath('library-file-upload.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('.m-app')).toBeVisible();
+    await expect(status).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('library-file-upload-mobile.png'), fullPage: true });
     expect(await status.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await status.getByRole('button', { name: '暂停', exact: true }).click();
-    await expect(status.getByRole('status')).toHaveText('已暂停');
     release();
-    // Wait until the paused in-flight chunk settles before resuming the file.
-    await expect.poll(async () => (await (await page.request.get(`/api/manage/uploads?itemIds=${(await (await page.request.get(`/api/manage/resources?parentId=${folder.id}`)).json())[0].id}`)).json())[0].offset).toBeGreaterThan(0);
-    await status.getByRole('button', { name: '继续', exact: true }).click();
     await expect(status).toHaveCount(0, { timeout: 15000 });
     await expect(tile.locator('.library-item-status, .m-content-state')).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 1000 });

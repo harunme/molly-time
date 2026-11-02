@@ -1246,15 +1246,14 @@ td small {
 .workspace:has(.resource-library-card, .trash-list-card) { height: calc(100dvh - var(--app-status-height, 0px)); }
 .offline-start { min-height: calc(100dvh - var(--app-status-height, 0px)); }
 
-/* Keep library rows stable through upload, recovery, failure and completion. */
-.library-card-status { height: 128px; min-width: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
-.library-card-status .file-upload-status { margin-top: 4px; }
-.library-card-status .file-upload-caption > [role="status"] { flex: 1; white-space: normal; overflow-wrap: anywhere; }
-.library-card-status .file-upload-detail { display: block; }
-.library-card-status .file-upload-actions { min-height: 28px; }
-.library-card-status .file-upload-status > p { line-height: 16px; }
-.library-card-status .file-upload-status [data-slot="file-upload"] { padding-inline: 6px; gap: 4px; }
-.library-card-status .file-upload-status [data-slot="file-upload"] > svg,
-.library-card-status .file-upload-status [data-slot="file-upload"] > span:last-child { display: none; }
+/* A small caption slot keeps video rows steady without inflating folder cards. */
+.library-card-status { min-width: 0; }
+.library-card-status[data-type="Episode"] { height: 32px; }
+.file-upload-compact { min-width: 0; padding-top: 2px; font-size: 11px; color: var(--color-muted-foreground); }
+.file-upload-compact-line { display: flex; align-items: center; gap: 6px; height: 22px; }
+.file-upload-compact-line > [role="status"] { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.file-upload-compact-line [data-slot="button"] { height: 22px; min-height: 22px; padding: 0 4px; font-size: 11px; }
+.file-upload-compact[data-status="failed"] [role="status"] { color: var(--color-destructive); }
+.file-upload-compact [data-slot="progress"] { height: 2px; margin-top: 3px; background: var(--color-muted); }
 .library-folder-panel[data-slot="dialog-content"] { height: min(740px, calc(var(--visible-height, 100dvh) - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
 .folder-panel-body { scrollbar-gutter: stable; }
