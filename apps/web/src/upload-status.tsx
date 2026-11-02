@@ -64,10 +64,23 @@ export function useItemUploads(itemIds: string[], settled?: () => void) {
 
 const uploadBytes = (value: number) => value < 1024 ? `${value} B` : value < 1024 ** 2 ? `${Math.ceil(value / 1024)} KB` : bytes(value);
 
-export function FileUploadStatus({ row, readonly, changed, showFilename = true, compact = false }: { row: Upload; readonly: boolean; changed: () => void; showFilename?: boolean; compact?: boolean }) {
+/** One passive summary per card, regardless of how many files belong to it. */
+export function ItemUploadStatus({ rows }: { rows: Upload[] }) {
+  if (!rows.length) return null;
+  const active = rows.filter(row => row.status === 'uploading' && hasFile(row.id) && !live.get(row.id)?.paused && !live.get(row.id)?.error);
+  const total = active.reduce((sum, row) => sum + row.size, 0);
+  const offset = active.reduce((sum, row) => sum + Math.min(row.size, Math.max(row.offset, live.get(row.id)?.offset ?? 0)), 0);
+  const percent = total ? Math.floor(offset / total * 100) : 0;
+  const status = active.length ? `上传中 ${percent}%` : rows.some(row => row.status === 'processing') ? '正在处理' : '上传未完成';
+  return <section className="file-upload-compact" aria-label="上传状态">
+    <div className="file-upload-compact-line"><span role="status">{status}</span></div>
+    {active.length > 0 && <Progress value={percent} aria-label="上传进度" />}
+  </section>;
+}
+
+export function FileUploadStatus({ row, readonly, changed, showFilename = true }: { row: Upload; readonly: boolean; changed: () => void; showFilename?: boolean }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const lock = useRef(false);
-  const fileInput = useRef<HTMLInputElement>(null);
   const current = live.get(row.id);
   const offset = Math.min(row.size, Math.max(row.offset, current?.offset ?? 0));
   const percent = row.size ? Math.min(100, Math.floor(offset / row.size * 100)) : 0;
@@ -81,19 +94,6 @@ export function FileUploadStatus({ row, readonly, changed, showFilename = true, 
     catch (failure) { setError((failure as Error).message); }
     finally { lock.current = false; setBusy(false); }
   };
-  if (compact) return <section className="file-upload-compact" aria-label={`${row.filename} 上传状态`} data-status={failed ? 'failed' : row.status}>
-    <div className="file-upload-compact-line">
-      <span role="status" title={error || current?.error || row.error || status}>{needsFile ? '等待续传' : status}</span>
-      {!readonly && (needsFile ? <>
-        <input ref={fileInput} type="file" hidden aria-label={`继续上传 ${row.filename}`} onChange={event => {
-          const file = event.currentTarget.files?.[0]; event.currentTarget.value = '';
-          if (file) void act(() => resume(row, file));
-        }} />
-        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => fileInput.current?.click()}>选择文件</Button>
-      </> : (failed || current?.paused) && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void act(() => row.taskId ? api(`/tasks/${row.taskId}/retry`, 'POST') : resume(row))}>{current?.paused && !failed ? '继续' : '重试'}</Button>)}
-    </div>
-    {row.status === 'uploading' && <Progress value={percent} aria-label={`${row.filename} 上传进度`} />}
-  </section>;
   return <section className="file-upload-status" aria-label={`${row.filename} 上传状态`} data-status={failed ? 'failed' : row.status}>
     <div className="file-upload-caption">{showFilename && <span title={row.filename}>{row.filename}</span>}<span role="status">{status}</span></div>
     {row.status === 'uploading' && <Progress value={percent} aria-label={`${row.filename} 上传进度`} />}

@@ -8,9 +8,20 @@ async function login(page: Page) {
 }
 const video = (name: string) => ({ name, mimeType: 'video/mp4', buffer: mp4Fixture() });
 
-test('a file owns its progress and retry without opening the global task window', async ({ page }, testInfo) => {
+test('cards show one passive upload summary and recover without layout shifts', async ({ page }, testInfo) => {
   const headers = await login(page);
   const folder = await (await page.request.post('/api/manage/resources', { headers, data: { type: 'Series', name: '文件进度检查' } })).json();
+  let includeExtra = true;
+  await page.route('**/api/manage/uploads?*', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    if (includeExtra && Array.isArray(body.items) && body.items.length) {
+      // A second pending file on the same resource must not add another status row.
+      body.items.push({ ...body.items[0], id: 'pending-subtitle', kind: 'subtitle', filename: '字幕.srt' });
+      body.total += 1;
+    }
+    await route.fulfill({ response, json: body });
+  });
   let fail = true;
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
@@ -22,9 +33,13 @@ test('a file owns its progress and retry without opening the global task window'
     await page.goto(`/manage/#/library/${folder.id}`);
     await page.getByLabel('选择上传视频', { exact: true }).setInputFiles(video('新的故事.mp4'));
     const tile = page.locator('.resource-tile, .m-content-item').filter({ has: page.getByRole('button', { name: '新的故事', exact: true }) });
-    const status = tile.getByRole('region', { name: '新的故事.mp4 上传状态', exact: true });
+    const status = tile.getByRole('region', { name: '上传状态', exact: true });
     await expect(status).toBeVisible();
-    await expect(status.getByRole('status')).toHaveAttribute('title', /测试网络中断/);
+    await expect(status.getByRole('status')).toHaveText('上传未完成');
+    await expect(status).toHaveCount(1);
+    await expect(status.getByRole('button')).toHaveCount(0);
+    await expect(status.locator('input')).toHaveCount(0);
+    await expect(status.getByRole('progressbar')).toHaveCount(0);
     await expect(status.getByRole('button', { name: '暂停', exact: true })).toHaveCount(0);
     await expect(status.getByRole('button', { name: '取消', exact: true })).toHaveCount(0);
     expect(await tile.evaluate(node => (node as HTMLElement).offsetHeight)).toBeLessThan(230);
@@ -33,7 +48,7 @@ test('a file owns its progress and retry without opening the global task window'
     const failedHeight = await tile.evaluate(node => (node as HTMLElement).offsetHeight);
     const folderHeight = await page.getByRole('dialog', { name: '文件进度检查', exact: true }).evaluate(node => (node as HTMLElement).offsetHeight);
     fail = false;
-    await status.getByRole('button', { name: '重试', exact: true }).click();
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect(status.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
     await expect(status.getByRole('alert')).toHaveCount(0);
     expect(await tile.evaluate(node => (node as HTMLElement).offsetHeight)).toBe(failedHeight);
@@ -44,6 +59,7 @@ test('a file owns its progress and retry without opening the global task window'
     await expect(status).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('library-file-upload-mobile.png'), fullPage: true });
     expect(await status.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    includeExtra = false;
     release();
     await expect(status).toHaveCount(0, { timeout: 15000 });
     await expect(tile.locator('.library-item-status, .m-content-state')).toBeVisible();

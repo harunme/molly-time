@@ -3,7 +3,7 @@ import { useMobileLayout } from "./mobile/layout";
 import { useDocumentScroll } from "./scroll-restoration";
 import { startLifecycle, useRevalidation } from "./lifecycle";
 import { InstallApp, OfflineStart, PwaStatus, useOnline } from "./pwa";
-import { FileUploadStatus, useItemUploads } from "./upload-status";
+import { ItemUploadStatus, useItemUploads } from "./upload-status";
 import { CoverArtwork } from "./cover-artwork";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty } from "@/components/ui/empty";
@@ -967,7 +967,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                   </Button>}
                 </div>
                 <div className="library-card-status" data-type={item.type}>
-                {fileUploads.forItem(item.id).length ? fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} compact />) : showPublicationStatus(item) && <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
+                {fileUploads.forItem(item.id).length ? <ItemUploadStatus rows={fileUploads.forItem(item.id)} /> : showPublicationStatus(item) && <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
                   title={item.hiddenByFolder ? `上级目录“${item.hiddenByFolder.name}”已下架` : undefined}>
                   <span>{publicationLabel(item)}</span>
                 </p>}
