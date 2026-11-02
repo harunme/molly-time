@@ -1245,3 +1245,16 @@ td small {
 .workspace { min-height: calc(100dvh - var(--app-status-height, 0px)); }
 .workspace:has(.resource-library-card, .trash-list-card) { height: calc(100dvh - var(--app-status-height, 0px)); }
 .offline-start { min-height: calc(100dvh - var(--app-status-height, 0px)); }
+
+/* Keep library rows stable through upload, recovery, failure and completion. */
+.library-card-status { height: 128px; min-width: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.library-card-status .file-upload-status { margin-top: 4px; }
+.library-card-status .file-upload-caption > [role="status"] { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.library-card-status .file-upload-detail { display: block; }
+.library-card-status .file-upload-actions { min-height: 28px; }
+.library-card-status .file-upload-status > p { line-height: 16px; }
+.library-card-status .file-upload-status [data-slot="file-upload"] { padding-inline: 6px; gap: 4px; }
+.library-card-status .file-upload-status [data-slot="file-upload"] > svg,
+.library-card-status .file-upload-status [data-slot="file-upload"] > span:last-child { display: none; }
+.library-folder-panel[data-slot="dialog-content"] { height: min(740px, calc(var(--visible-height, 100dvh) - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+.folder-panel-body { scrollbar-gutter: stable; }

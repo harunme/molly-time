@@ -966,11 +966,13 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                     {item.name}
                   </Button>}
                 </div>
-                {fileUploads.forItem(item.id).length ? fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} />) : showPublicationStatus(item) && <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
+                <div className="library-card-status">
+                {fileUploads.forItem(item.id).length ? fileUploads.forItem(item.id).map(row => <FileUploadStatus key={row.id} row={row} readonly={readonly} changed={fileUploads.refresh} showFilename={false} />) : showPublicationStatus(item) && <p className="library-item-status" data-published={item.status === "published" && item.ready && !item.hiddenByFolder}
                   title={item.hiddenByFolder ? `上级目录“${item.hiddenByFolder.name}”已下架` : undefined}>
                   <span>{publicationLabel(item)}</span>
                 </p>}
                 {coverError?.id === item.id && <p className="desktop-cover-error" role="alert">{coverError.message}</p>}
+                </div>
               </>}
             />
       </div>

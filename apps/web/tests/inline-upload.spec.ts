@@ -27,10 +27,14 @@ test('a file owns its progress and retry without opening the global task window'
     await expect(status.getByRole('alert')).toContainText('测试网络中断');
     await expect(page.getByRole('dialog', { name: '上传任务', exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`/library/${folder.id}$`));
+    const failedHeight = await tile.evaluate(node => (node as HTMLElement).offsetHeight);
+    const folderHeight = await page.getByRole('dialog', { name: '文件进度检查', exact: true }).evaluate(node => (node as HTMLElement).offsetHeight);
     fail = false;
     await status.getByRole('button', { name: '重试', exact: true }).click();
     await expect(status.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
     await expect(status.getByRole('alert')).toHaveCount(0);
+    expect(await tile.evaluate(node => (node as HTMLElement).offsetHeight)).toBe(failedHeight);
+    expect(await page.getByRole('dialog', { name: '文件进度检查', exact: true }).evaluate(node => (node as HTMLElement).offsetHeight)).toBe(folderHeight);
     await page.screenshot({ path: testInfo.outputPath('library-file-upload.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: testInfo.outputPath('library-file-upload-mobile.png'), fullPage: true });
@@ -43,6 +47,10 @@ test('a file owns its progress and retry without opening the global task window'
     await status.getByRole('button', { name: '继续', exact: true }).click();
     await expect(status).toHaveCount(0, { timeout: 15000 });
     await expect(tile.locator('.library-item-status, .m-content-state')).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expect(page.locator('.resource-tile')).toBeVisible();
+    expect(await page.locator('.resource-tile').evaluate(node => (node as HTMLElement).offsetHeight)).toBe(failedHeight);
+    expect(await page.getByRole('dialog', { name: '文件进度检查', exact: true }).evaluate(node => (node as HTMLElement).offsetHeight)).toBe(folderHeight);
   } finally {
     release();
     await page.request.post(`/api/manage/resources/${folder.id}/archive`, { headers, timeout: 5000 });
