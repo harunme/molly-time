@@ -61,7 +61,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
                                 "V151C212 143 194 149 183 163", "V148C212 139 194 145 183 160"))
                             cradlePressed = PathParser.createNodesFromPathData(it.replace(
                                 "V151C212 143 194 149 183 163", "V153C212 145 194 151 183 165"))
-                            cradleFrame = PathParser.deepCopyNodes(cradleRest)
+                            cradleFrame = cradleRest?.let { nodes -> PathParser.deepCopyNodes(nodes) }
                         }
                         PathParser.createPathFromPathData(it)?.let(paths::add)
                     }
@@ -139,7 +139,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
         val poses = arrayOf(rest, rest, lifted, rest, rest, pressed, rest, rest)
         val i = (0 until times.lastIndex).firstOrNull { t <= times[it + 1] } ?: times.lastIndex - 1
         val p = ease(((t - times[i]) / (times[i + 1] - times[i])).coerceIn(0f, 1f))
-        for (n in frame.indices) frame[n].interpolatePathData(poses[i][n], poses[i + 1][n], p)
+        for (n in frame.indices) frame[n].interpolatePathDataNode(poses[i][n], poses[i + 1][n], p)
         cradlePath.reset()
         PathParser.PathDataNode.nodesToPath(frame, cradlePath)
         return cradlePath
