@@ -133,6 +133,7 @@ test("public share shows artwork, descriptions and video catalog on desktop and 
 
 
 test("share login errors and cancellation keep the visitor on the public overview", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.route("**/api/shares/preview", (route) => route.fulfill({ json: {
     id: "login-share", name: "登录测试", type: "Series", videoCount: 1, sizeBytes: 1024,
     expiresAt: "2026-10-21T10:58:45Z", items: [{ id: "one", parentId: null, type: "Episode", name: "视频" }],
@@ -143,8 +144,29 @@ test("share login errors and cancellation keep the visitor on the public overvie
   await join.click();
   const dialog = page.getByRole("dialog", { name: "登录领取", exact: true });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("账号", { exact: true }).fill("receiver@example.test");
-  await dialog.getByLabel("密码", { exact: true }).fill("wrong-password");
+  await expect(dialog.getByRole("heading")).toBeFocused();
+  const account = dialog.getByLabel("账号", { exact: true });
+  const password = dialog.getByLabel("密码", { exact: true });
+  await account.fill("receiver@example.test");
+  await account.press("Enter");
+  await expect(password).toBeFocused();
+  await password.fill("wrong-password");
+  await dialog.getByRole("button", { name: "显示密码", exact: true }).click();
+  await expect(password).toHaveAttribute("type", "text");
+  await expect(password).toHaveValue("wrong-password");
+  await dialog.getByRole("button", { name: "隐藏密码", exact: true }).click();
+  await expect(password).toHaveAttribute("type", "password");
+  // A reduced visual viewport models the space left above a phone keyboard.
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, "height", { configurable: true, value: 360 });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  });
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return !!box && box.y >= 0 && box.y + box.height <= 360;
+  }).toBe(true);
+  await dialog.getByRole("button", { name: "登录并领取", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "../../artifacts/share-login-mobile-keyboard.png", animations: "disabled" });
   await dialog.getByRole("button", { name: "登录并领取", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("账号密码错误");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();

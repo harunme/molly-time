@@ -4,7 +4,7 @@ import { BrandMark, BrandWordmark } from "./brand";
 import { api, ApiError, bytes, dateTime, setSession, type Resource, type Session } from "./api";
 import { ResourcePicker } from "./pagination";
 import { Loading } from "@/components/ui/loading";
-import { Check, Clock3, Copy, Film } from "lucide-react";
+import { Check, Clock3, Copy, Eye, EyeOff, Film } from "lucide-react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -175,23 +175,58 @@ async function previewShare(credential: Credential, signal?: AbortSignal): Promi
 function ShareLoginDialog({ close, loggedIn }: { close: () => void; loggedIn: (session: Session) => Promise<void> }) {
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const [viewport, setViewport] = useState<{ top: number; height: number }>();
+  useEffect(() => {
+    const visualViewport = window.visualViewport;
+    const update = () => setViewport(window.innerWidth < 640 ? {
+      top: visualViewport?.offsetTop ?? 0,
+      height: visualViewport?.height ?? window.innerHeight,
+    } : undefined);
+    update();
+    visualViewport?.addEventListener("resize", update);
+    visualViewport?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      visualViewport?.removeEventListener("resize", update);
+      visualViewport?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  const fieldClassName = "h-12 rounded-xl border border-input bg-input-surface px-3 text-base";
   return <Dialog open onOpenChange={(open) => { if (!open && !busy) close(); }}>
-    <DialogContent className="max-w-100" showCloseButton={!busy}>
-      <DialogHeader><DialogTitle>登录领取</DialogTitle><DialogDescription>登录后加入自己的内容库。</DialogDescription></DialogHeader>
+    <DialogContent className="max-w-100 overscroll-contain" showCloseButton={!busy}
+      style={viewport ? { top: viewport.top + 12, maxHeight: Math.max(0, viewport.height - 24), translate: "-50% 0" } : undefined}
+      onOpenAutoFocus={(event) => { event.preventDefault(); titleRef.current?.focus(); }}>
+      <DialogHeader><DialogTitle ref={titleRef} tabIndex={-1} className="outline-none">登录领取</DialogTitle><DialogDescription>使用 MollyTime 账号登录，领取到自己的内容库。</DialogDescription></DialogHeader>
       <form onSubmit={(event) => {
         event.preventDefault(); if (busy) return;
         setBusy(true); setError("");
-        void api<Session>("/auth/login", "POST", { username: account, password })
+        void api<Session>("/auth/login", "POST", { username: account.trim(), password })
           .then(loggedIn).catch((failure) => setError(failure.message)).finally(() => setBusy(false));
       }}>
         <DialogBody className="space-y-4">
-          <div className="space-y-2"><Label htmlFor="share-login-account">账号</Label><Input id="share-login-account" autoComplete="username" placeholder="邮箱或数字 ID" maxLength={254} value={account} onChange={(event) => setAccount(event.target.value)} disabled={busy} required /></div>
-          <div className="space-y-2"><Label htmlFor="share-login-password">密码</Label><Input id="share-login-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} required /></div>
+          <div className="space-y-2">
+            <Label htmlFor="share-login-account">账号</Label>
+            <Input id="share-login-account" name="username" className={fieldClassName} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" placeholder="邮箱或数字 ID" maxLength={254} value={account} onChange={(event) => setAccount(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); passwordRef.current?.focus(); } }} disabled={busy} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="share-login-password">密码</Label>
+            <div className="relative">
+              <Input ref={passwordRef} id="share-login-password" name="password" className={`${fieldClassName} pr-14`} type={showPassword ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="go" placeholder="请输入密码" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} required />
+              <Button type="button" variant="ghost" size="icon" className="absolute top-0.5 right-0.5 h-11 w-11 rounded-xl text-muted-foreground" aria-label={showPassword ? "隐藏密码" : "显示密码"} aria-controls="share-login-password" onPointerDown={(event) => event.preventDefault()} onClick={() => setShowPassword((value) => !value)} disabled={busy}>
+                {showPassword ? <EyeOff /> : <Eye />}
+              </Button>
+            </div>
+          </div>
           {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
         </DialogBody>
-        <DialogFooter><Button type="submit" className="w-full" disabled={busy}>{busy ? "正在登录…" : "登录并领取"}</Button></DialogFooter>
+        <DialogFooter><Button type="submit" className="h-12 w-full" disabled={busy}>{busy ? "正在登录…" : "登录并领取"}</Button></DialogFooter>
       </form>
     </DialogContent>
   </Dialog>;
