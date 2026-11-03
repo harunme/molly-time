@@ -254,6 +254,14 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
   const claimButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!standalone) return;
+    const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!viewport) return;
+    const original = viewport.content;
+    viewport.content = `${original},maximum-scale=1,user-scalable=no`;
+    return () => { viewport.content = original; };
+  }, [standalone]);
   const load = async (value: Credential, signal?: AbortSignal) => {
     setBusy(true); setError(""); setShare(undefined); setCredential(undefined);
     try {
