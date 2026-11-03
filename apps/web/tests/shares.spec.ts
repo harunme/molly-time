@@ -176,3 +176,27 @@ test("share login errors and cancellation keep the visitor on the public overvie
   await expect(page.getByRole("navigation", { name: "管理导航" })).toHaveCount(0);
   await expect(join).toBeEnabled();
 });
+
+test("share preparation failure can be retried without reopening the dialog", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/api/manage/shares/prepare", async (route) => {
+    attempts += 1;
+    if (attempts === 1) await route.fulfill({ status: 503, json: { detail: "服务暂时不可用" } });
+    else await route.continue();
+  });
+  await page.goto("/manage/");
+  await login(page, "parent");
+  await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
+  await page.getByRole("button", { name: "更多操作 英语启蒙" }).click();
+  await page.getByRole("menuitem", { name: "分享内容" }).click();
+  const dialog = page.getByRole("dialog", { name: "分享 · 英语启蒙" });
+  await expect(dialog.getByText("无法准备分享")).toBeVisible();
+  await expect(dialog.getByRole("alert")).toContainText("服务暂时不可用");
+  await expect(dialog.getByText("正在准备分享…")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "生成分享", exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(dialog.getByText(/3 个视频/)).toBeVisible();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "生成分享", exact: true }).click();
+  await expect(dialog.getByLabel("分享链接")).toHaveValue(/\/share\//);
+});

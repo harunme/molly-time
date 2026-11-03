@@ -20,7 +20,7 @@ from ..resource_policy import published_episodes, visible
 from ..share_models import ContentShare, ShareClaim, SharedOrigin, ShareFile
 from ..storage import build_storage
 from ..transactions import external_io, serialize_sqlite_write
-from ..trash import deletion_lock, ensure_active, ensure_idle, family_tree, subtree
+from ..trash import deletion_lock, ensure_active, family_tree, subtree
 from ..usage import family_objects
 from .account_invitations import CODE_ALPHABET
 from .manage_resources import owned, reminder_resource_ids
@@ -143,7 +143,8 @@ def build_snapshot(db, user, resource_id, share_id):
     keys = subtree(family_tree(db, user.family_id), item.id)
     if db.query(SharedOrigin).filter(SharedOrigin.item_id.in_(keys)).first():
         raise HTTPException(409, "收到的内容暂不支持再次分享")
-    ensure_idle(db, keys)
+    # Snapshot committed media only; pending uploads do not replace published files.
+    # The caller holds deletion_lock() to serialize media replacement and retention.
     if not visible(db, item):
         raise HTTPException(409, "请先发布并完成内容处理")
     episodes = published_episodes(db, item.id, user.family_id) if item.type == "Series" else [item]

@@ -13,7 +13,7 @@ from test_tv_playback import client  # noqa: F401
 from mollytime_server import config, db
 from mollytime_server.auth import hash_password, issue_access_token
 from mollytime_server.main import create_app
-from mollytime_server.management_models import MediaOptions, ResourceState
+from mollytime_server.management_models import MediaOptions, MediaTask, ResourceState, UploadSession
 from mollytime_server.models import Family, Item, MediaFile, User
 from mollytime_server.share_models import ContentShare, ObjectCleanup, ShareClaim, ShareFile
 from mollytime_server.shares import cleanup_shares
@@ -520,3 +520,31 @@ def test_share_artwork_uses_snapshot_and_never_grants_video_access(parent, recip
         assert guest.post(route, json={"code": share["code"]}).content == b"snapshot-cover"
         expire(share)
         assert guest.post(route, json={"code": share["code"]}).status_code == 410
+
+
+@pytest.mark.parametrize("resource", ["series", "e1"])
+@pytest.mark.parametrize("status,task_status", [("uploading", None), ("processing", "queued"), ("processing", "running"), ("failed", "failed")])
+def test_pending_upload_does_not_block_published_snapshot(parent, recipient, resource, status, task_status):
+    with Session(db.get_engine()) as session:
+        session.add(Item(id="pending-episode", family_id="f1", parent_id="series", type="Episode", name="Pending"))
+        session.flush()
+        session.add(ResourceState(item_id="pending-episode", status="draft", ready=False))
+        session.flush()
+        for key, item_id, kind in [("pending-cover", "series", "image"), ("replacement", "e1", "video"), ("new-video", "pending-episode", "video")]:
+            session.add(UploadSession(id=key, family_id="f1", item_id=item_id, filename=key, kind=kind,
+                                      size=100, fingerprint=key, status=status))
+            session.flush()
+            if task_status:
+                session.add(MediaTask(upload_id=key, status=task_status))
+        session.commit()
+    prepared = parent.post("/api/manage/shares/prepare", json={"resourceId": resource})
+    assert prepared.status_code == 200, prepared.text
+    assert prepared.json()["videoCount"] == 1
+    share = create(parent, resource)
+    assert share["videoCount"] == 1
+    assert "pending-episode" not in {item["id"] for item in share["items"]}
+    with Session(db.get_engine()) as session:
+        files = session.query(ShareFile).filter_by(share_id=share["id"]).all()
+        assert {file.source_media_id for file in files} == {"v1", "s1"}
+        assert session.get(UploadSession, "replacement").status == status
+    accept(recipient, share, targetFolderId="receiver-folder")

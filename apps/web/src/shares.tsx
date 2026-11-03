@@ -85,13 +85,17 @@ export function ShareDialog({ resource, close }: { resource: Resource; close: ()
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState("");
   const creating = useRef(false);
+  const [prepareAttempt, setPrepareAttempt] = useState(0);
+  const [preparing, setPreparing] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
+    setPreparing(true); setPrepared(undefined); setError("");
     api<{ videoCount: number; sizeBytes: number }>("/shares/prepare", "POST", { resourceId: resource.id }, undefined, controller.signal)
       .then((value) => { if (!controller.signal.aborted) setPrepared(value); })
-      .catch((e) => { if (!controller.signal.aborted) setError(e.message); });
+      .catch((e) => { if (!controller.signal.aborted) setError(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setPreparing(false); });
     return () => controller.abort();
-  }, [resource.id]);
+  }, [resource.id, prepareAttempt]);
   const create = async () => {
     if (creating.current) return;
     creating.current = true;
@@ -111,7 +115,7 @@ export function ShareDialog({ resource, close }: { resource: Resource; close: ()
       <DialogHeader>
         <DialogTitle className="truncate">分享 · {resource.name}</DialogTitle>
         <DialogDescription>
-          {details ? `${details.videoCount} 个视频 · ${bytes(details.sizeBytes)}` : "正在准备分享…"}
+          {details ? `${details.videoCount} 个视频 · ${bytes(details.sizeBytes)}` : preparing ? "正在准备分享…" : "无法准备分享"}
           {expiry && ` · ${expiry} 到期`}
         </DialogDescription>
       </DialogHeader>
@@ -147,6 +151,7 @@ export function ShareDialog({ resource, close }: { resource: Resource; close: ()
         {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
       </DialogBody>
       {!share && <DialogFooter>
+        {!prepared && !preparing && <Button variant="bordered" onClick={() => setPrepareAttempt((value) => value + 1)}>重试</Button>}
         <Button disabled={busy || !prepared} onClick={() => void create()}>{busy ? "正在生成…" : "生成分享"}</Button>
       </DialogFooter>}
     </DialogContent>
