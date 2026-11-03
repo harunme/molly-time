@@ -133,8 +133,9 @@ class OssStorage:
                     )
                     time.sleep(2**attempt)
 
-    def signed_url(self, key, ttl_seconds):
-        return self._client().sign_url("GET", key, ttl_seconds, slash_safe=True)
+    def signed_url(self, key, ttl_seconds, *, process=None):
+        params = {"x-oss-process": process} if process else None
+        return self._client().sign_url("GET", key, ttl_seconds, params=params, slash_safe=True)
 
     def initiate(self, key):
         mime = {

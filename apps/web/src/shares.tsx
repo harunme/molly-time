@@ -4,8 +4,8 @@ import { BrandMark, BrandWordmark } from "./brand";
 import { api, ApiError, bytes, dateTime, setSession, type Resource, type Session } from "./api";
 import { ResourcePicker } from "./pagination";
 import { Loading } from "@/components/ui/loading";
-import { Check, Clock3, Copy, Eye, EyeOff, Film } from "lucide-react";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Check, Clock3, Copy, Eye, EyeOff, Film, UserRound } from "lucide-react";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,8 +15,8 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 
 type Summary = {
   id: string; name: string; type: "Series" | "Episode"; videoCount: number;
-  sizeBytes: number; expiresAt: string; imageId?: string | null; overview?: string; durationMs?: number;
-  items: { id: string; parentId: string | null; name: string; type: string; imageId?: string | null; overview?: string; runtimeMs?: number }[];
+  sizeBytes: number; expiresAt: string; imageId?: string | null; imageUrl?: string | null; overview?: string; durationMs?: number;
+  items: { id: string; parentId: string | null; name: string; type: string; imageId?: string | null; imageUrl?: string | null; overview?: string; runtimeMs?: number }[];
 };
 type Created = Summary & { url: string; code: string };
 type Preview = Summary & { claimedResourceId: string | null; claimedDeleted: boolean; claimedFolderId: string | null; ownShare: boolean };
@@ -27,12 +27,24 @@ function durationLabel(ms: number) {
   return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时${minutes % 60 ? ` ${minutes % 60} 分钟` : ""}`;
 }
 
-function ShareArtwork({ imageId, code, name, hero = false }: { imageId?: string | null; code: string; name: string; hero?: boolean }) {
+function ShareArtwork({ imageId, imageUrl, code, name, hero = false }: { imageId?: string | null; imageUrl?: string | null; code: string; name: string; hero?: boolean }) {
   const [failed, setFailed] = useState(false);
-  const [src, setSrc] = useState("");
+  const [localSrc, setLocalSrc] = useState("");
+  const [visible, setVisible] = useState(hero);
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    setFailed(false); setSrc("");
-    if (!imageId) return;
+    if (hero || visible || !containerRef.current) return;
+    if (!("IntersectionObserver" in window)) { setVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) { setVisible(true); observer.disconnect(); }
+    }, { rootMargin: "160px" });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [hero, visible]);
+  useEffect(() => {
+    setFailed(false); setLocalSrc("");
+    // OSS is loaded directly by <img>; the authenticated POST is only for local files.
+    if (!visible || !imageId || imageUrl) return;
     const controller = new AbortController();
     let objectUrl = "";
     void fetch(`/api/shares/images/${encodeURIComponent(imageId)}`, {
@@ -42,26 +54,31 @@ function ShareArtwork({ imageId, code, name, hero = false }: { imageId?: string 
       if (!response.ok) throw new Error("封面加载失败");
       const blob = await response.blob();
       if (controller.signal.aborted) return;
-      objectUrl = URL.createObjectURL(blob); setSrc(objectUrl);
+      objectUrl = URL.createObjectURL(blob); setLocalSrc(objectUrl);
     }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [imageId, code]);
-  if (hero && (!src || failed)) return null;
-  return <div className={hero ? "share-hero-art" : "share-video-art"}>
-    {src && !failed ? <img src={src} alt={`${name}封面`} loading={hero ? "eager" : "lazy"} referrerPolicy="no-referrer" onError={() => setFailed(true)} /> :
+  }, [imageId, imageUrl, code, visible]);
+  if (hero && ((!imageId && !imageUrl) || failed)) return null;
+  const src = visible ? imageUrl || localSrc : "";
+  return <div ref={containerRef} className={hero ? "share-hero-art" : "share-video-art"}>
+    {src && !failed ? <img src={src} alt={`${name}封面`} loading={hero ? "eager" : "lazy"} fetchPriority={hero ? "high" : "low"} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> :
       <div className="share-art-placeholder"><Film aria-hidden="true" />{hero && <span>{name}</span>}</div>}
   </div>;
 }
 
 function SummaryDetails({ share, code, children }: { share: Summary; code: string; children?: ReactNode }) {
-  const videos = share.items.filter((item) => item.type === "Episode");
+  const videos = share.items.filter((item) => item.type === "Episode").slice(0, 10);
   return <>
     <div className="share-hero">
-      <ShareArtwork imageId={share.imageId} code={code} name={share.name} hero />
+      <ShareArtwork imageUrl={share.imageUrl} imageId={share.imageId} code={code} name={share.name} hero />
       <div className="share-hero-copy">
         <h2>{share.name}</h2>
         {share.overview && <p className="share-overview">{share.overview}</p>}
-        <div className="share-facts"><span>{share.videoCount} 个视频</span><span>{bytes(share.sizeBytes)}</span>{!!share.durationMs && <span><Clock3 aria-hidden="true" />{durationLabel(share.durationMs)}</span>}</div>
+        <div className="share-facts">
+          <span>{share.videoCount} 个视频</span><span>{bytes(share.sizeBytes)}</span>
+          {!!share.durationMs && <span><Clock3 aria-hidden="true" />{durationLabel(share.durationMs)}</span>}
+          <span className="w-full">领取截止：{dateTime(share.expiresAt)}</span>
+        </div>
       </div>
     </div>
     {children}
@@ -69,11 +86,12 @@ function SummaryDetails({ share, code, children }: { share: Summary; code: strin
       <div className="share-section-title"><h3>包含的视频 <span className="ml-2 tabular-nums">共 {share.videoCount} 个</span></h3></div>
       <ul className="share-video-grid">
         {videos.map((item) => <li className="share-video" key={item.id}>
-          <div className="share-video-image"><ShareArtwork imageId={item.imageId} code={code} name={item.name} />{!!item.runtimeMs && <span className="share-runtime">{durationLabel(item.runtimeMs)}</span>}</div>
+          <div className="share-video-image"><ShareArtwork imageUrl={item.imageUrl} imageId={item.imageId} code={code} name={item.name} />{!!item.runtimeMs && <span className="share-runtime">{durationLabel(item.runtimeMs)}</span>}</div>
           <h4>{item.name}</h4>
           {item.overview && <p>{item.overview}</p>}
         </li>)}
       </ul>
+      {share.videoCount > videos.length && <p className="mt-4 text-xs text-muted-foreground">仅展示前 {videos.length} 个视频，领取后可观看全部 {share.videoCount} 个。</p>}
     </section>}
   </>;
 }
@@ -177,7 +195,7 @@ async function previewShare(credential: Credential, signal?: AbortSignal): Promi
   return result;
 }
 
-function ShareLoginDialog({ close, loggedIn }: { close: () => void; loggedIn: (session: Session) => Promise<void> }) {
+function ShareLoginForm({ close, loggedIn }: { close: () => void; loggedIn: (session: Session) => Promise<void> }) {
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -185,56 +203,41 @@ function ShareLoginDialog({ close, loggedIn }: { close: () => void; loggedIn: (s
   const [error, setError] = useState("");
   const titleRef = useRef<HTMLHeadingElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  const [viewport, setViewport] = useState<{ top: number; height: number }>();
   useEffect(() => {
-    const visualViewport = window.visualViewport;
-    const update = () => setViewport(window.innerWidth < 640 ? {
-      top: visualViewport?.offsetTop ?? 0,
-      height: visualViewport?.height ?? window.innerHeight,
-    } : undefined);
-    update();
-    visualViewport?.addEventListener("resize", update);
-    visualViewport?.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
-    return () => {
-      visualViewport?.removeEventListener("resize", update);
-      visualViewport?.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
+    titleRef.current?.focus({ preventScroll: true });
+    titleRef.current?.scrollIntoView({ block: "nearest" });
   }, []);
-  const fieldClassName = "h-12 rounded-xl border border-input bg-input-surface px-3 text-base";
-  return <Dialog open onOpenChange={(open) => { if (!open && !busy) close(); }}>
-    <DialogContent className="max-w-100 overscroll-contain" showCloseButton={!busy}
-      style={viewport ? { top: viewport.top + 12, maxHeight: Math.max(0, viewport.height - 24), translate: "-50% 0" } : undefined}
-      onOpenAutoFocus={(event) => { event.preventDefault(); titleRef.current?.focus(); }}>
-      <DialogHeader><DialogTitle ref={titleRef} tabIndex={-1} className="outline-none">登录领取</DialogTitle><DialogDescription>使用 MollyTime 账号登录，领取到自己的内容库。</DialogDescription></DialogHeader>
-      <form onSubmit={(event) => {
-        event.preventDefault(); if (busy) return;
-        setBusy(true); setError("");
-        void api<Session>("/auth/login", "POST", { username: account.trim(), password })
-          .then(loggedIn).catch((failure) => setError(failure.message)).finally(() => setBusy(false));
-      }}>
-        <DialogBody className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="share-login-account">账号</Label>
-            <Input id="share-login-account" name="username" className={fieldClassName} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" placeholder="邮箱或数字 ID" maxLength={254} value={account} onChange={(event) => setAccount(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); passwordRef.current?.focus(); } }} disabled={busy} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="share-login-password">密码</Label>
-            <div className="relative">
-              <Input ref={passwordRef} id="share-login-password" name="password" className={`${fieldClassName} pr-14`} type={showPassword ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="go" placeholder="请输入密码" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} required />
-              <Button type="button" variant="ghost" size="icon" className="absolute top-0.5 right-0.5 h-11 w-11 rounded-xl text-muted-foreground" aria-label={showPassword ? "隐藏密码" : "显示密码"} aria-controls="share-login-password" onPointerDown={(event) => event.preventDefault()} onClick={() => setShowPassword((value) => !value)} disabled={busy}>
-                {showPassword ? <EyeOff /> : <Eye />}
-              </Button>
-            </div>
-          </div>
-          {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
-        </DialogBody>
-        <DialogFooter><Button type="submit" className="h-12 w-full" disabled={busy}>{busy ? "正在登录…" : "登录并领取"}</Button></DialogFooter>
-      </form>
-    </DialogContent>
-  </Dialog>;
+  return <form aria-labelledby="share-login-title" className="space-y-4" onSubmit={(event) => {
+    event.preventDefault(); if (busy) return;
+    setBusy(true); setError("");
+    void api<Session>("/auth/login", "POST", { username: account.trim(), password })
+      .then(loggedIn).catch((failure) => setError(failure.message)).finally(() => setBusy(false));
+  }}>
+    <h3 id="share-login-title" ref={titleRef} tabIndex={-1} className="flex items-center gap-2 text-sm font-medium text-muted-foreground outline-none"><UserRound className="size-4" aria-hidden="true" />登录 MollyTime</h3>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="share-login-account">账号</Label>
+        <Input controlSize="compact" id="share-login-account" name="username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" placeholder="邮箱或数字 ID" maxLength={254} value={account} onChange={(event) => setAccount(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); passwordRef.current?.focus(); } }} disabled={busy} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="share-login-password">密码</Label>
+        <InputGroup controlSize="compact">
+          <InputGroupInput ref={passwordRef} id="share-login-password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="go" placeholder="请输入密码" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} required />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton type="button" aria-label={showPassword ? "隐藏密码" : "显示密码"} aria-controls="share-login-password" onPointerDown={(event) => event.preventDefault()} onClick={() => setShowPassword((value) => !value)} disabled={busy}>
+              {showPassword ? <EyeOff /> : <Eye />}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </div>
+      {error && <Alert variant="destructive" role="alert"><AlertDescription>{error}</AlertDescription></Alert>}
+    </div>
+    <div className="flex items-center gap-3">
+      <Button size="compact" type="submit" className="flex-1" disabled={busy}>{busy ? "正在登录…" : "登录并领取"}</Button>
+      <Button size="compact" type="button" variant="ghost" disabled={busy} onClick={close}>取消</Button>
+    </div>
+  </form>;
 }
 
 export function ShareReceive({ session, readonly, standalone = false, modal = false, initialFolderId = "", initialFolder, received, onSession }: { session?: Session; readonly: boolean; standalone?: boolean; modal?: boolean; initialFolderId?: string; initialFolder?: Resource; received?: () => void; onSession?: (value: Session) => void }) {
@@ -250,6 +253,7 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
+  const claimButtonRef = useRef<HTMLButtonElement>(null);
   const load = async (value: Credential, signal?: AbortSignal) => {
     setBusy(true); setError(""); setShare(undefined); setCredential(undefined);
     try {
@@ -260,7 +264,7 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
     finally { if (!signal?.aborted) setBusy(false); }
   };
   useEffect(() => {
-    setShare(undefined); setCredential(undefined); setError(""); setBusy(false);
+    setShare(undefined); setCredential(undefined); setError(""); setBusy(false); setLoginOpen(false);
     if (!code) return;
     const controller = new AbortController();
     void load({ code }, controller.signal);
@@ -302,19 +306,24 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
   };
   const claimPanel = share && (
     <div className={modal ? "space-y-4" : "share-claim-panel"}>
-      <p className="share-expiry">领取截止：{dateTime(share.expiresAt)}</p>
       {share.ownShare ? <p className="text-sm text-muted-foreground">这是你家庭分享的内容，无需重复领取。</p> : share.claimedResourceId ? <>
-        <p>{share.claimedDeleted ? "你的家庭已领取过此分享，内容已删除，无法重复领取。" : claimed ? "已加入我的内容库，发布后可在电视上观看。" : "你的家庭已领取此分享，无需重复加入。"}</p>
-        {!standalone && !share.claimedDeleted && <Button asChild><Link to={share.type === "Series" ? `/library/${share.claimedResourceId}` : share.claimedFolderId ? `/library/${share.claimedFolderId}` : "/library"}>查看我的内容</Link></Button>}
+        <p>{share.claimedDeleted ? "你的家庭已领取过此分享，内容已删除，无法重复领取。" : claimed ? "已加入我的内容库，现在就可以在电视上观看。" : "你的家庭已领取此分享，无需重复加入。"}</p>
+        {!standalone && !share.claimedDeleted && <Button size="compact" asChild><Link to={share.type === "Series" ? `/library/${share.claimedResourceId}` : share.claimedFolderId ? `/library/${share.claimedFolderId}` : "/library"}>查看我的内容</Link></Button>}
       </> : <>
         {session && !readonly && share.type === "Episode" && <ResourcePicker initial={initialFolder} value={folder} onChange={setFolder} label="接收合集" placeholder="选择接收合集" />}
-        <p className="text-sm text-muted-foreground">{readonly ? "请使用家庭管理员账号领取分享。" : "领取后由你决定是否发布。"}</p>
-        <Button className="w-full" disabled={busy || readonly || (!!session && share.type === "Episode" && !folder)} onClick={() => void accept()}>{busy ? "正在加入…" : "加入我的内容库"}</Button>
+        {loginOpen ? <ShareLoginForm close={() => {
+          setLoginOpen(false);
+          requestAnimationFrame(() => claimButtonRef.current?.focus());
+        }} loggedIn={loggedIn} /> : <>
+          <p className="text-sm text-muted-foreground">{readonly ? "请使用家庭管理员账号领取分享。" : "领取后即可在电视上观看。"}</p>
+          <Button size="compact" ref={claimButtonRef} className="w-full" disabled={busy || readonly || (!!session && share.type === "Episode" && !folder)} onClick={() => void accept()}>{busy ? "正在加入…" : "加入我的内容库"}</Button>
+        </>}
       </>}
+      {modal && <p className="share-expiry">领取截止：{dateTime(share.expiresAt)}</p>}
     </div>
   );
   const content = <>
-    {!modal && <div className={share && code ? "sr-only" : "share-page-heading"}><h1 className="text-2xl font-semibold">{code ? "分享给你的内容" : "领取分享"}</h1><p className="mt-2 text-sm text-muted-foreground">加入自己的内容库，再决定给孩子看什么。</p></div>}
+    {!modal && <div className={share && code ? "sr-only" : "share-page-heading"}><h1 className="text-2xl font-semibold">{code ? "分享给你的内容" : "领取分享"}</h1><p className="mt-2 text-sm text-muted-foreground">加入自己的内容库，即可在电视上观看。</p></div>}
     <Card className={modal ? "border-0 bg-transparent p-0 shadow-none space-y-4" : share ? "share-content" : "p-6 space-y-5"}>
       {!code && <form className={share && !modal ? "share-code-form space-y-3" : "space-y-3"} onSubmit={(e) => {
         e.preventDefault();
@@ -323,19 +332,18 @@ export function ShareReceive({ session, readonly, standalone = false, modal = fa
       }}>
         <Label htmlFor="receive-code">分享链接或口令</Label>
         <div className="flex items-center gap-2">
-          <Input id="receive-code" className="min-w-0 flex-1" value={input} disabled={busy} onChange={(e) => setInput(e.target.value)} placeholder="粘贴链接或输入十二位口令" required />
-          <Button className="shrink-0" disabled={busy} type="submit">{busy ? "正在加载…" : "查看分享"}</Button>
+          <Input controlSize="compact" id="receive-code" className="min-w-0 flex-1" value={input} disabled={busy} onChange={(e) => setInput(e.target.value)} placeholder="粘贴链接或输入十二位口令" required />
+          <Button size="compact" className="shrink-0" disabled={busy} type="submit">{busy ? "正在加载…" : "查看分享"}</Button>
         </div>
       </form>}
       {busy && !share && <Loading variant="detail" label="正在读取分享内容…" />}
-      {code && !share && !busy && <Button variant="bordered" onClick={() => void load({ code })}>重新加载分享</Button>}
+      {code && !share && !busy && <Button size="compact" variant="bordered" onClick={() => void load({ code })}>重新加载分享</Button>}
       {share && <>
-        {modal ? <div className="space-y-2"><h3>{share.name}</h3><p className="text-sm text-muted-foreground">{share.videoCount} 个视频 · {bytes(share.sizeBytes)}</p><ul className="max-h-40 overflow-auto space-y-1 text-sm">{share.items.filter((item) => item.type === "Episode").map((item) => <li key={item.id}>{item.name}</li>)}</ul></div> : <SummaryDetails share={share} code={credential?.code || code}>{claimPanel}</SummaryDetails>}
+        {modal ? <div className="space-y-2"><h3>{share.name}</h3><p className="text-sm text-muted-foreground">{share.videoCount} 个视频 · {bytes(share.sizeBytes)}</p><ul className="max-h-40 overflow-auto space-y-1 text-sm">{share.items.filter((item) => item.type === "Episode").slice(0, 10).map((item) => <li key={item.id}>{item.name}</li>)}</ul>{share.videoCount > 10 && <p className="text-xs text-muted-foreground">仅展示前 10 个视频，领取后可观看全部 {share.videoCount} 个。</p>}</div> : <SummaryDetails share={share} code={credential?.code || code}>{claimPanel}</SummaryDetails>}
         {modal && claimPanel}
       </>}
       {error && <Alert variant="destructive" role="alert" className={share && !modal ? "share-error" : ""}><AlertDescription>{error}</AlertDescription></Alert>}
     </Card>
-    {loginOpen && <ShareLoginDialog close={() => setLoginOpen(false)} loggedIn={loggedIn} />}
   </>;
   return standalone ? <main className="share-landing">
     <div className="share-page">

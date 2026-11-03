@@ -15,7 +15,7 @@ from mollytime_server.auth import hash_password, issue_access_token
 from mollytime_server.main import create_app
 from mollytime_server.management_models import MediaOptions, MediaTask, ResourceState, UploadSession
 from mollytime_server.models import Family, Item, MediaFile, User
-from mollytime_server.share_models import ContentShare, ObjectCleanup, ShareClaim, ShareFile
+from mollytime_server.share_models import ContentShare, ObjectCleanup, ShareClaim, ShareFile, SharedOrigin
 from mollytime_server.shares import cleanup_shares
 from mollytime_server.storage.oss import OssStorage
 from mollytime_server.usage import storage_totals
@@ -82,7 +82,7 @@ def test_snapshot_claim_preserves_structure_metadata_and_family_isolation(parent
     assert preview.status_code == 200
     assert "path" not in preview.text and "video.mp4" not in preview.text
     root = accept(recipient, share)
-    assert recipient.get(f"/api/manage/resources/{root}").json()["status"] == "draft"
+    assert recipient.get(f"/api/manage/resources/{root}").json()["status"] == "published"
     with Session(db.get_engine()) as session:
         season = session.query(Item).filter_by(parent_id=root, type="Season").one()
         ep = session.query(Item).filter_by(parent_id=season.id, type="Episode").one()
@@ -98,19 +98,11 @@ def test_snapshot_claim_preserves_structure_metadata_and_family_isolation(parent
     assert (
         recipient.get(
             f"/api/episodes/{ep_id}/play", headers={"Authorization": f"Bearer {token}"}
-        ).status_code
-        == 404
-    )
-    assert parent.get(f"/api/manage/resources/{root}").status_code == 404
-    assert recipient.get("/api/manage/resources/e1").status_code == 404
-    for key in (root, ep_id):
-        assert recipient.post(f"/api/manage/resources/{key}/publish").status_code == 200
-    assert (
-        recipient.get(
-            f"/api/episodes/{ep_id}/play", headers={"Authorization": f"Bearer {token}"}
         ).content
         == b"0123456789"
     )
+    assert parent.get(f"/api/manage/resources/{root}").status_code == 404
+    assert recipient.get("/api/manage/resources/e1").status_code == 404
     assert recipient.post("/api/manage/shares", json={"resourceId": root}).status_code == 409
     assert recipient.get(f"/api/manage/resources/{root}").json()["shared"] is True
 
@@ -548,3 +540,86 @@ def test_pending_upload_does_not_block_published_snapshot(parent, recipient, res
         assert {file.source_media_id for file in files} == {"v1", "s1"}
         assert session.get(UploadSession, "replacement").status == status
     accept(recipient, share, targetFolderId="receiver-folder")
+
+
+def test_single_share_requires_visible_destination_and_plays_on_receipt(parent, recipient):
+    share = create(parent, "e1")
+    with Session(db.get_engine()) as session:
+        session.add(ResourceState(item_id="receiver-folder", status="draft", ready=True))
+        session.commit()
+    result = recipient.post("/api/manage/shares/accept", json={
+        "code": share["code"], "targetFolderId": "receiver-folder",
+    })
+    assert result.status_code == 422
+    with Session(db.get_engine()) as session:
+        assert session.query(ShareClaim).filter_by(share_id=share["id"]).count() == 0
+        session.get(ResourceState, "receiver-folder").status = "published"
+        session.commit()
+    episode = accept(recipient, share, targetFolderId="receiver-folder")
+    token, _ = issue_access_token(user_id="u2", family_id="f2", role="admin")
+    response = recipient.get(f"/api/episodes/{episode}/play", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert response.content == b"0123456789"
+
+
+def test_oss_share_preview_signs_bounded_thumbnails_without_reading_objects(parent, recipient, monkeypatch):
+    root = config.get_settings().resolved_media_dir()
+    (root / "direct-cover.jpg").write_bytes(b"cover")
+    with Session(db.get_engine()) as session:
+        session.add(MediaFile(id="direct-cover", family_id="f1", item_id="series", kind="image",
+            storage="local", path="direct-cover.jpg", mime="image/jpeg", size_bytes=5))
+        session.commit()
+    share = create(parent)
+    with Session(db.get_engine()) as session:
+        cover = session.query(ShareFile).filter_by(share_id=share["id"], source_media_id="direct-cover").one()
+        cover.storage = "oss"
+        session.get(ContentShare, share["id"]).expires_at = dt.datetime.now(dt.UTC) + dt.timedelta(seconds=120)
+        session.commit()
+    storage = Mock(spec=OssStorage)
+    storage.signed_url.side_effect = lambda key, ttl, **kwargs: "https://images.example.test/cover?process=" + kwargs["process"]
+    monkeypatch.setattr("mollytime_server.api.shares.build_storage", lambda backend: storage)
+    with TestClient(create_app()) as guest:
+        response = guest.post("/api/shares/preview", json={"code": share["code"]})
+        assert response.status_code == 200
+        data = response.json()
+        assert "resize,w_960/quality,Q_80/format,webp" in data["imageUrl"]
+        assert "resize,w_240/quality,Q_75/format,webp" in data["items"][0]["imageUrl"]
+        assert "x-molly-usage=" in data["imageUrl"]
+        assert storage.signed_url.call_count == 2
+        assert all(0 < call.args[1] <= 120 for call in storage.signed_url.call_args_list)
+        storage.open.assert_not_called()
+        storage.resolve.assert_not_called()
+        assert guest.post("/api/shares/preview", json={"code": "A" * 12}).status_code == 404
+        expire(share)
+        assert guest.post("/api/shares/preview", json={"code": share["code"]}).status_code == 410
+        assert storage.signed_url.call_count == 2
+
+
+def test_public_preview_limits_list_but_claim_keeps_all_videos(parent, recipient):
+    with Session(db.get_engine()) as session:
+        for index in range(12):
+            session.add(Item(id=f"extra-{index}", family_id="f1", parent_id="series", type="Episode", name=f"Extra {index}"))
+        session.flush()
+        for index in range(12):
+            session.add(MediaFile(id=f"extra-video-{index}", family_id="f1", item_id=f"extra-{index}",
+                kind="video", storage="local", path="video.mp4", mime="video/mp4", size_bytes=10))
+        session.commit()
+    share = create(parent)
+    with TestClient(create_app()) as guest:
+        data = guest.post("/api/shares/preview", json={"code": share["code"]}).json()
+    assert data["videoCount"] == 13
+    assert len(data["items"]) == 10
+    assert all(row["type"] == "Episode" for row in data["items"])
+    accept(recipient, share)
+    with Session(db.get_engine()) as session:
+        assert session.query(Item).join(SharedOrigin, SharedOrigin.item_id == Item.id).filter(
+            Item.family_id == "f2", Item.type == "Episode", SharedOrigin.share_id == share["id"],
+        ).count() == 13
+
+
+def test_oss_image_processing_is_included_in_signature():
+    storage = OssStorage(endpoint="https://oss.example.test", bucket="images", access_key_id="test", access_key_secret="test")
+    storage._public = Mock()
+    process = "image/resize,w_240/quality,Q_75/format,webp"
+    storage.signed_url("cover.jpg", 120, process=process)
+    storage._public.sign_url.assert_called_once_with("GET", "cover.jpg", 120, params={"x-oss-process": process}, slash_safe=True)

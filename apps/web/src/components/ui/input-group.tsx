@@ -6,12 +6,13 @@ import { cn } from "@/lib/utils";
 
 const Slot = SlotPrimitive.Root;
 
-function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+function InputGroup({ className, controlSize = "default", ...props }: React.ComponentProps<"div"> & { controlSize?: "default" | "compact" }) {
   return (
     <div
       data-slot="input-group"
       className={cn(
-        "group relative flex h-control w-full items-center rounded-[20px] bg-card focus-within:ring-2 focus-within:ring-focus-ring",
+        "group relative flex h-control w-full items-center rounded-[20px] bg-input-surface focus-within:ring-2 focus-within:ring-focus-ring",
+        controlSize === "compact" && "h-control-compact",
         className,
       )}
       {...props}

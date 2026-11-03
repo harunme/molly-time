@@ -26,6 +26,7 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-control min-w-button px-4 text-ui",
+        compact: "h-control-compact min-w-button px-4 text-ui",
         sm: "h-control-sm px-3 text-sm",
         lg: "h-control-lg px-6 text-ui",
         icon: "h-control-sm w-control-sm min-w-0 p-0",

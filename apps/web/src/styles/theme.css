@@ -51,7 +51,7 @@
   --color-accent: #EEF2F0;
   --color-accent-foreground: var(--color-foreground);
   --color-input: var(--color-border);
-  --color-input-surface: var(--color-card);
+  --color-input-surface: #EDF1EF;
   --color-ring: #A6A6A6;
   --color-focus-ring: #A6A6A6;
   --color-toast-border: rgb(255 255 255 / 0.12);
@@ -108,7 +108,8 @@
   --spacing-heatmap-cell: 0.75rem;
   --spacing-heatmap-gap: 0.1875rem;
   --blur-dialog: 0.25rem;
-  --spacing-control: 2.5rem;
+  --spacing-control: max(44px, 2.75rem);
+  --spacing-control-compact: 40px;
   --spacing-control-sm: 2rem;
   --spacing-control-lg: 2.75rem;
   --spacing-tab-indicator: 0.1875rem;

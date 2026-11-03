@@ -381,7 +381,7 @@
   @apply size-full object-cover;
 }
 .share-hero-copy {
-  @apply space-y-3 p-6 sm:p-8;
+  @apply space-y-3 px-6 pt-6 pb-4 sm:px-8 sm:pt-8;
 }
 .share-hero-copy h2 {
   @apply break-words text-2xl font-semibold leading-tight sm:text-3xl;
@@ -435,10 +435,7 @@
   @apply line-clamp-1 text-xs leading-5 text-muted-foreground;
 }
 .share-claim-panel {
-  @apply space-y-3 p-6 sm:p-8;
-}
-.share-claim-panel > button {
-  @apply min-h-11;
+  @apply space-y-3 px-6 pb-6 sm:px-8 sm:pb-8;
 }
 .share-error {
   @apply mx-6 mb-6 w-auto sm:mx-8;
@@ -1230,7 +1227,7 @@ td small {
 [data-slot="sheet-content"]:is([data-side="left"], [data-side="right"]) { top: var(--visible-top, 0px); bottom: auto; height: var(--visible-height, 100dvh); }
 [data-slot="sheet-content"][data-side="bottom"] { bottom: auto; top: calc(var(--visible-top, 0px) + var(--visible-height, 100dvh)); transform: translateY(-100%); max-height: var(--visible-height, 100dvh); }
 @media (pointer: coarse) {
-  [data-slot="button"]:not(.overview-heatmap-day), .desktop-card-menu button, .folder-back-link, .folder-dismiss { min-height: 44px; min-width: 44px; }
+  [data-slot="button"]:not(.overview-heatmap-day):not([data-size="compact"]), .desktop-card-menu button, .folder-back-link, .folder-dismiss { min-height: 44px; min-width: 44px; }
   [data-slot="dialog-content"] > [data-slot="dialog-close"], [data-slot="dialog-content"] > button { min-height: 44px; min-width: 44px; top: 8px; right: 8px; }
   .desktop-card-menu { right: 0; top: 8px; }
   .folder-path button { padding-block: 8px; font-size: 12px; }

@@ -91,10 +91,26 @@ def usable(share, family):
         raise HTTPException(410, "分享已过期，请联系分享者重新生成")
 
 
-def summary(db, share):
+def summary(db, share, *, preview_limit=None):
     snap = share.snapshot
-    images = {file.source_item_id: file.id for file in db.query(ShareFile).filter_by(share_id=share.id).all()
-              if file.metadata_.get("kind") == "image"}
+    image_files = {file.id: file for file in db.query(ShareFile).filter_by(share_id=share.id).all()
+                   if file.metadata_.get("kind") == "image"}
+    images = {file.source_item_id: file.id for file in image_files.values()}
+    image_urls = {}
+    ttl = min(900, int((aware(share.expires_at) - dt.datetime.now(dt.UTC)).total_seconds()))
+
+    def artwork_url(image_id, hero=False):
+        file = image_files.get(image_id)
+        if not file or file.storage != "oss" or ttl <= 0:
+            return None
+        key = (image_id, hero)
+        if key not in image_urls:
+            from ..oss_usage import media_url
+            process = ("image/resize,w_960/quality,Q_80/format,webp" if hero else
+                       "image/resize,w_240/quality,Q_75/format,webp")
+            with external_io(db):
+                image_urls[key] = media_url(build_storage("oss"), file.path, ttl, share.family_id, process=process)
+        return image_urls[key]
     items = {row["id"]: row for row in snap["items"]}
 
     def cover(row):
@@ -116,6 +132,7 @@ def summary(db, share):
         "sizeBytes": snap["sizeBytes"],
         "expiresAt": aware(share.expires_at).isoformat(),
         "imageId": cover_id,
+        "imageUrl": artwork_url(cover_id, hero=True),
         "overview": root.get("overview") or "",
         "durationMs": sum((row.get("runtime_ticks") or 0) // 10000 for row in snap["items"] if row["type"] == "Episode"),
         "items": [
@@ -125,10 +142,12 @@ def summary(db, share):
                 "name": row["name"],
                 "type": row["type"],
                 "imageId": cover(row) or cover_id,
+                "imageUrl": artwork_url(cover(row) or cover_id),
                 "overview": row.get("overview") or "",
                 "runtimeMs": (row.get("runtime_ticks") or 0) // 10000,
             }
-            for row in snap["items"]
+            for row in (snap["items"] if preview_limit is None else
+                        [item for item in snap["items"] if item["type"] == "Episode"][:preview_limit])
         ],
     }
 
@@ -328,7 +347,7 @@ def public_preview(body: Credential, request: Request, db: DbSession):
         raise HTTPException(410, "分享已过期，请联系分享者重新生成")
     resource = db.get(Item, claim.resource_id) if claim else None
     return {
-        **summary(db, share),
+        **summary(db, share, preview_limit=10),
         "claimedResourceId": claim.resource_id if claim else None,
         "claimedDeleted": bool(resource and resource.type == "Deleted"),
         "claimedFolderId": resource.parent_id if resource and resource.type == "Episode" else None,
@@ -396,6 +415,8 @@ def accept_share(body: AcceptShare, request: Request, user: Parent, db: DbSessio
             ensure_active(db, folder)
             if folder.type != "Series" or folder.id in reminder_resource_ids(db, user.family_id):
                 raise HTTPException(422, "请选择自己的普通合集")
+            if not visible(db, folder):
+                raise HTTPException(422, "请选择已发布的合集，领取后即可观看")
         files = db.query(ShareFile).filter_by(share_id=share.id).all()
         existing = family_objects(db, user.family_id)
         from ..trash import object_identity
@@ -440,7 +461,7 @@ def accept_share(body: AcceptShare, request: Request, user: Parent, db: DbSessio
                 db.add(
                     ResourceState(
                         item_id=ids[row["id"]],
-                        status="published" if row["type"] == "Season" else "draft",
+                        status="published",
                         ready=True,
                     )
                 )

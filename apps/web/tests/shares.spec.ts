@@ -6,7 +6,7 @@ async function login(page: Page, user: string) {
   await page.getByRole("button", { name: /^登录(?:并领取)?$/ }).click();
 }
 
-test("share collection, login through link, receive draft and publish independently", async ({ page, browser }) => {
+test("share collection, login through link, receive published content and play independently", async ({ page, browser }) => {
   await page.goto("/manage/");
   await login(page, "parent");
   await page.getByRole("navigation", { name: "管理导航" }).getByRole("link", { name: "资源库", exact: true }).click();
@@ -27,12 +27,12 @@ test("share collection, login through link, receive draft and publish independen
     await expect(receiving.getByLabel("密码", { exact: true })).toHaveCount(0);
     await expect(receiving.getByRole("navigation", { name: "管理导航" })).toHaveCount(0);
     await receiving.getByRole("button", { name: "加入我的内容库" }).click();
-    const loginDialog = receiving.getByRole("dialog", { name: "登录领取" });
-    await expect(loginDialog).toBeVisible();
+    const loginForm = receiving.getByRole("form", { name: "登录 MollyTime" });
+    await expect(loginForm).toBeVisible();
     await expect(receiving).toHaveURL(url);
     await login(receiving, "receiver");
-    await expect(loginDialog).toHaveCount(0);
-    await expect(receiving.getByText("已加入我的内容库，发布后可在电视上观看。")).toBeVisible();
+    await expect(loginForm).toHaveCount(0);
+    await expect(receiving.getByText("已加入我的内容库，现在就可以在电视上观看。")).toBeVisible();
     await expect(receiving).toHaveURL(url);
     await expect(receiving.getByRole("navigation", { name: "管理导航" })).toHaveCount(0);
     await receiving.setViewportSize({ width: 390, height: 844 });
@@ -43,23 +43,9 @@ test("share collection, login through link, receive draft and publish independen
       return folders.find((item: { name: string }) => item.name === "英语启蒙").id as string;
     });
     const videos = await receiving.request.get(`/api/manage/folders/${folderId}/videos`);
-    expect((await videos.json()).every((item: { status: string }) => item.status === "draft")).toBe(true);
+    expect((await videos.json()).every((item: { status: string }) => item.status === "published")).toBe(true);
     await receiving.reload();
     await expect(receiving.getByText("你的家庭已领取此分享，无需重复加入。")).toBeVisible();
-    // Publish the collection and its episodes using the same authenticated APIs as the UI.
-    const published = await receiving.evaluate(async () => {
-      const session = await (await fetch("/api/manage/auth/session")).json();
-      const folders = await (await fetch("/api/manage/resources")).json();
-      const folder = folders.find((item: { name: string }) => item.name === "英语启蒙");
-      const episodes = await (await fetch(`/api/manage/folders/${folder.id}/videos`)).json();
-      const headers = { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken };
-      for (const id of [folder.id, ...episodes.map((ep: { id: string }) => ep.id)]) {
-        const response = await fetch(`/api/manage/resources/${id}/publish`, { method: "POST", headers });
-        if (!response.ok) return false;
-      }
-      return true;
-    });
-    expect(published).toBe(true);
     await receiving.goto(`/manage/#/library/${folderId}`);
     await receiving.getByRole("button", { name: "第 1 季", exact: true }).click();
     await receiving.getByRole("button", { name: "更多操作 Hello" }).click();
@@ -95,7 +81,7 @@ test("single video share links work without any claim entry in the library", asy
     await receiving.getByRole("combobox", { name: "接收合集" }).click();
     await receiving.getByRole("option", { name: "我的收藏", exact: true }).click();
     await receiving.getByRole("button", { name: "加入我的内容库" }).click();
-    await expect(receiving.getByText("已加入我的内容库，发布后可在电视上观看。")).toBeVisible();
+    await expect(receiving.getByText("已加入我的内容库，现在就可以在电视上观看。")).toBeVisible();
     await receiving.goto("/manage/#/library");
     await receiving.getByRole("button", { name: "我的收藏", exact: true }).click();
     await expect(receiving.getByRole("button", { name: "Hello", exact: true })).toBeVisible();
@@ -142,39 +128,49 @@ test("share login errors and cancellation keep the visitor on the public overvie
   await page.goto("/manage/#/share/ABCDEFGH2345");
   const join = page.getByRole("button", { name: "加入我的内容库", exact: true });
   await join.click();
-  const dialog = page.getByRole("dialog", { name: "登录领取", exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("heading")).toBeFocused();
-  const account = dialog.getByLabel("账号", { exact: true });
-  const password = dialog.getByLabel("密码", { exact: true });
+  const form = page.getByRole("form", { name: "登录 MollyTime", exact: true });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "登录测试", exact: true })).toBeVisible();
+  await expect(form).toBeVisible();
+  await expect(form.getByRole("heading")).toBeFocused();
+  const account = form.getByLabel("账号", { exact: true });
+  const password = form.getByLabel("密码", { exact: true });
   await account.fill("receiver@example.test");
   await account.press("Enter");
   await expect(password).toBeFocused();
   await password.fill("wrong-password");
-  await dialog.getByRole("button", { name: "显示密码", exact: true }).click();
+  await form.getByRole("button", { name: "显示密码", exact: true }).click();
   await expect(password).toHaveAttribute("type", "text");
   await expect(password).toHaveValue("wrong-password");
-  await dialog.getByRole("button", { name: "隐藏密码", exact: true }).click();
+  await form.getByRole("button", { name: "隐藏密码", exact: true }).click();
   await expect(password).toHaveAttribute("type", "password");
-  // A reduced visual viewport models the space left above a phone keyboard.
-  await page.evaluate(() => {
-    Object.defineProperty(window.visualViewport, "height", { configurable: true, value: 360 });
-    window.visualViewport!.dispatchEvent(new Event("resize"));
-  });
-  await expect.poll(async () => {
-    const box = await dialog.boundingBox();
-    return !!box && box.y >= 0 && box.y + box.height <= 360;
-  }).toBe(true);
-  await dialog.getByRole("button", { name: "登录并领取", exact: true }).scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "../../artifacts/share-login-mobile-keyboard.png", animations: "disabled" });
-  await dialog.getByRole("button", { name: "登录并领取", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("账号密码错误");
-  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+  const submit = form.getByRole("button", { name: "登录并领取", exact: true });
+  await page.screenshot({ path: "../../artifacts/share-login-inline-mobile.png", fullPage: true, animations: "disabled" });
+  // The whole page remains scrollable when the keyboard reduces available space.
+  await page.setViewportSize({ width: 390, height: 300 });
+  await password.scrollIntoViewIfNeeded();
+  await expect(password).toBeInViewport();
+  await submit.scrollIntoViewIfNeeded();
+  await expect(submit).toBeInViewport();
+  await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
+  await form.getByRole("button", { name: "登录并领取", exact: true }).click();
+  await expect(form.getByRole("alert")).toContainText("账号密码错误");
+  await form.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(form).toHaveCount(0);
   await expect(page).toHaveURL(/#\/share\/ABCDEFGH2345$/);
   await expect(page.getByRole("heading", { name: "登录测试", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "管理导航" })).toHaveCount(0);
   await expect(join).toBeEnabled();
+  await expect(join).toBeFocused();
+  await join.click();
+  await expect(form.getByLabel("密码", { exact: true })).toHaveValue("");
+  await page.route("**/api/manage/shares/accept", (route) => route.fulfill({ json: { resourceId: "received-share", deleted: false } }));
+  await form.getByLabel("账号", { exact: true }).fill("receiver@example.test");
+  await form.getByLabel("密码", { exact: true }).fill("receiver-e2e");
+  await submit.click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByText("已加入我的内容库，现在就可以在电视上观看。")).toBeVisible();
+  await expect(page).toHaveURL(/#\/share\/ABCDEFGH2345$/);
 });
 
 test("share preparation failure can be retried without reopening the dialog", async ({ page }) => {
@@ -199,4 +195,41 @@ test("share preparation failure can be retried without reopening the dialog", as
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await dialog.getByRole("button", { name: "生成分享", exact: true }).click();
   await expect(dialog.getByLabel("分享链接")).toHaveValue(/\/share\//);
+});
+
+test("share thumbnails load directly on approach and preview stops at ten videos", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  const loaded: string[] = [];
+  const proxyRequests: string[] = [];
+  await page.route("**/api/shares/images/**", (route) => {
+    proxyRequests.push(route.request().url());
+    return route.fulfill({ status: 500 });
+  });
+  await page.route("https://images.example.test/**", (route) => {
+    loaded.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ path: "../site/src/assets/images/children-cartoons.jpg", contentType: "image/jpeg" });
+  });
+  await page.route("**/api/shares/preview", (route) => route.fulfill({ json: {
+    id: "direct-images", name: "Super Simple Songs", type: "Series", videoCount: 18, sizeBytes: 1024,
+    imageId: "hero", imageUrl: "https://images.example.test/hero.webp",
+    expiresAt: "2026-11-10T15:12:13Z", claimedResourceId: null, claimedDeleted: false, claimedFolderId: null, ownShare: false,
+    items: Array.from({ length: 18 }, (_, index) => ({
+      id: `episode-${index}`, name: `视频 ${index + 1}`, type: "Episode", parentId: "root",
+      imageId: `cover-${index}`, imageUrl: `https://images.example.test/thumb-${index}.webp`,
+    })),
+  } }));
+  await page.goto("/manage/#/share/ABCDEFGH2345");
+  await expect(page.locator(".share-hero-art img")).toHaveAttribute("fetchpriority", "high");
+  await expect.poll(() => loaded.includes("/hero.webp")).toBe(true);
+  await expect(page.locator(".share-video")).toHaveCount(10);
+  const last = page.locator(".share-video").last();
+  await expect(last.locator("img")).toHaveCount(0);
+  expect(loaded).not.toContain("/thumb-9.webp");
+  await last.scrollIntoViewIfNeeded();
+  await expect(last.locator("img")).toBeVisible();
+  await expect.poll(() => loaded.includes("/thumb-9.webp")).toBe(true);
+  await expect(page.getByText("仅展示前 10 个视频，领取后可观看全部 18 个。")).toBeVisible();
+  expect(loaded.some((url) => /thumb-1[0-7]\.webp/.test(url))).toBe(false);
+  expect(proxyRequests).toEqual([]);
+  await page.screenshot({ path: "../../artifacts/share-ten-video-preview.png", fullPage: true });
 });

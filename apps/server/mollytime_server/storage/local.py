@@ -57,7 +57,7 @@ class LocalStorage:
     def delete(self, key: str) -> None:
         self._abspath(key).unlink(missing_ok=True)
 
-    def signed_url(self, key: str, ttl_seconds: int) -> str | None:
+    def signed_url(self, key: str, ttl_seconds: int, *, process: str | None = None) -> str | None:
         # Local backend cannot issue CDN-style signed URLs. Caller decides
         # whether to fall back to direct streaming.
         return None

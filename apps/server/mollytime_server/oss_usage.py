@@ -35,9 +35,9 @@ def attribution(family_id, key):
     return f"{family_id}.{signature}"
 
 
-def media_url(storage, key, ttl, family_id):
+def media_url(storage, key, ttl, family_id, *, process=None):
     """x- parameters are ignored by OSS signing and retained in access logs."""
-    url = storage.signed_url(key, ttl)
+    url = storage.signed_url(key, ttl, process=process) if process else storage.signed_url(key, ttl)
     if not family_id:
         return url
     separator = "&" if "?" in url else "?"
