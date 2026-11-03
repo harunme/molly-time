@@ -17,10 +17,15 @@ import kotlin.math.min
 /** Native rendering of the approved paths: available before the WebView is ready. */
 class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) : View(context) {
     private val paths = mutableListOf<Path>()
+    private var cradleRest: Array<PathParser.PathDataNode>? = null
+    private var cradleLifted: Array<PathParser.PathDataNode>? = null
+    private var cradlePressed: Array<PathParser.PathDataNode>? = null
+    private var cradleFrame: Array<PathParser.PathDataNode>? = null
+    private val cradlePath = Path()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFF8DE7E.toInt() }
     private val route = PathMeasure(Path().apply {
-        moveTo(0f, 0f); cubicTo(48f, -22f, 48f, -96f, 8f, -124f)
-        cubicTo(48f, -96f, 48f, -22f, 0f, 0f)
+        moveTo(0f, 0f); cubicTo(55.2f, -25.3f, 55.2f, -110.4f, 9.2f, -142.6f)
+        cubicTo(55.2f, -110.4f, 55.2f, -25.3f, 0f, 0f)
     }, false)
     private val position = FloatArray(2)
     private var time = 0f
@@ -50,6 +55,14 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
             while (xml.eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
                 if (xml.eventType == org.xmlpull.v1.XmlPullParser.START_TAG && xml.name == "path") {
                     xml.getAttributeValue("http://schemas.android.com/apk/res/android", "pathData")?.let {
+                        if (paths.isEmpty() && it.contains("V151C212 143 194 149 183 163")) {
+                            cradleRest = PathParser.createNodesFromPathData(it)
+                            cradleLifted = PathParser.createNodesFromPathData(it.replace(
+                                "V151C212 143 194 149 183 163", "V148C212 139 194 145 183 160"))
+                            cradlePressed = PathParser.createNodesFromPathData(it.replace(
+                                "V151C212 143 194 149 183 163", "V153C212 145 194 151 183 165"))
+                            cradleFrame = PathParser.deepCopyNodes(cradleRest)
+                        }
                         PathParser.createPathFromPathData(it)?.let(paths::add)
                     }
                 }
@@ -93,7 +106,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
         val scales = spring(time)
         canvas.save(); pose(canvas)
         canvas.scale(scales.first, scales.second, 126f, 213f)
-        canvas.drawPath(paths[0], paint); canvas.restore()
+        canvas.drawPath(animatedCradle(time), paint); canvas.restore()
         val progress = when {
             time < .17f -> 0f
             time < .45f -> .5f * ease((time - .17f) / .28f)
@@ -103,17 +116,42 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
         }
         route.getPosTan(route.length * progress, position, null)
         canvas.save(); canvas.translate(position[0], position[1]); pose(canvas)
+        val carry = flowerCarry(time)
+        canvas.translate(carry.first, carry.second)
         canvas.rotate(-720f * progress, 218f, 190f)
         canvas.drawPath(paths[1], paint); canvas.restore(); canvas.restore()
+    }
+    // Translate the flower with the supporting M; keep the petals undistorted.
+    private fun flowerCarry(t: Float): Pair<Float, Float> {
+        val times = floatArrayOf(0f, .08f, .17f, .29f, .72f, .76f, .88f, .94f, 1f)
+        val x = floatArrayOf(0f, 0f, 2.76f, 0f, 0f, 1.656f, -.736f, 0f, 0f)
+        val y = floatArrayOf(0f, 0f, 1.15f, 0f, 0f, 2.575f, -.276f, 0f, 0f)
+        val i = (0 until times.lastIndex).firstOrNull { t <= times[it + 1] } ?: times.lastIndex - 1
+        val p = ease(((t - times[i]) / (times[i + 1] - times[i])).coerceIn(0f, 1f))
+        return (x[i] + (x[i + 1] - x[i]) * p) to (y[i] + (y[i + 1] - y[i]) * p)
+    }
+    private fun animatedCradle(t: Float): Path {
+        val rest = cradleRest ?: return paths[0]
+        val lifted = cradleLifted ?: return paths[0]
+        val pressed = cradlePressed ?: return paths[0]
+        val frame = cradleFrame ?: return paths[0]
+        val times = floatArrayOf(0f, .17f, .32f, .52f, .72f, .76f, .88f, 1f)
+        val poses = arrayOf(rest, rest, lifted, rest, rest, pressed, rest, rest)
+        val i = (0 until times.lastIndex).firstOrNull { t <= times[it + 1] } ?: times.lastIndex - 1
+        val p = ease(((t - times[i]) / (times[i + 1] - times[i])).coerceIn(0f, 1f))
+        for (n in frame.indices) frame[n].interpolatePathData(poses[i][n], poses[i + 1][n], p)
+        cradlePath.reset()
+        PathParser.PathDataNode.nodesToPath(frame, cradlePath)
+        return cradlePath
     }
     private fun pose(canvas: Canvas) {
         canvas.translate(120f, 130f); canvas.rotate(-25f); canvas.scale(1.02f, 1.02f); canvas.translate(-128f, -128f)
     }
     private fun ease(t: Float) = t * t * (3f - 2f * t)
     private fun spring(t: Float): Pair<Float, Float> {
-        val times = floatArrayOf(0f, .08f, .17f, .29f, .43f, .55f, .63f, .71f, .80f, .90f, 1f)
-        val x = floatArrayOf(1f, 1f, 1.065f, .94f, 1.025f, .99f, 1f, 1.035f, .985f, 1f, 1f)
-        val y = floatArrayOf(1f, 1f, .90f, 1.10f, .97f, 1.015f, 1f, .95f, 1.025f, 1f, 1f)
+        val times = floatArrayOf(0f, .08f, .17f, .29f, .43f, .55f, .63f, .72f, .76f, .88f, .94f, 1f)
+        val x = floatArrayOf(1f, 1f, 1.03f, .97f, 1.012f, .995f, 1f, 1f, 1.018f, .992f, 1f, 1f)
+        val y = floatArrayOf(1f, 1f, .95f, 1.05f, .985f, 1.008f, 1f, 1f, .975f, 1.012f, 1f, 1f)
         val i = (0 until times.lastIndex).firstOrNull { t <= times[it + 1] } ?: times.lastIndex - 1
         val p = ease(((t - times[i]) / (times[i + 1] - times[i])).coerceIn(0f, 1f))
         return (x[i] + (x[i + 1] - x[i]) * p) to (y[i] + (y[i + 1] - y[i]) * p)
