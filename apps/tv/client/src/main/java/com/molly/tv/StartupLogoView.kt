@@ -42,7 +42,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
         })
     }
     init {
-        setBackgroundColor(0xFF211F1B.toInt())
+        setBackgroundColor(context.getColor(R.color.startup_background))
         contentDescription = "MollyTime 正在启动"
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         readLogoPaths()

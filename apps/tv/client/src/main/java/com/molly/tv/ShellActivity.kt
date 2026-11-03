@@ -165,7 +165,7 @@ class ShellActivity : AppCompatActivity() {
         pageFrame = frame
         frame.addView(view, FrameLayout.LayoutParams(-1, -1))
         setContentView(frame)
-        view.setBackgroundColor(Color.rgb(33, 31, 27))
+        view.setBackgroundColor(getColor(R.color.startup_background))
         showStartup()
         view.settings.apply {
             javaScriptEnabled = true
