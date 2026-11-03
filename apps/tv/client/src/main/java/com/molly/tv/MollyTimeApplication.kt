@@ -26,6 +26,7 @@ class MollyTimeApplication : Application() {
         // Upgrade legacy parent-token TV sessions to revocable device credentials at next login.
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
         api = MollyTimeApi(session) { DeviceName.read(this) }
+        InstallationTelemetry(this)
         watchControl = WatchControl(this, session, api)
         val covers = CoverStore(this, session, api)
         catalog = CatalogSync(this, session, api, covers, emit = { name, detail ->

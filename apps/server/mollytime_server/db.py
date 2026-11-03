@@ -221,6 +221,7 @@ def init_db() -> None:
     # Import models so they register with Base.metadata.
     from . import (
         accounts,
+        analytics_models,  # noqa: F401 -- additive operational analytics
         catalog_versions,  # noqa: F401 -- register transactional catalog clocks
         management_models,
         models,
@@ -304,6 +305,9 @@ def init_db() -> None:
             session.commit()
         if session.get(management_models.SchemaRevision, "content-sharing-code-v2") is None:
             session.add(management_models.SchemaRevision(id="content-sharing-code-v2"))
+            session.commit()
+        if session.get(management_models.SchemaRevision, "operations-analytics-v1") is None:
+            session.add(management_models.SchemaRevision(id="operations-analytics-v1"))
             session.commit()
         if session.get(management_models.SchemaRevision, "family-usage-v1") is None:
             session.add(management_models.SchemaRevision(id="family-usage-v1"))

@@ -155,6 +155,8 @@ def report(session_id: str, body: Event, request: Request, user: CurrentUser, db
         row.last_reported_at = dt.datetime.now(dt.UTC)
         if row.device_id:
             db.get(Device, row.device_id).last_seen = row.last_reported_at
+            from ..analytics import record_device_day
+            record_device_day(db, row.device_id, row.last_reported_at)
             reminder = db.get(DeviceReminder, row.device_id)
             if reminder and reminder.session_id == row.id and body.completed and body.stopped:
                 reminder.phase = "done"

@@ -127,6 +127,8 @@ def create_app() -> FastAPI:
                 "apiBase": "/api",
             }
 
+    from .api import analytics
+    app.include_router(analytics.router)
     app.include_router(api_auth.router)
     app.include_router(account_invitations.router)
     app.include_router(client_updates.router)

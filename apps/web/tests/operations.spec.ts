@@ -17,6 +17,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
   await expect(page.getByRole('heading', { name: '运营设置', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '文件存储', exact: true }).click();
   await page.getByLabel('OSS Endpoint', { exact: true }).fill('https://oss-cn-hangzhou.aliyuncs.com');
   await page.getByLabel('Bucket', { exact: true }).fill('molly-e2e');
   await page.getByLabel('AccessKey ID', { exact: true }).fill('e2e-private-id');
@@ -27,6 +28,7 @@ test('family admin has no operations access; superadmin saves and reloads storag
   await expect(page.getByLabel('AccessKey Secret', { exact: true })).toHaveValue('');
   await page.reload();
   await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
+  await page.getByRole('tab', { name: '文件存储', exact: true }).click();
   await expect(page.getByLabel('Bucket', { exact: true })).toHaveValue('molly-e2e');
   await expect(page.getByLabel('播放签名有效期（秒）')).toHaveValue('1200');
   await expect(page.getByLabel('AccessKey Secret', { exact: true })).toHaveValue('');

@@ -19,13 +19,12 @@ def device_online(device, at=None):
 def touch_device(db, device_id, boot_id=None, boot_elapsed_ms=None):
     now = dt.datetime.now(dt.UTC)
     # Bound writes from overlapping player and page heartbeats; never roll time back.
-    result = db.execute(
+    db.execute(
         update(Device)
         .where(Device.id == device_id, Device.last_seen < now - dt.timedelta(seconds=10))
         .values(last_seen=now)
         .execution_options(synchronize_session=False)
     )
-    changed = False
     # Uptime comes from a monotonic client clock, never from its wall clock.
     if (boot_id and len(boot_id) <= 128 and boot_id.isascii()
             and boot_elapsed_ms and boot_elapsed_ms.isdecimal()
@@ -36,9 +35,8 @@ def touch_device(db, device_id, boot_id=None, boot_elapsed_ms=None):
             boot = db.get(DeviceBootState, device_id)
             if boot is None:
                 db.add(DeviceBootState(device_id=device_id, boot_id=boot_id, started_at=started))
-                changed = True
             elif boot.boot_id != boot_id and started > aware(boot.started_at):
                 boot.boot_id, boot.started_at = boot_id, started
-                changed = True
-    if result.rowcount or changed:
-        db.commit()
+    from .analytics import record_device_day
+    record_device_day(db, device_id, now)
+    db.commit()
