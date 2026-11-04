@@ -17,6 +17,7 @@ class ApiFailure(val status: Int) : Exception(when (status) {
 })
 
 class MollyTimeApi(private val session: SessionStore, private val deviceName: () -> String) {
+    private var registeredIdentityBinding = ""
     private var pairingCode = ""
     private var pairingServer = ""
     @Volatile var homeSchemaVersion = 1
@@ -27,7 +28,7 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
     @Synchronized fun pairingStart(): JSONObject {
         pairingCancel()
         val server = session.server
-        val result = json("POST", "/api/auth/pairing/start", JSONObject().put("name", deviceName()), false)
+        val result = json("POST", "/api/auth/pairing/start", JSONObject().put("name", deviceName()).put("identity", session.identityProof(server)), false)
         require(server == session.server) { "媒体库地址已变化，请重新配对" }
         pairingCode = result.getString("deviceCode")
         pairingServer = server
@@ -62,15 +63,32 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
 
     @Synchronized fun pairingReset(): JSONObject {
         try {
+            registerDeviceIdentity()
             json("POST", "/api/auth/pairing/reset")
         } catch (failure: ApiFailure) {
             if (failure.status != 401) throw failure
             // Already revoked: the old binding cannot authorize anything.
         }
         session.clear()
+        registeredIdentityBinding = ""
         pairingCode = ""
         pairingServer = ""
         return JSONObject().put("ok", true)
+    }
+
+    @Synchronized fun registerDeviceIdentity() {
+        val server = session.server
+        val device = session.deviceId
+        if (device.isEmpty() || session.refresh.isEmpty()) return
+        val binding = "$server|$device"
+        if (registeredIdentityBinding == binding) return
+        try {
+            json("POST", "/api/auth/device-identity", session.identityProof(server))
+            if (session.server == server && session.deviceId == device) registeredIdentityBinding = binding
+        } catch (failure: ApiFailure) {
+            // Server-first rollout recommended; older servers remain usable.
+            if (failure.status != 404) throw failure
+        }
     }
 
     // Every response is closed, including errors and a retried 401.

@@ -1,0 +1,161 @@
+# MollyTime iOS 家长端
+
+原生 SwiftUI 初版，默认连接 **https://mollytime.app**，iOS / iPadOS 17+。复用现有服务端，不要求创建新的家庭或迁移数据。登录后直接进入片库；现有账号的家庭仍是后台权限边界。
+
+## 打开与运行
+
+1. 安装完整 **Xcode 16 或更新版本**及 iOS Simulator runtime。仅 Command Line Tools 不能编译 iOS App。
+2. 打开 `MollyTime.xcodeproj`，选择 `MollyTime` scheme 和 iPhone 模拟器运行。
+3. 真机运行时，在 Signing & Capabilities 选择自己的 Personal Team；必要时修改 Bundle Identifier 为自己的唯一标识。免费 Apple 账号可用于个人真机调试，TestFlight / App Store 分发需要付费会员。
+4. 使用已有 MollyTime 账号登录。登录页「连接设置」可切换另一个 HTTPS 服务。未登录时仅显示登录页，登录后展示真实片库。
+
+工程不依赖 CocoaPods、第三方 Swift 包或 XcodeGen。`MollyCore` 是同目录本地 Swift Package。新增 Swift 文件后运行：
+
+```bash
+python3 apps/ios/tools/generate_project.py
+```
+
+生成脚本只更新项目和共享 scheme，不设置开发团队。若已经自定义 Xcode 项目配置，重新生成前保留这些改动。
+
+## 已实现
+
+- **片库**：合集层级、当前目录搜索、服务端分页、下拉刷新、真实封面、品牌缺省图、新建合集、视频详情、发布与隐藏。
+- **手机播放**：AVPlayer / AVPlayerViewController、系统播放控件、横竖屏、WebVTT 外挂字幕选择、本机续播、失败后重新获取签名 URL。播放进度按服务地址＋账号＋视频隔离，不写入儿童观看统计。
+- **上传**：从 Files 选择 MP4，或通过系统相册选择视频并在手机转换为 MP4；读取视频轨道、时长及小尺寸封面；检查服务器大小上限；支持 OSS 分片 MD5 签名直传及本地 SHA-256 分块上传；前台暂停/继续；默认仅家长可看；添加时可明确开启「上传后允许孩子观看」，就绪后调用现有发布接口。发布失败单独提示并允许重试。
+- **电视**：扫码或四位码查找、预览后确认绑定、设备列表、解绑、四位家长密码首次设置、每日按集数/分钟安排、按集数时「看完当前这一集就休息」。版本冲突会重新载入安排，要求家长确认。
+- **我的**：账号信息、实际存储用量、上传预留、已配置额度、服务地址与退出登录。
+- **系统体验**：Dynamic Type、VoiceOver 标签、浅色/深色自适应、iPad 自适应网格、相机拒绝后的手动绑定入口。
+
+## 设计方向
+
+三个固定入口：片库、电视、我的。内容卡片优先展示封面和名称，上传与电视控制留在明确的操作入口。
+
+沿用已确认的茉莉黄 `#F8DE7E` 与品牌花朵；内容缺省封面使用叶绿 `#3B6350`、暮蓝 `#38475C`、木棕 `#8A633B`。画布与卡片采用系统语义背景，自动适配深色模式。标题用系统 Rounded，正文用系统字体，时间与编号用等宽数字。圆角主要承载封面和触摸区域，不添加无意义的动效。
+
+## 授权与接口
+
+原生端沿用 `/api/manage/auth` 的家长 Cookie 会话与 CSRF，不创建 TV 身份来冒充家长。会话 Cookie 存入设备本地 Keychain；CSRF 在登录或恢复会话后读取。API 请求仅允许当前 HTTPS origin，并拒绝跳转。OSS 上传使用单独、无 Cookie 的 URLSession；OSS 播放不附带家长 Cookie。本地视频通过 AVFoundation 的域作用域 Cookie 读取。
+
+| 功能 | 已有接口 |
+| --- | --- |
+| 登录 / 恢复 / 退出 | `/api/manage/auth/login`, `/session`, `/logout` |
+| 合集与视频 | `/api/manage/resources` 与详情、发布接口 |
+| 播放、字幕 | `/api/episodes/{id}/playback` 及响应中的地址 |
+| 上传 | `/api/manage/uploads`、`parts`、`part-url`、`chunks`、`complete`、`cancel` |
+| 绑定 | `/api/manage/pairing/{code}`, `/api/manage/pairing/confirm` |
+| 设备与安排 | `/api/manage/devices`, `/api/manage/watch-control` |
+| 空间用量 | `/api/manage/settings` |
+
+普通成员仍可浏览与播放，管理按钮只向 admin / superadmin 显示；最终权限始终由服务器验证。扫码只接受当前服务的 `/manage/?pair=NNNN`，不会跟随任意二维码中的网址。
+
+## 初版边界
+
+- 使用已有账号；注册、会员购买、官方精选目录仍需对应服务能力，本次没有虚构这些接口。
+- 文件选择支持 MP4；相册使用系统选择器，先复制临时文件并导出 MP4，再走现有上传协议。大视频准备需要时间及本机空间，转换不成功会明确提示。
+- 上传任务归属当前登录会话，可收起面板、切换页面，并从片库任务入口返回。退后台会暂停，返回后可继续；**不承诺退出账号或进程被杀后的恢复**。取消任务会清理服务端临时上传，已创建的待完善视频保留。
+- 手机续播仅保存在本机，不与电视互相覆盖。签名 URL 过期或网络错误时通过「重新加载」刷新并尝试恢复位置。
+- 外挂字幕仅支持服务端输出的 WebVTT 文本；不提供复杂字幕样式。画中画暂时关闭，以免外挂字幕消失。
+- 视频是否可播放仍取决于 iOS 对编码的支持；初版没有转码服务。
+- 本次未访问或写入生产账号数据，未修改服务端生产逻辑。
+
+## 验证
+
+标准工具链：
+
+```bash
+swift test --package-path apps/ios --disable-xctest
+apps/server/.venv/bin/python -m pytest apps/server/tests/test_ios_parent_contract.py -q
+bash tools/build-ios.sh \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+已完成：13 项 Swift Testing 核心测试、3 项隔离后端接口测试、项目 / Info.plist 格式检查。2026-11-04 使用 Xcode 27.2 完成 iOS Simulator 原生编译与链接，安装并启动于 iPhone 18 Pro（iOS 27.2）模拟器，检查了登录页与演示片库画面。**真实账号联网流程、真实视频播放与上传、实体 iPhone 验收仍未完成**，尚不是已完成发布验收的版本。
+
+Xcode 27.2 的模拟器窗口位于 `Xcode.app/Contents/Applications/DeviceHub.app`。在 Device Hub 中选择已启动的 iPhone 即可交互。
+
+当前 CLT 的 SwiftPM 默认后端缺少测试插件搜索路径，测试成功使用的命令：
+
+```bash
+swift test --package-path apps/ios --scratch-path /tmp/molly-ios-native \
+  --build-system native --disable-xctest \
+  -Xswiftc -F -Xswiftc /Library/Developer/CommandLineTools/Library/Developer/Frameworks \
+  -Xswiftc -load-plugin-library \
+  -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib \
+  -Xlinker -rpath -Xlinker /Library/Developer/CommandLineTools/Library/Developer/Frameworks \
+  -Xlinker -F -Xlinker /Library/Developer/CommandLineTools/Library/Developer/Frameworks
+```
+
+完整 Xcode 环境下优先使用标准命令，无需以上 CLT 兼容参数。
+
+后续原生验收：登录及七天会话恢复、真实 OSS 上传/断网续传、草稿预览与发布、长视频 seek/字幕/签名刷新、扫码权限拒绝、绑定与解绑、观看安排版本冲突、不同屏幕与大字体、后台返回和换账号隔离。
+
+技术依据：[SwiftUI 导航](https://developer.apple.com/documentation/swiftui/navigation)、[AVKit](https://developer.apple.com/documentation/avkit)、[免费开发账号与付费会员](https://developer.apple.com/help/account/basics/about-your-developer-account)。
+
+## 2026-11-04 家长端体验改版
+
+- 片库首页提供直接添加入口、大封面合集与上传状态入口；根目录添加自动使用或创建「手机添加」合集。
+- 添加面板提供相册 / 文件来源、合集选择、明确的儿童观看开关、暂停 / 继续、处理状态检查及发布重试。
+- 电视页突出观看安排，并提供显式调整入口。
+- 我的页面展示真实空间用量，服务信息放入高级设置。未接通的套餐购买和家庭独立 OSS 配置没有可点击的伪入口。
+- 验证边界：核心测试、原生编译和模拟器布局检查；相册大文件转换、生产 OSS 上传、真实 TV 观看仍需使用用户自己的内容验收。
+
+本轮验证：13 项 Swift 核心测试、4 项隔离后端契约测试通过；模拟器与 iPhone 真机目标编译成功，已覆盖安装到连接的 iPhone。模拟器检查了片库、添加面板与我的页面。实际生产内容上传及 TV 联动仍待验收。
+
+已移除独立演示入口、示例片库、示例电视与 Debug 预览启动参数；家长对真实视频的播放与预览功能保留。
+
+主页面密度调整：片库、电视、我的统一使用紧凑导航栏；片库直接呈现等权封面网格，搜索由工具栏展开，添加入口合并到右上角。已完成且无错误的上传不再常驻片库，下次添加自动开始新任务。电视移除宣传区和重复设备标题；账号页收起观看说明。
+## 2026-11-04 观看统计
+
+电视列表下方新增观看记录卡：今日、本周时长与最近 12 周热力图。点击查看近一年观看天数、累计时长及逐月日历，点日期查看当天时长。复用 `/api/manage/overview`，沿用服务端家庭时区和周一起始口径，不计入家长播放；无记录与请求失败分别展示，刷新统计不阻塞设备管理。
+
+本轮 17 项 Swift 测试通过，覆盖统计解码、热力分级、周一对齐、跨月、闰日及未来日期留空。iPhone 真机编译与安装成功，真实账号显示的今日、本周和近一年汇总已与网页核对。未更改服务端接口或写入观看数据。
+## 2026-11-04 页面温度与封面稳定性
+
+- 移除三个主页面顶部重复的 tab 名称，保留底部原生导航标签；使用紧凑的生活化开场、茉莉花与叶绿细节，不恢复大面积介绍区。
+- 封面改为账号会话内共享的有界内存缓存（64 MB / 200 项），合并并发请求；卡片滚动消失不取消共享加载，重新出现同步读取缓存，不先清空图片。十分钟后可重新验证，失败保留已有封面。退出账号清理缓存，并拒绝旧请求回写；不在磁盘持久化私人封面。
+- 登录表单采用固定布局、完整点按区域与明确焦点描边；凭据输入使用原生 UITextField 交接焦点，连接设置独立为面板。
+- 21 项核心测试通过，包含缓存命中、并发合并、离屏取消、失败保留旧图和退出账号后的迟到响应隔离；模拟器及真机编译成功，已覆盖安装到连接的 iPhone。
+## 2026-11-04 回归黄色主题与 TV 启动体验
+
+按第一版视觉重新统一：常驻浅灰胶囊搜索框、黄色添加视频与连接电视按钮、大封面合集；主页面移除重复标题与品牌工具栏。登录、命名、配对、服务地址输入采用同一浅灰圆角体系。观看记录置于电视页最上方，12 周圆点热力图和今日/本周/近一年汇总直接展示，移除详情跳转。
+
+启动复用 TV 的矢量路径、2.8 秒花朵旋转/弧线起伏节奏与深色背景；通过 `tools/package-startup-sound.py` 从官方服务校验下载音效，随包存放于 `MollyTime/Resources/startup`。启动时不依赖音频网络请求；音频失败不阻塞进入，跟随媒体音量（静音开关不影响），进入前台后播放、退后台停止；减少动态效果时展示静态标记。会话恢复与启动同时进行。
+
+命令行构建统一使用 `bash tools/build-ios.sh <xcodebuild 参数>`：每次构建先下载并校验当前官方音效，再生成安装包；下载失败会停止构建，不会悄悄打入旧音效。可用 `MOLLYTIME_STARTUP_SOURCE` 指定来源，或用 `MOLLYTIME_STARTUP_CONFIG` 指定离线配置。
+
+直接在 Xcode 中运行不会自动联网同步；更新启动音效后，先执行：
+```bash
+python3 tools/package-startup-sound.py --source https://mollytime.app --output apps/ios/MollyTime/Resources
+python3 apps/ios/tools/generate_project.py
+```
+
+### 2026-11-04 页面与个人资料调整
+
+- 片库去掉搜索，片库/电视页顶部共用 `PageBrandMark`：40 pt、统一左倾 15°、茉莉黄。
+- 电视标题独立于统计卡；十二周圆点增加星期定位，圆点直径 13 pt，今天仅用柔和呼吸光晕标记，无描边（尊重减少动态效果设置）。取消连接电视不再刷新列表，仅绑定成功触发刷新。
+- 点击个人信息编辑显示名称及相册头像，头像压缩为 256 × 256 JPEG。服务端新增 `account_profiles` 表和 `PUT /api/manage/auth/profile`，需要部署服务端后才可保存；老服务端会显示明确提示，不会伪装保存成功。昵称不修改登录身份。
+- iOS 桌面图标采用暖炭灰底、茉莉黄标志（左倾 15°），无内置阴影。源文件 `Brand/app-icon.svg`，运行 `node apps/ios/tools/generate_app_icon.mjs` 从既有品牌矢量重新生成不透明的 1024 px 图标。
+- 已通过真机编译；个人资料及既有 iOS API 合约共 7 项测试通过。
+
+### 观看详情面板
+
+点击电视页的今日/本周观看，从底部打开记录面板，复用 `/api/manage/reports/watch-time`。今天按小时、本周按服务端周一起始日展示黄色柱状图；设备时长、播放明细与内容分布使用服务端实际数据，明细支持独立分页。圆点热力图保持不可点击。解绑入口为深灰色，使用居中系统确认弹窗，只有最终解绑动作为红色。真机编译及 23 项 Swift 测试通过，已验证真机今日记录返回 21 分钟、6 个视频。
+
+观看统计更新：原「本周」改为「近一周」，摘要和详情均统计服务器最新日期往前六天（含当天），不再以周一为起点。今日与近一周柱状图统一使用 8 pt 固定柱宽，时间槽均匀排列。跨月及非连续日期边界测试通过，Swift 测试共 24 项通过。
+
+配对预览新增旧电视识别提示：服务端返回 `returningDevice` 时说明重新连接会保留观看记录和观看安排。该字段为可选，兼容旧服务端。完整恢复能力需要服务端及 TV 客户端升级。
+
+### 多账号切换
+
+- 个人信息 → 切换账号：显示当前账号、添加账号、重新验证过期账号、移除本机登录信息。退出登录仅移除当前账号；登录页可选择其他已保存账号。
+- 每个账号按 HTTPS 服务来源与用户 ID 隔离，凭据及显示信息存于设备专属 Keychain；不保存密码。兼容原有单账号 Cookie，首次会话恢复后迁移。
+- 新账号使用独立 APIClient 登录，不携带旧账号 Cookie，防止服务端登录逻辑撤销原账号会话。验证成功后才替换当前账号，失败保留原账号；旧客户端回调失效，页面导航和封面缓存重置。
+- 切换前等待上传任务暂停。当前 App 运行期间按账号保留上传模型，切回后可继续；不增加跨 App 重启的上传持久化能力。
+- 验证：31 项 Swift 核心测试通过，含无旧凭据登录、错误密码、过期会话、错误身份、服务来源隔离；7 项隔离服务端契约测试通过，包含双账号会话并存、家庭资源隔离及退出一个账号不影响另一个。不需要新增服务端接口。
+
+### 邀请码注册
+
+- 登录页和添加账号页提供「使用邀请码加入」。先验证十二位注册邀请码（容忍空白、横线和小写），再输入邮箱与密码；支持密码显示和系统密码管理器。
+- 复用匿名 preview/activate 接口；默认后台创建「我的片库」，不要求填写家庭名称。已有绑定邮箱/家庭的邀请仍使用原配置。注册后通过独立登录客户端加入账号列表并进入片库，原账号不会提前退出。
+- 注册成功但登录失败只重试登录；注册响应丢失时先尝试登录或重新验证邀请码，不盲目重复激活。邮箱重复可带邮箱返回登录；已失效邀请码返回第一步。
+- 无新增服务端接口。当前版本沿用受邀内测的邮箱密码方式，不声称邮箱已验证；尚未实现邮箱验证码或密码找回。

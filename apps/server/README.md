@@ -34,3 +34,19 @@ docker compose -f infra/compose.yaml up -d mollytime-server
 接口、配置与限制见 [服务端文档](../../docs/server.md)，目标职责见 [架构文档](../../docs/architecture.md)。本目录源码采用 MIT License，不含 Jellyfin 服务端代码。
 
 播放正常结束后，网页 TV 和 Android TV 会按当前文件夹列表顺序自动播放下一部已发布且就绪的视频；最后一部结束返回列表。手动退出不会连播。`GET /api/episodes/{id}/next` 与文件夹列表使用相同排序及家庭/发布校验；每部视频独立创建观看会话。
+
+## Stable TV identity and rebinding
+
+TV installations now maintain a private, random identity credential scoped to the server origin. This is not a hardware serial number. The native client stores it in `noBackupFilesDir`, independently of session credentials, never sends it to WebView, and preserves it on logout/unbind. The server stores only its SHA-256 secret hash. TLS is required by the release client.
+
+New additive tables are created by the existing `init_db()` startup path: `device_identities`, `device_identity_bindings`, `device_authorization_versions`, and `pairing_identities`. Existing `devices` and watch/history/control rows are not rewritten. A family-scoped identity mapping reuses the original device ID after parent-approved pairing. Switching families creates/reuses that family's separate binding and revokes the installation's other active bindings; historical rows remain in their original family.
+
+- `POST /api/auth/device-identity`: authenticated TV adoption of its current device with `{id, secret}`. Idempotent; cannot adopt another device or replace an existing different identity.
+- `POST /api/auth/pairing/start`: optional nested `identity: {id, secret}`. Older clients without this field remain supported, but cannot recover their historical identity on a new pairing.
+- Pairing preview adds `returningDevice` and prefills the previous device name only within the authenticated parent's family.
+- Unbind and rebind invalidate refresh credentials and increment authorization version. Access tokens with the old version remain invalid even when the same device ID becomes active again. Pre-upgrade access tokens lacking the version are version zero.
+- Quota rounds and consumed amounts remain attached to the original device ID. Rebinding does not reset the daily allowance.
+
+Rollout: deploy server first, then TV client, then optional parent UI update. Active upgraded TVs adopt their current identity at startup/periodic sync and before TV-initiated reset. Do not revoke an old, not-yet-upgraded TV expecting automatic recovery: it has not proved an installation identity yet. Removing app data, uninstalling, or factory reset can remove the credential; manual association of such devices is intentionally deferred. Never merge devices based on their display names. Downgrading the server removes version enforcement and is not a safe rollback after rebindings; retain the new authorization checks.
+
+Validation: SQLite migration/idempotency, same-family restore, settings/history/used-quota preservation, wrong-secret rejection, old-token rejection, family switching and legacy pairing are covered in `tests/test_device_identity.py`; Android tests verify identity persistence and per-origin isolation. MySQL locking paths use row locks and unique constraints but still need deployment-environment concurrency validation. Offline signed playback leases retain their existing expiry semantics; online credential revocation is not a remote deletion of downloaded files.

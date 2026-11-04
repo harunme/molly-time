@@ -11,6 +11,9 @@ class SessionStore(context: Context, private val onBindingChanged: () -> Unit = 
         private const val LEGACY_SERVER = "https://118.89.122.66:8096"
     }
 
+    private val identityStore = DeviceIdentityStore(context)
+    internal fun identityProof(origin: String = server) = identityStore.proof(origin)
+
     // New store intentionally does not inherit the previous client's credentials.
     private val prefs = context.getSharedPreferences("molly.shell.v1", Context.MODE_PRIVATE)
     // Remains stable across app restarts and changes only when Android reboots.

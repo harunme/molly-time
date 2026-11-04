@@ -38,7 +38,7 @@ def _b64url_decode(s: str) -> bytes:
 
 
 def issue_access_token(*, user_id: str, family_id: str, role: str,
-                       device_id: str | None = None) -> tuple[str, dt.datetime]:
+                       device_id: str | None = None, device_version: int = 0) -> tuple[str, dt.datetime]:
     """Return (token, expires_at)."""
     s = get_settings()
     now = dt.datetime.now(dt.timezone.utc)
@@ -53,6 +53,7 @@ def issue_access_token(*, user_id: str, family_id: str, role: str,
     }
     if device_id:
         payload["device"] = device_id
+        payload["deviceVersion"] = device_version
     h = _b64url(json.dumps(header, separators=(",", ":")).encode())
     p = _b64url(json.dumps(payload, separators=(",", ":")).encode())
     msg = f"{h}.{p}".encode()

@@ -46,11 +46,11 @@ class MollyTimeApplication : Application() {
         media = MediaStore(this, session, api)
         watchQueue = WatchQueue(this, session, api)
         errorLogQueue = ErrorLogQueue(this, session, api)
-        io.execute { runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() } }
+        io.execute { runCatching { api.registerDeviceIdentity() }; runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() } }
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         handler.postDelayed(object : Runnable {
             override fun run() {
-                io.execute { runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() } }
+                io.execute { runCatching { api.registerDeviceIdentity() }; runCatching { watchQueue.flush() }; runCatching { errorLogQueue.flush() } }
                 handler.postDelayed(this, 60000)
             }
         }, 1000)

@@ -9,6 +9,7 @@ from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
 from ..accounts import ensure_identity, find_login_user
+from ..device_identity import authorization_version
 from ..auth import (
     hash_password,
     hash_refresh_token,
@@ -86,6 +87,7 @@ def login(body: LoginBody, request: Request, db: DbSession):
         family_id=user.family_id,
         role="device" if device else user.role,
         device_id=device.id if device else None,
+        device_version=authorization_version(db, device.id, locked=True) if device else 0,
     )
     raw_refresh, hashed = issue_refresh_token()
     db.add(
@@ -129,6 +131,8 @@ def _aware(dt_obj: dt.datetime | None) -> dt.datetime | None:
 
 @router.post("/refresh", response_model=AuthResult)
 def refresh(body: RefreshBody, request: Request, db: DbSession):
+    from ..transactions import serialize_sqlite_write
+    serialize_sqlite_write(db)
     hashed = hash_refresh_token(body.refreshToken)
     row = db.get(RefreshToken, hashed)
     if row is None:
@@ -138,16 +142,19 @@ def refresh(body: RefreshBody, request: Request, db: DbSession):
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED)
     identity = ensure_identity(db, user)
     link = db.get(DeviceRefresh, hashed)
-    device = db.get(Device, link.device_id) if link else None
+    device = db.query(Device).filter_by(id=link.device_id).with_for_update().first() if link else None
     if link and (device is None or device.revoked or device.user_id != user.id
                  or device.family_id != user.family_id):
         raise HTTPException(status_code=401)
 
     if device:
+        # A revoke/rebind may have deleted this token while we waited for the device lock.
+        if db.query(RefreshToken).filter_by(id=hashed).populate_existing().with_for_update().first() is None:
+            raise HTTPException(status_code=401)
         # A TV binding is durable until revoked by the parent. Its cached device
         # credential stays stable so a lost refresh response cannot unpair it.
         access, exp = issue_access_token(user_id=user.id, family_id=user.family_id,
-                                         role="device", device_id=device.id)
+                                         role="device", device_id=device.id, device_version=authorization_version(db, device.id, locked=True))
         return AuthResult(accessToken=access, refreshToken=body.refreshToken,
                           expiresAt=exp.isoformat(), deviceId=device.id,
                           user=UserDto(id=user.id, name=identity.email.split("@")[0] if identity.email else user.name,
@@ -165,6 +172,7 @@ def refresh(body: RefreshBody, request: Request, db: DbSession):
         family_id=user.family_id,
         role="device" if device else user.role,
         device_id=device.id if device else None,
+        device_version=authorization_version(db, device.id, locked=True) if device else 0,
     )
     raw_refresh, new_hashed = issue_refresh_token()
     db.add(

@@ -87,7 +87,7 @@ function InstallInstructions() {
   </div>;
 }
 
-type Pending = { name: string; expiresAt: string; };
+type Pending = { name: string; expiresAt: string; returningDevice?: boolean; };
 export function PairingDialog({
   initialCode,
   session,
@@ -212,6 +212,7 @@ export function PairingDialog({
               </>
             ) : (
               <>
+                {pending.returningDevice && <p className="pairing-instruction">这是之前连接过的电视。重新连接后，将保留观看记录和观看安排。</p>}
                 <div className="pairing-summary">
                   <span>配对码</span><strong>{selected}</strong>
                   <span>绑定到</span><strong>{session.family.name}</strong>

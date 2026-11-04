@@ -11,12 +11,13 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from ..device_identity import IdentityProof, authenticate_identity, authorization_version, previous_device, revoke_binding
 from ..accounts import account_dto
 from ..auth import hash_refresh_token, issue_access_token, refresh_token_expiry
 from ..config import get_settings
 from ..deps import CurrentUser, DbSession
 from ..manage_auth import Parent, aware
-from ..management_models import Device, DevicePairing, DeviceRefresh, PairingRate
+from ..management_models import Device, DevicePairing, DeviceRefresh, PairingRate, PairingIdentity, DeviceIdentityBinding
 from ..models import Family, RefreshToken, User
 from ..transactions import serialize_sqlite_write
 
@@ -59,6 +60,7 @@ def public_origin(request):
 
 
 class Start(BaseModel):
+    identity: IdentityProof | None = None
     name: str = Field(default="MollyTime TV", min_length=1, max_length=128)
 
 
@@ -75,7 +77,7 @@ def find_code(db, code):
     normalized = code.strip()
     if re.fullmatch(r"[0-9]{4}", normalized) is None:
         raise HTTPException(404, "配对码不存在或已过期")
-    row = db.query(DevicePairing).filter(DevicePairing.code_hash == digest(normalized)).first()
+    row = db.query(DevicePairing).filter(DevicePairing.code_hash == digest(normalized)).with_for_update().first()
     if row is None or aware(row.expires_at) <= dt.datetime.now(dt.UTC) or row.status != "pending":
         raise HTTPException(404, "配对码不存在或已过期")
     return row
@@ -88,6 +90,8 @@ def start(body: Start, request: Request, response: Response, db: DbSession):
     serialize_sqlite_write(db)
     limit(db, request, "start", 10, 600)
     now = dt.datetime.now(dt.UTC)
+    expired_ids = db.query(DevicePairing.id).filter(DevicePairing.expires_at <= now)
+    db.query(PairingIdentity).filter(PairingIdentity.pairing_id.in_(expired_ids)).delete(synchronize_session=False)
     db.query(DevicePairing).filter(DevicePairing.expires_at <= now).delete()
     db.query(PairingRate).filter(PairingRate.resets_at <= now).delete()
     # The write lock and unique code_hash keep concurrent starts distinct.
@@ -104,7 +108,11 @@ def start(body: Start, request: Request, response: Response, db: DbSession):
     device_code = secrets.token_urlsafe(32)
     expires = now + dt.timedelta(minutes=10)
     name = body.name.strip() or "MollyTime TV"
+    identity = authenticate_identity(db, body.identity) if body.identity else None
     db.add(DevicePairing(id=digest(device_code), code_hash=digest(code), name=name, expires_at=expires))
+    db.flush()
+    if identity:
+        db.add(PairingIdentity(pairing_id=digest(device_code), identity_id=identity.id))
     db.commit()
     uri = f"{origin}/manage/?pair={code}"
     return {"deviceCode": device_code, "userCode": code, "verificationUri": uri,
@@ -120,7 +128,11 @@ def preview(code: str, request: Request, response: Response, user: Parent, db: D
     serialize_sqlite_write(db)
     limit(db, request, "confirm", 30, 60, principal=user.id)
     row = find_code(db, code)
-    return {"name": row.name, "expiresAt": aware(row.expires_at).isoformat()}
+    link = db.get(PairingIdentity, row.id)
+    previous = previous_device(db, link.identity_id, user.family_id) if link else None
+    return {"name": previous.name if previous else row.name,
+            "returningDevice": previous is not None,
+            "expiresAt": aware(row.expires_at).isoformat()}
 
 
 @router.post("/api/manage/pairing/confirm")
@@ -145,7 +157,7 @@ def confirm(body: Confirm, request: Request, response: Response, user: Parent, d
 def poll(body: Poll, request: Request, response: Response, db: DbSession):
     response.headers["Cache-Control"] = "no-store"
     serialize_sqlite_write(db)
-    row = db.get(DevicePairing, digest(body.deviceCode))
+    row = db.query(DevicePairing).filter_by(id=digest(body.deviceCode)).with_for_update().first()
     now = dt.datetime.now(dt.UTC)
     if row is None or aware(row.expires_at) <= now or row.status == "cancelled":
         return {"status": "expired"}
@@ -156,22 +168,38 @@ def poll(body: Poll, request: Request, response: Response, db: DbSession):
         db.commit()
         return {"status": "pending"}
     user = db.get(User, row.user_id)
-    if user is None or user.is_disabled:
+    if user is None or user.is_disabled or user.role not in ("superadmin", "admin"):
         return {"status": "expired"}
     # A stable secret-derived refresh token makes lost responses retryable without
     # storing raw credentials or issuing duplicate devices. Rotation ends this grace period.
     raw = hmac.new(get_settings().auth_secret.encode(),
                    ("pairing-refresh:" + body.deviceCode).encode(), hashlib.sha256).hexdigest()
     token_id = hash_refresh_token(raw)
-    device = db.get(Device, row.device_id) if row.device_id else None
+    device = db.query(Device).filter_by(id=row.device_id).with_for_update().first() if row.device_id else None
     if row.status == "delivered":
         if (device is None or device.revoked or device.user_id != user.id
-                or device.family_id != user.family_id or db.get(RefreshToken, token_id) is None):
+                or device.family_id != user.family_id or db.query(RefreshToken).filter_by(id=token_id).with_for_update().first() is None):
             return {"status": "expired"}
     else:
-        device = Device(family_id=user.family_id, user_id=user.id, name=row.name)
-        db.add(device)
-        db.flush()
+        link = db.get(PairingIdentity, row.id)
+        if link:
+            # Serialize all binding changes for this installation, including cross-family switches.
+            from ..management_models import DeviceIdentity
+            db.query(DeviceIdentity).filter_by(id=link.identity_id).with_for_update().one()
+            device = previous_device(db, link.identity_id, user.family_id)
+            for binding in db.query(DeviceIdentityBinding).filter_by(identity_id=link.identity_id).with_for_update().all():
+                previous = db.query(Device).filter_by(id=binding.device_id).with_for_update().one()
+                if not previous.revoked or previous.id == (device.id if device else None):
+                    revoke_binding(db, previous)
+        if device is None:
+            device = Device(family_id=user.family_id, user_id=user.id, name=row.name)
+            db.add(device)
+            db.flush()
+            if link:
+                db.add(DeviceIdentityBinding(device_id=device.id, identity_id=link.identity_id, family_id=user.family_id))
+        device.revoked = False
+        device.user_id = user.id
+        device.name = row.name
         row.device_id = device.id
         row.status = "delivered"
         db.add(RefreshToken(id=token_id, user_id=user.id, expires_at=refresh_token_expiry(),
@@ -179,7 +207,7 @@ def poll(body: Poll, request: Request, response: Response, db: DbSession):
         db.flush()
         db.add(DeviceRefresh(token_id=token_id, device_id=device.id))
     access, expires = issue_access_token(user_id=user.id, family_id=user.family_id,
-                                         role="device", device_id=device.id)
+                                         role="device", device_id=device.id, device_version=authorization_version(db, device.id, locked=True))
     family = db.get(Family, user.family_id)
     identity = account_dto(db, user, role="device")
     db.commit()
@@ -193,7 +221,7 @@ def poll(body: Poll, request: Request, response: Response, db: DbSession):
 def cancel(body: Poll, response: Response, db: DbSession):
     response.headers["Cache-Control"] = "no-store"
     serialize_sqlite_write(db)
-    row = db.get(DevicePairing, digest(body.deviceCode))
+    row = db.query(DevicePairing).filter_by(id=digest(body.deviceCode)).with_for_update().first()
     if row and row.status in ("pending", "approved"):
         row.status = "cancelled"
         db.commit()
@@ -209,14 +237,35 @@ def reset(request: Request, response: Response, user: CurrentUser, db: DbSession
         raise HTTPException(403, "只允许电视重新配对自身")
     user_id, family_id = user.id, user.family_id
     serialize_sqlite_write(db)
-    device = db.get(Device, device_id)
+    device = db.query(Device).filter_by(id=device_id).with_for_update().first()
     if device is None or device.user_id != user_id or device.family_id != family_id:
         raise HTTPException(401, "电视绑定已失效")
-    device.revoked = True
-    for link in db.query(DeviceRefresh).filter(DeviceRefresh.device_id == device_id).all():
-        token = db.get(RefreshToken, link.token_id)
-        db.delete(link)
-        if token:
-            db.delete(token)
+    if device.revoked or authorization_version(db, device.id) != request.state.device_version:
+        raise HTTPException(401, "电视绑定已失效")
+    revoke_binding(db, device)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/auth/device-identity")
+def register_identity(body: IdentityProof, request: Request, response: Response, user: CurrentUser, db: DbSession):
+    """Adopt an existing authenticated TV without rewriting history or its credentials."""
+    response.headers["Cache-Control"] = "no-store"
+    device_id = getattr(request.state, "device_id", None)
+    if not device_id:
+        raise HTTPException(403, "只允许已绑定电视登记身份")
+    family_id, user_id = user.family_id, user.id
+    serialize_sqlite_write(db)
+    identity = authenticate_identity(db, body)
+    device = db.query(Device).filter_by(id=device_id).with_for_update().first()
+    if (device is None or device.revoked or device.family_id != family_id or device.user_id != user_id
+            or authorization_version(db, device.id) != request.state.device_version):
+        raise HTTPException(401, "电视绑定已失效")
+    existing = db.get(DeviceIdentityBinding, device.id)
+    previous = previous_device(db, identity.id, family_id)
+    if (existing and existing.identity_id != identity.id) or (previous and previous.id != device.id):
+        raise HTTPException(409, "设备已有不同身份关联，请重新配对")
+    if existing is None:
+        db.add(DeviceIdentityBinding(device_id=device.id, identity_id=identity.id, family_id=family_id))
     db.commit()
     return {"ok": True}

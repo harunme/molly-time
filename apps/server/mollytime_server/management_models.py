@@ -376,3 +376,30 @@ class WatchControlCommand(Base):
     id: Mapped[str] = mapped_column(String(160), primary_key=True)
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
     fingerprint: Mapped[str] = mapped_column(String(64))
+
+
+class DeviceIdentity(Base):
+    """Installation credential, scoped by the client to one server origin."""
+    __tablename__ = "device_identities"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    secret_hash: Mapped[str] = mapped_column(String(64))
+
+
+class DeviceIdentityBinding(Base):
+    __tablename__ = "device_identity_bindings"
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    identity_id: Mapped[str] = mapped_column(ForeignKey("device_identities.id"), index=True)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"))
+    __table_args__ = (UniqueConstraint("identity_id", "family_id", name="uq_identity_family"),)
+
+
+class DeviceAuthorizationVersion(Base):
+    __tablename__ = "device_authorization_versions"
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PairingIdentity(Base):
+    __tablename__ = "pairing_identities"
+    pairing_id: Mapped[str] = mapped_column(ForeignKey("device_pairings.id"), primary_key=True)
+    identity_id: Mapped[str] = mapped_column(ForeignKey("device_identities.id"), index=True)

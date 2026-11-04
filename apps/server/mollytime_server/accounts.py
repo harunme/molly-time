@@ -4,7 +4,7 @@ import datetime as dt
 import re
 import secrets
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +30,14 @@ class AccountIdentity(Base):
             name="ck_account_numeric_id_mysql",
         ).ddl_if(dialect="mysql"),
     )
+
+
+class AccountProfile(Base):
+    """Private display profile; never changes the user's login identity."""
+    __tablename__ = "account_profiles"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(64))
+    avatar_jpeg_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AccountInvitation(Base):

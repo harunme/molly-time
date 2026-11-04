@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 
+from ..device_identity import revoke_binding
 from ..auth import hash_password, verify_password
 from ..config import get_settings
 from ..deps import DbSession
@@ -99,8 +100,12 @@ def rename_device(device_id: str, body: DeviceBody, user: Parent, db: DbSession)
 
 @router.post("/devices/{device_id}/revoke")
 def revoke_device(device_id: str, user: Parent, db: DbSession):
-    row = owned(db, Device, device_id, user.family_id)
-    row.revoked = True
+    family_id = user.family_id
+    serialize_sqlite_write(db)
+    row = db.query(Device).filter_by(id=device_id, family_id=family_id).with_for_update().first()
+    if row is None:
+        raise HTTPException(404, "设备不存在")
+    revoke_binding(db, row)
     db.commit()
     return {"ok": True}
 

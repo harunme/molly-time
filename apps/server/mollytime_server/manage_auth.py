@@ -1,5 +1,8 @@
 """Same-origin parent sessions. Device credentials cannot enter management APIs."""
 
+import base64
+import binascii
+import io
 import datetime as dt
 import logging
 import secrets
@@ -7,9 +10,10 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from PIL import Image, ImageOps, UnidentifiedImageError
 
-from .accounts import account_dto, ensure_identity, find_login_user
+from .accounts import AccountProfile, account_dto, ensure_identity, find_login_user
 from .auth import hash_refresh_token, verify_password
 from .deps import DbSession
 from .management_models import ParentSession
@@ -86,6 +90,8 @@ def get_parent(request: Request, db: DbSession):
             raise HTTPException(403, "页面已过期，请重新加载")
         if user.role not in ("superadmin", "admin") and request.url.path not in (
             "/api/manage/auth/logout",
+            "/api/manage/auth/profile",
+            "/api/manage/password",
             "/api/manage/home-config/preview",
             "/api/manage/account/email",
         ):
@@ -103,8 +109,12 @@ class Login(BaseModel):
 
 def session_dto(row, user, db):
     family = db.get(Family, user.family_id)
+    profile = db.get(AccountProfile, user.id)
+    user_data = account_dto(db, user)
+    user_data.update(displayName=profile.display_name if profile else None,
+                     avatarJPEGBase64=profile.avatar_jpeg_base64 if profile else None)
     return {
-        "user": account_dto(db, user),
+        "user": user_data,
         "family": {"id": user.family_id, "name": family.name if family else "我的家庭"},
         "csrfToken": row.csrf,
     }
@@ -163,3 +173,53 @@ def logout(request: Request, response: Response, user: Parent, db: DbSession):
     db.commit()
     response.delete_cookie(COOKIE, path="/")
     return {"ok": True}
+
+
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    displayName: str = Field(min_length=1, max_length=64)
+    avatarJPEGBase64: str | None = Field(default=None, max_length=200_000)
+
+    @field_validator("displayName")
+    @classmethod
+    def clean_name(cls, value):
+        value = value.strip()
+        if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError("请输入有效名称")
+        return value
+
+
+def normalize_avatar(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        raw = base64.b64decode(value, validate=True)
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format != "JPEG" or not (0 < image.width <= 1024 and 0 < image.height <= 1024):
+                raise ValueError("invalid image")
+            image.load()
+            avatar = ImageOps.fit(ImageOps.exif_transpose(image).convert("RGB"), (256, 256))
+            output = io.BytesIO()
+            # Re-encode to discard metadata, including location data.
+            avatar.save(output, format="JPEG", quality=80, optimize=True)
+        encoded = base64.b64encode(output.getvalue()).decode("ascii")
+        if len(encoded) > 60_000:
+            raise ValueError("image too large")
+        return encoded
+    except (ValueError, binascii.Error, OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise HTTPException(422, "头像格式无效，请重新选择图片") from None
+
+
+@router.put("/profile")
+def update_profile(body: ProfileUpdate, request: Request, response: Response, user: Parent, db: DbSession):
+    avatar = normalize_avatar(body.avatarJPEGBase64)
+    profile = db.get(AccountProfile, user.id)
+    if profile is None:
+        profile = AccountProfile(user_id=user.id)
+        db.add(profile)
+    profile.display_name = body.displayName
+    profile.avatar_jpeg_base64 = avatar
+    db.commit()
+    row, _ = parent_session(request, db)
+    response.headers["Cache-Control"] = "no-store"
+    return session_dto(row, user, db)

@@ -59,16 +59,19 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     if claims.get("device"):
         from .management_models import Device
+        from .device_identity import authorization_version
 
         device = db.get(Device, claims["device"])
         if (
             device is None
             or device.revoked
+            or claims.get("deviceVersion", 0) != authorization_version(db, device.id)
             or device.user_id != user.id
             or device.family_id != user.family_id
         ):
             raise HTTPException(401, "设备已撤销")
         request.state.device_id = device.id
+        request.state.device_version = claims.get("deviceVersion", 0)
     return user
 
 
@@ -89,7 +92,17 @@ def get_optional_user(
     if not user_id:
         return None
     user = db.get(User, user_id)
-    return user if (user and not user.is_disabled) else None
+    if user is None or user.is_disabled:
+        return None
+    if claims.get("device"):
+        from .management_models import Device
+        from .device_identity import authorization_version
+        device = db.get(Device, claims["device"])
+        if (device is None or device.revoked or device.user_id != user.id
+                or device.family_id != user.family_id
+                or claims.get("deviceVersion", 0) != authorization_version(db, device.id)):
+            return None
+    return user
 
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
