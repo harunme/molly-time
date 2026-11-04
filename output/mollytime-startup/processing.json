@@ -1,0 +1,34 @@
+{
+  "source": "/Users/binwang/Downloads/Molly time.m4a",
+  "source_trim_seconds": [
+    7.88,
+    9.22
+  ],
+  "duration_seconds": 1.3400208333333334,
+  "sample_rate_hz": 48000,
+  "channels": 1,
+  "mp3_bitrate_kbps": 320,
+  "master_format": "24-bit PCM WAV",
+  "processing": {
+    "highpass_hz": 75,
+    "fft_noise_reduction_db": 4,
+    "noise_floor_db": -60,
+    "compression_ratio": 1.5,
+    "compression_threshold_db": -16,
+    "attack_ms": 15,
+    "release_ms": 90,
+    "fade_in_ms": 12,
+    "fade_out_ms": 120,
+    "gain_db": -0.77
+  },
+  "verification": {
+    "decoded_mp3_loudness_lufs": -17.99,
+    "decoded_mp3_true_peak_dbtp": -5.72,
+    "decoded_mp3_clipped_samples": 0,
+    "mp3_bytes": 55753,
+    "processing_alignment_lag_samples": 1193,
+    "first_sample": -4.385393026495876e-08,
+    "last_sample": 8.993349354113889e-08,
+    "review_method": "Waveform, spectrogram, loudness measurement and decoded-file checks; no auditory review."
+  }
+}

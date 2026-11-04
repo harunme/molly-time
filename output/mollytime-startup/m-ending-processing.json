@@ -1,0 +1,16 @@
+{
+  "donor": "Initial /m/ region from the same child recording; no external voice model",
+  "donor_master_seconds": [
+    0.1,
+    0.142
+  ],
+  "method": "Pitch-synchronous overlap-add, declining pitch, amplitude envelope, cosine crossfade",
+  "pitch_hz": [
+    291,
+    279
+  ],
+  "nasal_duration_ms": 190.0,
+  "crossfade_ms": 38.0,
+  "output_duration_seconds": 1.434,
+  "review": "Signal and encoding checks only; listening review is still needed"
+}
