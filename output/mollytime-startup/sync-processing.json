@@ -1,0 +1,19 @@
+{
+  "source": "mollytime-startup-with-m-master.wav",
+  "animation_source": "assets/brand/mollytime-flower/motion/mollytime-animated.svg",
+  "intro_ms": 300,
+  "voice_window_ms": [
+    300,
+    1800
+  ],
+  "total_ms": 1800,
+  "source_voice_seconds": [
+    0.078,
+    1.344
+  ],
+  "tempo_ratio": 0.844,
+  "pitch_preserved": true,
+  "method": "FFmpeg atempo (WSOLA), sample-exact silence and duration, boundary fades",
+  "playback_contract": "Start the audio file and logo timeline together; the file already includes the 300 ms intro.",
+  "runtime_limit": "Device audio output latency requires on-device verification; this export aligns the media timeline."
+}
