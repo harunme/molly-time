@@ -11,11 +11,46 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowChoreographer
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class StartupLogoViewTest {
+    @Test fun entranceCompletesOnceAndDoesNotReplayWhileLoading() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().visible()
+        Settings.Global.putFloat(activity.get().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        var completions = 0
+        val view = StartupLogoView(activity.get()) { completions++ }
+        try {
+            activity.get().setContentView(view)
+            view.startMotion()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            assertEquals(1, completions)
+            view.startMotion()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
+            assertEquals(1, completions)
+        } finally { view.stop(); activity.pause().stop().destroy() }
+    }
+
+    @Test fun stoppingAnEntranceDoesNotReportSuccessfulCompletion() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().visible()
+        Settings.Global.putFloat(activity.get().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        // Advance animation frames only when this test advances the main looper.
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+        var completions = 0
+        val view = StartupLogoView(activity.get()) { completions++ }
+        try {
+            activity.get().setContentView(view)
+            view.startMotion()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+            view.stop()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            assertEquals(0, completions)
+        } finally { view.stop(); activity.pause().stop().destroy() }
+    }
+
     @Test fun disabledMotionShowsAStaticLogoInsteadOfCompletingImmediately() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().visible()
         Settings.Global.putFloat(activity.get().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
