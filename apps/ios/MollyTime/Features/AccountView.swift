@@ -64,7 +64,8 @@ struct AccountView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 Button { editingProfile = true } label: {
                     RootPageHeader(title: store.session?.user.displayName ?? store.session?.user.name ?? "我的账号",
-                                   subtitle: "把好时光，慢慢收藏。", editable: true)
+                                   subtitle: "把好时光，慢慢收藏。", editable: true,
+                                   avatarData: store.session?.user.avatarJPEGBase64.flatMap { Data(base64Encoded: $0) })
                 }.buttonStyle(.plain).accessibilityHint("编辑名称和头像")
                     .modifier(RootPageHeaderLayout())
             }

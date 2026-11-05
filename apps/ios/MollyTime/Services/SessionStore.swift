@@ -40,7 +40,7 @@ final class SessionStore {
     var upload = UploadModel()
     var reminderUpload = UploadModel()
     var parentPINConfigured = false
-    var deviceBindingsRevision = 0
+    let deviceRefresh = DeviceRefreshTrigger()
     let storage = FamilyStorageStore()
     let artwork = ResourceCache<UIImage>()
     var restoring = true
@@ -164,6 +164,7 @@ final class SessionStore {
         api.cookie = ""; api.csrf = ""
     }
     private func resetAccountState() {
+        deviceRefresh.reset()
         storage.reset()
         artwork.removeAll()
         upload.pause(); upload = UploadModel()

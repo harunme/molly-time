@@ -11,6 +11,7 @@ struct DevicesView: View {
     @State private var pinSet = false
     @State private var loaded = false
     @State private var bindingRevision = 0
+    @State private var loadGeneration = UUID()
     @State private var statisticsGeneration = UUID()
     @State private var statisticsRevision = 0
     @State private var failure: String?
@@ -125,7 +126,11 @@ struct DevicesView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .task { if !loaded || bindingRevision != store.deviceBindingsRevision { await reload() } }
+            .task(id: store.deviceRefresh.revision) {
+                await store.deviceRefresh.refresh(since: loaded ? bindingRevision : nil) {
+                    await reload()
+                }
+            }
             .task(id: "\(scenePhase)-\(statisticsRevision)") {
                 if scenePhase == .active { await reloadStatistics() }
             }
@@ -137,7 +142,7 @@ struct DevicesView: View {
                 if phase == .active { Task { await reload() } }
             }
             .sheet(isPresented: $pairing) {
-                PairingView { Task { await reload() } }
+                PairingView()
             }
             .sheet(item: $editing, onDismiss: { Task { await reload() } }) { WatchSettingsView(control: $0, hasPin: pinSet || store.parentPINConfigured) }
             .alert("解绑电视？", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), presenting: revoking) { device in
@@ -159,19 +164,28 @@ struct DevicesView: View {
     }
 
     private func reload() async {
+        let requestID = UUID()
+        let requestedRevision = store.deviceRefresh.revision
+        loadGeneration = requestID
         failure = nil
         do {
             // Use pagination so large accounts do not silently stop at 100 devices.
             var all: [Device] = []; var number = 1
             while true {
                 let result: Page<Device> = try await store.api.request("/api/manage/devices", query: [URLQueryItem(name: "page", value: "\(number)"), URLQueryItem(name: "activeOnly", value: "true")])
+                try Task.checkCancellation()
+                guard loadGeneration == requestID else { return }
                 all += result.items
                 if !result.hasNext { break }; number += 1
             }
             let result: WatchControls = try await store.api.request("/api/manage/watch-control")
+            try Task.checkCancellation()
+            guard loadGeneration == requestID, requestedRevision == store.deviceRefresh.revision else { return }
             devices = all; controls = result.devices; pinSet = result.pinSet; loaded = true
-            bindingRevision = store.deviceBindingsRevision
-        } catch { failure = error.localizedDescription }
+            bindingRevision = requestedRevision
+        } catch {
+            if !Task.isCancelled && loadGeneration == requestID { failure = error.localizedDescription }
+        }
     }
     private func reloadStatistics() async {
         let requestID = UUID()
@@ -359,7 +373,6 @@ struct WatchSettingsView: View {
 }
 
 struct PairingView: View {
-    var onPaired: () -> Void = {}
     @Environment(SessionStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var code = ""
@@ -374,8 +387,8 @@ struct PairingView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 24) {
                 Image(systemName: done ? "checkmark.circle.fill" : "tv").font(.system(size: 48, weight: .light)).foregroundStyle(Palette.yellow).padding(.top, 20)
-                Text(done ? "电视已经准备好了" : "让电视加入好时光").font(.system(.title, design: .rounded, weight: .bold))
-                Text(done ? "请查看电视屏幕，它会自动进入你的内容库。" : "打开电视上的 MollyTime，输入四位配对码，或扫描屏幕上的二维码。")
+                Text(done ? "绑定已确认" : "让电视加入好时光").font(.system(.title, design: .rounded, weight: .bold))
+                Text(done ? "电视收到确认后会自动进入片库，手机上的电视列表也会自动更新。" : "打开电视上的 MollyTime，输入四位配对码，或扫描屏幕上的二维码。")
                     .foregroundStyle(.secondary)
                 if done {
                     Button("完成") { dismiss() }.buttonStyle(PrimaryButtonStyle())
@@ -420,7 +433,12 @@ struct PairingView: View {
     }
     private func confirm() async {
         busy = true; failure = nil; defer { busy = false }
-        do { try await store.api.command("/api/manage/pairing/confirm", body: ["code": selectedCode, "name": name.trimmingCharacters(in: .whitespaces)]); done = true; onPaired() }
-        catch { failure = error.localizedDescription }
+        let sessionGeneration = store.sessionGeneration
+        do {
+            try await store.api.command("/api/manage/pairing/confirm", body: ["code": selectedCode, "name": name.trimmingCharacters(in: .whitespaces)])
+            guard sessionGeneration == store.sessionGeneration else { return }
+            store.deviceRefresh.bindingConfirmed()
+            done = true
+        } catch { failure = error.localizedDescription }
     }
 }

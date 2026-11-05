@@ -121,7 +121,7 @@ struct LibraryView: View {
         }
         .task { if page == 0 { await load(reset: true) } }
         .refreshable { await load(reset: true) }
-        .sheet(isPresented: $pairing) { PairingView { store.deviceBindingsRevision += 1 } }
+        .sheet(isPresented: $pairing) { PairingView() }
         .onChange(of: store.upload.completed) { _, ready in if ready { Task { await load(reset: true) } } }
         .sheet(isPresented: $uploading, onDismiss: { Task { await load(reset: true) } }) {
             UploadView(folder: folder)

@@ -34,10 +34,19 @@ struct RootPageHeader: View {
     let title: String
     let subtitle: String
     var editable = false
+    var avatarData: Data? = nil
     @ScaledMetric(relativeTo: .title3) private var height = 60
     var body: some View {
         HStack(spacing: 16) {
-            PageBrandMark().frame(width: 48, height: 48)
+            Group {
+                if let avatarData, let avatar = UIImage(data: avatarData) {
+                    Image(uiImage: avatar).resizable().scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    PageBrandMark()
+                }
+            }.frame(width: 48, height: 48).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text(title).font(.system(.title3, design: .rounded, weight: .bold))
                     .lineLimit(1).truncationMode(.tail)
