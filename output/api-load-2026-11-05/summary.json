@@ -1,0 +1,69 @@
+{
+  "scope": "Local isolated SQLite WAL / in-process ASGI, not a production MySQL/network capacity test",
+  "fixture": {
+    "families": 2,
+    "files_per_family": 1000,
+    "local_file_fraction": 0.5,
+    "watch_intervals": 20000,
+    "concurrency": [
+      1,
+      8,
+      32
+    ],
+    "timed_requests_per_run": 1568
+  },
+  "base_commit": "c2430838",
+  "fixed": [
+    {
+      "issue": "Settings borrows a second pooled database connection while retaining its first",
+      "evidence": "32-concurrency warm batch had 5 HTTP 500 responses; one-connection regression reproduced QueuePool timeout",
+      "change": "Read storage configuration after releasing the request connection and before starting storage totals"
+    },
+    {
+      "issue": "Concurrent cache misses rebuild the same family snapshot repeatedly",
+      "evidence": "32 cold requests triggered 32 object measurements",
+      "change": "Serialize family rebuilds with shared-data-directory locks and re-read the snapshot after acquiring the lock"
+    },
+    {
+      "issue": "Episode list performs per-row artwork, ancestor state, sharing and preview queries",
+      "evidence": "30-row episode page: 308 SQL statements per request before, 11 after",
+      "change": "Batch load page ancestors and artwork; cache absent states and flags within the request"
+    }
+  ],
+  "remaining": [
+    {
+      "priority": "high",
+      "endpoint": "/api/manage/overview",
+      "p95_ms_at_32_concurrency": 42762.6,
+      "cause": "Full watch interval traversal on every request; held database cursor and Python aggregation",
+      "recommendation": "Maintain daily and lifetime summaries with explicit invalidation; display device list independently of watch statistics",
+      "location": "apps/server/mollytime_server/api/manage_overview.py:30"
+    },
+    {
+      "priority": "medium",
+      "endpoint": "/api/manage/resources/stats",
+      "p95_ms_at_32_concurrency": 1734.0,
+      "cause": "Materializes all matching items and builds ID lists before Python aggregation",
+      "recommendation": "Use SQL aggregate expressions and subqueries, preserving current per-item duration rounding and visibility rules",
+      "location": "apps/server/mollytime_server/api/manage_resources.py:261"
+    }
+  ],
+  "consistency_checks": [
+    "Only 5 of 16 simultaneous 100-byte reservations accepted with 500 bytes available; other 11 correctly returned 507",
+    "16 duplicate writes of the same chunk advanced the offset only once",
+    "Cross-family upload returned 404",
+    "Cold/warm settings returned correct usedBytes"
+  ],
+  "validation": {
+    "distinct_regression_tests_passed": 147,
+    "lint": "passed",
+    "git_diff_check": "passed"
+  },
+  "limitations": [
+    "Single-process ASGI with threaded handlers; shared-lock behavior across multiple API processes was not separately load tested",
+    "No production data or production service was changed",
+    "No actual OSS transfer, WAN latency, CDN, proxy, or MySQL capacity test",
+    "Before quota 507 responses are recorded in the raw error field; these are expected rejections, not failures"
+  ],
+  "deployment": "Working-tree changes only; not committed or deployed"
+}

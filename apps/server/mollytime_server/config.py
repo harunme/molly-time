@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     parent_web_dir: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
     site_web_dir: Path | None = None  # defaults to parent_web_dir / "site"
     media_worker_enabled: bool = True
+    watch_rollup_worker_enabled: bool = True
     max_upload_bytes: int = Field(default=10 * 1024**3, gt=0)
     public_base_url: str = ""  # Phone-accessible server origin for pairing QR links.
     android_build_tools_dir: Path = (

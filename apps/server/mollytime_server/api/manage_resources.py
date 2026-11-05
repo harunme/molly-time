@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..config import get_settings
 from ..deps import DbSession
-from ..images import image_ref
+from ..images import image_ref, prime_artwork
 from ..manage_auth import Parent, aware
 from ..management_models import (
     FamilyReminders,
@@ -71,8 +71,14 @@ def state_for(db, item):
 
 def prime_resources(db, items, summary=False):
     keys = [item.id for item in items]
-    states = {row.item_id: row for row in db.query(ResourceState).filter(ResourceState.item_id.in_(keys)).all()}
-    db.info["manage_states"] = {key: states.get(key) for key in keys}
+    nodes = prime_artwork(db, items)
+    states = {row.item_id: row for row in db.query(ResourceState).filter(ResourceState.item_id.in_(nodes)).all()}
+    db.info["manage_states"] = {key: states.get(key) for key in nodes}
+    shared = {key for (key,) in db.query(SharedOrigin.item_id).filter(SharedOrigin.item_id.in_(keys)).all()}
+    db.info["manage_shared"] = {key: key in shared for key in keys}
+    db.info["manage_previews"] = {
+        key: any(file.kind == "preview" for file in db.info["artwork_files"][key]) for key in keys
+    }
     if summary:
         return
     files = db.query(MediaFile).filter(MediaFile.item_id.in_(keys), MediaFile.kind.in_(["video", "subtitle", "image", "preview"])).all()
@@ -91,7 +97,7 @@ def resource_state(db, item):
 
 def hidden_folder(db, item):
     for parent in ancestors(db, item):
-        state = db.get(ResourceState, parent.id)
+        state = resource_state(db, parent)
         if state and (state.status != "published" or not state.ready):
             return {"id": parent.id, "name": parent.name}
     return None
@@ -110,6 +116,8 @@ def dto(db, item, include_files=True):
     options = {file.id: options[file.id] if file.id in options else db.get(MediaOptions, file.id) for file in media}
     artwork = image_ref(db, item, direct=False)
     cover = artwork["url"]
+    shared = db.info.get("manage_shared", {})
+    previews = db.info.get("manage_previews", {})
     return {
         "id": item.id,
         "name": item.name,
@@ -120,12 +128,12 @@ def dto(db, item, include_files=True):
         "status": state.status if state else "published",
         "legacy": state is None,
         "hiddenByFolder": hidden_folder(db, item),
-        "shared": db.get(SharedOrigin, item.id) is not None,
+        "shared": shared[item.id] if item.id in shared else db.get(SharedOrigin, item.id) is not None,
         "ready": state.ready if state else True,
         "runtimeMs": (item.runtime_ticks or 0) // 10000,
         "imageUrl": cover + ("&" if "?" in cover else "?") + "w=320",
         "imagePreviewUrl": artwork.get("previewUrl"),
-        "hasOwnPreview": db.query(MediaFile.id).filter_by(item_id=item.id, family_id=item.family_id, kind="preview").first() is not None,
+        "hasOwnPreview": previews[item.id] if item.id in previews else db.query(MediaFile.id).filter_by(item_id=item.id, family_id=item.family_id, kind="preview").first() is not None,
         "files": [
             {
                 "id": f.id,
@@ -250,27 +258,31 @@ def resource_stats(user: Parent, db: DbSession, folderId: str | None = None):
         query = query.filter(Item.id.in_(descendant_ids(user.family_id, folder.id)))
     if private_ids:
         query = query.filter(Item.id.notin_(private_ids))
-    active = query.all()
-    active_ids = [item_id for item_id, *_ in active]
-    subtitle_count = 0
-    if active_ids:
-        subtitle_count = db.query(func.count(MediaFile.id)).filter(
-            MediaFile.item_id.in_(active_ids), MediaFile.kind == "subtitle",
-        ).scalar() or 0
-    episode_ids = {item_id for item_id, item_type, *_ in active if item_type == "Episode"}
-    subtitle_video_count = 0
-    if episode_ids:
-        subtitle_video_count = db.query(func.count(func.distinct(MediaFile.item_id))).filter(
-            MediaFile.item_id.in_(episode_ids), MediaFile.kind == "subtitle",
-        ).scalar() or 0
+    episode = Item.type == "Episode"
+    def count_when(condition):
+        return func.coalesce(func.sum(case((condition, 1), else_=0)), 0)
+    totals = query.with_entities(
+        count_when(episode), count_when(Item.type == "Series"),
+        count_when(episode & (func.coalesce(ResourceState.status, "published") == "published")),
+        count_when(episode & func.coalesce(ResourceState.ready, True)),
+        # Round each resource before summing, exactly as the existing API does.
+        func.coalesce(func.sum(case((episode, func.floor(func.coalesce(Item.runtime_ticks, 0) / 10000)), else_=0)), 0),
+    ).one()
+    active = query.with_entities(Item.id, Item.type).subquery()
+    subtitle_count, subtitle_video_count = db.query(
+        func.count(MediaFile.id),
+        func.count(func.distinct(case((active.c.type == "Episode", MediaFile.item_id)))),
+    ).join(active, active.c.id == MediaFile.item_id).filter(
+        MediaFile.family_id == user.family_id, MediaFile.kind == "subtitle",
+    ).one()
     return {
-        "videoCount": sum(item_type == "Episode" for _, item_type, *_ in active),
-        "folderCount": sum(item_type == "Series" for _, item_type, *_ in active),
+        "videoCount": int(totals[0]),
+        "folderCount": int(totals[1]),
         "subtitleCount": subtitle_count,
-        "publishedVideoCount": sum(item_type == "Episode" and status == "published" for _, item_type, status, _, _ in active),
-        "readyVideoCount": sum(item_type == "Episode" and ready for _, item_type, _, ready, _ in active),
+        "publishedVideoCount": int(totals[2]),
+        "readyVideoCount": int(totals[3]),
         "subtitleVideoCount": subtitle_video_count,
-        "durationMs": sum((runtime_ticks or 0) // 10000 for _, item_type, _, _, runtime_ticks in active if item_type == "Episode"),
+        "durationMs": int(totals[4]),
     }
 
 

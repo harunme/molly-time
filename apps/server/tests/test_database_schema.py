@@ -14,8 +14,8 @@ from mollytime_server.models import Family
 def test_report_indexes_are_added_to_existing_tables_and_repeatable(client):
     engine = db.get_engine()
     names = {
-        "items": "ix_item_family_type_parent",
-        "media_files": "ix_media_family_kind",
+        "items": "ix_item_family_parent",
+        "media_files": "ix_media_family_kind_item",
         "upload_sessions": "ix_upload_family_status",
         "watch_sessions": "ix_watch_family_started",
     }

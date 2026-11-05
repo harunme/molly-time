@@ -19,13 +19,15 @@ def visible_item_ids(family_id):
         ResourceState.item_id == Item.id,
         or_(ResourceState.status != "published", ResourceState.ready.is_(False)),
     ).exists()
-    tree = select(Item.id).where(
+    tree = select(Item.id, Item.family_id).where(
         Item.family_id == family_id,
         ~select(parent.c.id).where(parent.c.id == Item.parent_id).exists(),
         allowed,
     ).cte("visible_catalog", recursive=True)
-    tree = tree.union_all(select(Item.id).join(tree, Item.parent_id == tree.c.id).where(
-        Item.family_id == family_id, allowed,
+    tree = tree.union_all(select(Item.id, Item.family_id).join(tree,
+        (Item.parent_id == tree.c.id) & (Item.family_id == tree.c.family_id),
+    ).where(
+        allowed,
     ))
     return select(tree.c.id)
 

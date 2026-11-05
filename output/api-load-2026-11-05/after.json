@@ -1,0 +1,381 @@
+{
+  "environment": {
+    "platform": "macOS-27.2-arm64-arm-64bit",
+    "database": "isolated SQLite WAL",
+    "transport": "in-process ASGI; no network",
+    "families": 2,
+    "files_per_family": 1000,
+    "watch_intervals": 20000
+  },
+  "results": [
+    {
+      "case": "settings-warm",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 460.2,
+      "p50_ms": 2.1,
+      "p95_ms": 2.8,
+      "max_ms": 3.0,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 576
+    },
+    {
+      "case": "settings-cold",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 284.2,
+      "p50_ms": 2.2,
+      "p95_ms": 2.8,
+      "max_ms": 79.2,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 582,
+      "storage_rebuilds": 1
+    },
+    {
+      "case": "resources-paged",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 208.1,
+      "p50_ms": 4.4,
+      "p95_ms": 5.6,
+      "max_ms": 10.6,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 704
+    },
+    {
+      "case": "resources-unpaged",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 103.5,
+      "p50_ms": 9.1,
+      "p95_ms": 10.5,
+      "max_ms": 29.8,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 768
+    },
+    {
+      "case": "resource-stats",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 194.3,
+      "p50_ms": 5.0,
+      "p95_ms": 5.8,
+      "max_ms": 7.0,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 384
+    },
+    {
+      "case": "overview-history",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 3.4,
+      "p50_ms": 293.3,
+      "p95_ms": 302.3,
+      "max_ms": 313.2,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 1152
+    },
+    {
+      "case": "uploads-paged",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 549.2,
+      "p50_ms": 1.7,
+      "p95_ms": 1.9,
+      "max_ms": 5.0,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 384
+    },
+    {
+      "case": "family-usage",
+      "concurrency": 1,
+      "requests": 64,
+      "rps": 422.0,
+      "p50_ms": 2.3,
+      "p95_ms": 2.5,
+      "max_ms": 7.1,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 640
+    },
+    {
+      "case": "settings-warm",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 470.8,
+      "p50_ms": 15.3,
+      "p95_ms": 24.2,
+      "max_ms": 43.8,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 576
+    },
+    {
+      "case": "settings-cold",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 257.5,
+      "p50_ms": 17.8,
+      "p95_ms": 102.6,
+      "max_ms": 109.9,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 596,
+      "storage_rebuilds": 1
+    },
+    {
+      "case": "resources-paged",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 207.8,
+      "p50_ms": 38.5,
+      "p95_ms": 48.8,
+      "max_ms": 52.9,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 704
+    },
+    {
+      "case": "resources-unpaged",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 52.4,
+      "p50_ms": 153.0,
+      "p95_ms": 189.4,
+      "max_ms": 206.5,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 768
+    },
+    {
+      "case": "resource-stats",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 33.3,
+      "p50_ms": 246.2,
+      "p95_ms": 297.1,
+      "max_ms": 316.3,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 384
+    },
+    {
+      "case": "overview-history",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 1.8,
+      "p50_ms": 4812.9,
+      "p95_ms": 5456.3,
+      "max_ms": 5502.0,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 1152
+    },
+    {
+      "case": "uploads-paged",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 564.9,
+      "p50_ms": 13.4,
+      "p95_ms": 19.1,
+      "max_ms": 21.3,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 384
+    },
+    {
+      "case": "family-usage",
+      "concurrency": 8,
+      "requests": 64,
+      "rps": 352.8,
+      "p50_ms": 21.0,
+      "p95_ms": 34.3,
+      "max_ms": 39.3,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 640
+    },
+    {
+      "case": "settings-warm",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 328.5,
+      "p50_ms": 76.7,
+      "p95_ms": 141.3,
+      "max_ms": 152.3,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 576
+    },
+    {
+      "case": "settings-cold",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 188.7,
+      "p50_ms": 170.3,
+      "p95_ms": 325.0,
+      "max_ms": 336.6,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 644,
+      "storage_rebuilds": 1
+    },
+    {
+      "case": "resources-paged",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 124.0,
+      "p50_ms": 230.0,
+      "p95_ms": 346.9,
+      "max_ms": 392.2,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 704
+    },
+    {
+      "case": "resources-unpaged",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 37.5,
+      "p50_ms": 812.1,
+      "p95_ms": 1116.6,
+      "max_ms": 1215.3,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 768
+    },
+    {
+      "case": "resource-stats",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 24.9,
+      "p50_ms": 1245.7,
+      "p95_ms": 1734.0,
+      "max_ms": 1881.0,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 384
+    },
+    {
+      "case": "overview-history",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 1.1,
+      "p50_ms": 29166.6,
+      "p95_ms": 42762.6,
+      "max_ms": 43071.7,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 1152
+    },
+    {
+      "case": "uploads-paged",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 432.8,
+      "p50_ms": 60.1,
+      "p95_ms": 101.4,
+      "max_ms": 113.7,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 384
+    },
+    {
+      "case": "family-usage",
+      "concurrency": 32,
+      "requests": 64,
+      "rps": 266.5,
+      "p50_ms": 100.8,
+      "p95_ms": 186.7,
+      "max_ms": 192.7,
+      "status": {
+        "200": 64
+      },
+      "errors": {},
+      "sql": 640
+    },
+    {
+      "case": "quota-reservations",
+      "concurrency": 16,
+      "requests": 16,
+      "rps": 12.4,
+      "p50_ms": 740.5,
+      "p95_ms": 1286.9,
+      "max_ms": 1286.9,
+      "status": {
+        "200": 5,
+        "507": 11
+      },
+      "errors": {},
+      "sql": 221,
+      "storage_rebuilds": 16
+    },
+    {
+      "case": "duplicate-chunks",
+      "concurrency": 16,
+      "requests": 16,
+      "rps": 457.6,
+      "p50_ms": 30.2,
+      "p95_ms": 34.3,
+      "max_ms": 34.3,
+      "status": {
+        "200": 16
+      },
+      "errors": {},
+      "sql": 113
+    }
+  ]
+}

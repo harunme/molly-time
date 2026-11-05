@@ -1,4 +1,4 @@
-"""Family overview with aggregates and streamed watch intervals, without N+1 queries."""
+"""Family overview backed by SQL aggregates and transactional watch summaries."""
 
 import datetime as dt
 from zoneinfo import ZoneInfo
@@ -9,65 +9,30 @@ from sqlalchemy.orm import aliased
 
 from ..deps import DbSession
 from ..device_presence import ONLINE_WINDOW
-from ..manage_auth import Parent, aware
+from ..manage_auth import Parent
 from ..management_models import (
     Device,
     FamilyReminders,
     FamilySettings,
     ResourceState,
     UploadSession,
-    WatchInterval,
-    WatchSession,
 )
 from ..models import ChildProfile, Item, MediaFile
 from ..resource_policy import visible_item_ids
 from ..usage import storage_totals
-from .watch_filters import family_watch_clause
 
 router = APIRouter(prefix="/api/manage", tags=["manage-overview"])
 
 
 def watch_summary(db, family, zone, now):
-    today = now.astimezone(zone).date()
-    first_day = today - dt.timedelta(days=364)
-    week_start = today - dt.timedelta(days=today.weekday())
-    days = {(first_day + dt.timedelta(days=i)).isoformat(): 0 for i in range(365)}
-    lower = dt.datetime.combine(first_day, dt.time.min, zone).astimezone(dt.UTC)
-    contents = {}
-    # Select only the timeline columns. Older sessions can resume inside the
-    # displayed range, so filtering by session start alone would lose viewing.
-    intervals = db.query(
-        WatchSession.id, WatchSession.started_at, WatchSession.item_id, WatchSession.item_name,
-        WatchInterval.start_ms, WatchInterval.end_ms,
-    ).join(WatchInterval, WatchInterval.session_id == WatchSession.id).filter(
-        WatchSession.family_id == family, family_watch_clause(),
-        WatchSession.started_at < now, WatchInterval.played_ms > 0,
-    )
-    plays = {}
-    for session_id, started, item_id, name, start_ms, end_ms in intervals.yield_per(256):
-        a = aware(started) + dt.timedelta(milliseconds=start_ms)
-        b = min(aware(started) + dt.timedelta(milliseconds=end_ms), now)
-        if b <= a:
-            continue
-        plays.setdefault(item_id, set()).add(session_id)
-        content = contents.setdefault(item_id, {"id": item_id, "name": name, "playedMs": 0})
-        content["playedMs"] += round((b - a).total_seconds() * 1000)
-        a = max(a, lower)
-        while a < b:
-            local = a.astimezone(zone)
-            midnight = dt.datetime.combine(
-                local.date() + dt.timedelta(days=1), dt.time.min, zone,
-            ).astimezone(dt.UTC)
-            edge = min(b, midnight)
-            days[local.date().isoformat()] += round((edge - a).total_seconds() * 1000)
-            a = edge
-    favorite = min(contents.values(), key=lambda row: (-row["playedMs"], row["id"])) if contents else None
+    from ..watch_rollups import read_summary
+    summary, favorite, ranked = read_summary(db, family, now)
+    ranked_ids = [row["id"] for row in ranked]
+    contents = {row["id"]: row for row in ranked}
     if favorite:
-        current_name = db.query(Item.name).filter(
-            Item.id == favorite["id"], Item.family_id == family,
-        ).scalar()
+        favorite = {key: favorite[key] for key in ("id", "name", "playedMs")}
+        current_name = db.query(Item.name).filter(Item.id == favorite["id"], Item.family_id == family).scalar()
         favorite["name"] = current_name or favorite["name"]
-    ranked_ids = sorted(contents, key=lambda key: (-len(plays[key]), key))[:7]
     parent = aliased(Item)
     grandparent = aliased(Item)
     series_name = case(
@@ -85,29 +50,24 @@ def watch_summary(db, family, zone, now):
     most_played_videos = [
         {"id": item_id, "name": current_videos.get(item_id, (None, None))[0] or contents[item_id]["name"],
          "seriesName": current_videos.get(item_id, (None, None))[1],
-         "playCount": len(plays[item_id])}
+         "playCount": contents[item_id]["playCount"]}
         for item_id in ranked_ids
     ]
-    return {
-        "todayPlayedMs": days[today.isoformat()],
-        "weekPlayedMs": sum(value for day, value in days.items() if day >= week_start.isoformat()),
-        "weekStart": week_start.isoformat(),
-        "favoriteVideo": favorite,
-        "mostPlayedVideo": most_played_videos[0] if most_played_videos else None,
-        "mostPlayedVideos": most_played_videos,
-        "days": [{"date": day, "playedMs": value} for day, value in days.items()],
-    }
+    return {**summary, "favoriteVideo": favorite,
+            "mostPlayedVideo": most_played_videos[0] if most_played_videos else None,
+            "mostPlayedVideos": most_played_videos}
+
 
 
 def published_resource_summary(db, family):
     parent = aliased(Item)
     grandparent = aliased(Item)
-    video = db.query(MediaFile.id).filter(
-        MediaFile.item_id == Item.id, MediaFile.family_id == family, MediaFile.kind == "video",
-    ).exists()
-    episodes = db.query(Item).filter(
+    video = db.query(MediaFile.item_id).filter(
+        MediaFile.family_id == family, MediaFile.kind == "video",
+    ).distinct().subquery()
+    episodes = db.query(Item).join(video, video.c.item_id == Item.id).filter(
         Item.family_id == family, Item.type == "Episode",
-        Item.id.in_(visible_item_ids(family)), video,
+        Item.id.in_(visible_item_ids(family)),
     )
     reminders = db.get(FamilyReminders, family)
     if reminders:
@@ -161,22 +121,9 @@ def overview(user: Parent, db: DbSession):
     settings = db.get(FamilySettings, family)
     zone = ZoneInfo(settings.timezone if settings else "Asia/Shanghai")
     now = dt.datetime.now(dt.UTC)
-    today = now.astimezone(zone).date()
     online = db.query(func.count(Device.id)).filter(
         Device.family_id == family, Device.revoked.is_(False),
         Device.last_seen >= now - ONLINE_WINDOW, Device.last_seen <= now,
-    ).scalar()
-    start = dt.datetime.combine(today - dt.timedelta(days=6), dt.time.min, zone).astimezone(dt.UTC)
-    end = dt.datetime.combine(today + dt.timedelta(days=1), dt.time.min, zone).astimezone(dt.UTC)
-    played = db.query(WatchInterval.id).filter(
-        WatchInterval.session_id == WatchSession.id, WatchInterval.played_ms > 0
-    ).exists()
-    sessions = db.query(func.count(WatchSession.id)).filter(
-        WatchSession.family_id == family,
-        family_watch_clause(),
-        WatchSession.started_at >= start,
-        WatchSession.started_at < end,
-        played,
     ).scalar()
     return {
         "media": media,
@@ -193,7 +140,6 @@ def overview(user: Parent, db: DbSession):
         "children": db.query(func.count(ChildProfile.id)).filter(ChildProfile.family_id == family).scalar(),
         "storageBytes": storage_totals(db, [family])[family]["usedBytes"],
         "watch": {
-            "last7DaysSessions": sessions, "timezone": str(zone),
             **watch_summary(db, family, zone, now),
         },
     }

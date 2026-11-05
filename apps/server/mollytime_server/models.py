@@ -148,6 +148,7 @@ class Item(Base):
 
     __table_args__ = (
         Index("ix_item_family_type_parent", "family_id", "type", "parent_id"),
+        Index("ix_item_family_parent", "family_id", "parent_id"),
         UniqueConstraint("family_id", "view_id", "parent_id", "name", "type", name="uq_item_family_parent_name_type"),
     )
 
@@ -168,7 +169,10 @@ class MediaFile(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     sha256: Mapped[str] = mapped_column(String(64), default="")
 
-    __table_args__ = (Index("ix_media_family_kind", "family_id", "kind"),)
+    __table_args__ = (
+        Index("ix_media_family_kind", "family_id", "kind"),
+        Index("ix_media_family_kind_item", "family_id", "kind", "item_id"),
+    )
 
 
 class PlaybackEvent(Base):

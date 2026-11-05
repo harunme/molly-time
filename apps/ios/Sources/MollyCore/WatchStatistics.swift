@@ -21,6 +21,7 @@ public struct WatchStatistics: Decodable, Sendable {
         }
     }
     public let timezone: String
+    public let summaryUpdating: Bool?
     public let todayPlayedMs: Int64
     public let weekPlayedMs: Int64
     public let weekStart: String

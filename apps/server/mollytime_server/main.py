@@ -93,6 +93,9 @@ def create_app() -> FastAPI:
             from .media_worker import start_worker
 
             app.state.media_worker = start_worker()
+        if settings.watch_rollup_worker_enabled:
+            from .watch_rollups import start_worker as start_watch_rollup_worker
+            app.state.watch_rollup_worker = start_watch_rollup_worker()
         logging.getLogger(__name__).info(
             "mollytime-server %s ready: data=%s media=%s listen=%s:%s",
             settings.server_version,
@@ -104,6 +107,10 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     def _shutdown() -> None:
+        rollups = getattr(app.state, "watch_rollup_worker", None)
+        if rollups:
+            rollups[0].set()
+            rollups[1].join(timeout=5)
         oss_worker = getattr(app.state, "oss_usage_worker", None)
         if oss_worker:
             oss_worker[0].set()

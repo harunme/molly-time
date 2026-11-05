@@ -2,6 +2,7 @@
 
 import datetime as dt
 import re
+from contextlib import ExitStack
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -75,14 +76,32 @@ def family_objects(db, family):
 
 
 def storage_totals(db, family_ids):
-    """Reuse committed file totals until content changes; reservations stay live."""
-    from .share_models import ContentShare
-    from .storage_snapshots import read_snapshots, save_snapshots
-
+    """Coalesce cold rebuilds across API processes sharing the data directory."""
+    from .remote_uploads import upload_lock
+    from .storage_snapshots import read_snapshots
     if not family_ids:
         return {}
     now = dt.datetime.now(dt.UTC)
-    versions, result = read_snapshots(db, family_ids, now)
+    snapshot = read_snapshots(db, family_ids, now)
+    missing = sorted(set(family_ids) - snapshot[1].keys())
+    if not missing:
+        return _storage_totals(db, family_ids, now, snapshot)
+    # Never occupy a database connection while waiting for another calculator.
+    # Re-read under the lock, after ending the old repeatable-read snapshot.
+    with external_io(db):
+        pass
+    with ExitStack() as locks:
+        for family in missing:
+            locks.enter_context(upload_lock(f"storage-{family}"))
+        now = dt.datetime.now(dt.UTC)
+        return _storage_totals(db, family_ids, now, read_snapshots(db, family_ids, now))
+
+
+def _storage_totals(db, family_ids, now, snapshot):
+    from .share_models import ContentShare
+    from .storage_snapshots import save_snapshots
+
+    versions, result = snapshot
     missing = [family for family in family_ids if family not in result]
     files = object_rows(db, missing) if missing else []
     expiries = dict(db.query(ContentShare.family_id, func.min(ContentShare.expires_at)).filter(

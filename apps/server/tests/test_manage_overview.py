@@ -163,6 +163,8 @@ def test_overview_empty_watch_history(parent):
 
 
 def test_overview_query_count_stays_constant_as_media_grows(parent):
+    # Compare equally warm snapshots; the first request also builds storage.
+    assert parent.get("/api/manage/overview").status_code == 200
     statements = []
 
     def capture(_connection, _cursor, statement, _parameters, _context, _many):

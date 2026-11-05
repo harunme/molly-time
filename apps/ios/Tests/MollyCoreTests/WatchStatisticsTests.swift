@@ -3,6 +3,16 @@ import Testing
 @testable import MollyCore
 
 struct WatchStatisticsTests {
+    @Test func backfillStatusIsOptionalForOlderServers() throws {
+        for (field, expected) in [("", nil), (",\"summaryUpdating\":true", true), (",\"summaryUpdating\":false", false)] as [(String, Bool?)] {
+            let json = """
+            {"timezone":"Asia/Shanghai","todayPlayedMs":1000,"weekPlayedMs":1000,"weekStart":"2026-11-02","days":[]\(field)}
+            """
+            let stats = try JSONDecoder().decode(WatchStatistics.self, from: Data(json.utf8))
+            #expect(stats.summaryUpdating == expected)
+            #expect(stats.todayPlayedMs == 1000)
+        }
+    }
     private func decode(_ days: String) throws -> WatchStatistics {
         let json = """
         {"watch":{"timezone":"Asia/Shanghai","todayPlayedMs":1260000,"weekPlayedMs":5160000,"weekStart":"2026-11-02","days":\(days)},"media":{"folders":9}}

@@ -11,6 +11,8 @@ struct DevicesView: View {
     @State private var pinSet = false
     @State private var loaded = false
     @State private var bindingRevision = 0
+    @State private var statisticsGeneration = UUID()
+    @State private var statisticsRevision = 0
     @State private var failure: String?
     @State private var pairing = false
     @State private var revoking: Device?
@@ -34,7 +36,7 @@ struct DevicesView: View {
                         .background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
                 }
                 if let statisticsFailure {
-                    InlineFailure(message: "观看记录未更新：\(statisticsFailure)", retry: { Task { await reloadStatistics() } })
+                    InlineFailure(message: "观看记录未更新：\(statisticsFailure)", retry: { statisticsRevision += 1 })
                 }
                 if store.canManage && !devices.isEmpty {
                     Button { pairing = true } label: {
@@ -123,9 +125,16 @@ struct DevicesView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .task { if !loaded || bindingRevision != store.deviceBindingsRevision { await reload() } }.refreshable { await reload() }
+            .task { if !loaded || bindingRevision != store.deviceBindingsRevision { await reload() } }
+            .task(id: "\(scenePhase)-\(statisticsRevision)") {
+                if scenePhase == .active { await reloadStatistics() }
+            }
+            .refreshable {
+                statisticsRevision += 1
+                await reload()
+            }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await reloadStatistics() } }
+                if phase == .active { Task { await reload() } }
             }
             .sheet(isPresented: $pairing) {
                 PairingView { Task { await reload() } }
@@ -151,7 +160,6 @@ struct DevicesView: View {
 
     private func reload() async {
         failure = nil
-        async let statistics: Void = reloadStatistics()
         do {
             // Use pagination so large accounts do not silently stop at 100 devices.
             var all: [Device] = []; var number = 1
@@ -161,18 +169,32 @@ struct DevicesView: View {
                 if !result.hasNext { break }; number += 1
             }
             let result: WatchControls = try await store.api.request("/api/manage/watch-control")
-            await statistics
             devices = all; controls = result.devices; pinSet = result.pinSet; loaded = true
             bindingRevision = store.deviceBindingsRevision
         } catch { failure = error.localizedDescription }
-        await statistics
     }
     private func reloadStatistics() async {
-        do {
-            let result: WatchOverview = try await store.api.request("/api/manage/overview")
-            watch = result.watch; statisticsFailure = nil
-        } catch {
-            if !Task.isCancelled { statisticsFailure = error.localizedDescription }
+        let requestID = UUID()
+        let account = store.sessionGeneration
+        statisticsGeneration = requestID
+        while !Task.isCancelled && statisticsGeneration == requestID && account == store.sessionGeneration {
+            do {
+                let result: WatchOverview = try await store.api.request("/api/manage/overview")
+                guard !Task.isCancelled, statisticsGeneration == requestID,
+                      account == store.sessionGeneration else { return }
+                watch = result.watch; statisticsFailure = nil
+                if result.watch.summaryUpdating != true { return }
+            } catch {
+                guard !Task.isCancelled, statisticsGeneration == requestID,
+                      account == store.sessionGeneration else { return }
+                // Historical backfills are prepared in the background. Keep the
+                // last successful values and retry without blocking device loading.
+                guard case APIError.http(503, _) = error else {
+                    statisticsFailure = error.localizedDescription
+                    return
+                }
+            }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
         }
     }
     private func revoke(_ device: Device) async {

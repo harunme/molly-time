@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 
-from ..device_identity import revoke_binding
 from ..auth import hash_password, verify_password
 from ..config import get_settings
 from ..deps import DbSession
+from ..device_identity import revoke_binding
 from ..manage_auth import Parent, aware
 from ..management_models import Device, FamilySettings, WatchInterval, WatchSession
 from ..models import ChildProfile, Family, Item
@@ -118,6 +118,9 @@ def settings(user: Parent, db: DbSession):
     with external_io(db):
         path.mkdir(parents=True, exist_ok=True)
         disk = shutil.disk_usage(path)
+        # This helper opens its own session. Resolve it while the request has
+        # released its connection, not after storage_totals starts another read.
+        backend = get_storage_settings().storage_backend
     usage = storage_totals(db, [user.family_id])[user.family_id]
     return {
         "familyName": family.name if family else "我的家庭",
@@ -126,7 +129,7 @@ def settings(user: Parent, db: DbSession):
         "storage": {
             "total": disk.total,
             "free": disk.free,
-            "backend": get_storage_settings().storage_backend,
+            "backend": backend,
             "usedBytes": usage["usedBytes"],
             "reservedBytes": usage["reservedBytes"],
             "limitBytes": get_settings().family_storage_limit_bytes,

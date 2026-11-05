@@ -228,6 +228,7 @@ def init_db() -> None:
         share_models,  # noqa: F401 -- register additive sharing tables
         storage_snapshots,  # noqa: F401 -- versioned family byte snapshots
         usage_models,  # noqa: F401 -- register usage tables with Base.metadata
+        watch_rollups,
     )
 
     engine = get_engine()
@@ -313,6 +314,7 @@ def init_db() -> None:
         if session.get(management_models.SchemaRevision, "family-usage-v1") is None:
             session.add(management_models.SchemaRevision(id="family-usage-v1"))
             session.commit()
+        watch_rollups.initialize(session)
 
 
 def session_scope() -> Iterator[Session]:

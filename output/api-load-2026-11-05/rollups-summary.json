@@ -1,0 +1,40 @@
+{
+  "scope": {
+    "platform": "macOS-27.2-arm64-arm-64bit",
+    "database": "isolated SQLite WAL",
+    "transport": "in-process ASGI; no network",
+    "families": 2,
+    "files_per_family": 1000,
+    "watch_intervals": 20000
+  },
+  "resolved": [
+    {
+      "endpoint": "/api/manage/overview",
+      "before_p95_ms_at_32": 42762.6,
+      "after_p95_ms_at_32": 391.4,
+      "change": "Transactional daily/item/session projections; idempotent contributions; resumable background history backfill with validation; indexed recursive publication query"
+    },
+    {
+      "endpoint": "/api/manage/resources/stats",
+      "before_p95_ms_at_32": 1734.0,
+      "after_p95_ms_at_32": 318.4,
+      "change": "SQL conditional aggregates and joined subtitle counts; preserve per-item duration rounding and family/folder filters"
+    }
+  ],
+  "ios": "Device loading independent of watch summary; retain successful statistics and retry pending backfills in a cancellable view task",
+  "validation": {
+    "distinct_backend_regression_tests_passed": 106,
+    "swift_core_tests_passed": 49,
+    "xcode_simulator_build": "passed",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "timed_requests": 1568,
+    "unexpected_errors": 0
+  },
+  "rollout": "Run tools/rebuild-watch-statistics.py against the deployment database before routing traffic; no deployment or commit performed",
+  "limitations": [
+    "Isolated SQLite WAL / in-process ASGI; no production MySQL, network or OSS transfer load test",
+    "Resource stats P95 was 318.4 ms, slightly above the proposed 300 ms target",
+    "Retired summary generations are retained for audit; automatic pruning is not included"
+  ]
+}

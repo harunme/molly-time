@@ -7,6 +7,43 @@ from .storage.settings import get_storage_settings
 from .transactions import external_io
 
 
+def prime_artwork(db, items):
+    """Keep page ancestors and their artwork alive for this read-only request.
+
+    Cache missing artwork too: SQLAlchemy's identity map cannot cache a miss.
+    Descendant cover fallback still applies the existing publication policy.
+    """
+    nodes = {item.id: item for item in items}
+    families = {item.family_id for item in items}
+    seen = set(nodes)
+    pending = {item.parent_id for item in items if item.parent_id} - seen
+    while pending:
+        parents = db.query(Item).filter(Item.id.in_(pending), Item.family_id.in_(families)).all()
+        seen.update(pending)
+        nodes.update((item.id, item) for item in parents)
+        pending = {item.parent_id for item in parents if item.parent_id} - seen
+    files = {key: [] for key in nodes}
+    for file in db.query(MediaFile).filter(
+        MediaFile.item_id.in_(nodes), MediaFile.family_id.in_(families),
+        MediaFile.kind.in_(["image", "preview"]),
+    ).all():
+        if file.family_id == nodes[file.item_id].family_id:
+            files[file.item_id].append(file)
+    db.info["artwork_items"] = nodes
+    db.info["artwork_files"] = files
+    return nodes
+
+
+def artwork_files(db, item):
+    cached = db.info.get("artwork_files", {})
+    if item.id in cached:
+        return cached[item.id]
+    return db.query(MediaFile).filter(
+        MediaFile.item_id == item.id, MediaFile.family_id == item.family_id,
+        MediaFile.kind.in_(["image", "preview"]),
+    ).all()
+
+
 def animated_format(file):
     return file.mime in ("image/webp", "image/png", "image/gif") or file.path.lower().endswith((".webp", ".png", ".gif"))
 
@@ -16,10 +53,7 @@ def image_files(db, item):
     current, visited = item, set()
     while current and current.id not in visited and current.family_id == item.family_id:
         visited.add(current.id)
-        files = db.query(MediaFile).filter(
-            MediaFile.item_id == current.id, MediaFile.family_id == item.family_id,
-            MediaFile.kind.in_(["image", "preview"]),
-        ).all()
+        files = artwork_files(db, current)
         cover = next((file for file in files if file.kind == "image"), None)
         preview = next((file for file in files if file.kind == "preview"), None)
         if cover or preview:
@@ -41,11 +75,7 @@ def image_url(db, item):
         visited.add(current.id)
         if current.primary_image_tag:
             return f"/api/items/{item.id}/image?v={current.primary_image_tag}"
-        cover = db.query(MediaFile).filter(
-            MediaFile.item_id == current.id,
-            MediaFile.family_id == item.family_id,
-            MediaFile.kind.in_(["image", "preview"]),
-        ).order_by(MediaFile.kind).first()
+        cover = next(iter(sorted(artwork_files(db, current), key=lambda file: file.kind)), None)
         if cover:
             return f"/api/items/{item.id}/image?v={image_version(db, cover)}"
         current = db.get(Item, current.parent_id) if current.parent_id else None
