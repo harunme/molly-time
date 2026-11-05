@@ -15,9 +15,16 @@ from mollytime_server.auth import hash_password, issue_access_token
 from mollytime_server.main import create_app
 from mollytime_server.management_models import MediaOptions, MediaTask, ResourceState, UploadSession
 from mollytime_server.models import Family, Item, MediaFile, User
-from mollytime_server.share_models import ContentShare, ObjectCleanup, ShareClaim, ShareFile, SharedOrigin
+from mollytime_server.share_models import (
+    ContentShare,
+    ObjectCleanup,
+    ShareClaim,
+    SharedOrigin,
+    ShareFile,
+)
 from mollytime_server.shares import cleanup_shares
 from mollytime_server.storage.oss import OssStorage
+from mollytime_server.trash import process_pending_deletion
 from mollytime_server.usage import storage_totals
 
 
@@ -64,7 +71,8 @@ def accept(recipient, share, **extra):
 def archive_purge(parent, key):
     assert parent.post(f"/api/manage/resources/{key}/archive").status_code == 200
     result = parent.delete(f"/api/manage/trash/{key}")
-    assert result.status_code == 200, result.text
+    assert result.status_code == 202, result.text
+    assert process_pending_deletion()
 
 
 def expire(share):
@@ -272,17 +280,20 @@ def test_concurrent_claim_and_deletion_never_copy_or_lose_file(parent, recipient
 
     def remove():
         barrier.wait(timeout=5)
-        return parent.delete("/api/manage/trash/series")
+        result = parent.delete("/api/manage/trash/series")
+        process_pending_deletion()
+        return result
 
     assert parent.post("/api/manage/resources/series/archive").status_code == 200
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = [
             future.result(timeout=15) for future in [pool.submit(claim), pool.submit(remove)]
         ]
-    assert all(result.status_code in (200, 409) for result in results)
-    # A lock conflict is retryable; success must preserve the same snapshot bytes.
-    if results[1].status_code == 409:
-        assert parent.delete("/api/manage/trash/series").status_code == 200
+    assert results[0].status_code in (200, 409)
+    assert results[1].status_code == 202
+    # Lock contention leaves the accepted request queued for the next worker pass.
+    process_pending_deletion()
+    assert parent.get("/api/manage/trash/deletions").json() == []
     root = accept(recipient, share)
     assert (config.get_settings().resolved_media_dir() / "video.mp4").exists()
     with Session(db.get_engine()) as session:

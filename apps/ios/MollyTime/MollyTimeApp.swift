@@ -99,5 +99,14 @@ struct ParentTabs: View {
                 }
             }
         }
+        // Keep deletion monitoring alive while a detail screen covers the tabs.
+        .task(id: "\(scenePhase)-\(store.trashDeletions.hasPending)") {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await store.refreshTrashDeletions()
+                do { try await Task.sleep(for: .seconds(store.trashDeletions.hasPending ? 2 : 30)) }
+                catch { return }
+            }
+        }
     }
 }

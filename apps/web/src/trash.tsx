@@ -66,6 +66,26 @@ export function Trash({ readonly }: { readonly: boolean }) {
   const list = usePagedData<TrashItem, TrashPage>('/trash', serial);
   const [summary, setSummary] = useState<TrashPage>();
   useEffect(() => { if (list.response) setSummary(list.response); }, [list.response]);
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      let delay = 30000;
+      try {
+        const jobs = await api<{ id: string; status: string; error: string }[]>('/trash/deletions');
+        if (!alive) return;
+        if (jobs.some((job) => job.status === 'pending')) delay = 2000;
+        const states = new Map(jobs.map((job) => [job.id, job]));
+        if (list.data.some((row) => {
+          const job = states.get(row.id);
+          return row.deleting !== !!job || (job && row.error !== job.error);
+        })) refresh((value) => value + 1);
+      } catch { /* A failed poll must not imply deletion succeeded. */ }
+      if (alive) timer = setTimeout(() => { void poll(); }, delay);
+    };
+    void poll();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [list.data]);
   const mutate = async (key: string, action: () => Promise<unknown>, message: string) => {
     setBusy(key); setError(''); setNotice('');
     try {
@@ -111,7 +131,7 @@ export function Trash({ readonly }: { readonly: boolean }) {
             <TableCell className="whitespace-nowrap">{row.deleting ? '已开始删除，无法恢复' : row.deleteAt ? dateTime(row.deleteAt) : '不自动删除'}</TableCell>
             <TableCell><div className="trash-row-actions">{!readonly && <>
               <Button variant="ghost" disabled={!!busy || row.deleting} onClick={() => { void mutate(row.id, () => api(`/trash/${row.id}/restore`, 'POST'), '已恢复到资源库，沿用移入前的发布状态。').catch(() => {}); }}><RotateCcw className="size-3.5" />恢复</Button>
-              <Button variant="ghost" className="text-destructive" disabled={!!busy} onClick={() => setDeleting(row)}><Trash2 className="size-3.5" />{row.deleting ? '重试删除' : '立即删除'}</Button>
+              <Button variant="ghost" className="text-destructive" disabled={busy === row.id || (row.deleting && !row.error)} onClick={() => setDeleting(row)}><Trash2 className="size-3.5" />{row.deleting ? row.error ? '重试删除' : '正在删除…' : '立即删除'}</Button>
             </>}</div></TableCell>
           </TableRow>)}</TableBody>
         </Table>}
@@ -122,6 +142,6 @@ export function Trash({ readonly }: { readonly: boolean }) {
     </Card>
     <ConfirmDialog open={!!deleting} onOpenChange={(open) => { if (!open) setDeleting(undefined); }} title="彻底删除内容" confirmLabel="彻底删除" destructive
       description={deleting ? `永久删除“${deleting.name}”${deleting.type !== 'Episode' ? '及文件夹内的所有内容' : ''}？将清理对应的 OSS 和本地文件，预计释放 ${bytes(deleting.storage.reclaimableBytes)}。仍被其他资源使用的文件会保留。此操作无法恢复。` : ''}
-      onConfirm={async () => { if (deleting) await mutate(deleting.id, () => api(`/trash/${deleting.id}`, 'DELETE'), '内容已彻底删除。'); }} />
+      onConfirm={async () => { if (deleting) await mutate(deleting.id, () => api(`/trash/${deleting.id}`, 'DELETE'), '已开始删除，可离开此页面。'); }} />
   </>;
 }

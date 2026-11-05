@@ -46,6 +46,7 @@ final class SessionStore {
     let artwork = ResourceCache<UIImage>()
     let artworkDisk = ArtworkDiskCache()
     let library = LibraryStore()
+    let trashDeletions = TrashDeletionStore()
     private var restoreTask: Task<Void, Never>?
     var restoring = true
     var message: String?
@@ -103,6 +104,15 @@ final class SessionStore {
         }, fetchFolder: { id in
             try await client.request("/api/manage/resources/\(id)")
         })
+    }
+    func refreshTrashDeletions() async {
+        guard session != nil else { return }
+        let client = api, account = epoch
+        let settled = await trashDeletions.refresh { try await client.request("/api/manage/trash/deletions") }
+        guard settled, account == epoch else { return }
+        library.invalidate(); libraryRevision += 1
+        storage.invalidate()
+        await refreshStorage()
     }
     func resetLibraryUpload() {
         if upload.completed { upload.discardDraft() }
@@ -213,6 +223,7 @@ final class SessionStore {
         storage.reset()
         artwork.removeAll()
         library.reset()
+        trashDeletions.reset()
         upload.pause(); upload = UploadModel()
         reminderUpload.pause(); reminderUpload = UploadModel()
         parentPINConfigured = false

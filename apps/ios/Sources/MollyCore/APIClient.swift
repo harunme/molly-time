@@ -65,10 +65,11 @@ public final class APIClient {
             .first(where: { $0.name == "molly_parent" }) {
             cookie = received.value; onCookie?(cookie)
         }
-        if method != "GET" && method != "HEAD" && Self.changesStorage(path) {
+        let queuedDeletion = http.statusCode == 202 && method == "DELETE" && path.hasPrefix("/api/manage/trash/")
+        if !queuedDeletion && method != "GET" && method != "HEAD" && Self.changesStorage(path) {
             onStorageChange?()
         }
-        if method != "GET" && method != "HEAD" && (
+        if !queuedDeletion && method != "GET" && method != "HEAD" && (
             path == "/api/manage/resources" || path.hasPrefix("/api/manage/resources/")
             || path.hasPrefix("/api/manage/trash/") || path.hasPrefix("/api/manage/shares/")) {
             onLibraryChange?()

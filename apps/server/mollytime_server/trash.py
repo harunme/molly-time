@@ -120,20 +120,21 @@ def root_entries(db, items):
     return roots
 
 
-def owned_entry(db, item_id, family_id):
+def owned_entry(db, item_id, family_id, *, lock=False, allow_deleting_descendant=False):
     item = db.get(Item, item_id)
-    entry = db.get(TrashEntry, item_id)
+    entry = (db.query(TrashEntry).filter_by(item_id=item_id).populate_existing().with_for_update().first()
+             if lock else db.get(TrashEntry, item_id))
     if item is None or item.family_id != family_id or entry is None:
         raise HTTPException(404, "回收站内容不存在")
     parent = db.get(Item, item.parent_id) if item.parent_id else None
-    if parent and archived_ancestor(db, parent):
+    if parent and archived_ancestor(db, parent) and not (allow_deleting_descendant and entry.deleting):
         raise HTTPException(409, "请先处理回收站中的上级文件夹")
     return item, entry
 
 
 def restore(db, item_id, family_id):
     serialize_sqlite_write(db)
-    _item, entry = owned_entry(db, item_id, family_id)
+    _item, entry = owned_entry(db, item_id, family_id, lock=True)
     if entry.deleting:
         raise HTTPException(409, "内容已开始彻底删除，无法恢复；删除失败时请重试")
     state = db.get(ResourceState, item_id)
@@ -141,6 +142,61 @@ def restore(db, item_id, family_id):
     db.delete(entry)
     db.commit()
     return {"ok": True}
+
+
+def request_purge(db, item_id, family_id):
+    """Durably accept a deletion without storage I/O or waiting for worker locks."""
+    serialize_sqlite_write(db)
+    item = db.get(Item, item_id)
+    if item is not None and item.family_id == family_id and item.type == "Deleted":
+        return {"ok": True, "deleting": False}
+    item, entry = owned_entry(db, item_id, family_id, lock=True, allow_deleting_descendant=True)
+    if not entry.deleting:
+        ensure_idle(db, subtree(family_tree(db, family_id), item.id))
+    entry.deleting, entry.error = True, ""
+    db.commit()
+    return {"ok": True, "deleting": True}
+
+
+def deletion_states(db, family_id):
+    # Poll only durable job state; avoid filesystem/statistics walks on each poll.
+    return [{"id": key, "status": "failed" if error else "pending", "error": error}
+            for key, error in db.query(TrashEntry.item_id, TrashEntry.error).join(
+                Item, Item.id == TrashEntry.item_id,
+            ).filter(Item.family_id == family_id, TrashEntry.deleting.is_(True)).all()]
+
+
+def process_pending_deletion():
+    """Process one durable request. Errors wait for an explicit retry; lock
+    contention and process restarts leave the request queued for a later pass."""
+    with get_session_factory()() as db:
+        candidate = db.query(TrashEntry.item_id, Item.family_id).join(
+            Item, Item.id == TrashEntry.item_id,
+        ).filter(TrashEntry.deleting.is_(True), TrashEntry.error == "").order_by(
+            TrashEntry.archived_at, TrashEntry.item_id,
+        ).first()
+    if candidate is None:
+        return False
+    item_id, family_id = candidate
+    try:
+        return purge(item_id, family_id, queued=True)
+    except HTTPException as exc:
+        if exc.status_code in (404, 409):
+            return False
+        if exc.status_code != 503:  # purge already recorded storage failures.
+            _deletion_failed(item_id)
+    except Exception:
+        _deletion_failed(item_id)
+        logger.exception("Queued deletion failed for %s", item_id)
+    return True
+
+
+def _deletion_failed(item_id):
+    with get_session_factory()() as db:
+        entry = db.get(TrashEntry, item_id)
+        if entry:
+            entry.error = "删除未完成，可重试删除。"
+            db.commit()
 
 
 def object_identity(backend, key):
@@ -284,10 +340,12 @@ def deletion_lock():
         yield
 
 
-def purge(item_id, family_id, *, expired_at=None):
+def purge(item_id, family_id, *, expired_at=None, queued=False):
     with deletion_lock(), get_session_factory()() as db:
         serialize_sqlite_write(db)
-        item, entry = owned_entry(db, item_id, family_id)
+        item, entry = owned_entry(db, item_id, family_id, allow_deleting_descendant=queued)
+        if queued and (not entry.deleting or entry.error):
+            return False
         if expired_at is not None:
             days = retention_days(db, family_id)
             if not days or aware(entry.archived_at) + dt.timedelta(days=days) > expired_at:

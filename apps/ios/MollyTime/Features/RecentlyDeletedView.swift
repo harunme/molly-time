@@ -6,8 +6,8 @@ private struct DeletedResource: Decodable, Identifiable {
     let name: String
     let type: String
     let deleteAt: String?
-    let deleting: Bool
-    let error: String
+    var deleting: Bool
+    var error: String
     let videoCount: Int
 }
 private struct DeletedPage: Decodable {
@@ -20,12 +20,13 @@ private struct DeletedPage: Decodable {
 
 struct RecentlyDeletedView: View {
     @Environment(SessionStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var items: [DeletedResource] = []
     @State private var page = 0
     @State private var total = 0
     @State private var retentionDays = 7
     @State private var loading = false
-    @State private var busy: String?
+    @State private var busy: Set<String> = []
     @State private var failure: String?
     @State private var generation = UUID()
     @State private var deleting: DeletedResource?
@@ -35,18 +36,32 @@ struct RecentlyDeletedView: View {
                 if page == 0 && failure == nil { ProgressView("正在读取…") }
                 else if items.isEmpty { Text("最近没有删除内容").foregroundStyle(.secondary) }
                 ForEach(items) { item in
+                    let job = store.trashDeletions.jobs[item.id]
+                    let pending = job?.pending ?? (item.deleting && item.error.isEmpty)
+                    let error = job?.error ?? item.error
                     VStack(alignment: .leading, spacing: 12) {
                         Label(item.name, systemImage: item.type == "Episode" ? "film" : "folder").font(.headline)
-                        Text(item.deleting ? "正在彻底删除…" : item.deleteAt.map { "计划于 \($0.prefix(10)) 自动删除" } ?? "保留至手动删除")
-                            .font(.caption).foregroundStyle(.secondary)
+                        if pending {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.mini)
+                                Text("正在删除，可离开此页面")
+                            }.font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text(item.deleting ? "删除未完成，可重试" : item.deleteAt.map { "计划于 \($0.prefix(10)) 自动删除" } ?? "保留至手动删除")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         if item.type != "Episode" { Text("包含 \(item.videoCount) 个视频").font(.caption).foregroundStyle(.secondary) }
-                        if !item.error.isEmpty { Text(item.error).font(.caption).foregroundStyle(.red) }
+                        if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
                         if store.canManage {
                             HStack {
-                                Button("恢复") { Task { await restore(item) } }.buttonStyle(.bordered).frame(minHeight: 44)
+                                Button("恢复") { Task { await restore(item) } }
+                                    .buttonStyle(.bordered).frame(minHeight: 44)
+                                    .disabled(item.deleting || job != nil || busy.contains(item.id))
                                 Spacer()
-                                Button("彻底删除", role: .destructive) { deleting = item }.buttonStyle(.borderless).frame(minHeight: 44)
-                            }.frame(minHeight: 44).disabled(item.deleting || busy != nil)
+                                Button(error.isEmpty ? "彻底删除" : "重试删除", role: .destructive) { deleting = item }
+                                    .buttonStyle(.borderless).frame(minHeight: 44)
+                                    .disabled(pending || busy.contains(item.id))
+                            }.frame(minHeight: 44)
                         }
                     }.padding(.vertical, 8)
                 }
@@ -58,7 +73,15 @@ struct RecentlyDeletedView: View {
         }
         .navigationTitle("最近删除").navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .task { await load(reset: true) }.refreshable { await load(reset: true) }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await load(reset: true)
+            await store.refreshTrashDeletions()
+        }
+        .refreshable { await load(reset: true) }
+        .onChange(of: store.trashDeletions.settlementRevision) { _, _ in
+            Task { await load(reset: true) }
+        }
         .alert("彻底删除「\(deleting?.name ?? "")」？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { item in
             Button("取消", role: .cancel) {}
             Button("彻底删除", role: .destructive) { Task { await remove(item) } }
@@ -67,27 +90,52 @@ struct RecentlyDeletedView: View {
     private func load(reset: Bool) async {
         guard reset || !loading else { return }
         let request = UUID(); generation = request
+        let client = store.api, account = store.sessionGeneration
+        let lastPage = reset ? max(page, 1) : page + 1
         loading = true; failure = nil; defer { if generation == request { loading = false } }
         do {
-            let result: DeletedPage = try await store.api.request("/api/manage/trash", query: [.init(name: "page", value: "\(reset ? 1 : page + 1)")])
-            try Task.checkCancellation()
-            guard generation == request else { return }
-            items = reset ? result.items : items + result.items.filter { row in !items.contains(where: { $0.id == row.id }) }
-            total = result.total; page = result.page; retentionDays = result.retentionDays
-        } catch { if !Task.isCancelled, generation == request { failure = error.localizedDescription } }
+            var collected = reset ? [] : items
+            for number in (reset ? 1 : lastPage)...lastPage {
+                let result: DeletedPage = try await client.request("/api/manage/trash", query: [.init(name: "page", value: "\(number)")])
+                try Task.checkCancellation()
+                guard generation == request, account == store.sessionGeneration else { return }
+                collected += result.items.filter { row in !collected.contains(where: { $0.id == row.id }) }
+                // Keep all loaded pages visible while refreshing after a completed job.
+                if number == lastPage || number * result.pageSize >= result.total {
+                    items = collected; total = result.total; page = result.page; retentionDays = result.retentionDays
+                    break
+                }
+            }
+        } catch { if !Task.isCancelled, generation == request, account == store.sessionGeneration { failure = error.localizedDescription } }
     }
     private func restore(_ item: DeletedResource) async {
-        guard busy == nil else { return }
-        busy = item.id; failure = nil; defer { busy = nil }
-        do { try await store.api.command("/api/manage/trash/\(item.id)/restore"); await load(reset: true) }
-        catch { failure = error.localizedDescription }
+        guard !busy.contains(item.id) else { return }
+        busy.insert(item.id); failure = nil; defer { busy.remove(item.id) }
+        let client = store.api, account = store.sessionGeneration
+        do {
+            try await client.command("/api/manage/trash/\(item.id)/restore")
+            guard account == store.sessionGeneration else { return }
+            await load(reset: true)
+        } catch { if account == store.sessionGeneration { failure = error.localizedDescription } }
     }
     private func remove(_ item: DeletedResource) async {
-        guard busy == nil else { return }
-        busy = item.id; failure = nil; defer { busy = nil }
+        guard !busy.contains(item.id) else { return }
+        busy.insert(item.id); failure = nil; defer { busy.remove(item.id) }
+        let client = store.api, account = store.sessionGeneration
         do {
-            let _: OK = try await store.api.request("/api/manage/trash/\(item.id)", method: "DELETE")
-            await load(reset: true)
-        } catch { failure = error.localizedDescription }
+            let result: TrashDeletionReceipt = try await client.request("/api/manage/trash/\(item.id)", method: "DELETE")
+            guard account == store.sessionGeneration else { return }
+            if result.deleting == true {
+                store.trashDeletions.track(item.id)
+                if let index = items.firstIndex(where: { $0.id == item.id }) {
+                    items[index].deleting = true; items[index].error = ""
+                }
+            } else {
+                // Also supports a server running the previous synchronous API.
+                items.removeAll { $0.id == item.id }; total = max(items.count, total - 1)
+                store.storage.invalidate()
+                await store.refreshStorage()
+            }
+        } catch { if account == store.sessionGeneration { failure = error.localizedDescription } }
     }
 }

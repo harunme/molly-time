@@ -343,7 +343,16 @@ def loop(stop):
                     cleanup_shares(now)
                 except Exception:
                     logger.exception("Share expiry cleanup failed")
-            worked = run_once()
+            # Alternate one accepted deletion with media work. The existing
+            # filesystem locks serialize physical deletion across processes.
+            from .trash import process_pending_deletion
+
+            try:
+                deleted = process_pending_deletion()
+            except Exception:
+                logger.exception("Queued recycle bin deletion failed")
+                deleted = False
+            worked = run_once() or deleted
         except Exception:
             logger.exception("Media worker iteration failed")
             worked = False

@@ -11,12 +11,20 @@ from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import config, db
 from mollytime_server.management_models import (
-    Device, DeviceDownload, MediaOptions, MediaTask, ResourceState,
-    TrashEntry, TrashSettings, UploadSession, UploadTarget, WatchSession,
+    Device,
+    DeviceDownload,
+    MediaOptions,
+    MediaTask,
+    ResourceState,
+    TrashEntry,
+    TrashSettings,
+    UploadSession,
+    UploadTarget,
+    WatchSession,
 )
 from mollytime_server.models import MediaFile, User
 from mollytime_server.storage.oss import OssStorage
-from mollytime_server.trash import cleanup_expired
+from mollytime_server.trash import cleanup_expired, process_pending_deletion
 
 
 def archive(parent, key="series"):
@@ -64,7 +72,8 @@ def test_purge_files_preserves_shared_objects_history_and_device_removal(parent)
         session.commit()
     assert parent.delete("/api/manage/trash/series").status_code == 404
     archive(parent)
-    assert parent.delete("/api/manage/trash/series").status_code == 200
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    assert process_pending_deletion()
     assert not (root / "video.mp4").exists()
     assert (root / "subtitle.srt").read_text() == "subtitle"
     assert parent.get("/api/manage/trash").json()["storage"]["usedBytes"] == 0
@@ -93,13 +102,16 @@ def test_oss_delete_failure_is_visible_retryable_and_blocks_restore(parent, monk
     monkeypatch.setattr(OssStorage, "delete", delete)
     archive(parent)
     assert parent.get("/api/manage/trash").json()["storage"]["ossBytes"] == 1334
-    assert parent.delete("/api/manage/trash/series").status_code == 503
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    assert process_pending_deletion()
+    assert not process_pending_deletion()  # Failed jobs wait for explicit retry.
     row = parent.get("/api/manage/trash").json()["items"][0]
     assert row["deleting"] and row["error"]
     assert row["storage"]["ossBytes"] == 100  # Successfully deleted files no longer count.
     assert parent.post("/api/manage/trash/series/restore").status_code == 409
     delete.side_effect = None
-    assert parent.delete("/api/manage/trash/series").status_code == 200
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    assert process_pending_deletion()
     assert {call.args[0] for call in delete.call_args_list} == {"managed/f1/video.mp4", "managed/f1/old.mp4"}
     assert [call.args[0] for call in delete.call_args_list].count("managed/f1/video.mp4") == 1
 
@@ -113,7 +125,8 @@ def test_shared_oss_file_is_not_deleted(parent, monkeypatch):
     delete = Mock()
     monkeypatch.setattr(OssStorage, "delete", delete)
     archive(parent)
-    assert parent.delete("/api/manage/trash/series").status_code == 200
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    assert process_pending_deletion()
     delete.assert_not_called()
 
 
@@ -275,7 +288,8 @@ def test_failed_uploads_and_processing_leftovers_are_removed(parent, monkeypatch
     archive(parent)
     assert parent.post("/api/manage/tasks/task/retry").status_code == 409
     assert parent.get("/api/manage/trash").json()["storage"]["usedBytes"] == 534
-    assert parent.delete("/api/manage/trash/series").status_code == 200
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    assert process_pending_deletion()
     assert not (settings.data_dir / "uploads/failed.part").exists()
     delete.assert_called_once_with("failed.mp4")
     with Session(db.get_engine()) as session:
@@ -307,3 +321,93 @@ def test_background_worker_cleans_expired_trash_without_starving_media(parent, m
     media_worker.loop(stop)
     cleanup.assert_called_once()
     process.assert_called_once()
+
+
+def test_acceptance_is_durable_idempotent_and_never_waits_for_storage(parent, monkeypatch):
+    from mollytime_server import trash
+
+    archive(parent)
+    blocked = Mock(side_effect=AssertionError("HTTP acceptance must not inspect/delete objects"))
+    with monkeypatch.context() as patch:
+        patch.setattr(trash, "objects_for", blocked)
+        patch.setattr(trash, "outside_references", blocked)
+        # An active media/storage worker must not block HTTP acceptance.
+        with trash.deletion_lock():
+            for _ in range(2):
+                result = parent.delete("/api/manage/trash/series")
+                assert result.status_code == 202
+                assert result.json() == {"ok": True, "deleting": True}
+            assert not process_pending_deletion()
+        assert parent.get("/api/manage/trash/deletions").json() == [
+            {"id": "series", "status": "pending", "error": ""},
+        ]
+        blocked.assert_not_called()
+    assert (config.get_settings().resolved_media_dir() / "video.mp4").exists()
+    assert parent.post("/api/manage/trash/series/restore").status_code == 409
+    # Reinitialization/new DB sessions retain accepted work (no in-memory task required).
+    db.init_db()
+    assert process_pending_deletion()
+    assert parent.get("/api/manage/trash/deletions").json() == []
+    assert parent.delete("/api/manage/trash/series").json() == {"ok": True, "deleting": False}
+    assert not (config.get_settings().resolved_media_dir() / "video.mp4").exists()
+
+
+def test_deletion_status_is_family_scoped_and_failed_jobs_require_retry(parent):
+    archive(parent)
+    with Session(db.get_engine()) as session:
+        session.get(TrashEntry, "series").deleting = True
+        session.get(TrashEntry, "series").error = "storage offline"
+        session.add(ResourceState(item_id="e2", status="archived"))
+        session.add(TrashEntry(item_id="e2", deleting=True))
+        session.commit()
+    assert parent.get("/api/manage/trash/deletions").json() == [
+        {"id": "series", "status": "failed", "error": "storage offline"},
+    ]
+    assert parent.delete("/api/manage/trash/e2").status_code == 404
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    assert parent.get("/api/manage/trash/deletions").json() == [
+        {"id": "series", "status": "pending", "error": ""},
+    ]
+
+
+def test_queued_child_can_finish_after_parent_is_archived(parent):
+    archive(parent, "e1")
+    assert parent.delete("/api/manage/trash/e1").status_code == 202
+    archive(parent)
+    assert process_pending_deletion()
+    assert parent.get("/api/manage/trash/deletions").json() == []
+    assert parent.get("/api/manage/trash").json()["items"][0]["id"] == "series"
+    assert parent.post("/api/manage/trash/series/restore").status_code == 200
+    assert parent.get("/api/manage/resources/e1").status_code == 404
+
+
+def test_slow_storage_does_not_block_other_delete_requests_or_status(parent, monkeypatch):
+    from mollytime_server.storage.local import LocalStorage
+
+    archive(parent)
+    another = parent.post("/api/manage/resources", json={"type": "Series", "name": "Another"}).json()["id"]
+    archive(parent, another)
+    entered, release = threading.Event(), threading.Event()
+    original = LocalStorage.delete
+
+    def slow_delete(storage, key):
+        entered.set()
+        assert release.wait(timeout=10)
+        return original(storage, key)
+
+    monkeypatch.setattr(LocalStorage, "delete", slow_delete)
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        worker = pool.submit(process_pending_deletion)
+        try:
+            assert entered.wait(timeout=5)
+            response = pool.submit(parent.delete, f"/api/manage/trash/{another}").result(timeout=2)
+            assert response.status_code == 202
+            status = pool.submit(parent.get, "/api/manage/trash/deletions").result(timeout=2)
+            assert {row["id"] for row in status.json()} == {"series", another}
+            assert all(row["status"] == "pending" for row in status.json())
+        finally:
+            release.set()
+        assert worker.result(timeout=5)
+    assert process_pending_deletion()
+    assert parent.get("/api/manage/trash/deletions").json() == []

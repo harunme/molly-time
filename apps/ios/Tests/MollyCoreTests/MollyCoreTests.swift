@@ -94,6 +94,21 @@ struct APIClientTests {
         do { try await api.command("/api/manage/resources/e/archive"); fail() } catch {}
         checkEqual(changes, 2)
     }
+    @Test func acceptedDeletionDoesNotPretendStorageHasBeenFreed() async throws {
+        let api = try makeClient()
+        var storageChanges = 0, libraryChanges = 0
+        api.onStorageChange = { storageChanges += 1 }
+        api.onLibraryChange = { libraryChanges += 1 }
+        StubURLProtocol.handler = { _ in (202, [:], Data(#"{"ok":true,"deleting":true}"#.utf8)) }
+        let receipt: TrashDeletionReceipt = try await api.request("/api/manage/trash/e", method: "DELETE")
+        #expect(receipt.deleting == true)
+        #expect(storageChanges == 0 && libraryChanges == 0)
+        // Old servers complete synchronously and still trigger immediate refresh.
+        StubURLProtocol.handler = { _ in (200, [:], Data(#"{"ok":true}"#.utf8)) }
+        let previous: TrashDeletionReceipt = try await api.request("/api/manage/trash/e", method: "DELETE")
+        #expect(previous.deleting == nil)
+        #expect(storageChanges == 1 && libraryChanges == 1)
+    }
     @Test func artworkUsesBoundedChunksAndCompletesBeforeInvalidating() async throws {
         let api = try makeClient()
         let size = 4 * 1024 * 1024 + 8

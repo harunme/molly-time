@@ -144,9 +144,12 @@ def test_storage_statistics_batch_families_and_deduplicate_disk_checks(parent, n
             selects.clear()
             checks.clear()
             totals = storage_totals(session, ["f1", "f2"] + [f"usage-{i}" for i in range(20)])
-        assert len(selects) == count == 3
+        # The versioned storage cache adds fixed queries; family count must
+        # still not increase them, and already-cached f1 must not be remeasured.
+        assert len(selects) == count
         assert totals["f1"] == baseline["f1"]
-        assert checks.count("video.mp4") == checks.count("subtitle.srt") == 1
+        assert checks.count("video.mp4") == 0
+        assert checks.count("subtitle.srt") == 1  # Only uncached f2 needs this file.
     finally:
         event.remove(db.get_engine(), "before_cursor_execute", capture)
 
@@ -211,7 +214,9 @@ def test_share_snapshot_and_retryable_deletion_release_transactions(parent, no_t
     response = parent.post("/api/manage/shares", json={"resourceId": "series"})
     assert response.status_code == 200
     assert parent.post("/api/manage/resources/series/archive").status_code == 200
-    assert parent.delete("/api/manage/trash/series").status_code == 200
+    assert parent.delete("/api/manage/trash/series").status_code == 202
+    from mollytime_server.trash import process_pending_deletion
+    assert process_pending_deletion()
     with Session(db.get_engine()) as session:
         for share in session.query(ContentShare).all():
             share.expires_at = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1)
