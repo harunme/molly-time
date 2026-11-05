@@ -80,6 +80,44 @@ struct APIClientTests {
         config.httpCookieStorage = nil; config.httpShouldSetCookies = false
         return APIClient(endpoint: try Endpoint("https://mollytime.app"), session: URLSession(configuration: config))
     }
+    @Test func libraryInvalidationOnlyFollowsSuccessfulChanges() async throws {
+        let api = try makeClient()
+        var changes = 0; api.onLibraryChange = { changes += 1 }
+        StubURLProtocol.handler = { _ in (200, [:], Data(#"{"ok":true}"#.utf8)) }
+        let _: OK = try await api.request("/api/manage/resources/e")
+        checkEqual(changes, 0)
+        try await api.command("/api/manage/resources/e/archive")
+        checkEqual(changes, 1)
+        try await api.command("/api/manage/trash/e/restore")
+        checkEqual(changes, 2)
+        StubURLProtocol.handler = { _ in (409, [:], Data(#"{"detail":"busy"}"#.utf8)) }
+        do { try await api.command("/api/manage/resources/e/archive"); fail() } catch {}
+        checkEqual(changes, 2)
+    }
+    @Test func artworkUsesBoundedChunksAndCompletesBeforeInvalidating() async throws {
+        let api = try makeClient()
+        let size = 4 * 1024 * 1024 + 8
+        var offsets: [Int] = []; var changes = 0
+        api.onLibraryChange = { changes += 1 }
+        func reply(_ offset: Int, _ status: String) -> Data {
+            Data("{\"id\":\"u\",\"itemId\":\"e\",\"offset\":\(offset),\"size\":\(size),\"status\":\"\(status)\",\"transport\":\"local\",\"partSize\":4194304,\"error\":\"\"}".utf8)
+        }
+        StubURLProtocol.handler = { request in
+            let path = request.url!.path
+            if path.hasSuffix("/chunks") {
+                let offset = Int(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first!.value!)!
+                offsets.append(offset)
+                checkTrue(request.value(forHTTPHeaderField: "X-Chunk-SHA256")?.count == 64)
+                return (200, [:], reply(min(offset + 4 * 1024 * 1024, size), "uploading"))
+            }
+            if path.hasSuffix("/complete") { return (200, [:], reply(size, "ready")) }
+            checkEqual(path, "/api/manage/uploads")
+            return (200, [:], reply(0, "uploading"))
+        }
+        try await ResourceArtworkUpload.send(Data(repeating: 1, count: size), itemID: "e", api: api)
+        checkEqual(offsets, [0, 4 * 1024 * 1024])
+        checkEqual(changes, 1)
+    }
     @Test func testMutationIncludesScopedCookieAndCSRF() async throws {
         let api = try makeClient(); api.cookie = "session-value"; api.csrf = "csrf-value"
         StubURLProtocol.handler = { request in

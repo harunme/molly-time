@@ -298,7 +298,7 @@ def test_delayed_completion_of_an_old_session_cannot_finish_the_new_last_episode
     assert parent.get("/api/reminders/state", headers=tv).json()["phase"] == "done"
 
 
-def test_authorization_csrf_readiness_and_other_family(parent):
+def test_authorization_csrf_fallback_and_other_family(parent):
     tv, _ = seed(parent)
     path = "/api/manage/reminders/requests"
     start(parent, tv)
@@ -314,7 +314,7 @@ def test_authorization_csrf_readiness_and_other_family(parent):
         ).ready = False
         session.commit()
     assert parent.post(path, json={"deviceId": "tv2"}).status_code == 404
-    assert parent.post(path, json={"deviceId": "tv1"}).status_code == 422
+    assert parent.post(path, json={"deviceId": "tv1"}).status_code == 200
     parent.cookies.clear()
     assert parent.post(path, json={"deviceId": "tv1"}, headers=tv).status_code == 401
 
@@ -453,3 +453,47 @@ def test_online_threshold_is_deterministic_and_normalizes_sqlite_dates(age, onli
     assert device_online(device, at) is online
     device.revoked = True
     assert not device_online(device, at)
+
+
+def test_builtin_reminders_work_without_recordings_and_stream_ranges(parent):
+    with Session(db.get_engine()) as session:
+        session.add(Device(id="tv1", family_id="f1", user_id="u1", name="客厅"))
+        session.commit()
+    settings = parent.get("/api/manage/reminders").json()
+    for kind in ["warning", "farewell"]:
+        assert settings[kind]["ready"] is True
+        assert settings[kind]["source"] == "builtin"
+        assert settings[kind]["itemId"] is None
+        # Parent preview is available before a one-shot request enables the clips.
+        preview = parent.get(f"/api/reminders/{kind}/playback")
+        assert preview.status_code == 200
+        assert preview.json()["mediaId"] == f"builtin-{kind}-v1"
+    tv = headers("tv1")
+    assert parent.get("/api/reminders/warning/playback", headers=tv).status_code == 404
+    start(parent, tv)
+    response = parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"})
+    assert response.status_code == 200
+    for kind in ["warning", "farewell"]:
+        info = parent.get(f"/api/reminders/{kind}/playback", headers=tv).json()
+        clip = parent.get(info["url"], headers={**tv, "Range": "bytes=0-31"})
+        assert clip.status_code == 206
+        assert len(clip.content) == 32
+        assert clip.headers["content-type"] == "video/mp4"
+        assert b"ftyp" in clip.content
+        assert parent.head(info["url"], headers=tv).status_code == 200
+    with Session(db.get_engine()) as session:
+        row = session.get(FamilyReminders, "f1")
+        assert row.folder_id is None and row.warning_id is None and row.farewell_id is None
+
+
+def test_custom_and_builtin_clips_can_mix_while_upload_processing(parent):
+    tv, _ = seed(parent)
+    settings = parent.get("/api/manage/reminders").json()
+    assert settings["warning"]["source"] == "custom"
+    with Session(db.get_engine()) as session:
+        session.get(ResourceState, settings["farewell"]["itemId"]).ready = False
+        session.commit()
+    start(parent, tv)
+    assert parent.post("/api/manage/reminders/requests", json={"deviceId": "tv1"}).status_code == 200
+    assert parent.get("/api/reminders/warning/playback", headers=tv).json()["mediaId"] == "clip-warning"
+    assert parent.get("/api/reminders/farewell/playback", headers=tv).json()["mediaId"] == "builtin-farewell-v1"

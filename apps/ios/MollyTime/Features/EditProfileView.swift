@@ -103,7 +103,7 @@ struct EditProfileView: View {
                         confirmingLogout = true
                     }.font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).disabled(busy)
                 }.padding(24).frame(maxWidth: 600)
-            }.frame(maxWidth: .infinity).background(Palette.canvas)
+            }.frame(maxWidth: .infinity).mollyPageBackground()
                 .navigationTitle("个人信息").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {

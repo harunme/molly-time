@@ -17,7 +17,7 @@ struct QRScannerView: View {
                     ContentUnavailableView("暂时无法使用相机", systemImage: "camera",
                         description: Text(failure ?? (checked ? "你可以关闭此页，手动输入电视上的四位绑定码。相机权限可在系统设置中开启。" : "正在请求相机权限…")))
                 }
-            }.navigationTitle("扫描电视二维码").navigationBarTitleDisplayMode(.inline)
+            }.mollyPageBackground().navigationTitle("扫描电视二维码").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } } }
         }.task { allowed = await AVCaptureDevice.requestAccess(for: .video); checked = true }
     }

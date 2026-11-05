@@ -78,16 +78,9 @@ def dto(db, row):
         else None
     )
     item = db.get(Item, episode_id) if episode_id else None
-    from .api.reminders import clip_file
-    from .management_models import FamilyReminders
-
-    clips = db.get(FamilyReminders, row.family_id) if row else None
-    paths = {
-        f"{kind}Path": f"/api/reminders/{kind}/playback"
-        if clips and clip_file(db, clips, kind)
-        else None
-        for kind in ("warning", "farewell")
-    }
+    # Both kinds always have a packaged fallback, including new families.
+    paths = {f"{kind}Path": f"/api/reminders/{kind}/playback"
+             for kind in ("warning", "farewell")}
     reset_at = (
         dt.datetime.combine(
             dt.date.fromisoformat(row.quota_day) + dt.timedelta(days=1),

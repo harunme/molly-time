@@ -60,7 +60,7 @@ struct AccountSwitcherView: View {
                 Text("仅在这台手机记住登录状态，不保存密码。登录过期后，需要重新验证。")
                     .font(.footnote).foregroundStyle(.secondary)
             }.padding(24).frame(maxWidth: 600)
-        }.frame(maxWidth: .infinity).background(Palette.canvas)
+        }.frame(maxWidth: .infinity).mollyPageBackground()
             .navigationTitle("切换账号").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .interactiveDismissDisabled(store.switchingAccount)

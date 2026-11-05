@@ -40,9 +40,13 @@ final class SessionStore {
     var upload = UploadModel()
     var reminderUpload = UploadModel()
     var parentPINConfigured = false
+    private(set) var libraryRevision = 0
     let deviceRefresh = DeviceRefreshTrigger()
     let storage = FamilyStorageStore()
     let artwork = ResourceCache<UIImage>()
+    let artworkDisk = ArtworkDiskCache()
+    let library = LibraryStore()
+    private var restoreTask: Task<Void, Never>?
     var restoring = true
     var message: String?
     var serverAddress: String
@@ -84,6 +88,32 @@ final class SessionStore {
             self.storage.invalidate()
             Task { await self.refreshStorage() }
         }
+        client.onLibraryChange = { [weak self, weak client] in
+            guard let self, let client, self.api === client else { return }
+            self.library.invalidate()
+            self.libraryRevision += 1
+        }
+    }
+    func loadLibrary(folderID: String?, throughPage: Int, force: Bool = false) async throws -> LibrarySnapshot {
+        let client = api
+        return try await library.load(folderID: folderID, throughPage: throughPage, force: force, fetchPage: { folderID, page in
+            var query = [URLQueryItem(name: "page", value: "\(page)"), URLQueryItem(name: "pageSize", value: "30"), URLQueryItem(name: "sort", value: "manual")]
+            if let folderID { query.append(URLQueryItem(name: "parentId", value: folderID)) }
+            return try await client.request("/api/manage/resources", query: query)
+        }, fetchFolder: { id in
+            try await client.request("/api/manage/resources/\(id)")
+        })
+    }
+    func resetLibraryUpload() {
+        if upload.completed { upload.discardDraft() }
+        upload = UploadModel(); upload.configureDraft(scope: scope, purpose: "library")
+    }
+    func resetReminderUpload() {
+        reminderUpload = UploadModel(); reminderUpload.configureDraft(scope: scope, purpose: "reminder")
+    }
+    private func configureUploadDrafts() {
+        upload.configureDraft(scope: scope, purpose: "library")
+        reminderUpload.configureDraft(scope: scope, purpose: "reminder")
     }
     func refreshStorage() async {
         guard session != nil else { return }
@@ -97,6 +127,17 @@ final class SessionStore {
         try AccountVault.save(updated)
         accounts = updated
     }
+    func restoreIfNeeded() async {
+        if let restoreTask { await restoreTask.value; return }
+        let task = Task { await restore() }
+        restoreTask = task
+        await task.value
+    }
+    func resumeUploads() {
+        guard session != nil, canManage else { return }
+        upload.resumeAutomatically(api: api)
+        reminderUpload.resumeAutomatically(api: api)
+    }
     func restore() async {
         defer { restoring = false }
         guard !api.cookie.isEmpty else { return }
@@ -107,6 +148,8 @@ final class SessionStore {
             let record = SavedAccount(server: serverAddress, session: value, cookie: client.cookie)
             try remember(record)
             session = value; client.csrf = value.csrfToken; activeAccountID = record.id
+            configureUploadDrafts()
+            resumeUploads()
             UserDefaults.standard.set(record.id, forKey: "activeAccountID")
             SecureSession.write(nil, server: serverAddress)
         } catch { if epoch == requestEpoch { message = error.localizedDescription } }
@@ -152,6 +195,7 @@ final class SessionStore {
         if let paused = pausedUploads.removeValue(forKey: record.id) {
             upload = paused.library; reminderUpload = paused.reminder
         }
+        configureUploadDrafts()
         epoch = UUID(); message = nil
         UserDefaults.standard.set(serverAddress, forKey: "serverAddress")
         UserDefaults.standard.set(record.id, forKey: "activeAccountID")
@@ -161,12 +205,14 @@ final class SessionStore {
     private func retireClient() {
         api.onCookie = nil; api.onUnauthorized = nil
         api.onStorageChange = nil
+        api.onLibraryChange = nil
         api.cookie = ""; api.csrf = ""
     }
     private func resetAccountState() {
         deviceRefresh.reset()
         storage.reset()
         artwork.removeAll()
+        library.reset()
         upload.pause(); upload = UploadModel()
         reminderUpload.pause(); reminderUpload = UploadModel()
         parentPINConfigured = false
@@ -186,11 +232,17 @@ final class SessionStore {
         let updated = try AccountVault.read().filter { $0.id != account.id }
         try AccountVault.save(updated); accounts = updated
         pausedUploads.removeValue(forKey: account.id)
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("UploadDrafts", isDirectory: true)
+        let accountScope = "\((try? Endpoint(account.server).origin.absoluteString) ?? account.server)|\(account.session.user.id)"
+        for purpose in ["library", "reminder"] {
+            try UploadDraftStore(root: root, scope: accountScope, purpose: purpose).clear()
+        }
     }
     func logout() async throws {
         guard !switchingAccount else { throw APIError.http(409, "正在切换账号，请稍候。") }
         await upload.pauseAndWait(); await reminderUpload.pauseAndWait()
         try await api.command("/api/manage/auth/logout")
+        upload.discardDraft(); reminderUpload.discardDraft()
         clearSession(forget: true)
     }
     func clearSession(forget: Bool = false) {

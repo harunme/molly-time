@@ -8,16 +8,17 @@ import MollyCore
 // Transfer files rather than loading an entire movie into memory.
 struct ImportedMovie: Transferable {
     let url: URL
+    let originalFilename: String
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(importedContentType: .movie) { received in
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MollyImports", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let target = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(received.file.pathExtension)
             try FileManager.default.copyItem(at: received.file, to: target)
-            return ImportedMovie(url: target)
+            return ImportedMovie(url: target, originalFilename: received.file.lastPathComponent)
         }
     }
-    static func prepare(_ item: PhotosPickerItem) async throws -> URL {
+    static func prepare(_ item: PhotosPickerItem) async throws -> ImportedMovie {
         var imported: URL?
         defer { if let imported { try? FileManager.default.removeItem(at: imported) } }
         do {
@@ -35,7 +36,7 @@ struct ImportedMovie: Transferable {
                 try? FileManager.default.removeItem(at: output)
                 throw export.error ?? APIError.http(422, "视频准备未完成，请重新选择。")
             }
-            return output
+            return ImportedMovie(url: output, originalFilename: movie.originalFilename)
         } catch { throw error }
     }
 
@@ -105,7 +106,7 @@ struct UploadView: View {
                             VStack(alignment: .leading, spacing: 10) {
                                 Toggle("上传后允许孩子观看", isOn: Binding(get: { model.allowChildren }, set: { model.allowChildren = $0 }))
                                     .font(.subheadline.weight(.semibold)).tint(Palette.yellow).disabled(locked)
-                                Text(model.allowChildren ? "处理完成后，会自动出现在已绑定的电视上。" : "先仅供家长预览，之后可在视频详情中开放。")
+                                Text(model.allowChildren ? "处理完成后开放给孩子；所在合集也需允许孩子观看。" : "先仅供家长预览，之后可在视频详情中开放。")
                                     .font(.footnote).foregroundStyle(.secondary)
                             }.padding(20).background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
                         }
@@ -121,26 +122,26 @@ struct UploadView: View {
                     if let failure = model.failure { InlineFailure(message: failure) }
                     actions
                     if !model.completed {
-                        Label("上传时保持 App 在前台。你可以切换页面；锁屏或切到其他 App 后，上传可能暂停。", systemImage: "info.circle")
+                        Label("上传开始后可以锁屏或使用其他 App，进度会自动更新。", systemImage: "info.circle")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }.padding(24).frame(maxWidth: 600)
-            }.frame(maxWidth: .infinity).background(Palette.canvas)
-                .navigationTitle("添加视频").navigationBarTitleDisplayMode(.inline)
+            }.frame(maxWidth: .infinity).mollyPageBackground()
+                .navigationTitle("添加内容").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("收起") { dismiss() }.disabled(preparing || choosingFolder) } }
                 .interactiveDismissDisabled(preparing || choosingFolder)
                 .fileImporter(isPresented: $selecting, allowedContentTypes: [.mpeg4Movie]) { result in
                     switch result {
-                    case .success(let url): model.selectedURL = url; model.selectedName = url.deletingPathExtension().lastPathComponent; model.failure = nil
+                    case .success(let url): model.selectedURL = url; model.selectedName = UploadResourceNaming.defaultTitle(filename: url.lastPathComponent); model.failure = nil
                     case .failure(let error): model.failure = error.localizedDescription
                     }
                 }
                 .task(id: photo) { if let photo { await importPhoto(photo) } }
                 .task { await loadFolders() }
-                .confirmationDialog("取消这次上传？已创建的待完善视频仍会保留在片库。", isPresented: $confirmingCancel, titleVisibility: .visible) {
+                .confirmationDialog("取消这次上传？已创建的待完善视频仍会保留在资料库。", isPresented: $confirmingCancel, titleVisibility: .visible) {
                     Button("取消上传", role: .destructive) {
                         Task {
-                            do { try await model.cancel(api: store.api); store.upload = UploadModel(); dismiss() }
+                            do { try await model.cancel(api: store.api); store.resetLibraryUpload(); dismiss() }
                             catch { model.failure = error.localizedDescription }
                         }
                     }
@@ -166,9 +167,12 @@ struct UploadView: View {
             if let resource = model.resource {
                 NavigationLink("查看视频") { VideoDetailView(resource: resource) }.buttonStyle(PrimaryButtonStyle())
             }
-            Button("再添加一个") { store.upload = UploadModel(); photo = nil }.frame(maxWidth: .infinity).disabled(model.busy)
+            Button("再添加一个") { store.resetLibraryUpload(); photo = nil }.frame(maxWidth: .infinity).disabled(model.busy)
         } else if model.busy {
             Button("暂停上传") { model.pause() }.buttonStyle(PrimaryButtonStyle())
+        } else if model.canRetryProcessing {
+            Button("重试处理") { Task { await model.retryProcessing(api: store.api) } }.buttonStyle(PrimaryButtonStyle())
+            Button("取消这次上传", role: .destructive) { confirmingCancel = true }.frame(maxWidth: .infinity, minHeight: 44)
         } else if model.processing {
             Button("检查处理进度") { Task { await model.refreshCompletion(api: store.api) } }.buttonStyle(PrimaryButtonStyle())
         } else if model.selectedURL != nil {
@@ -190,7 +194,7 @@ struct UploadView: View {
     }
     private func start() async {
         guard let url = model.selectedURL else { return }
-        guard !store.reminderUpload.busy else { model.failure = "休息提醒视频正在上传，请完成后再添加片库视频。"; return }
+        guard !store.reminderUpload.busy else { model.failure = "休息提醒视频正在上传，请完成后再向资料库添加内容。"; return }
         choosingFolder = true; defer { choosingFolder = false }
         do {
             let destination: Resource
@@ -210,8 +214,10 @@ struct UploadView: View {
         preparing = true; model.failure = nil
         defer { preparing = false }
         do {
-            model.selectedURL = try await ImportedMovie.prepare(item)
-            model.selectedName = "新视频"
+            let movie = try await ImportedMovie.prepare(item)
+            try Task.checkCancellation()
+            model.selectedURL = movie.url
+            model.selectedName = UploadResourceNaming.defaultTitle(filename: movie.originalFilename)
         } catch { if !Task.isCancelled { model.failure = error.localizedDescription } }
     }
 }

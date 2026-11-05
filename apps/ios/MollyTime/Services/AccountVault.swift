@@ -21,7 +21,7 @@ enum AccountVault {
     }
     static func save(_ accounts: [SavedAccount]) throws {
         let attributes: [String: Any] = [kSecValueData as String: try JSONEncoder().encode(accounts),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
             status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)

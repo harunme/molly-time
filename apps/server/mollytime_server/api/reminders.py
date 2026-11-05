@@ -1,9 +1,11 @@
 """Private parent recordings and device-specific last-episode requests."""
 
 import datetime as dt
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 
@@ -28,6 +30,8 @@ from .watch_filters import family_watch_clause
 
 router = APIRouter(tags=["parent-reminders"])
 ClipKind = Literal["warning", "farewell"]
+BUILTIN_DIR = Path(__file__).resolve().parent.parent / "assets" / "reminders"
+
 LABELS = {"warning": "还剩最后一集", "farewell": "休息提醒"}
 
 
@@ -55,9 +59,10 @@ def settings_dto(db, family_id):
         file = clip_file(db, row, kind)
         clips[kind] = {
             "itemId": getattr(row, f"{kind}_id") if row else None,
-            "ready": file is not None,
+            "ready": True,
+            "source": "custom" if file else "builtin",
             "name": label,
-            "previewUrl": f"/api/reminders/{kind}/play" if file else None,
+            "previewUrl": f"/api/reminders/{kind}/play",
         }
     return {"enabled": row.enabled if row else False, **clips}
 
@@ -99,11 +104,10 @@ def upload_target(kind: ClipKind, user: Parent, db: DbSession):
 
 def authorized_clip(db, user, kind, parent_preview=False, managed=False):
     row = db.get(FamilyReminders, user.family_id)
-    if not row or (not row.enabled and not parent_preview and not managed):
+    if not parent_preview and not managed and (not row or not row.enabled):
         raise HTTPException(404)
     file = clip_file(db, row, kind)
-    if file is None:
-        raise HTTPException(404)
+    # A missing/in-progress custom recording falls back independently per kind.
     return file
 
 
@@ -112,6 +116,14 @@ def clip_playback(kind: ClipKind, request: Request, user: CurrentUser, db: DbSes
     from ..watch_control import control
     policy = control(db, getattr(request.state, "device_id", None))
     file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False), bool(policy and policy.enabled))
+    if file is None:
+        return {
+            "mediaId": f"builtin-{kind}-v1", "version": "1", "storage": "local",
+            "url": f"/api/reminders/{kind}/play", "mime": "video/mp4",
+            "size": (BUILTIN_DIR / f"{kind}.mp4").stat().st_size,
+            "subtitles": [], "headers": {}, "expiresAt": None,
+            "retention": "backup",
+        }
     info = playback_info(db, file)
     if file.storage == "local":
         info["url"] = f"/api/reminders/{kind}/play"
@@ -124,6 +136,8 @@ def play_clip(kind: ClipKind, request: Request, user: CurrentUser, db: DbSession
     from ..watch_control import control
     policy = control(db, getattr(request.state, "device_id", None))
     file = authorized_clip(db, user, kind, getattr(request.state, "parent_preview", False), bool(policy and policy.enabled))
+    if file is None:
+        return FileResponse(BUILTIN_DIR / f"{kind}.mp4", media_type="video/mp4")
     return stream_file(file, request, db=db)
 
 
@@ -231,8 +245,9 @@ def request_reminder(body: RequestBody, user: Parent, db: DbSession):
     if watch is None:
         raise HTTPException(409, "电视当前没有正在播放的视频，无需提醒休息")
     settings = db.get(FamilyReminders, user.family_id)
-    if not settings or not all(clip_file(db, settings, kind) for kind in LABELS):
-        raise HTTPException(422, "请先上传并处理好两段家长视频")
+    if settings is None:
+        settings = FamilyReminders(family_id=user.family_id, enabled=False)
+        db.add(settings)
     row = db.get(DeviceReminder, device.id)
     if row and row.phase != "idle" and row.session_id == watch.id:
         raise HTTPException(409, "这次观看已安排休息")

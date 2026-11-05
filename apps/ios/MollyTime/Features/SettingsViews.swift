@@ -3,7 +3,7 @@ import PhotosUI
 import UniformTypeIdentifiers
 import MollyCore
 
-enum SettingsDestination: Hashable { case playback, reminder, parentPIN, viewingInfo, disclaimer }
+enum SettingsDestination: Hashable { case playback, reminder, parentPIN, viewingInfo, disclaimer, recentlyDeleted }
 
 struct SettingsRow: View {
     let title: String
@@ -29,7 +29,7 @@ private struct SettingsPage<Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) { content }
                 .padding(24).frame(maxWidth: 600)
-        }.frame(maxWidth: .infinity).background(Palette.canvas)
+        }.frame(maxWidth: .infinity).mollyPageBackground()
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
@@ -42,7 +42,7 @@ struct ViewingInfoView: View {
             VStack(alignment: .leading, spacing: 24) {
                 explanation("手机上，放心挑选", icon: "iphone", text: "家长在手机上播放，不占孩子的观看额度。观看进度也会单独保存。")
                 Divider()
-                explanation("电视上，按约定观看", icon: "tv", text: "孩子的观看时间和集数，在「电视」里的「调整观看安排」设置。允许孩子观看的视频，才会出现在电视片库中。")
+                explanation("电视上，按约定观看", icon: "tv", text: "孩子的观看时间和集数，在「电视」里的「调整观看安排」设置。允许孩子观看的视频，才会显示在电视上。")
             }.padding(24).background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
         }
     }
@@ -258,21 +258,28 @@ struct RestReminderView: View {
     @State private var preparing = false
     @State private var previewing = false
     @State private var cancelling = false
+    @State private var kind = "farewell"
+    private var clipReady: Bool { (kind == "warning" ? settings?.warning?.ready : settings?.farewell.ready) == true }
+    private var builtinClip: Bool { (kind == "warning" ? settings?.warning?.source : settings?.farewell.source) == "builtin" }
     private var model: UploadModel { store.reminderUpload }
     private var locked: Bool { preparing || model.busy || store.upload.busy }
     var body: some View {
-        SettingsPage(title: "休息提醒视频") {
+        SettingsPage(title: "提醒视频") {
+            Picker("播放时机", selection: $kind) {
+                Text("最后一集").tag("warning")
+                Text("该休息了").tag("farewell")
+            }.pickerStyle(.segmented).disabled(locked || (model.selectedURL != nil && !model.completed))
             VStack(alignment: .leading, spacing: 10) {
                 Text("好好说一声，该休息啦。")
                     .font(.system(.title2, design: .rounded, weight: .bold))
-                Text("观看安排结束时，电视会播放这段视频。录一段熟悉的声音，让孩子安心放下遥控器。")
+                Text(kind == "warning" ? "告诉孩子这是最后一集，让休息有个温柔的预告。" : "观看结束时播放，让孩子安心放下遥控器。")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
-            if let settings {
-                Label(settings.farewell.ready ? "已设置休息提醒视频" : "还没有休息提醒视频",
-                      systemImage: settings.farewell.ready ? "checkmark.circle" : "video")
+            if settings != nil {
+                Label(builtinClip ? "正在使用默认提醒" : (clipReady ? "正在使用你的提醒视频" : "还没有休息提醒视频"),
+                      systemImage: clipReady ? "checkmark.circle" : "video")
                     .font(.headline)
-                if settings.farewell.ready {
+                if clipReady {
                     Button { previewing = true } label: { Label("播放当前提醒", systemImage: "play.fill") }
                         .buttonStyle(PrimaryButtonStyle(background: Palette.input, foreground: Palette.ink))
                 }
@@ -293,6 +300,10 @@ struct RestReminderView: View {
                     if model.hasUpload || model.busy { ProgressView(value: model.progress).tint(Palette.yellow) }
                     if model.busy {
                         Button("暂停上传") { model.pause() }.buttonStyle(PrimaryButtonStyle())
+                    } else if model.canRetryProcessing {
+                        Button("重试处理") { Task { await model.retryProcessing(api: store.api) } }
+                            .buttonStyle(PrimaryButtonStyle()).disabled(locked)
+                        Button("重新选择") { cancelling = true }.frame(maxWidth: .infinity, minHeight: 44).disabled(locked)
                     } else if model.processing {
                         Button("检查处理进度") { Task { await model.refreshCompletion(api: store.api); await load() } }
                             .buttonStyle(PrimaryButtonStyle()).disabled(locked)
@@ -307,11 +318,12 @@ struct RestReminderView: View {
             if model.completed { Label("休息提醒视频已就绪", systemImage: "checkmark.circle").font(.subheadline) }
             if let error = model.failure { InlineFailure(message: error) }
             if let failure { InlineFailure(message: failure, retry: { Task { await load() } }) }
-            if store.upload.busy { Text("片库视频正在上传，完成后可上传提醒视频。").font(.footnote).foregroundStyle(.secondary) }
-            Text("所有电视共用。不上传也会按观看安排休息，提醒视频不计入观看时长。上传时请保持 App 在前台。")
+            if store.upload.busy { Text("资料库视频正在上传，完成后可上传提醒视频。").font(.footnote).foregroundStyle(.secondary) }
+            Text("默认提醒已准备好，可以直接使用「这集看完休息」。也可以录制自己的视频替换，所有电视共用，提醒不计入观看时长。")
                 .font(.footnote).foregroundStyle(.secondary)
-        }.task { await load() }
+        }.task { kind = model.reminderKind; await load() }
             .task(id: photo) { if let photo { await importPhoto(photo) } }
+            .onChange(of: kind) { _, _ in if model.completed { store.resetReminderUpload() } }
             .onChange(of: model.completed) { _, complete in if complete { Task { await load() } } }
             .fileImporter(isPresented: $selecting, allowedContentTypes: [.mpeg4Movie]) { result in
                 switch result {
@@ -324,13 +336,13 @@ struct RestReminderView: View {
                 Button("重新选择") {
                     Task {
                         preparing = true; defer { preparing = false }
-                        do { try await model.cancel(api: store.api); store.reminderUpload = UploadModel(); photo = nil }
+                        do { try await model.cancel(api: store.api); store.resetReminderUpload(); photo = nil }
                         catch { failure = error.localizedDescription }
                     }
                 }
             } message: { Text("这次未完成的上传会取消，已经生效的提醒视频会保留。") }
             .fullScreenCover(isPresented: $previewing) {
-                PlayerView(resource: Resource(id: "rest-reminder", name: "休息提醒视频", type: "Episode"), playbackPath: "/api/reminders/farewell/playback")
+                PlayerView(resource: Resource(id: "rest-reminder", name: "休息提醒视频", type: "Episode"), playbackPath: "/api/reminders/\(kind)/playback")
             }
     }
     private func load() async {
@@ -339,17 +351,22 @@ struct RestReminderView: View {
         catch { failure = error.localizedDescription }
     }
     private func select(_ url: URL) {
-        store.reminderUpload = UploadModel()
+        store.resetReminderUpload()
         model.selectedURL = url; model.selectedName = url.lastPathComponent
         model.phase = "准备好后，点下方上传"; failure = nil
     }
     private func importPhoto(_ item: PhotosPickerItem) async {
         preparing = true; failure = nil; defer { preparing = false }
-        do { select(try await ImportedMovie.prepare(item)); model.selectedName = "相册视频.mp4" }
+        do {
+            let movie = try await ImportedMovie.prepare(item)
+            try Task.checkCancellation()
+            select(movie.url)
+            model.selectedName = UploadResourceNaming.defaultTitle(filename: movie.originalFilename) + ".mp4"
+        }
         catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     private func start() {
         guard !locked, store.canManage, let url = model.selectedURL else { return }
-        model.start(url: url, name: "休息提醒视频", restReminder: true, api: store.api)
+        model.start(url: url, name: "休息提醒视频", restReminder: true, reminderKind: kind, api: store.api)
     }
 }

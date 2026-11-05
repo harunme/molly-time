@@ -5,11 +5,55 @@ import MollyCore
 enum Palette {
     static let yellow = Color(red: 0.973, green: 0.871, blue: 0.494) // F8DE7E
     static let ink = Color.primary
-    static let canvas = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .systemGroupedBackground : UIColor(red: 0.976, green: 0.976, blue: 0.961, alpha: 1) })
-    static let paper = Color(uiColor: .secondarySystemGroupedBackground)
-    static let input = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
-        ? UIColor(white: 0.16, alpha: 1) : UIColor(white: 0.925, alpha: 1) })
+    static let canvas = adaptive(light: 0xF4F2E9, dark: 0x211F1B)
+    static let paper = adaptive(light: 0xFBFAF5, dark: 0x2D2A24)
+    static let input = adaptive(light: 0xEAE7DB, dark: 0x38342D)
+    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            let hex = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat((hex >> 16) & 255) / 255,
+                           green: CGFloat((hex >> 8) & 255) / 255,
+                           blue: CGFloat(hex & 255) / 255, alpha: 1)
+        })
+    }
     static let startup = Color(red: 33 / 255, green: 31 / 255, blue: 27 / 255)
+}
+
+/// Shared page, navigation and sheet surfaces. Extending only the background
+/// through safe areas keeps controls clear of the status bar and home indicator.
+private struct MollyPageBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(Palette.canvas.ignoresSafeArea())
+            .toolbarBackground(Palette.canvas, for: .navigationBar, .tabBar)
+            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
+            .presentationBackground(Palette.canvas)
+    }
+}
+
+extension View {
+    func mollyPageBackground() -> some View { modifier(MollyPageBackground()) }
+}
+
+/// Native grouped controls use the same surfaces as custom cards.
+struct MollyList<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        List { content.listRowBackground(Palette.paper) }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .mollyPageBackground()
+    }
+}
+
+struct MollyForm<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        Form { content.listRowBackground(Palette.paper) }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .mollyPageBackground()
+    }
 }
 
 struct MollyInputStyle: TextFieldStyle {
@@ -61,10 +105,10 @@ struct RootPageHeader: View {
 }
 
 struct RootPageHeaderLayout: ViewModifier {
+    var bottomPadding: CGFloat = 0
     func body(content: Content) -> some View {
-        content.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 24)
-            .frame(maxWidth: 700).frame(maxWidth: .infinity)
-            .background(Palette.canvas)
+        content.padding(.top, 16).padding(.bottom, bottomPadding)
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -127,32 +171,30 @@ struct LoadingShape: View {
     }
 }
 
+enum LibraryGridLayout {
+    static let coverAspectRatio: CGFloat = 16.0 / 9.0
+    static let coverCornerRadius: CGFloat = 14
+    static let sectionSpacing: CGFloat = 16
+    static let rowSpacing: CGFloat = 20
+    static let captionSpacing: CGFloat = 8
+    // Share the two-column geometry with the loading placeholders so covers
+    // keep their size and position when content arrives.
+    static let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 20, alignment: .top), count: 2)
+}
+
 struct LibraryLoadingPlaceholder: View {
-    let featured: Bool
-    let showsAddButton: Bool
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            if showsAddButton { LoadingShape(radius: 28).frame(height: 54) }
-            LoadingShape().frame(width: 92, height: 16).frame(height: 44)
-            if featured {
-                VStack(alignment: .leading, spacing: 0) {
-                    LoadingShape(radius: 0).aspectRatio(16 / 9, contentMode: .fit)
-                    VStack(alignment: .leading, spacing: 12) {
-                        LoadingShape().frame(width: 140, height: 20)
-                        LoadingShape().frame(width: 196, height: 12)
-                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-                }.background(Palette.paper).clipShape(RoundedRectangle(cornerRadius: 26))
-            }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16, alignment: .top)], spacing: 22) {
-                ForEach(0..<(featured ? 2 : 4), id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: 12) {
-                        LoadingShape(radius: 20).aspectRatio(4 / 3, contentMode: .fit)
-                        LoadingShape().frame(width: 100, height: 14)
-                        LoadingShape().frame(width: 64, height: 10)
+        VStack(alignment: .leading, spacing: LibraryGridLayout.sectionSpacing) {
+            LoadingShape().frame(width: 72, height: 14)
+            LazyVGrid(columns: LibraryGridLayout.columns, spacing: LibraryGridLayout.rowSpacing) {
+                ForEach(0..<6, id: \.self) { _ in
+                    VStack(spacing: LibraryGridLayout.captionSpacing) {
+                        LoadingShape(radius: LibraryGridLayout.coverCornerRadius).aspectRatio(LibraryGridLayout.coverAspectRatio, contentMode: .fit)
+                        LoadingShape().frame(width: 64, height: 12)
                     }
                 }
             }
-        }.modifier(QuietLoading(label: "正在载入片库"))
+        }.modifier(QuietLoading(label: "正在载入资料库"))
     }
 }
 
@@ -226,6 +268,7 @@ struct EmptyLibrary: View {
 /// All covers use the authenticated API transport; never send cookies to artwork hosts.
 struct Artwork: View {
     let resource: Resource
+    var compact = false
     @Environment(SessionStore.self) private var store
     @State private var image: UIImage?
     @State private var loadedKey = ""
@@ -237,6 +280,11 @@ struct Artwork: View {
                     Image(uiImage: image).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                 }
+            } else if compact {
+                Palette.input
+                Image(systemName: resource.isFolder ? "folder" : "play")
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(.secondary)
             } else {
                 Palette.startup
                 GeometryReader { geometry in
@@ -263,12 +311,16 @@ struct Artwork: View {
             do {
                 let api = store.api
                 let path = resource.imageUrl
+                let disk = store.artworkDisk
+                let versioned = URLComponents(string: path)?.queryItems?.contains { $0.name == "v" && !($0.value ?? "").isEmpty } == true
                 let loaded = try await store.artwork.value(for: key, cost: { image in
                     guard let cg = image.cgImage else { return 1 }
                     return cg.bytesPerRow * cg.height
                 }) {
+                    if versioned, let data = await disk.data(for: key), let image = UIImage(data: data) { return image }
                     let data = try await api.raw(path)
                     guard let image = UIImage(data: data) else { throw APIError.invalidResponse }
+                    if versioned { Task { await disk.store(data, for: key) } }
                     return image
                 }
                 guard !Task.isCancelled, key == cacheKey else { return }
@@ -300,7 +352,7 @@ struct UploadStatusRow: View {
                 Image(systemName: model.completed ? "checkmark" : "arrow.up").font(.subheadline.bold())
             }.frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 4) {
-                Text(model.selectedName.isEmpty ? "添加视频" : model.selectedName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(model.selectedName.isEmpty ? "添加内容" : model.selectedName).font(.subheadline.weight(.semibold)).lineLimit(1)
                 Text(model.failure == nil ? model.phase : "需要处理 · 点此查看").font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)

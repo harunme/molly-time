@@ -85,7 +85,7 @@ public final class InvitationRegistration {
             do {
                 created = try await api.send("/api/manage/auth/invitation/activate", body: [
                     "code": verifiedCode, "email": address, "password": password,
-                    "familyName": preview.familyName ?? "我的片库"
+                    "familyName": preview.familyName ?? "我的资料库"
                 ])
             } catch {
                 if case APIError.http(let status, let message) = error, status < 500 {

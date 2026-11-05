@@ -19,9 +19,18 @@ struct DevicesView: View {
     @State private var revoking: Device?
     @State private var editing: WatchControls.Control?
     @State private var busy = false
+    @State private var renaming: Device?
+    @State private var deviceName = ""
+    @State private var stopping: WatchControls.Control?
+    @State private var controlGeneration = UUID()
+    @State private var reminderDevices: [ParentReminderDevice] = []
+    @State private var notice: String?
+    @State private var controlFailure: String?
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("电视").font(.largeTitle.bold())
+                    .frame(minHeight: 44, alignment: .leading).padding(.top, 16)
                 if !loaded && failure == nil { DevicesLoadingPlaceholder() }
                 if loaded, let watch, watch.hasViewingHistory {
                     WatchStatisticsCard(watch: watch)
@@ -39,25 +48,19 @@ struct DevicesView: View {
                 if let statisticsFailure {
                     InlineFailure(message: "观看记录未更新：\(statisticsFailure)", retry: { statisticsRevision += 1 })
                 }
-                if store.canManage && !devices.isEmpty {
-                    Button { pairing = true } label: {
-                        HStack { Label("连接电视", systemImage: "qrcode.viewfinder"); Spacer(); Image(systemName: "plus") }
-                            .padding(.horizontal, 18)
-                    }.buttonStyle(PrimaryButtonStyle())
-                }
-                if store.canManage && !devices.isEmpty {
-                    VStack(spacing: 0) {
-                        NavigationLink(value: SettingsDestination.reminder) {
-                            SettingsRow(title: "休息提醒视频", icon: "moon.zzz", detail: "用熟悉的声音，提醒孩子休息")
+                if !devices.isEmpty {
+                    HStack {
+                        SectionHeading(title: "我的电视", detail: "\(devices.count) 台")
+                        if store.canManage {
+                            Button { pairing = true } label: {
+                                Image(systemName: "plus").font(.title3.weight(.medium)).frame(width: 44, height: 44)
+                            }.accessibilityLabel("连接电视")
                         }
-                        Divider().padding(.horizontal, 20)
-                        NavigationLink(value: SettingsDestination.parentPIN) {
-                            SettingsRow(title: "重设家长密码", icon: "lock", detail: "所有电视共用的四位数字密码")
-                        }
-                    }.buttonStyle(.plain).background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
+                    }
                 }
-                if !devices.isEmpty { SectionHeading(title: "我的电视", detail: "\(devices.count) 台") }
                 if let failure { InlineFailure(message: failure, retry: { Task { await reload() } }) }
+                if let controlFailure { InlineFailure(message: controlFailure, retry: { Task { await refreshControls() } }) }
+                if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
                 if loaded && devices.isEmpty {
                     VStack(alignment: .leading, spacing: 24) {
                         FirstStepsHeader(icon: "tv", title: "把好时光带到大屏幕",
@@ -80,6 +83,7 @@ struct DevicesView: View {
                 }
                 ForEach(devices) { device in
                     let control = controls.first { $0.deviceId == device.id }
+                    let reminder = reminderDevices.first { $0.id == device.id }
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             Image(systemName: "tv").font(.title3).foregroundStyle(Palette.ink)
@@ -92,38 +96,62 @@ struct DevicesView: View {
                             }
                             Spacer()
                             if store.canManage {
-                                Button { revoking = device } label: {
-                                    Image(systemName: "link.badge.plus").rotationEffect(.degrees(45))
-                                        .frame(width: 44, height: 44)
-                                }.foregroundStyle(Palette.ink.opacity(0.7)).accessibilityLabel("解绑\(device.name)")
+                                Menu {
+                                    if let control { Button("每天的观看安排", systemImage: "hourglass") { editing = control } }
+                                    Button("重命名", systemImage: "pencil") { deviceName = device.name; renaming = device }
+                                    if let control, control.enabled && control.status == "allowed" {
+                                        Button("结束今日观看", systemImage: "moon.zzz") { stopping = control }
+                                    }
+                                    Button("解绑电视", systemImage: "link.badge.plus", role: .destructive) { revoking = device }
+                                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                                    .accessibilityLabel("\(device.name)的更多操作").disabled(busy)
                             }
                         }
                         if let control {
                             Divider()
-                            HStack {
-                                Label("每天的观看安排", systemImage: "hourglass")
-                                Spacer()
-                                Text(control.enabled ? "\(control.amount) \(control.mode == "minutes" ? "分钟" : "集")" : "未开启")
-                            }.font(.subheadline)
-                            if store.canManage {
-                                Button { editing = control } label: {
-                                    HStack { Text("调整观看安排"); Spacer(); Image(systemName: "arrow.right") }
-                                }.font(.subheadline.weight(.semibold)).padding(14).background(Palette.canvas, in: Capsule())
+                            if let name = reminder?.currentWatch?.name {
+                                Text("正在看《\(name)》").font(.subheadline).lineLimit(2)
                             }
-                            if store.canManage && control.enabled && control.mode == "episodes" {
-                                Button("看完当前这一集就休息") { Task { await finishCurrent(control) } }
-                                    .font(.subheadline).disabled(busy)
+                            Text(control.remainingLabel).font(.headline)
+                            if control.awaitingConfirmation {
+                                Text(control.online ? "已安排，等待电视确认" : "已安排，电视联网后生效")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if control.supported == false {
+                                Text("电视客户端升级后可使用观看安排").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if store.canManage {
+                                if control.enabled {
+                                    Button(control.addLabel) { Task { await sendControl(control, action: "add") } }
+                                        .buttonStyle(PrimaryButtonStyle()).disabled(busy || control.supported == false)
+                                } else {
+                                    Button("设置每天的观看安排") { editing = control }
+                                        .buttonStyle(PrimaryButtonStyle(background: Palette.input, foreground: Palette.ink))
+                                }
+                                if let reminder, reminder.online && reminder.currentWatch != nil {
+                                    Button(reminder.requestId == nil ? "这集看完休息" : "已安排，这集看完休息") {
+                                        Task { await requestRest(device) }
+                                    }.font(.subheadline).frame(minHeight: 44).frame(maxWidth: .infinity)
+                                        .disabled(busy || reminder.requestId != nil)
+                                }
                             }
                         }
                     }.padding(20).background(Palette.paper, in: RoundedRectangle(cornerRadius: 22))
                 }
+                if store.canManage && !devices.isEmpty {
+                    VStack(spacing: 0) {
+                        NavigationLink(value: SettingsDestination.reminder) {
+                            SettingsRow(title: "提醒视频", icon: "moon.zzz", detail: "用熟悉的声音，提醒孩子休息")
+                        }
+                        Divider().padding(.horizontal, 20)
+                        NavigationLink(value: SettingsDestination.parentPIN) {
+                            SettingsRow(title: "重设家长密码", icon: "lock", detail: "所有电视共用的四位数字密码")
+                        }
+                    }.buttonStyle(.plain).background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
+                }
 
             }.padding(.horizontal, 20).padding(.bottom, 24).frame(maxWidth: 700)
-        }.frame(maxWidth: .infinity).background(Palette.canvas).navigationTitle("")
-            .safeAreaInset(edge: .top, spacing: 0) {
-                RootPageHeader(title: "好时光，也有小约定。", subtitle: "一起看，也记得好好休息。")
-                    .modifier(RootPageHeaderLayout())
-            }
+        }.frame(maxWidth: .infinity).mollyPageBackground().navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .task(id: store.deviceRefresh.revision) {
@@ -133,6 +161,13 @@ struct DevicesView: View {
             }
             .task(id: "\(scenePhase)-\(statisticsRevision)") {
                 if scenePhase == .active { await reloadStatistics() }
+            }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    if !busy { await refreshControls() }
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                }
             }
             .refreshable {
                 statisticsRevision += 1
@@ -145,6 +180,15 @@ struct DevicesView: View {
                 PairingView()
             }
             .sheet(item: $editing, onDismiss: { Task { await reload() } }) { WatchSettingsView(control: $0, hasPin: pinSet || store.parentPINConfigured) }
+            .alert("电视名称", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { device in
+                TextField("名称", text: $deviceName)
+                Button("取消", role: .cancel) {}
+                Button("保存") { Task { await renameDevice(device) } }.disabled(deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .alert("结束今日观看？", isPresented: Binding(get: { stopping != nil }, set: { if !$0 { stopping = nil } }), presenting: stopping) { control in
+                Button("取消", role: .cancel) {}
+                Button("结束今日观看", role: .destructive) { Task { await sendControl(control, action: "stop") } }
+            } message: { _ in Text("今天的剩余额度将结束，明天恢复。需要时仍可手动加看。") }
             .alert("解绑电视？", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), presenting: revoking) { device in
                 Button("取消", role: .cancel) {}
                 Button("解绑", role: .destructive) { Task { await revoke(device) } }
@@ -178,10 +222,12 @@ struct DevicesView: View {
                 all += result.items
                 if !result.hasNext { break }; number += 1
             }
+            let controlID = UUID(); controlGeneration = controlID
             let result: WatchControls = try await store.api.request("/api/manage/watch-control")
             try Task.checkCancellation()
             guard loadGeneration == requestID, requestedRevision == store.deviceRefresh.revision else { return }
-            devices = all; controls = result.devices; pinSet = result.pinSet; loaded = true
+            devices = all; loaded = true
+            if controlGeneration == controlID { controls = result.devices; pinSet = result.pinSet }
             bindingRevision = requestedRevision
         } catch {
             if !Task.isCancelled && loadGeneration == requestID { failure = error.localizedDescription }
@@ -215,13 +261,47 @@ struct DevicesView: View {
         do { try await store.api.command("/api/manage/devices/\(device.id)/revoke"); await reload() }
         catch { failure = error.localizedDescription }
     }
-    private func finishCurrent(_ control: WatchControls.Control) async {
-        busy = true; defer { busy = false }
+    private func refreshControls() async {
+        let request = UUID(); controlGeneration = request
+        let client = store.api, account = store.sessionGeneration
         do {
-            let body = WatchCommand(requestId: UUID().uuidString, version: control.version, action: "finish-current")
+            async let controlsResult: WatchControls = client.request("/api/manage/watch-control")
+            async let remindersResult: [ParentReminderDevice] = client.request("/api/manage/reminders/devices")
+            let (fresh, reminders) = try await (controlsResult, remindersResult)
+            guard !Task.isCancelled, request == controlGeneration, account == store.sessionGeneration else { return }
+            controls = fresh.devices; pinSet = fresh.pinSet; reminderDevices = reminders; controlFailure = nil
+        } catch {
+            if !Task.isCancelled, request == controlGeneration, account == store.sessionGeneration {
+                controlFailure = "电视状态暂未更新：\(error.localizedDescription)"
+            }
+        }
+    }
+    private func sendControl(_ control: WatchControls.Control, action: String) async {
+        guard !busy else { return }
+        busy = true; failure = nil; notice = nil; controlGeneration = UUID()
+        defer { busy = false }
+        do {
+            let body = WatchCommand(requestId: UUID().uuidString, version: control.version, action: action)
             let _: WatchResult = try await store.api.send("/api/manage/watch-control/\(control.id)/commands", body: body)
+            await refreshControls()
+        } catch { let message = error.localizedDescription; await refreshControls(); failure = message }
+    }
+    private func requestRest(_ device: Device) async {
+        guard !busy else { return }
+        busy = true; failure = nil; notice = nil; defer { busy = false }
+        do {
+            let _: ParentReminderState = try await store.api.send("/api/manage/reminders/requests", body: ["deviceId": device.id])
+            notice = "已安排这集看完休息，今天剩余的观看额度会保留。"
+            await refreshControls()
+        } catch { failure = error.localizedDescription }
+    }
+    private func renameDevice(_ device: Device) async {
+        guard !busy else { return }
+        busy = true; failure = nil; defer { busy = false }
+        do {
+            let _: WatchResult = try await store.api.send("/api/manage/devices/\(device.id)", method: "PATCH", body: ["name": deviceName.trimmingCharacters(in: .whitespacesAndNewlines)])
             await reload()
-        } catch { let message = error.localizedDescription; await reload(); failure = message }
+        } catch { failure = error.localizedDescription }
     }
 }
 
@@ -263,12 +343,12 @@ struct WatchSettingsView: View {
     @State private var pinConfigured = false
     var body: some View {
         NavigationStack {
-            Form {
+            MollyForm {
                 Section(control.name) {
                     Toggle("每天安排观看额度", isOn: $enabled)
                         .tint(Palette.yellow)
                     if enabled {
-                        Picker("按什么安排", selection: Binding(get: { mode }, set: { switchMode(to: $0) })) { Text("分钟").tag("minutes"); Text("集数").tag("episodes") }
+                        Picker("按什么安排", selection: Binding(get: { mode }, set: { switchMode(to: $0) })) { Text("分钟").tag("minutes"); Text("集数").tag("episodes") }.pickerStyle(.menu)
                     }
                 }
                 if enabled {
@@ -388,7 +468,7 @@ struct PairingView: View {
             VStack(alignment: .leading, spacing: 24) {
                 Image(systemName: done ? "checkmark.circle.fill" : "tv").font(.system(size: 48, weight: .light)).foregroundStyle(Palette.yellow).padding(.top, 20)
                 Text(done ? "绑定已确认" : "让电视加入好时光").font(.system(.title, design: .rounded, weight: .bold))
-                Text(done ? "电视收到确认后会自动进入片库，手机上的电视列表也会自动更新。" : "打开电视上的 MollyTime，输入四位配对码，或扫描屏幕上的二维码。")
+                Text(done ? "电视收到确认后会自动进入首页，手机上的电视列表也会自动更新。" : "打开电视上的 MollyTime，输入四位配对码，或扫描屏幕上的二维码。")
                     .foregroundStyle(.secondary)
                 if done {
                     Button("完成") { dismiss() }.buttonStyle(PrimaryButtonStyle())
@@ -413,7 +493,7 @@ struct PairingView: View {
                 if busy { ProgressView() }
                 if let failure { InlineFailure(message: failure) }
                 Spacer()
-            }.padding(24).background(Palette.canvas).navigationTitle("绑定电视").navigationBarTitleDisplayMode(.inline)
+            }.padding(24).mollyPageBackground().navigationTitle("绑定电视").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() }.disabled(busy) } }
                 .interactiveDismissDisabled(busy)
                 .sheet(isPresented: $scanning) {

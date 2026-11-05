@@ -28,7 +28,7 @@ struct InvitationRegistrationView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(flow.preview == nil ? "用一份邀请，开启好时光。" : "创建你的账号")
                                 .font(.system(.title2, design: .rounded, weight: .bold))
-                            Text(flow.preview == nil ? "输入收到的注册邀请码。" : flow.loginOnly ? "账号资料已提交，继续登录即可。" : "填写邮箱并设置密码，片库会为你准备好。")
+                            Text(flow.preview == nil ? "输入收到的注册邀请码。" : flow.loginOnly ? "账号资料已提交，继续登录即可。" : "填写邮箱并设置密码，资料库会为你准备好。")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                         if flow.preview == nil { invitationField(flow) }
@@ -60,7 +60,7 @@ struct InvitationRegistrationView: View {
                     }
                     if let setupFailure { InlineFailure(message: setupFailure) }
                 }.padding(24).frame(maxWidth: 480).frame(maxWidth: .infinity)
-            }.background(Palette.canvas).scrollDismissesKeyboard(.interactively)
+            }.mollyPageBackground().scrollDismissesKeyboard(.interactively)
                 .navigationTitle("使用邀请码").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -77,7 +77,7 @@ struct InvitationRegistrationView: View {
                 .alert("创建并切换账号？", isPresented: $confirmingSwitch) {
                     Button("取消", role: .cancel) {}
                     Button("继续") { switchApproved = true; if let flow { act(flow) } }
-                } message: { Text("新账号登录成功后，当前账号的上传会暂停，切回后可继续。已有片库和电视绑定会保留。") }
+                } message: { Text("新账号登录成功后，当前账号的上传会暂停，切回后可继续。已有资料库和电视绑定会保留。") }
         }
     }
     private func invitationField(_ flow: InvitationRegistration) -> some View {

@@ -94,7 +94,7 @@ struct WatchHistorySheet: View {
                     if loading { ProgressView(report == nil ? "正在读取观看记录…" : "正在更新…").frame(maxWidth: .infinity).padding() }
                     if let failure { InlineFailure(message: failure, retry: { Task { await load() } }) }
                 }.padding(20).frame(maxWidth: 600)
-            }.frame(maxWidth: .infinity).background(Palette.canvas)
+            }.frame(maxWidth: .infinity).mollyPageBackground()
                 .navigationTitle(period.title).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("关闭观看记录")

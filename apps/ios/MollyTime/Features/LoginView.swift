@@ -79,7 +79,7 @@ struct LoginView: View {
                 .frame(maxWidth: 480).frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Palette.canvas)
+        .mollyPageBackground()
         // The fields keep the same identity, position and size across all focus
         // changes. Only their border changes; native keyboard avoidance handles
         // scrolling, without a second layout animation or delayed scrollTo.
@@ -171,7 +171,7 @@ private struct LoginConnectionSettings: View {
     @State private var failure: String?
     var body: some View {
         NavigationStack {
-            Form {
+            MollyForm {
                 Section {
                     TextField("https://mollytime.app", text: $draft)
                         .textFieldStyle(MollyInputStyle()).keyboardType(.URL).textContentType(.URL)

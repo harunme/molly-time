@@ -40,3 +40,6 @@ include = ["mollytime_server*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.setuptools.package-data]
+mollytime_server = ["assets/reminders/*.mp4"]

@@ -3,7 +3,8 @@ import MollyCore
 
 @main
 struct MollyTimeApp: App {
-    @State private var store = SessionStore()
+    @UIApplicationDelegateAdaptor(UploadAppDelegate.self) private var appDelegate
+    private var store: SessionStore { appDelegate.store }
     @State private var startup = StartupExperience()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -32,13 +33,12 @@ struct MollyTimeApp: App {
             .environment(store)
             .tint(Palette.ink)
             .buttonBorderShape(.capsule)
-            .task { await store.restore() }
+            .task { await store.restoreIfNeeded() }
             .onChange(of: scenePhase, initial: true) { _, phase in
                 if phase == .active {
                     startup.start(reduceMotion: reduceMotion)
+                    store.resumeUploads()
                 } else {
-                    store.upload.pause()
-                    store.reminderUpload.pause()
                     if phase == .background { startup.stop() }
                 }
             }
@@ -56,7 +56,7 @@ struct ParentTabs: View {
         NavigationStack {
             TabView(selection: $selectedTab) {
                 LibraryView()
-                    .tabItem { Label("片库", systemImage: "rectangle.stack") }.tag(0)
+                    .tabItem { Label("资料库", systemImage: "rectangle.stack") }.tag(0)
                 DevicesView()
                     .tabItem { Label("电视", systemImage: "tv") }.tag(1)
                 AccountView()
@@ -73,6 +73,17 @@ struct ParentTabs: View {
                 case .parentPIN: ParentPINView()
                 case .viewingInfo: ViewingInfoView()
                 case .disclaimer: DisclaimerView()
+                case .recentlyDeleted: RecentlyDeletedView()
+                }
+            }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                // Processing continues on the server after the upload sheet closes.
+                // Observe only pending tasks, keeping catalog/storage updates silent.
+                while !Task.isCancelled {
+                    if store.upload.processing && !store.upload.busy { await store.upload.refreshCompletion(api: store.api) }
+                    if store.reminderUpload.processing && !store.reminderUpload.busy { await store.reminderUpload.refreshCompletion(api: store.api) }
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
                 }
             }
             .task(id: scenePhase) {

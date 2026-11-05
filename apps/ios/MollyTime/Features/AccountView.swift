@@ -8,9 +8,15 @@ struct AccountView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                Button { editingProfile = true } label: {
+                    RootPageHeader(title: store.session?.user.displayName ?? store.session?.user.name ?? "我的账号",
+                                   subtitle: "把好时光，慢慢收藏。", editable: true,
+                                   avatarData: store.session?.user.avatarJPEGBase64.flatMap { Data(base64Encoded: $0) })
+                }.buttonStyle(.plain).accessibilityHint("编辑名称和头像")
+                    .modifier(RootPageHeaderLayout(bottomPadding: 4))
                 VStack(alignment: .leading, spacing: 22) {
                     HStack {
-                        Label("片库空间", systemImage: "externaldrive.badge.icloud").font(.headline)
+                        Label("存储空间", systemImage: "externaldrive.badge.icloud").font(.headline)
                         Spacer()
                     }
                     if let settings {
@@ -34,17 +40,21 @@ struct AccountView: View {
                                 .overlay(alignment: .leading) {
                                     LoadingShape(radius: 10).frame(width: 138).padding(.vertical, 5)
                                 }
-                            Text("片库空间").font(.subheadline).hidden()
+                            Text("存储空间").font(.subheadline).hidden()
                                 .overlay(alignment: .leading) {
                                     LoadingShape(radius: 5).frame(width: 186).padding(.vertical, 4)
                                 }
                         }.frame(maxWidth: .infinity, alignment: .leading)
-                            .modifier(QuietLoading(label: store.storage.loading ? "正在载入片库空间" : "片库空间暂未获取",
+                            .modifier(QuietLoading(label: store.storage.loading ? "正在载入存储空间" : "存储空间暂未获取",
                                                    animating: store.storage.loading))
                     }
                 }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Palette.paper, in: RoundedRectangle(cornerRadius: 26))
                 VStack(spacing: 0) {
+                    NavigationLink(value: SettingsDestination.recentlyDeleted) {
+                        SettingsRow(title: "最近删除", icon: "trash")
+                    }
+                    Divider().padding(.leading, 58).padding(.trailing, 20)
                     NavigationLink(value: SettingsDestination.playback) {
                         SettingsRow(title: "播放偏好", icon: "captions.bubble")
                     }
@@ -60,15 +70,7 @@ struct AccountView: View {
                     .background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
 
             }.padding(.horizontal, 20).padding(.bottom, 24).frame(maxWidth: 700)
-        }.frame(maxWidth: .infinity).background(Palette.canvas).navigationTitle("")
-            .safeAreaInset(edge: .top, spacing: 0) {
-                Button { editingProfile = true } label: {
-                    RootPageHeader(title: store.session?.user.displayName ?? store.session?.user.name ?? "我的账号",
-                                   subtitle: "把好时光，慢慢收藏。", editable: true,
-                                   avatarData: store.session?.user.avatarJPEGBase64.flatMap { Data(base64Encoded: $0) })
-                }.buttonStyle(.plain).accessibilityHint("编辑名称和头像")
-                    .modifier(RootPageHeaderLayout())
-            }
+        }.frame(maxWidth: .infinity).mollyPageBackground().navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $editingProfile) { EditProfileView() }

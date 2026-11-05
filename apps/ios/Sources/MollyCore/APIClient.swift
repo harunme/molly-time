@@ -15,6 +15,7 @@ public final class APIClient {
     public var onUnauthorized: (() -> Void)?
     public var onCookie: ((String) -> Void)?
     public var onStorageChange: (() -> Void)?
+    public var onLibraryChange: (() -> Void)?
     private let session: URLSession
 
     public init(endpoint: Endpoint, session: URLSession? = nil) {
@@ -37,6 +38,7 @@ public final class APIClient {
             if let upload = result as? Upload,
                ["ready", "failed", "cancelled"].contains(upload.status) {
                 onStorageChange?()
+                if upload.status == "ready" { onLibraryChange?() }
             }
             return result
         }
@@ -45,16 +47,7 @@ public final class APIClient {
 
     public func raw(_ path: String, method: String = "GET", query: [URLQueryItem] = [],
                     body: Data? = nil, headers: [String: String] = [:]) async throws -> Data {
-        var request = URLRequest(url: try endpoint.api(path, query: query))
-        request.httpMethod = method; request.httpBody = body
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("MollyTime-iOS/0.1", forHTTPHeaderField: "User-Agent")
-        for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
-        if !cookie.isEmpty { request.setValue("molly_parent=\(cookie)", forHTTPHeaderField: "Cookie") }
-        if method != "GET" && method != "HEAD" && !csrf.isEmpty {
-            request.setValue(csrf, forHTTPHeaderField: "X-CSRF-Token")
-        }
+        let request = try authenticatedRequest(path, method: method, query: query, body: body, headers: headers)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
@@ -75,7 +68,27 @@ public final class APIClient {
         if method != "GET" && method != "HEAD" && Self.changesStorage(path) {
             onStorageChange?()
         }
+        if method != "GET" && method != "HEAD" && (
+            path == "/api/manage/resources" || path.hasPrefix("/api/manage/resources/")
+            || path.hasPrefix("/api/manage/trash/") || path.hasPrefix("/api/manage/shares/")) {
+            onLibraryChange?()
+        }
         return data
+    }
+
+    public func authenticatedRequest(_ path: String, method: String, query: [URLQueryItem] = [],
+                                     body: Data? = nil, headers: [String: String] = [:]) throws -> URLRequest {
+        var request = URLRequest(url: try endpoint.api(path, query: query))
+        request.httpMethod = method; request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("MollyTime-iOS/0.1", forHTTPHeaderField: "User-Agent")
+        for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
+        if !cookie.isEmpty { request.setValue("molly_parent=\(cookie)", forHTTPHeaderField: "Cookie") }
+        if method != "GET" && method != "HEAD" && !csrf.isEmpty {
+            request.setValue(csrf, forHTTPHeaderField: "X-CSRF-Token")
+        }
+        return request
     }
 
     private static func changesStorage(_ path: String) -> Bool {
