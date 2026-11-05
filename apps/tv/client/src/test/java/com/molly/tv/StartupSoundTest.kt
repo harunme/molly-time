@@ -16,12 +16,53 @@ import java.time.Duration
 @Config(application = Application::class, sdk = [28])
 class StartupSoundTest {
     private val context get() = RuntimeEnvironment.getApplication()
+
+    @Test fun mediaClockTracksPlaybackAndContinuesShortCueAfterRelease() {
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(1000, 200) }
+        val sound = StartupSound(context) { audio -> audio.setDataSource("bundled.mp3"); true }
+        try {
+            sound.start { true }
+            assertNull(sound.playbackPositionMs())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+            assertEquals(0L, sound.playbackPositionMs())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(890))
+            assertEquals(890L, sound.playbackPositionMs())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(110))
+            assertTrue(sound.finished)
+            assertEquals(1000L, sound.playbackPositionMs())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(800))
+            assertEquals(1800L, sound.playbackPositionMs())
+            sound.stop()
+            assertNull(sound.playbackPositionMs())
+        } finally { sound.stop() }
+    }
+
+    @Test fun playbackErrorReleasesMediaClockForSilentFallbackWithoutRestart() {
+        val players = mutableListOf<ShadowMediaPlayer>()
+        ShadowMediaPlayer.setMediaInfoProvider { ShadowMediaPlayer.MediaInfo(1800, 0) }
+        ShadowMediaPlayer.setCreateListener { _, player -> players.add(player) }
+        var animations = 0
+        var completions = 0
+        val sound = StartupSound(context) { audio -> audio.setDataSource("bundled.mp3"); true }
+        try {
+            sound.start(onReady = { animations++ }, onFinished = { completions++ }) { true }
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(930))
+            assertEquals(930L, sound.playbackPositionMs())
+            players.single().invokeErrorListener(1, 0)
+            assertNull(sound.playbackPositionMs())
+            assertTrue(sound.finished)
+            assertEquals(1, animations)
+            assertEquals(1, completions)
+        } finally { sound.stop(); ShadowMediaPlayer.setCreateListener(null) }
+    }
+
     @Test fun unconfiguredPackageStartsSilentAnimationWithoutWaiting() {
         var animations = 0
         val sound = StartupSound(context) { false }
         try {
             sound.start(onReady = { animations++ }) { true }
             assertTrue(sound.finished); assertEquals(1, animations)
+            assertNull(sound.playbackPositionMs())
         } finally { sound.stop() }
     }
     @Test fun bundledAudioWaitsForSlowDecoderAndPlaysToCompletion() {

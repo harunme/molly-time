@@ -1,15 +1,12 @@
 package com.molly.tv
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
-import android.view.animation.LinearInterpolator
 import androidx.core.graphics.PathParser
 import kotlin.math.min
 
@@ -31,15 +28,26 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
     private var time = 0f
     private var reported = false
     private var requested = false
+    private var paused = false
+    private var playbackPositionMs: (() -> Long?)? = null
+    private var elapsedMs = 0L
+    private var lastFrameMs = 0L
     private var reducedCompletion: Runnable? = null
-    private val animator = ValueAnimator.ofFloat(0f, 1.8f).apply {
-        duration = 1800; interpolator = LinearInterpolator(); repeatCount = 0
-        addUpdateListener { time = it.animatedValue as Float; invalidate() }
-        addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                if (requested && !reported) { reported = true; cycleFinished() }
-            }
-        })
+    private val frame = object : Runnable {
+        override fun run() {
+            if (!requested || paused || reported || !isAttachedToWindow) return
+            val now = SystemClock.uptimeMillis()
+            val mediaMs = playbackPositionMs?.invoke()
+            // Frames only schedule drawing. Audio owns the timeline, independent
+            // of animator duration scale, first-frame delays and dropped frames.
+            // If sound fails/stops, finish silently from the last displayed pose.
+            elapsedMs = maxOf(elapsedMs, mediaMs ?: (elapsedMs + now - lastFrameMs))
+            lastFrameMs = now
+            time = min(elapsedMs, 1800L) / 1000f
+            invalidate()
+            if (elapsedMs >= 1800) { reported = true; cycleFinished() }
+            else postOnAnimation(this)
+        }
     }
     init {
         setBackgroundColor(context.getColor(R.color.startup_background))
@@ -73,11 +81,15 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
     }
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (requested) startMotion()
+        scheduleMotion()
     }
-    fun startMotion() {
+    fun startMotion(playbackPositionMs: (() -> Long?)? = null) {
+        if (requested || reported) return
         requested = true
-        if (!isAttachedToWindow || animator.isStarted || reducedCompletion != null || reported) return
+        paused = false
+        this.playbackPositionMs = playbackPositionMs
+        elapsedMs = 0
+        lastFrameMs = SystemClock.uptimeMillis()
         val reduced = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
         if (reduced) {
             time = 1.8f
@@ -87,16 +99,34 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
             reducedCompletion = Runnable {
                 reducedCompletion = null
                 if (!reported) { reported = true; cycleFinished() }
-            }.also { postDelayed(it, 600) }
-        } else { time = 0f; animator.start() }
+            }
+        } else { time = 0f }
+        scheduleMotion()
+    }
+    private fun scheduleMotion() {
+        if (!requested || paused || reported || !isAttachedToWindow) return
+        reducedCompletion?.let { removeCallbacks(it); postDelayed(it, 600) }
+            ?: run { removeCallbacks(frame); postOnAnimation(frame) }
     }
     override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
-    fun pause() { animator.pause(); reducedCompletion?.let(::removeCallbacks) }
-    fun resume() {
-        if (animator.isPaused) animator.resume()
-        reducedCompletion?.let { removeCallbacks(it); postDelayed(it, 600) }
+    fun pause() {
+        paused = true
+        removeCallbacks(frame)
+        reducedCompletion?.let(::removeCallbacks)
     }
-    fun stop() { requested = false; animator.cancel(); reducedCompletion?.let(::removeCallbacks); reducedCompletion = null }
+    fun resume() {
+        if (!paused) return
+        paused = false
+        lastFrameMs = SystemClock.uptimeMillis()
+        scheduleMotion()
+    }
+    fun stop() {
+        requested = false
+        removeCallbacks(frame)
+        reducedCompletion?.let(::removeCallbacks)
+        reducedCompletion = null
+        playbackPositionMs = null
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 
@@ -21,10 +22,26 @@ class StartupSound(context: Context, private val configure: (MediaPlayer) -> Boo
     private val handler = Handler(Looper.getMainLooper())
     private var stopped = false
     private var player: MediaPlayer? = null
+    private var playing = false
+    private var completedPositionMs: Long? = null
+    private var completedAtMs = 0L
     private var cue: StartupCue? = null
     var finished = false
         private set
     private var finishCallback: () -> Unit = {}
+
+    /** Media time, not elapsed time since start(): decoding/output may begin later. */
+    fun playbackPositionMs(): Long? {
+        if (stopped) return null
+        // A shorter cue may finish before the logo; continue its silent tail.
+        completedPositionMs?.let { return it + SystemClock.uptimeMillis() - completedAtMs }
+        val audio = player ?: return null
+        if (!playing) return null
+        // Some TV implementations do not expose timestamps; currentPosition is
+        // still a media clock and holds at zero while playback is starting.
+        return (runCatching { audio.timestamp?.anchorMediaTimeUs?.takeIf { it >= 0 }?.div(1000) }.getOrNull()
+            ?: runCatching { audio.currentPosition.toLong() }.getOrNull())?.coerceAtLeast(0)
+    }
 
     fun start(onReady: () -> Unit = {}, onFinished: () -> Unit = {}, active: () -> Boolean) {
         val launch = StartupCue(onReady)
@@ -51,12 +68,18 @@ class StartupSound(context: Context, private val configure: (MediaPlayer) -> Boo
                 runCatching {
                     if (active()) launch.ready {
                         it.start()
+                        playing = true
                         handler.postDelayed(playbackTimeout, 6500)
                     } else { release(); complete(launch) }
                 }.onFailure { failed(launch, active, retry) }
             }
             audio.setOnCompletionListener {
                 handler.removeCallbacks(timeout); handler.removeCallbacks(playbackTimeout)
+                // Retain the final media position after release, including when
+                // the view's first frame arrives after this short clip finishes.
+                completedPositionMs = maxOf(playbackPositionMs() ?: 0,
+                    runCatching { it.duration.toLong() }.getOrDefault(0))
+                completedAtMs = SystemClock.uptimeMillis()
                 release(); complete(launch)
             }
             audio.setOnErrorListener { _, _, _ ->
@@ -79,7 +102,7 @@ class StartupSound(context: Context, private val configure: (MediaPlayer) -> Boo
         launch.ready()
         finishCallback()
     }
-    private fun release() { player?.release(); player = null }
+    private fun release() { playing = false; player?.release(); player = null }
     fun stop() {
         stopped = true
         handler.removeCallbacksAndMessages(null)

@@ -509,7 +509,7 @@ class ShellActivity : AppCompatActivity() {
         val sound = StartupSound(this)
         startupSound = sound
         sound.start(onReady = {
-            if (startupGeneration == current && !isDestroyed) loading?.startMotion()
+            if (startupGeneration == current && !isDestroyed) loading?.startMotion(sound::playbackPositionMs)
         }, onFinished = {
             if (startupGeneration == current && !isDestroyed) finishStartupIfReady()
         }) {
