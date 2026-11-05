@@ -127,6 +127,42 @@ struct APIClientTests {
         do { let _: ParentSession = try await api.request("/api/manage/auth/session"); fail() }
         catch { checkEqual(error as? APIError, .invalidResponse) }
     }
+    @Test func storageChangesNotifyAfterSuccessfulMutationsWithoutChunkOrReadNoise() async throws {
+        let api = try makeClient()
+        var changes = 0
+        api.onStorageChange = { changes += 1 }
+        StubURLProtocol.handler = { _ in (200, [:], Data(#"{"ok":true}"#.utf8)) }
+        for path in ["/api/manage/uploads", "/api/manage/uploads/u/complete",
+                     "/api/manage/uploads/u/cancel", "/api/manage/resources/r",
+                     "/api/manage/trash/r/purge", "/api/manage/shares", "/api/manage/settings"] {
+            try await api.command(path, body: [String: String]())
+        }
+        #expect(changes == 7)
+        let _: OK = try await api.request("/api/manage/settings")
+        try await api.command("/api/manage/uploads/u/part-url", body: [String: String]())
+        _ = try await api.raw("/api/manage/uploads/u", method: "PATCH", body: Data())
+        #expect(changes == 7)
+        StubURLProtocol.handler = { _ in (500, [:], Data()) }
+        do {
+            try await api.command("/api/manage/uploads/u/cancel", body: [String: String]())
+            Issue.record("Failed operation must throw")
+        } catch {}
+        #expect(changes == 7)
+    }
+    @Test func uploadProcessingCompletionTriggersSilentStorageRefresh() async throws {
+        let api = try makeClient()
+        var changes = 0
+        api.onStorageChange = { changes += 1 }
+        for status in ["processing", "ready", "failed", "cancelled"] {
+            StubURLProtocol.handler = { _ in
+                (200, [:], Data("""
+                {"id":"u","itemId":"r","offset":100,"size":100,"status":"\(status)","transport":"oss","partSize":100,"error":""}
+                """.utf8))
+            }
+            let _: Upload = try await api.request("/api/manage/uploads/u")
+            #expect(changes == ["processing": 0, "ready": 1, "failed": 2, "cancelled": 3][status])
+        }
+    }
 }
 
 private func checkEqual<T: Equatable>(_ actual: T, _ expected: T) { #expect(actual == expected) }

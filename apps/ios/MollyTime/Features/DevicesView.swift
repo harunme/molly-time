@@ -9,7 +9,6 @@ struct DevicesView: View {
     @State private var devices: [Device] = []
     @State private var controls: [WatchControls.Control] = []
     @State private var pinSet = false
-    @State private var loading = false
     @State private var loaded = false
     @State private var bindingRevision = 0
     @State private var failure: String?
@@ -20,6 +19,7 @@ struct DevicesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if !loaded && failure == nil { DevicesLoadingPlaceholder() }
                 if loaded, let watch, watch.hasViewingHistory {
                     WatchStatisticsCard(watch: watch)
                 } else if loaded && watch != nil && !devices.isEmpty {
@@ -117,9 +117,6 @@ struct DevicesView: View {
 
             }.padding(.horizontal, 20).padding(.bottom, 24).frame(maxWidth: 700)
         }.frame(maxWidth: .infinity).background(Palette.canvas).navigationTitle("")
-            .overlay(alignment: .top) {
-                DelayedLoadingIndicator(active: loading && !loaded).padding(.top, 100)
-            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 RootPageHeader(title: "好时光，也有小约定。", subtitle: "一起看，也记得好好休息。")
                     .modifier(RootPageHeaderLayout())
@@ -153,7 +150,7 @@ struct DevicesView: View {
     }
 
     private func reload() async {
-        loading = !loaded; failure = nil; defer { loading = false }
+        failure = nil
         async let statistics: Void = reloadStatistics()
         do {
             // Use pagination so large accounts do not silently stop at 100 devices.

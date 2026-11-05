@@ -20,6 +20,7 @@ from .management_models import (
     WatchProgress,
 )
 from .models import Item, MediaFile, PlaybackEvent
+from .share_models import ContentShare, ShareFile
 
 
 class CatalogVersion(Base):
@@ -94,11 +95,20 @@ def item_scopes(db, item):
 
 
 def changed_scopes(db, obj):
+    if isinstance(obj, ContentShare):
+        families = {obj.family_id, *inspect(obj).attrs.family_id.history.deleted}
+        return {scope(family, "storage") for family in families if family}
+    if isinstance(obj, ShareFile):
+        shares = {obj.share_id, *inspect(obj).attrs.share_id.history.deleted}
+        return {scope(share.family_id, "storage") for key in shares
+                if (share := db.get(ContentShare, key)) is not None}
     if isinstance(obj, Item):
         return item_scopes(db, obj) if obj.id else set()
     if isinstance(obj, (MediaFile, ResourceState, ResourcePosition)):
         keys = item_scopes(db, db.get(Item, obj.item_id))
         if isinstance(obj, MediaFile):
+            families = {obj.family_id, *inspect(obj).attrs.family_id.history.deleted}
+            keys.update(scope(family, "storage") for family in families if family)
             for old in inspect(obj).attrs.item_id.history.deleted:
                 keys |= item_scopes(db, db.get(Item, old))
         return keys
@@ -163,6 +173,8 @@ def bulk_versions(state):
         "resource_states",
         "home_configs",
         "home_revisions",
+        "content_shares",
+        "content_share_files",
     }:
         return
     model = {
@@ -171,6 +183,8 @@ def bulk_versions(state):
         "resource_states": ResourceState,
         "home_configs": HomeConfig,
         "home_revisions": HomeRevision,
+        "content_shares": ContentShare,
+        "content_share_files": ShareFile,
     }[table.name]
     keys = set()
     for obj in state.session.scalars(select(model).where(*state.statement._where_criteria)).all():
@@ -179,6 +193,12 @@ def bulk_versions(state):
         changed = {
             getattr(key, "key", key): getattr(value, "value", None) for key, value in values.items()
         }
+        if isinstance(obj, (MediaFile, ContentShare)) and changed.get("family_id"):
+            keys.add(scope(changed["family_id"], "storage"))
+        if isinstance(obj, ShareFile) and changed.get("share_id"):
+            share = state.session.get(ContentShare, changed["share_id"])
+            if share:
+                keys.add(scope(share.family_id, "storage"))
         if isinstance(obj, Item) and changed.get("parent_id"):
             keys.update(item_scopes(state.session, state.session.get(Item, changed["parent_id"])))
         if isinstance(obj, HomeConfig) and (state.is_delete or "published_id" in changed):

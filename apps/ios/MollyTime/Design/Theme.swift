@@ -78,32 +78,96 @@ struct PrimaryButtonStyle: ButtonStyle {
             .opacity(enabled ? 1 : 0.45)
     }
 }
-/// Fast requests stay invisible. Overlay placement never moves page content.
-struct DelayedLoadingIndicator: View {
-    let active: Bool
+/// Reserve the content's own space, without a floating progress badge.
+/// A single slow opacity cycle keeps the entire placeholder moving together.
+struct QuietLoading: ViewModifier {
+    let label: String
+    var animating = true
     @State private var visible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var body: some View {
-        ProgressView("正在加载…")
-            .padding(16).background(Palette.paper, in: Capsule())
+    @Environment(\.scenePhase) private var scenePhase
+    func body(content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !visible || !animating || reduceMotion || scenePhase != .active)) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / 2.8
+            content.opacity(reduceMotion || !animating ? 1 : 0.86 + 0.14 * cos(phase))
+        }
             .opacity(visible ? 1 : 0)
-            .accessibilityHidden(!visible)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
             .allowsHitTesting(false)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: visible)
-            .task(id: active) {
-                guard active else {
-                    if visible {
-                        do { try await Task.sleep(for: .milliseconds(250)) }
-                        catch { return }
-                    }
-                    visible = false
-                    return
-                }
-                do { try await Task.sleep(for: .milliseconds(400)) }
+            .task {
+                do { try await Task.sleep(for: .milliseconds(180)) }
                 catch { return }
                 guard !Task.isCancelled else { return }
                 visible = true
             }
+    }
+}
+
+struct LoadingShape: View {
+    var radius: CGFloat = 8
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(Palette.ink.opacity(0.055))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Palette.yellow.opacity(0.045))
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+struct LibraryLoadingPlaceholder: View {
+    let featured: Bool
+    let showsAddButton: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if showsAddButton { LoadingShape(radius: 28).frame(height: 54) }
+            LoadingShape().frame(width: 92, height: 16).frame(height: 44)
+            if featured {
+                VStack(alignment: .leading, spacing: 0) {
+                    LoadingShape(radius: 0).aspectRatio(16 / 9, contentMode: .fit)
+                    VStack(alignment: .leading, spacing: 12) {
+                        LoadingShape().frame(width: 140, height: 20)
+                        LoadingShape().frame(width: 196, height: 12)
+                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                }.background(Palette.paper).clipShape(RoundedRectangle(cornerRadius: 26))
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16, alignment: .top)], spacing: 22) {
+                ForEach(0..<(featured ? 2 : 4), id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 12) {
+                        LoadingShape(radius: 20).aspectRatio(4 / 3, contentMode: .fit)
+                        LoadingShape().frame(width: 100, height: 14)
+                        LoadingShape().frame(width: 64, height: 10)
+                    }
+                }
+            }
+        }.modifier(QuietLoading(label: "正在载入片库"))
+    }
+}
+
+struct DevicesLoadingPlaceholder: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            LoadingShape().frame(width: 100, height: 16)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                LoadingShape(radius: 10).frame(width: 88, height: 36)
+                LoadingShape().frame(width: 48, height: 12)
+            }
+            LoadingShape(radius: 14).frame(height: 72)
+            Divider().opacity(0.35)
+            HStack(spacing: 14) {
+                LoadingShape(radius: 14).frame(width: 48, height: 48)
+                VStack(alignment: .leading, spacing: 10) {
+                    LoadingShape().frame(width: 112, height: 16)
+                    LoadingShape().frame(width: 72, height: 12)
+                }
+                Spacer(minLength: 0)
+            }
+        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
+            .modifier(QuietLoading(label: "正在载入电视与观看记录"))
     }
 }
 

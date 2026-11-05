@@ -226,6 +226,7 @@ def init_db() -> None:
         management_models,
         models,
         share_models,  # noqa: F401 -- register additive sharing tables
+        storage_snapshots,  # noqa: F401 -- versioned family byte snapshots
         usage_models,  # noqa: F401 -- register usage tables with Base.metadata
     )
 

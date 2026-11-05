@@ -36,6 +36,9 @@ struct LibraryView: View {
                 if store.upload.selectedURL != nil && (!store.upload.completed || store.upload.failure != nil) {
                     Button { uploading = true } label: { UploadStatusRow(model: store.upload) }.buttonStyle(.plain)
                 }
+                if page == 0 && failure == nil {
+                    LibraryLoadingPlaceholder(featured: folder == nil, showsAddButton: folder == nil && store.canManage)
+                }
                 if !items.isEmpty {
                     HStack {
                         Text(folder == nil ? "\(total) 个合集" : "合集里的视频").font(.headline)
@@ -96,9 +99,6 @@ struct LibraryView: View {
             }.padding(.horizontal, 20).padding(.top, folder == nil ? 0 : 16).padding(.bottom, 24).frame(maxWidth: 700)
         }
         .frame(maxWidth: .infinity).background(Palette.canvas)
-        .overlay(alignment: .top) {
-            DelayedLoadingIndicator(active: loading && page == 0).padding(.top, 110)
-        }
         .safeAreaInset(edge: .top, spacing: 0) {
             if folder == nil {
                 RootPageHeader(title: "一起看点好内容。", subtitle: "你来挑选，孩子慢慢发现。")

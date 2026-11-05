@@ -41,6 +41,7 @@ final class SessionStore {
     var reminderUpload = UploadModel()
     var parentPINConfigured = false
     var deviceBindingsRevision = 0
+    let storage = FamilyStorageStore()
     let artwork = ResourceCache<UIImage>()
     var restoring = true
     var message: String?
@@ -78,6 +79,16 @@ final class SessionStore {
             self.clearSession()
             self.message = "登录已过期，请重新登录。"
         }
+        client.onStorageChange = { [weak self, weak client] in
+            guard let self, let client, self.api === client, self.session != nil else { return }
+            self.storage.invalidate()
+            Task { await self.refreshStorage() }
+        }
+    }
+    func refreshStorage() async {
+        guard session != nil else { return }
+        let client = api
+        await storage.refresh { try await client.request("/api/manage/settings") }
     }
     private func remember(_ record: SavedAccount) throws {
         // Re-read to avoid overwriting records if Keychain was locked at app launch.
@@ -149,9 +160,11 @@ final class SessionStore {
     }
     private func retireClient() {
         api.onCookie = nil; api.onUnauthorized = nil
+        api.onStorageChange = nil
         api.cookie = ""; api.csrf = ""
     }
     private func resetAccountState() {
+        storage.reset()
         artwork.removeAll()
         upload.pause(); upload = UploadModel()
         reminderUpload.pause(); reminderUpload = UploadModel()

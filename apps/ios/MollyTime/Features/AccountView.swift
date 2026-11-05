@@ -3,9 +3,7 @@ import MollyCore
 
 struct AccountView: View {
     @Environment(SessionStore.self) private var store
-    @State private var settings: FamilySettings?
-    @State private var failure: String?
-    @State private var loading = false
+    private var settings: FamilySettings? { store.storage.settings }
     @State private var editingProfile = false
     var body: some View {
         ScrollView {
@@ -32,16 +30,20 @@ struct AccountView: View {
                     }
                     if settings == nil {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("—").font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                            Text("—").font(.system(.largeTitle, design: .rounded, weight: .semibold)).hidden()
+                                .overlay(alignment: .leading) {
+                                    LoadingShape(radius: 10).frame(width: 138).padding(.vertical, 5)
+                                }
                             Text("片库空间").font(.subheadline).hidden()
-                        }.foregroundStyle(.secondary).accessibilityLabel("片库空间正在加载")
+                                .overlay(alignment: .leading) {
+                                    LoadingShape(radius: 5).frame(width: 186).padding(.vertical, 4)
+                                }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                            .modifier(QuietLoading(label: store.storage.loading ? "正在载入片库空间" : "片库空间暂未获取",
+                                                   animating: store.storage.loading))
                     }
-                    if let failure { InlineFailure(message: failure, retry: { Task { await load() } }) }
                 }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Palette.paper, in: RoundedRectangle(cornerRadius: 26))
-                    .overlay(alignment: .topTrailing) {
-                        DelayedLoadingIndicator(active: loading && settings == nil).padding(8)
-                    }
                 VStack(spacing: 0) {
                     NavigationLink(value: SettingsDestination.playback) {
                         SettingsRow(title: "播放偏好", icon: "captions.bubble")
@@ -69,13 +71,5 @@ struct AccountView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $editingProfile) { EditProfileView() }
-            .task { if settings == nil { await load() } }.refreshable { await load() }
-
-    }
-    private func load() async {
-        guard !loading else { return }
-        loading = true; defer { loading = false }
-        do { settings = try await store.api.request("/api/manage/settings"); failure = nil }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
 }

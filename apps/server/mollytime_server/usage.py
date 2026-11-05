@@ -5,7 +5,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from .config import get_settings
 from .management_models import SchemaRevision, UploadSession, UploadTarget
@@ -75,49 +75,60 @@ def family_objects(db, family):
 
 
 def storage_totals(db, family_ids):
-    """Retained catalog/share objects counted once per household and physical path.
+    """Reuse committed file totals until content changes; reservations stay live."""
+    from .share_models import ContentShare
+    from .storage_snapshots import read_snapshots, save_snapshots
 
-    Household totals represent referenced content, not platform-wide physical bytes.
-    """
-    result = {key: {"usedBytes": 0, "localBytes": 0, "ossBytes": 0,
-                    "objectCount": 0, "unknownSizeCount": 0, "reservedBytes": 0,
-                    "pendingBytes": 0} for key in family_ids}
-    if not result:
-        return result
-    files = object_rows(db, family_ids)
+    if not family_ids:
+        return {}
+    now = dt.datetime.now(dt.UTC)
+    versions, result = read_snapshots(db, family_ids, now)
+    missing = [family for family in family_ids if family not in result]
+    files = object_rows(db, missing) if missing else []
+    expiries = dict(db.query(ContentShare.family_id, func.min(ContentShare.expires_at)).filter(
+        ContentShare.family_id.in_(missing), ContentShare.expires_at > now,
+    ).group_by(ContentShare.family_id).all()) if missing else {}
+    # Uploaded offsets are durable database values. Do not stat temporary files
+    # on every settings request, or invalidate the media snapshot for each chunk.
+    pending = case(
+        (MediaFile.id.is_not(None), 0),
+        (UploadTarget.backend == "oss", case(
+            (UploadSession.status.in_(["processing", "failed"]), UploadSession.size),
+            else_=0,
+        )),
+        else_=UploadSession.offset,
+    )
     uploads = db.query(
-        UploadSession.id, UploadSession.family_id, UploadSession.size, UploadSession.status,
-        UploadTarget.backend, MediaFile.id,
+        UploadSession.family_id, func.sum(UploadSession.size), func.sum(pending),
     ).outerjoin(UploadTarget, UploadTarget.upload_id == UploadSession.id).outerjoin(
         MediaFile, MediaFile.id == UploadSession.id,
     ).filter(UploadSession.family_id.in_(family_ids),
-             UploadSession.status.in_(["uploading", "processing", "failed"])).all()
-    # Finish database reads before stat() calls; never retain a MySQL cursor or
-    # repeatable-read snapshot while waiting on a filesystem.
-    with external_io(db):
-        objects = measure_objects(files, family_ids)
+             UploadSession.status.in_(["uploading", "processing", "failed"])
+    ).group_by(UploadSession.family_id).all()
+    if missing:
+        with external_io(db):
+            objects = measure_objects(files, missing)
+        snapshots = []
         for family, values in objects.items():
+            totals = {"usedBytes": 0, "localBytes": 0, "ossBytes": 0,
+                      "objectCount": 0, "unknownSizeCount": 0}
             for obj in values.values():
-                row = result[family]
-                row["objectCount"] += 1
-                row["unknownSizeCount"] += obj["unknown"]
-                row["usedBytes"] += obj["size"]
+                totals["objectCount"] += 1
+                totals["unknownSizeCount"] += obj["unknown"]
+                totals["usedBytes"] += obj["size"]
                 if obj["backend"] in ("local", "oss"):
-                    row[f"{obj['backend']}Bytes"] += obj["size"]
-        for key, family, reserved, status, backend, registered in uploads:
-            row = result[family]
-            row["reservedBytes"] += reserved
-            if registered:
-                continue
-            if backend == "oss":
-                size = reserved if status in ("processing", "failed") else 0
-            else:
-                path = get_settings().data_dir / "uploads" / f"{key}.part"
-                try:
-                    size = path.stat().st_size
-                except FileNotFoundError:
-                    size = 0
-            row["pendingBytes"] += size
+                    totals[f"{obj['backend']}Bytes"] += obj["size"]
+            result[family] = totals
+            expiry = now + dt.timedelta(hours=1)
+            if family in expiries:
+                expiry = min(expiry, expiries[family].replace(tzinfo=dt.UTC))
+            snapshots.append({"family_id": family, "version": versions[family],
+                              "totals": totals, "valid_until": expiry.replace(tzinfo=None)})
+        save_snapshots(db.get_bind(), snapshots)
+    for totals in result.values():
+        totals.update(reservedBytes=0, pendingBytes=0)
+    for family, reserved, pending_bytes in uploads:
+        result[family].update(reservedBytes=int(reserved), pendingBytes=int(pending_bytes))
     return result
 
 

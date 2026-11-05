@@ -14,6 +14,7 @@ public final class APIClient {
     public var cookie = ""
     public var onUnauthorized: (() -> Void)?
     public var onCookie: ((String) -> Void)?
+    public var onStorageChange: (() -> Void)?
     private let session: URLSession
 
     public init(endpoint: Endpoint, session: URLSession? = nil) {
@@ -31,7 +32,14 @@ public final class APIClient {
                                      query: [URLQueryItem] = [], body: Data? = nil,
                                      headers: [String: String] = [:]) async throws -> T {
         let data = try await raw(path, method: method, query: query, body: body, headers: headers)
-        do { return try JSONDecoder().decode(T.self, from: data) }
+        do {
+            let result = try JSONDecoder().decode(T.self, from: data)
+            if let upload = result as? Upload,
+               ["ready", "failed", "cancelled"].contains(upload.status) {
+                onStorageChange?()
+            }
+            return result
+        }
         catch { throw APIError.invalidResponse }
     }
 
@@ -64,7 +72,22 @@ public final class APIClient {
             .first(where: { $0.name == "molly_parent" }) {
             cookie = received.value; onCookie?(cookie)
         }
+        if method != "GET" && method != "HEAD" && Self.changesStorage(path) {
+            onStorageChange?()
+        }
         return data
+    }
+
+    private static func changesStorage(_ path: String) -> Bool {
+        if path == "/api/manage/uploads" { return true }
+        if path.hasPrefix("/api/manage/uploads/") {
+            return path.hasSuffix("/complete") || path.hasSuffix("/cancel")
+        }
+        return path == "/api/manage/settings"
+            || path == "/api/manage/shares"
+            || path.hasPrefix("/api/manage/resources/")
+            || path.hasPrefix("/api/manage/trash/")
+            || path.hasPrefix("/api/manage/shares/")
     }
 
     public func send<T: Decodable, Body: Encodable>(_ path: String, method: String = "POST", body: Body) async throws -> T {

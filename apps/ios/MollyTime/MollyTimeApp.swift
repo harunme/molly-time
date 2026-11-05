@@ -48,6 +48,7 @@ struct MollyTimeApp: App {
 
 struct ParentTabs: View {
     @Environment(SessionStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab = 0
     var body: some View {
         // Push detail screens outside the tab container so the system tab bar
@@ -72,6 +73,18 @@ struct ParentTabs: View {
                 case .parentPIN: ParentPINView()
                 case .viewingInfo: ViewingInfoView()
                 case .disclaimer: DisclaimerView()
+                }
+            }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                store.storage.invalidate()
+                // Shared state stays current even while "My account" is offscreen.
+                // Mutations refresh immediately; this bounded foreground poll
+                // also picks up changes made by another family member/device.
+                while !Task.isCancelled {
+                    await store.refreshStorage()
+                    do { try await Task.sleep(for: .seconds(60)) }
+                    catch { return }
                 }
             }
         }
