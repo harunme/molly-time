@@ -84,6 +84,9 @@ public struct Playback: Decodable, Sendable {
         public var id: Int { index }
     }
     public let mediaId: String
+    public let version: String?
+    public let size: Int64?
+    public let mime: String?
     public let url: String
     public let expiresAt: String?
     public let subtitles: [Subtitle]

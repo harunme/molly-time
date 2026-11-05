@@ -693,9 +693,11 @@ def uploads(
     if itemIds is not None:
         query = query.filter(UploadSession.item_id.in_(itemIds))
     if pending:
+        # Match the reservation accounting in usage.storage_totals for every
+        # kind. Inline artwork can be abandoned before its cancellation reaches
+        # the server; hiding it makes a reserved quota impossible to release.
         query = query.filter(
             UploadSession.status.in_(["uploading", "processing", "failed"]),
-            UploadSession.kind.notin_(["image", "preview"]),
         )
     def preload(rows):
         keys = [row.id for row in rows]

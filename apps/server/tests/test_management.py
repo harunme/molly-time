@@ -577,8 +577,14 @@ def test_invalid_cover_keeps_previous_image_and_returns_inline_error(parent):
     with Session(db.get_engine()) as session:
         assert session.get(Item, "series").primary_image_tag == previous
         assert session.get(MediaFile, row["id"]) is None
-    assert parent.get("/api/manage/uploads?pending=true").json() == []
+    pending = parent.get("/api/manage/uploads?pending=true").json()
+    assert [(upload["id"], upload["kind"], upload["status"]) for upload in pending] == [
+        (row["id"], "image", "uploading"),
+    ]
+    assert parent.get("/api/manage/settings").json()["storage"]["reservedBytes"] == len(payload)
     assert parent.post(path + "/cancel").status_code == 200
+    assert parent.get("/api/manage/uploads?pending=true").json() == []
+    assert parent.get("/api/manage/settings").json()["storage"]["reservedBytes"] == 0
 
 
 def test_watch_chart_device_segments_cover_full_range_without_pagination(parent):

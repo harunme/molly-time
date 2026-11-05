@@ -312,3 +312,34 @@ def test_uploads_are_filtered_to_requested_files_before_pagination(parent):
     assert parent.get("/api/manage/uploads?pending=true&page=1&itemIds=missing").json()["items"] == []
     assert parent.get("/api/manage/uploads?pending=true&page=1&itemIds=e1&itemIds=inline-episode").json()["total"] == 3
     assert parent.get("/api/manage/uploads?" + "&".join(["itemIds=e1"] * 101)).status_code == 422
+
+
+def test_every_reserved_upload_is_visible_in_pending_pages_including_artwork(parent):
+    expected = {}
+    with Session(db.get_engine()) as session:
+        for kind in ["video", "subtitle", "image", "preview"]:
+            for status in ["uploading", "processing", "failed", "ready", "cancelled"]:
+                key = f"reservation-{kind}-{status}"
+                size = 10 + len(expected)
+                session.add(UploadSession(id=key, family_id="f1", item_id="e1",
+                    filename=f"{kind}.bin", kind=kind, size=size, fingerprint=key, status=status))
+                if status in ["uploading", "processing", "failed"]:
+                    expected[key] = size
+        session.add(UploadSession(id="foreign-cover", family_id="f2", item_id="e2",
+            filename="cover.jpg", kind="image", size=9999, fingerprint="foreign", status="failed"))
+        session.commit()
+    rows = []
+    for page in range(1, 5):
+        result = parent.get(f"/api/manage/uploads?pending=true&page={page}&pageSize=3").json()
+        assert result["total"] == len(expected)
+        rows.extend(result["items"])
+    assert {row["id"]: row["size"] for row in rows} == expected
+    reserved = parent.get("/api/manage/settings").json()["storage"]["reservedBytes"]
+    assert sum(row["size"] for row in rows) == reserved == sum(expected.values())
+    assert len(parent.get("/api/manage/uploads?pending=true").json()) == len(expected)
+    # Revealing an orphaned image/preview must make its reservation releasable.
+    for kind in ["image", "preview"]:
+        key = f"reservation-{kind}-failed"
+        assert parent.post(f"/api/manage/uploads/{key}/cancel").status_code == 200
+        reserved -= expected[key]
+        assert parent.get("/api/manage/settings").json()["storage"]["reservedBytes"] == reserved

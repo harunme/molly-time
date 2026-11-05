@@ -26,6 +26,7 @@ final class PlaybackModel {
     private var loadTask: Task<Void, Never>?
     private var loadID: UUID?
     private var previousIdleTimer: Bool?
+    private var cachedAsset: CachedVideoAsset?
 
     // Loading belongs to the playback session, not to a view appearance task.
     // Layout, zoom and rotation must keep the same player item alive.
@@ -41,22 +42,49 @@ final class PlaybackModel {
         }
     }
 
-    func load(resource: Resource, store: SessionStore, playbackPath: String? = nil) async {
+    func load(resource: Resource, store: SessionStore, playbackPath: String? = nil, useCache: Bool = true) async {
         let generation = loadID
+        let account = store.sessionGeneration
+        let api = store.api, scope = store.scope
         loading = true; failure = nil
         defer { if loadID == generation { loading = false } }
         do {
-            let info: Playback = try await store.api.request(playbackPath ?? "/api/episodes/\(resource.id)/playback")
+            let info: Playback = try await api.request(playbackPath ?? "/api/episodes/\(resource.id)/playback")
             try Task.checkCancellation()
-            let url = try store.api.endpoint.resolve(info.url, authenticated: false)
+            guard loadID == generation, store.sessionGeneration == account else { return }
+            let url = try api.endpoint.resolve(info.url, authenticated: false)
             let savedPosition = player.currentTime().seconds
             var options: [String: Any] = [:]
-            if store.api.endpoint.isSameOrigin(url), !store.api.cookie.isEmpty {
+            if api.endpoint.isSameOrigin(url), !api.cookie.isEmpty {
                 // AVFoundation scopes this cookie to the API host; OSS gets no app credentials.
                 if let cookie = HTTPCookie(properties: [.domain: url.host!, .path: "/", .name: "molly_parent",
-                    .value: store.api.cookie, .secure: "TRUE"]) { options[AVURLAssetHTTPCookiesKey] = [cookie] }
+                    .value: api.cookie, .secure: "TRUE"]) { options[AVURLAssetHTTPCookiesKey] = [cookie] }
             }
-            let item = AVPlayerItem(asset: AVURLAsset(url: url, options: options))
+            cachedAsset?.stop(); cachedAsset = nil
+            let asset: AVURLAsset
+            if useCache, let descriptor = VideoCacheDescriptor(playback: info, scope: scope) {
+                let source = VideoRangeSource(descriptor: descriptor, url: url,
+                    cookie: api.endpoint.isSameOrigin(url) ? api.cookie : nil, cache: store.videoDisk)
+                let cached = CachedVideoAsset(source: source, canReadAhead: { [weak self] in
+                    guard let self, let item = self.player.currentItem else { return true }
+                    let time = self.player.currentTime().seconds
+                    guard time.isFinite else { return true }
+                    return !item.loadedTimeRanges.contains { value in
+                        let range = value.timeRangeValue
+                        return range.start.seconds <= time && CMTimeRangeGetEnd(range).seconds - time >= 10
+                    }
+                }, onUnsupportedRange: { [weak self, weak store] in
+                    guard let self, let store, self.loadID == generation, store.sessionGeneration == account else { return }
+                    self.cachedAsset?.stop(); self.cachedAsset = nil
+                    self.loadTask?.cancel()
+                    self.loadTask = Task { [weak self] in
+                        await self?.load(resource: resource, store: store, playbackPath: playbackPath, useCache: false)
+                    }
+                })
+                cachedAsset = cached; asset = cached.asset
+            } else { asset = AVURLAsset(url: url, options: options) }
+            let item = AVPlayerItem(asset: asset)
+            item.preferredForwardBufferDuration = 10
             status = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                 let failed = item.status == .failed
                 Task { @MainActor [weak self] in
@@ -75,7 +103,7 @@ final class PlaybackModel {
             }
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try AVAudioSession.sharedInstance().setActive(true)
-            progressKey = playbackPath == nil ? "resume|\(store.scope)|\(resource.id)" : ""
+            progressKey = playbackPath == nil ? "resume|\(scope)|\(resource.id)" : ""
             let resume = progressKey.isEmpty ? 0 : (savedPosition.isFinite && savedPosition > 0 ? savedPosition : UserDefaults.standard.double(forKey: progressKey))
             if resume > 0 {
                 await player.seek(to: CMTime(seconds: resume, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
@@ -83,15 +111,16 @@ final class PlaybackModel {
             try Task.checkCancellation()
             tracks = info.subtitles
             selectedTrack = info.subtitles.first(where: \.isDefault)?.index
-            await selectSubtitle(selectedTrack, api: store.api)
+            await selectSubtitle(selectedTrack, api: api)
             try Task.checkCancellation()
+            guard loadID == generation, store.sessionGeneration == account else { return }
             if observer == nil {
                 observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] time in
                     Task { @MainActor [weak self] in self?.tick(time.seconds) }
                 }
             }
             player.playImmediately(atRate: speed)
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch { if !Task.isCancelled, loadID == generation, store.sessionGeneration == account { failure = error.localizedDescription } }
     }
     func selectSubtitle(_ index: Int?, api: APIClient) async {
         let generation = UUID(); subtitleGeneration = generation
@@ -139,6 +168,7 @@ final class PlaybackModel {
     }
     func stop() {
         loadTask?.cancel(); loadTask = nil; loadID = nil
+        cachedAsset?.stop(); cachedAsset = nil
         if let previousIdleTimer { UIApplication.shared.isIdleTimerDisabled = previousIdleTimer }
         previousIdleTimer = nil
         subtitleGeneration = UUID()
@@ -216,6 +246,7 @@ struct PlayerView: View {
         .background(.black).preferredColorScheme(.dark)
         .statusBarHidden()
         .task(id: reload) { model.prepare(resource: resource, store: store, playbackPath: playbackPath, id: reload) }
+        .onChange(of: store.sessionGeneration) { _, _ in model.stop(); dismiss() }
         .task(id: "\(interaction)-\(model.isPlaying)-\(controlsVisible)-\(scrubbing)-\(voiceOver)-\(subtitleOptions)-\(speedOptions)") {
             guard controlsVisible, model.isPlaying, !scrubbing, !voiceOver, !subtitleOptions, !speedOptions else { return }
             do { try await Task.sleep(for: .seconds(4)) } catch { return }

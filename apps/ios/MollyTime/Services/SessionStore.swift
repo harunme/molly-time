@@ -45,6 +45,7 @@ final class SessionStore {
     let storage = FamilyStorageStore()
     let artwork = ResourceCache<UIImage>()
     let artworkDisk = ArtworkDiskCache()
+    let videoDisk = VideoDiskCache()
     let library = LibraryStore()
     let trashDeletions = TrashDeletionStore()
     private var restoreTask: Task<Void, Never>?
