@@ -1,133 +1,158 @@
-# MollyTime
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/mollytime-horizontal-on-dark.svg">
+    <img src="assets/brand/mollytime-horizontal.svg" alt="MollyTime" width="320">
+  </picture>
+  <h1>把好故事留给孩子，把选择权交给家长。</h1>
+  <p>一个为家庭打造的视频库：在手机整理，在电视观看，按约定休息。</p>
+  <p><strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a></p>
+  <p><a href="https://mollytime.app">官网</a> · <a href="#快速开始">快速开始</a> · <a href="#文档导航">技术文档</a> · <a href="https://github.com/harunme/molly-time/issues">反馈与建议</a></p>
+  <p>Android TV · iPhone / iPad · Android 手机 / 平板 · Web</p>
+</div>
 
-家庭儿童视频项目。目标采用轻量 Kotlin WebView 壳子 + TV 网页 + 原生 Media3 播放器，统一使用 MollyTime FastAPI 后台，不依赖 Jellyfin。先验证华为 V65，再完善家庭业务。
+---
 
-## 已确定方案
+孩子喜欢的故事，值得有一个专门的地方。
 
-- TV 浏览界面采用 React + TypeScript + Vite，Norigin 负责遥控器焦点导航；网页与 WebView 壳子已实现；华为 V65 尚未实测。
-- 首阶段加载固定网页地址，通过网页部署热更新；需要断网启动时再加入本地网页包、验签与回滚。
-- 原生壳子保留 Media3 播放与凭证管理，网页通过有限 Bridge 调用。播放期间不刷新网页。
-- `apps/server/` 是唯一业务与媒体后台，家庭、儿童、上传、首页与统计按模块实现，不拆第二套业务服务。
-- 实施顺序与待修正问题见 [架构文档](docs/architecture.md)。
+**MollyTime** 把家里的动画、英语启蒙视频和亲子内容整理成孩子可以用遥控器自己选择的片库。家长在手机或网页上挑选、上传、整理，决定哪些内容可以看，也可以约定每天看几集、看多久。
 
-## 目录结构
+从“再看一集”到“今天先到这里”，MollyTime 希望让每一次打开电视，都更从容一点。
 
-```text
-apps/
-├── server/       业务与媒体后台
-├── web/          家长管理网页
-├── ios/          SwiftUI 家长端（iOS 17+，含手机播放）
-├── android/      Kotlin 原生手机／平板家长端（Android 8+，初版）
-├── site/         AstroWind 改造的官网静态页面
-└── tv/           电视端
-    ├── web/      TV 网页界面
-    └── client/   Android 壳子与原生播放器
-analysis/         爬虫与应用分析资料
-tools/            本地构建与运行脚本
-infra/            Docker 部署配置
-docs/             架构、设计与验证文档
-```
+## 先看一眼
 
-电视端入口见 [`apps/tv/README.md`](apps/tv/README.md)。`apps/tv/` 同时保留历史上游代码，当前 Android 构建只包含 `client/`。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/devices-dark.png">
+  <img src="docs/readme/devices-light.png" alt="MollyTime 官网设备展示：左侧 iPhone 家长资料库，右侧电视家庭片库" width="100%">
+</picture>
 
-## 当前实现
+<sub>界面示例。截图中的节目与封面不随项目提供，版权归各自权利人所有。</sub>
 
-- **服务端**：`apps/server/` Python 自研 REST（FastAPI + SQLAlchemy + SQLite/Pillow）；账号与设备认证、分块上传、文件检查、首页配置、真实播放统计；本地文件通过 HTTP Range 返回，不默认转码。OSS 适配与签名地址跳转尚未接通和验收。
-- **家长后台**：`apps/web/` React 网页，入口 `/manage/`；资源库、上传任务、首页编排、观看记录、家庭设置，使用同一个 FastAPI 后台。
-- **客户端**：`apps/tv/client/` 新写的轻量 Android TV 客户端；2 个 Activity（Shell/Playback）+ OkHttp + media3 ExoPlayer；不依赖 jellyfin-sdk、不依赖 jellyfin-androidtv UI tree。
-- 历史 fork：`apps/tv/app/` 保留上游 fork 仅作参考，已从 Gradle 构建中移除；包含 MollyTime 预览入口的早期版本。
-- 新客户端在线播放后台上传并发布的媒体；历史离线样本不进入新版 APK。
-- 调试包名 `com.molly.tv.debug`，发布包名 `com.molly.tv`。
-- 本地 Android 工具链、构建、模拟器与安装脚本；本地服务端构建、初始化、运行脚本。
+## 为家庭认真打磨的细节
 
-离线样本播放器是历史诊断入口；当前轻量客户端联网播放使用 MollyTime 自有 `/api/*`。上传发布、首页编排、设备登记/撤销、儿童续播与原生播放时长统计已接通；历史进度不能还原为观看时长。基础版范围与限制见 [家长后台说明](apps/web/README.md)。
+### 片单，由你决定
 
-## 日常开发
+把视频整理成合集、季和单集，自定义封面、调整顺序，准备好了再开放给孩子。尚未发布的内容留在家长端，电视展示家长允许观看的片库。字幕支持中文、英文、中英文与关闭选项，默认偏好在家庭内共享。
 
-本地开发入口由根目录 `Makefile` 管理。`make dev` 并行启动 API、TV 网页、家长网页和官网；需要 Node.js、pnpm 和 Python。首次使用时先运行 `make init` 初始化本地数据库和管理员账号。日常不启动 Docker、Android 模拟器或客户端。
+### 休息，也可以有好的结束方式
+
+为每台电视设置每天的集数或分钟数，支持临时加看、结束今日观看，以及“这一集看完就休息”。可以用家长录制的提醒视频告诉孩子：好故事明天继续。暂停和缓冲不计入实际观看时长，家长在手机上的预览也不占孩子的观看额度。
+
+### 管理时少等一点，重播时少下载一点
+
+封面选好就显示，后台完成上传与保存；播放偏好复用预取缓存，返回回收站保留已有列表。手机视频按需缓存已播放的片段，再看时优先复用，减少重复下载与 OSS 公网流量。电视也有播放缓存，具体容量和清理策略见各端文档。
+
+### 从一个家庭，到多个独立家庭
+
+账号、片库和设备按家庭隔离，电视通过二维码或四位码绑定。新家庭默认有 **5 GB 空间额度**，超管可在用户管理中单独调整；这是容量上限，不会预先占用实际存储。支持本地磁盘或私有 OSS，已有家庭升级时保留原额度。
+
+## 已经可以做什么
+
+| 场景 | 当前能力 |
+| --- | --- |
+| 整理片库 | 合集 / 季 / 单集、封面、排序、发布与隐藏、回收站与恢复 |
+| 上传内容 | 分块或 OSS 分片上传、断点续传、上传任务、暂停与重试 |
+| 电视观看 | 遥控器导航、扫码绑定、原生 Media3 播放、续播、字幕与播放速度 |
+| 手机管理 | 原生 iOS 与 Android 家长端，浏览、上传、预览和电视管理 |
+| 观看安排 | 按电视设置每日集数 / 分钟、家长 PIN、加看、休息提醒 |
+| 了解习惯 | 实际观看时长、观看记录、日历热力图、内容与设备统计 |
+| 家庭间分享 | 通过分享码领取内容，服务端检查访问权限与空间额度 |
+| 平台运营 | 邀请注册、用户与家庭额度、存储配置、用量统计、备份和客户端发布 |
+
+## 三步，把片库搬上电视
+
+1. **准备内容**：家长登录后上传自己有权使用的视频，整理合集与封面，选择允许孩子观看的内容。
+2. **绑定电视**：打开 TV 客户端，用家长手机扫描二维码或输入四位码，确认绑定。
+3. **开始观看**：孩子用遥控器选片；家长可按需要设置每日安排，并在手机或网页查看记录。
+
+官方服务通过邀请码注册。自部署可先使用家长网页和 TV 客户端；当前手机端默认连接官方服务，登录页不提供修改服务地址的入口，连接自部署服务需调整客户端配置并自行构建。
+
+## 快速开始
+
+以下是 **macOS / Linux 本地开发**流程。准备 Python 3.11+、Node.js 22、pnpm 10、FFmpeg / FFprobe，以及 `make`、`lsof`。原生 App 构建工具见各端文档。
 
 ```bash
+git clone https://github.com/harunme/molly-time.git
+cd molly-time
+
+# 安装服务端和网页依赖
+make build-server
+pnpm --dir apps/tv/web install --frozen-lockfile
+pnpm --dir apps/web install --frozen-lockfile
+pnpm --dir apps/site install --frozen-lockfile
+
+# 首次创建本地家庭与超管；替换为自己的邮箱和密码
+export MOLLYTIME_INITIAL_ADMIN_EMAIL='you@example.com'
+export MOLLYTIME_INITIAL_ADMIN_PASSWORD='change-this-before-use'
+make init
+
+# 同时启动 API、TV 网页、家长网页和官网
 make dev
 ```
 
-官网位于 `http://127.0.0.1:4321/`，TV 网页位于 `http://127.0.0.1:5173/tv/`，家长网页开发服务位于 `http://127.0.0.1:5174/manage/`，API 位于 `http://127.0.0.1:8096`。`make dev` 启动前会检查这四个端口（API 端口遵循配置），自动终止占用端口的监听进程；先发送 SIGTERM，等待 5 秒后仍未释放则发送 SIGKILL，释放失败时中止启动。TV、家长端和官网修改源码后由 Vite/Astro 热更新，API 修改 Python 源码后自动重启（仅监听 `apps/server/mollytime_server`，不监听媒体和数据库目录）。官网的 `/manage/`、`/tv/` 入口及热更新连接代理到对应开发服务；API 代理地址自动跟随配置端口，也可用 `MOLLYTIME_API_PROXY` 覆盖。请使用这些开发地址查看实时修改，API 端口上的静态页面仍为上次构建产物。方向键、回车和返回交互可在浏览器中验证。按 Ctrl+C 会停止四个服务及其子进程。
+| 入口 | 本地地址 |
+| --- | --- |
+| 家长管理网页 | <http://127.0.0.1:5174/manage/> |
+| 电视界面预览 | <http://127.0.0.1:5173/tv/> |
+| 官网预览 | <http://127.0.0.1:4321/> |
+| API | <http://127.0.0.1:8096> |
 
-如果已有 API，可分别用 `make tv` 和 `make web` 启动网页，避免启动本地 API。登录和真实媒体目录需要可用的 MollyTime API；TV 网页默认代理 `http://127.0.0.1:8096`，可通过 `MOLLYTIME_API_PROXY` 指定已有后台。浏览器可验证登录和目录，原生视频播放及观看统计在发版前用 Android 客户端验证。运行 `make` 查看全部命令。
+使用初始化时设置的邮箱和密码登录家长网页。`make dev` 会停止占用上述开发端口的监听进程；如需保留已有服务，可分别运行 `make server`、`make tv`、`make web`、`make site`。网页预览支持目录与遥控器交互，完整电视播放通过 TV 客户端验证。
 
-## 发版前客户端验证
+日常网页开发无需启动 Docker、Android 模拟器或手机客户端。`make` 可查看命令列表；生产部署、HTTPS、数据库与存储配置见[服务端文档](docs/server.md)和 [OSS 配置](docs/oss-storage.md)。
 
-发版前构建网页并用 Android 客户端检查 WebView、遥控器、原生播放、字幕、返回、续播与观看统计。Android 工具要求：JDK 21、Android SDK 36、Build Tools 35.0.0/36.0.0、platform-tools；使用模拟器时需要 ARM64 Android TV API 34 镜像。上传处理需要 FFmpeg（ffprobe）。
+## 为想继续打磨它的人
 
-```bash
-make build-tv
-make build-web
-make server                          # 单独的终端；或使用已部署后台
-bash tools/build-tv-client.sh
-# 使用模拟器验收时再启动；连接真实电视时跳过
-bash tools/start-tv-emulator.sh
-.local/android-sdk/platform-tools/adb -e install -r artifacts/mollytime-tv-debug.apk
-.local/android-sdk/platform-tools/adb -e shell am start -n com.molly.tv.debug/com.molly.tv.ShellActivity
-```
+MollyTime 的网页、原生客户端与媒体后台放在同一仓库。业务由一个 FastAPI 后台提供，使用自有 REST API，无需额外运行 Jellyfin 服务。
 
-新版 APK 输出：`artifacts/mollytime-tv-debug.apk`。详细客户端验收见 [运行说明](apps/tv/client/README.md)。模拟器通过不代表华为 V65 已通过。
+| 模块 | 技术 | 入口 |
+| --- | --- | --- |
+| 电视界面 | React · TypeScript · Vite · 遥控器焦点导航 | [`apps/tv/web`](apps/tv/web) |
+| TV 原生客户端 | Kotlin · WebView · Media3 | [`apps/tv/client`](apps/tv/client) |
+| iOS 家长端 | SwiftUI · AVPlayer，iOS / iPadOS 17+ | [`apps/ios`](apps/ios) |
+| Android 家长端 | Kotlin · Jetpack Compose，Android 8+ | [`apps/android`](apps/android) |
+| 家长管理后台 | React · TypeScript | [`apps/web`](apps/web) |
+| 业务与媒体服务 | FastAPI · SQLAlchemy · SQLite / MySQL | [`apps/server`](apps/server) |
+| 官网 | Astro | [`apps/site`](apps/site) |
 
-历史离线样本工具 `tools/prepare_samples.py` 仍保留，但新版构建不执行它。视频通过家长后台上传并发布后联网播放。
+电视网页包随 APK 内置，可在校验后更新，并保留回退版本。手机上传、播放缓存、设备凭据和观看计时由原生端与服务端配合处理。架构、边界和验证记录均保留在仓库，方便继续研究和改进。
 
-## 本地 MollyTime Server
+## 使用范围
 
-官网位于根路径 `/`，开发预览使用 `make site`（`http://127.0.0.1:4321`）。`make build-web` 同时构建家长后台和官网；详情见 [`apps/site/README.md`](apps/site/README.md)。
+- **内容自备**：项目提供管理与播放工具，不附带影视资源。请使用有权使用的内容。
+- **适配仍在完善**：已有模拟器与部分真机验证；华为 V65 等具体电视、遥控器和视频编码需实机确认，不承诺所有 Android / HarmonyOS 设备通用。
+- **缓存与网络**：命中缓存可减少重复传输；首次授权、同步和部分播放校验仍需网络，不能把播放缓存当成完整的离线片库。
+- **观看额度按电视计算**：目前不提供家庭多电视共用的观看时间池或每个儿童单独的额度。每日观看额度按北京时间（Asia/Shanghai，UTC+8）零点恢复。空间额度则按家庭共享。
+- **源码与发行版**：本文描述当前仓库，线上服务和已安装客户端可能晚于源码。iOS 安装需 Xcode 签名；Android 出包与发布方式见各端说明。
 
-```bash
-bash tools/build-server.sh       # 创建 .venv
-bash tools/init-server.sh        # 建库 + 创建 admin
-bash tools/build-tv-web.sh       # 构建 /tv/ 网页
-bash tools/build-web.sh          # 构建 /manage/ 网页
-bash tools/run-server.sh         # 127.0.0.1:8096
-```
+## 文档导航
 
-部署时可用 Docker；日常网页开发不启动它：
+| 想做的事 | 从这里开始 |
+| --- | --- |
+| 使用家长后台 | [网页家长端](apps/web/README.md) |
+| 构建电视客户端 | [TV 客户端](apps/tv/client/README.md) · [TV 网页](apps/tv/web/README.md) |
+| 构建手机端 | [iOS / iPadOS](apps/ios/README.md) · [Android](apps/android/README.md) |
+| 配置每日观看与提醒 | [观看安排](docs/watch-control.md) · [家长视频提醒](docs/parent-reminders.md) |
+| 配置服务与存储 | [服务端](docs/server.md) · [OSS 与缓存](docs/oss-storage.md) |
+| 了解分享、用量与更新 | [内容分享](docs/content-sharing.md) · [家庭用量](docs/family-usage.md) · [APK 更新](docs/tv-client-updates.md) |
+| 了解品牌与来源 | [品牌资源](assets/brand/mollytime-flower/README.md) · [上游源码记录](docs/upstream.md) |
 
-```bash
-docker compose -f infra/compose.yaml up -d mollytime-server
-docker compose -f infra/compose.yaml --profile tools run --rm admin-tools init_db
-docker compose -f infra/compose.yaml --profile tools run --rm admin-tools create_admin
-```
+多数深入的技术文档目前使用中文。欢迎帮助完善英文和日文文档。
 
-默认账号 `admin` / `molly`（`MOLLYTIME_INITIAL_ADMIN_*` 覆盖）。服务设计、端点清单、配置项见 [`docs/server.md`](docs/server.md)。
+## 一起把它做好
 
-家长后台打开 `http://127.0.0.1:8096/manage/`。已有服务升级后须重启进程加载新 API。观看统计需要安装新版 APK，并在播放前选择儿童。
+欢迎通过 [Issues](https://github.com/harunme/molly-time/issues) 分享使用体验、报告问题或提出建议。电视相关问题请带上设备型号、系统版本、客户端版本和复现步骤；截图与日志请先移除账号、令牌和私人媒体地址。
 
-**重置（含旧 Jellyfin 数据）**：`tools/reset-server.sh`，按提示确认删除 `.local/molly-server/` 与 `.local/jellyfin/` 后重新初始化。
+功能改进、设备兼容、无障碍体验、翻译和文档都值得参与。欢迎提交聚焦的小改动，并说明解决了什么问题、如何验证。
 
-模拟器中在首次启动的连接页面输入 `http://10.0.2.2:8096`。Mac 的 localhost 不是模拟器的 localhost。
+## 许可与致谢
 
-默认服务仅绑定 Mac 回环地址，真实电视不能直接访问。实机联网测试时，另建本地覆盖配置将端口绑定到 Mac 的局域网地址；完成账号配置后再开放，不修改默认配置暴露管理员初始化页面。
+许可按目录区分：服务端在[自身说明](apps/server/README.md)中声明采用 MIT；`apps/tv/` 保留 Jellyfin Android TV 上游源码与 [GPL-2.0 许可证](apps/tv/LICENSE)。其他目录、素材和依赖请遵循各自的许可声明，分发时一并保留相关版权与许可证。
 
-## 华为电视验证
+感谢 Jellyfin Android TV 上游，以及 React、FastAPI、Media3、SwiftUI、Jetpack Compose 等项目与工具的建设者。
 
-将新版 debug APK 放入 U 盘根目录，按华为的媒体中心安装流程尝试安装。先验证启动、网页加载、遥控器、联网视频、字幕、返回与续播。Mac 模拟器通过不表示 HarmonyOS 已通过。APK 当前为 debug 签名，供家庭测试，尚未制作正式签名和品牌图标。
+---
 
-## 名称与兼容
-
-产品展示名称统一为 **MollyTime**，代码与构建名称使用 `mollytime`，服务端模块为 `mollytime_server`。旧环境变量 `MOLLY_*` 继续兼容，新配置优先使用 `MOLLYTIME_*`；同时设置时以新变量为准。
-
-为保留现有媒体库与客户端升级，数据目录仍为 `.local/molly-server/`，Android 安装包 ID 仍为 `com.molly.tv`。默认开发密码、既有 Cookie、令牌和 Bridge/API 协议标识保持兼容。历史验证记录与上游参考代码保留当时名称。
-
-旧开发环境更新后运行 `bash tools/build-server.sh`，重新安装更名后的 Python 模块。仓库目录或远程仓库名称可另外调整，不影响上述启动脚本。
-
-## 文档与许可
-
-- [新版 TV 客户端运行说明](apps/tv/client/README.md)
-- [TV 网页与热更新](apps/tv/web/README.md)
-- [家长管理后台使用说明](apps/web/README.md)
-- [iOS 家长端工程与运行说明](apps/ios/README.md)
-- [Android 手机／平板家长端工程与验证范围](apps/android/README.md)
-- [家长后台设计与验证](docs/parent-admin-validation.md)
-- [架构与分阶段验收](docs/architecture.md)
-- [MollyTime Server 设计](docs/server.md)
-- [上游基线与修改边界](docs/upstream.md)
-- [新版 WebView 客户端验证](docs/tv-webview-validation.md)
-- [历史验证记录](docs/local-validation.md)
-- [上游客户端许可](apps/tv/LICENSE)
-
-`apps/server/` 源码采用 MIT License（使用自有 API，不依赖 Jellyfin 服务端代码）。`apps/tv/` 沿用上游 Jellyfin Android TV 许可证。保留上游声明；分发修改后的客户端前核对适用许可证及对应源码提供义务。不得将未实现的家庭隔离当作已具备功能。
+<div align="center">
+  <strong>把好时光，慢慢收藏。</strong><br>
+  <sub>如果 MollyTime 也适合你的家庭，欢迎留一颗 Star，让更多人发现它。</sub>
+</div>
