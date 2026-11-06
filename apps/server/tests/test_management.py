@@ -515,7 +515,26 @@ def test_schema_additive_and_repeatable(parent):
     assert config.get_settings().data_dir.exists()
 
 
-def test_cover_replacement_changes_image_reference(parent):
+def test_local_video_completion_rejects_empty_metadata(parent):
+    payload = b"video payload"
+    row = parent.post("/api/manage/uploads", json={
+        "itemId": "e1", "filename": "video.mp4", "kind": "video",
+        "size": len(payload), "fingerprint": "empty-video-metadata",
+    }).json()
+    path = f"/api/manage/uploads/{row['id']}"
+    assert parent.put(path + "/chunks?offset=0", content=payload, headers={
+        "X-Chunk-SHA256": hashlib.sha256(payload).hexdigest(),
+    }).status_code == 200
+    response = parent.post(path + "/complete", json={})
+    assert response.status_code == 422
+    assert "缺少视频时长" in response.json()["detail"]
+    upload = parent.get(path).json()
+    assert upload["status"] == "uploading"
+    assert upload["taskId"] is None
+
+
+@pytest.mark.parametrize("completion_body", [None, {}])
+def test_cover_replacement_changes_image_reference(parent, completion_body):
     import io
 
     from PIL import Image
@@ -546,11 +565,11 @@ def test_cover_replacement_changes_image_reference(parent):
             ).status_code
             == 200
         )
-        completed = parent.post(f"/api/manage/uploads/{row['id']}/complete")
+        completed = parent.post(f"/api/manage/uploads/{row['id']}/complete", json=completion_body)
         assert completed.status_code == 200
         assert completed.json()["status"] == "ready"
         assert completed.json()["taskId"] is None
-        assert parent.post(f"/api/manage/uploads/{row['id']}/complete").json() == completed.json()
+        assert parent.post(f"/api/manage/uploads/{row['id']}/complete", json=completion_body).json() == completed.json()
         assert not run_once()
         url = parent.get("/api/manage/resources/series").json()["imageUrl"]
         assert parent.get(url).status_code == 200
@@ -570,7 +589,7 @@ def test_invalid_cover_keeps_previous_image_and_returns_inline_error(parent):
     }).status_code == 200
     with Session(db.get_engine()) as session:
         previous = session.get(Item, "series").primary_image_tag
-    response = parent.post(path + "/complete")
+    response = parent.post(path + "/complete", json={})
     assert response.status_code == 422
     assert "封面图片无效" in response.json()["detail"]
     assert not run_once()

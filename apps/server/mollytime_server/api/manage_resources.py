@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
@@ -856,6 +856,12 @@ def write_chunk(db, row, offset, data):
     return upload_dto(db, row)
 
 
+class EmptyCompletionBody(BaseModel):
+    """Native clients send {} when completing artwork or subtitle uploads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
 def accept_video_metadata(row, body, *, required=False):
     if row.kind != "video":
         return
@@ -863,6 +869,8 @@ def accept_video_metadata(row, body, *, required=False):
         if required:
             raise HTTPException(422, "请重新选择原视频，由浏览器读取视频时长后继续上传")
         return
+    if not isinstance(body, VideoMetadata):
+        raise HTTPException(422, "缺少视频时长，请重新选择原视频上传")
     try:
         save_metadata(row.id, body)
     except ValueError as error:
@@ -942,7 +950,10 @@ def complete_cover(db, row, target):
 
 
 @router.post("/uploads/{upload_id}/complete")
-def complete_upload(upload_id: str, user: Parent, db: DbSession, body: VideoMetadata | None = None):
+def complete_upload(
+    upload_id: str, user: Parent, db: DbSession,
+    body: VideoMetadata | EmptyCompletionBody | None = None,
+):
     row = owned(db, UploadSession, upload_id, user.family_id)
     if row.status == "processing" or row.status == "ready":
         return upload_dto(db, row)

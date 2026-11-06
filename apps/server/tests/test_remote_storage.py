@@ -372,7 +372,8 @@ def test_browser_metadata_is_kept_for_retry_and_cleared_after_success(remote, mo
 
 
 @pytest.mark.parametrize("kind,filename", [("image", "cover.jpg"), ("preview", "motion.webp"), ("subtitle", "en.srt")])
-def test_small_remote_files_keep_server_validation(remote, kind, filename):
+@pytest.mark.parametrize("completion_body", [None, {}])
+def test_small_remote_files_keep_server_validation(remote, kind, filename, completion_body):
     import hashlib
     web, oss = remote
     output = io.BytesIO()
@@ -384,7 +385,7 @@ def test_small_remote_files_keep_server_validation(remote, kind, filename):
     content = output.getvalue() if kind in ("image", "preview") else b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
     key, obj = start(web, len(content), kind=kind, filename=filename)
     oss.objects[obj] = content
-    result = web.post(f"/api/manage/uploads/{key}/complete")
+    result = web.post(f"/api/manage/uploads/{key}/complete", json=completion_body)
     assert result.status_code == 200
     if kind in ("image", "preview"):
         assert result.json()["status"] == "ready"
