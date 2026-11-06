@@ -6,7 +6,10 @@ import Download from '~/components/widgets/Download.astro';
 
 <section id="download" class="home-hero">
   <div class="hero-art" aria-hidden="true">
-    <Image src="~/assets/images/hero-image.png" alt="" widths={[768, 1440, 2040]} sizes="(min-width: 1100px) 70vw, 100vw" layout="none" format="webp" loading="eager" fetchpriority="high" />
+    <div class="hero-shadow"></div>
+    <div class="hero-drift">
+      <Image src="~/assets/images/hero-image.png" alt="" widths={[768, 1440, 2040]} sizes="(min-width: 1100px) 70vw, 100vw" layout="none" format="webp" loading="eager" fetchpriority="high" />
+    </div>
   </div>
   <div class="hero-inner">
     <div class="hero-copy">
@@ -21,6 +24,42 @@ import Download from '~/components/widgets/Download.astro';
     </div>
   </div>
 </section>
+
+<script>
+  const hero = document.querySelector<HTMLElement>('.home-hero');
+  const art = hero?.querySelector<HTMLElement>('.hero-art');
+  if (hero && art) {
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
+    let inView = true;
+    const resetPointer = () => {
+      for (const name of ['--pointer-x', '--pointer-y', '--pointer-tilt-x', '--pointer-tilt-y']) art.style.removeProperty(name);
+    };
+    const updateMotion = () => {
+      hero.dataset.motion = inView && !document.hidden && !reducedMotion.matches ? 'running' : 'paused';
+      if (hero.dataset.motion === 'paused') resetPointer();
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      updateMotion();
+    });
+    observer.observe(hero);
+    document.addEventListener('visibilitychange', updateMotion);
+    reducedMotion.addEventListener('change', updateMotion);
+    hero.addEventListener('pointermove', (event) => {
+      if (reducedMotion.matches || !finePointer.matches || event.pointerType !== 'mouse') return;
+      const rect = hero.getBoundingClientRect();
+      const x = Math.max(-0.5, Math.min(0.5, (event.clientX - rect.left) / rect.width - 0.5));
+      const y = Math.max(-0.5, Math.min(0.5, (event.clientY - rect.top) / rect.height - 0.5));
+      art.style.setProperty('--pointer-x', `${x * 24}px`);
+      art.style.setProperty('--pointer-y', `${y * 18}px`);
+      art.style.setProperty('--pointer-tilt-x', `${-y * 3}deg`);
+      art.style.setProperty('--pointer-tilt-y', `${x * 3}deg`);
+    }, { passive: true });
+    hero.addEventListener('pointerleave', resetPointer);
+    updateMotion();
+  }
+</script>
 
 <style>
   .home-hero {
@@ -101,6 +140,7 @@ import Download from '~/components/widgets/Download.astro';
   }
 
   .hero-art {
+    --float-distance: 14px;
     position: absolute;
     z-index: 0;
     bottom: -24px;
@@ -108,6 +148,42 @@ import Download from '~/components/widgets/Download.astro';
     width: 600px;
     height: 340px;
     pointer-events: none;
+    transform: perspective(1000px) translate3d(var(--pointer-x, 0px), var(--pointer-y, 0px), 0) rotateX(var(--pointer-tilt-x, 0deg)) rotateY(var(--pointer-tilt-y, 0deg));
+    transition: transform 850ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .hero-drift {
+    width: 100%;
+    height: 100%;
+    transform-origin: 55% 45%;
+    animation: explorer-float 8s ease-in-out infinite;
+  }
+
+  .hero-shadow {
+    position: absolute;
+    left: 60%;
+    bottom: 12%;
+    width: 30%;
+    height: 4%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, color-mix(in srgb, var(--aw-color-text-default) 15%, transparent), transparent 70%);
+    filter: blur(8px);
+    animation: explorer-shadow 8s ease-in-out infinite;
+  }
+
+  .home-hero[data-motion='paused'] .hero-drift,
+  .home-hero[data-motion='paused'] .hero-shadow {
+    animation-play-state: paused;
+  }
+
+  @keyframes explorer-float {
+    0%, 100% { transform: translate3d(-6px, 10px, 0) rotate(-1.1deg); }
+    50% { transform: translate3d(6px, calc(-1 * var(--float-distance)), 0) rotate(1.1deg); }
+  }
+
+  @keyframes explorer-shadow {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.78); opacity: 0.55; }
   }
 
   .hero-art :global(img) {
@@ -131,6 +207,7 @@ import Download from '~/components/widgets/Download.astro';
     }
 
     .hero-art {
+      --float-distance: 24px;
       right: -80px;
       width: 800px;
       height: 460px;
@@ -163,6 +240,18 @@ import Download from '~/components/widgets/Download.astro';
       right: -10vw;
       width: min(70vw, 1300px);
       height: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-art {
+      transform: none;
+      transition: none;
+    }
+
+    .hero-drift,
+    .hero-shadow {
+      animation: none;
     }
   }
 </style>

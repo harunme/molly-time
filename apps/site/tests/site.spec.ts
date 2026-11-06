@@ -65,6 +65,41 @@ test('mobile menu, anchors and layout at narrow phone widths', async ({ page }) 
   await capture(page, 'test-results/mobile.png');
 });
 
+test('explorer floats independently of copy, responds to the pointer and pauses offscreen', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  const image = page.locator('.hero-drift img');
+  await image.evaluate((element: HTMLImageElement) => element.decode());
+  const initial = await image.boundingBox();
+  if (!initial) throw new Error('Explorer image is not visible');
+  const copy = await page.locator('.hero-copy').boundingBox();
+  const buttons = await page.locator('.hero-actions').boundingBox();
+  await expect.poll(async () => Math.abs((await image.boundingBox())!.y - initial.y)).toBeGreaterThan(3);
+  expect(await page.locator('.hero-copy').boundingBox()).toEqual(copy);
+  expect(await page.locator('.hero-actions').boundingBox()).toEqual(buttons);
+
+  const art = page.locator('.hero-art');
+  const rest = await art.evaluate((element) => getComputedStyle(element).transform);
+  await page.mouse.move(1250, 500);
+  await expect.poll(() => art.evaluate((element) => getComputedStyle(element).transform)).not.toBe(rest);
+  await page.mouse.move(0, 0);
+  await expect.poll(() => art.evaluate((element) => getComputedStyle(element).transform)).toBe(rest);
+  await page.keyboard.press('End');
+  await expect(page.locator('.hero-drift')).toHaveCSS('animation-play-state', 'paused');
+});
+
+test('reduced-motion preference stops floating and pointer depth, including changes while open', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await page.mouse.move(1250, 500);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.hero-drift')).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('.hero-art')).toHaveCSS('transform', 'none');
+  await page.mouse.move(200, 200);
+  await expect(page.locator('.hero-art')).toHaveCSS('transform', 'none');
+  await expect(page.locator('.hero-shadow')).toHaveCSS('animation-name', 'none');
+});
+
 for (const channel of [
   { name: '下载 Android 家长端', packageName: 'com.molly.parent', status: '#download-android-status', filename: 'mollytime-android.apk' },
   { name: '下载电视端', packageName: 'com.molly.tv', status: '#download-status', filename: 'mollytime-tv.apk' },

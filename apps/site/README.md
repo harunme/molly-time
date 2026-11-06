@@ -21,6 +21,8 @@ pnpm --dir apps/site test # 在构建后验证静态页面及下载逻辑
 
 配图沿用 AstroWind 模板，原版 Unsplash 照片下载到本地，避免加载外部图片。首屏由 `HomeHero.astro` 排版：桌面端左侧标题与下载入口，右侧原色探索者铺入背景；手机端将人物移到文案下方，以完整色彩和图文留白保证阅读，不使用淡化、滤镜或覆盖图片的遮罩。文案围绕已有功能，不承诺预置内容或所有品牌电视兼容。首页精简为首屏、核心功能、开始使用和 FAQ。安装包下载由首屏按钮直接触发，没有底部下载卡片和页脚。
 
+探索者以 8 秒周期上下悬浮并轻微转动，独立阴影随高度收缩；桌面鼠标移动带来少量、有惯性的位移与倾斜。文字与下载按钮保持静止，触屏不启用鼠标视差。首屏离开视口或标签页隐藏时暂停循环；系统开启“减少动态效果”时停用悬浮与视差。
+
 `src/assets/images/share.png` 是社交分享预览图，`public/site/share.png` 保留一份直链副本。页面设计变化后，启动 `make site`，运行 `node apps/site/scripts/share.mjs` 重新导出，再构建。
 
 安装步骤旁的动画拼图 `src/assets/images/children-cartoons.jpg` 来自 [Espinof 儿童动画专题](https://www.espinof.com/listas/mejores-series-infantiles-netflix-hbo-disney-movistar-amazon-prime)，包含小猪佩奇、米奇、汪汪队等角色；这是第三方配图，不属于 AstroWind 的 MIT 源码许可。图片生成工具未成功产出角色合照，因此使用现有拼图素材。
