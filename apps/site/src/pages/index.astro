@@ -6,8 +6,8 @@ import DownloadButton from '~/components/landing/DownloadButton.astro';
 import DownloadController from '~/components/landing/DownloadController.astro';
 import DeviceShowcase from '~/components/landing/DeviceShowcase.astro';
 const metadata = {
-  title: 'MollyTime｜给孩子的家庭视频空间', ignoreTitleTemplate: true,
-  description: '家长整理视频，孩子在电视上观看。MollyTime 支持家庭资料库、观看安排与儿童续播。',
+  title: 'MollyTime｜好内容，陪孩子长大', ignoreTitleTemplate: true,
+  description: '故事、科普、英语，孩子看的内容由你来选。MollyTime 连接家长手机与孩子的电视，支持整理视频、安排观看时间与电视续播。',
 };
 const schema = [{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'MollyTime', url: 'https://mollytime.app/', inLanguage: 'zh-CN' }];
 ---
@@ -15,8 +15,8 @@ const schema = [{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'M
   <StructuredData slot="head" schema={schema} />
   <section id="download" class="landing-hero">
     <div class="hero-copy">
-      <h1 class="heading-1 hero-title">你挑的好故事，<br />孩子的<span class="hero-highlight">小世界。</span></h1>
-      <p class="body-3 hero-subtitle">家长整理，孩子在电视上看。</p>
+      <h1 class="heading-1 hero-title">好内容，<br />陪孩子长大。</h1>
+      <p class="body-3 hero-subtitle"><span>故事、科普、英语，</span><span>孩子看的内容由你来选。</span></p>
       <div class="download-actions">
         <DownloadButton id="download-android-button" />
         <DownloadButton id="download-button" channel="tv" secondary />
@@ -28,7 +28,7 @@ const schema = [{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'M
   </section>
 
   <section id="features" class="feature-section section-space page-width">
-    <div class="section-heading reveal"><h2 class="heading-3">手机整理，电视观看。</h2></div>
+    <div class="section-heading reveal"><h2 class="heading-3">手机选内容，电视看世界。</h2></div>
     <DeviceShowcase />
     <p class="product-note caption-2 muted">应用界面演示，视频由家长自行添加。</p>
   </section>

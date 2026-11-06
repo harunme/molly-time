@@ -25,7 +25,7 @@ test('homepage has minimal header, download entries, metadata and no browser err
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await visit(page, '/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('你挑的好故事，孩子的小世界。');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('好内容，陪孩子长大。');
   await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', 'https://mollytime.app');
   await expect(page.getByRole('link', { name: '使用网页版家长后台' })).toHaveCount(0);
   await expect(page.locator('#download-android-button')).toHaveCSS('background-color', 'rgb(248, 222, 126)');
@@ -65,6 +65,29 @@ test('minimal header and download remain usable at narrow phone widths', async (
     await expect(page.locator('header a')).toHaveCount(1);
     await expect(page.locator('header button')).toHaveCount(1);
     await expect(page.getByRole('button', { name: '打开导航菜单' })).toHaveCount(0);
+    const demonstration = await page.locator('.device-showcase').evaluate((element) => {
+      const bounds = (selector: string) => {
+        const rect = element.querySelector(selector)!.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width };
+      };
+      return { phone: bounds('.iphone-device'), television: bounds('.television-device'), captions: [bounds('.phone-showcase figcaption'), bounds('.tv-showcase figcaption')] };
+    });
+    const overlaps = (a: typeof demonstration.phone, b: typeof demonstration.phone) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    expect(demonstration.phone.width).toBeGreaterThanOrEqual(140);
+    expect(overlaps(demonstration.phone, demonstration.television)).toBe(false);
+    for (const caption of demonstration.captions) {
+      expect(caption.left).toBeGreaterThanOrEqual(0);
+      expect(caption.right).toBeLessThanOrEqual(width);
+      expect(overlaps(caption, demonstration.phone)).toBe(false);
+      expect(overlaps(caption, demonstration.television)).toBe(false);
+    }
+    if (width < 768) {
+      expect(demonstration.television.top).toBeGreaterThan(demonstration.phone.bottom);
+      expect(demonstration.television.width).toBeGreaterThanOrEqual(width - 32);
+      const primary = await page.locator('#download-android-button').boundingBox();
+      const secondary = await page.locator('#download-button').boundingBox();
+      expect(primary!.width).toBeCloseTo(secondary!.width, 0);
+    }
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await visit(page, '/');

@@ -56,7 +56,8 @@ button:disabled { cursor:wait; }
 .hero-copy { position:relative; z-index:2; width:100%; max-width:680px; text-align:center; margin-top:32px; }
 .hero-title { color:transparent; background:linear-gradient(to right,#000,#666); background-clip:text; -webkit-background-clip:text; }
 .dark .hero-title { background-image:linear-gradient(to right,#fff,#9b9b9b); }
-.hero-subtitle { max-width:680px; color:var(--muted); margin:24px auto 24px; }
+.hero-subtitle { max-width:680px; color:var(--muted); margin:24px auto 24px; text-wrap:balance; }
+.hero-subtitle span { display:inline-block; }
 .story-garden { width:min(960px,100%); height:max(280px,min(480px,calc(100svh - 480px))); position:relative; z-index:1; margin-top:32px; transform-origin:center 70%; animation:garden-float 8s var(--ease) infinite alternate; }
 .story-garden img { width:100%; height:100%; object-fit:contain; }
 .story-garden[data-motion=paused] { animation-play-state:paused; }
@@ -67,7 +68,8 @@ button:disabled { cursor:wait; }
 .device-showcase { display:grid; grid-template-columns:240px minmax(0,1fr); align-items:end; gap:64px; padding-inline:32px; }
 .device-showcase figure { min-width:0; }
 .device-showcase figcaption { text-align:center; margin-top:24px; }
-.device-showcase figcaption p { margin-top:8px; }
+.device-showcase figcaption p { margin-top:8px; text-wrap:balance; }
+.device-showcase figcaption p span { display:inline-block; }
 .phone-showcase { width:216px; justify-self:center; position:relative; z-index:2; }
 .iphone-device { position:relative; padding:6px; background:#30322e; border:2px solid #777a73; border-radius:32px; box-shadow:0 0 0 1px #b7b9b2,inset 0 0 0 2px #4f514c,0 24px 40px #0003; }
 .iphone-device::before,.iphone-device::after { content:''; position:absolute; width:2px; background:#75776f; border-radius:2px; }
@@ -122,19 +124,19 @@ button:disabled { cursor:wait; }
   .landing-header .brand-link img { width:128px; }
   .landing-hero { min-height:0; padding:96px 16px 32px; }
   .hero-subtitle { max-width:680px; margin-block:24px; }
+  .hero-copy .download-actions { flex-direction:column; align-items:stretch; width:min(100%,280px); margin-inline:auto; margin-bottom:0; }
+  .hero-copy .download-control,.hero-copy .landing-button { width:100%; }
   .story-garden { width:calc(100% + 32px); height:auto; max-width:none; margin-top:32px; }
   .story-garden img { height:auto; }
   .section-heading { margin-bottom:32px; }
   .section-heading h2 { margin:0; }
   .feature-section .section-heading { margin-bottom:32px; }
-  .device-showcase { grid-template-columns:1fr; gap:0; padding-inline:0; }
-  .device-showcase figure { grid-column:1; grid-row:1; }
-  .phone-showcase { width:38%; max-width:152px; min-width:120px; margin-top:96px; justify-self:start; }
-  .tv-showcase { width:88%; justify-self:end; align-self:start; }
-  .tv-showcase figcaption { text-align:right; }
+  .device-showcase { grid-template-columns:1fr; gap:48px; padding-inline:0; }
+  .phone-showcase { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); align-items:center; gap:24px; width:100%; max-width:400px; justify-self:center; }
+  .device-showcase .phone-showcase figcaption { text-align:left; margin-top:0; }
+  .phone-showcase figcaption p span { display:block; }
+  .tv-showcase { width:100%; max-width:560px; justify-self:center; }
   .device-showcase figcaption { margin-top:16px; }
-  .device-showcase .title-1 { font-size:18px; line-height:28px; }
-  .device-showcase figcaption p { margin-top:4px; }
   .iphone-device { border-radius:24px; padding:4px; }
   .iphone-screen { border-radius:18px; }
   .home-indicator { bottom:4px; height:2px; }
@@ -150,11 +152,6 @@ button:disabled { cursor:wait; }
   .reveal { transition:opacity 300ms var(--ease); transform:none!important; }
   .reveal[data-reveal=waiting] { opacity:1; }
   .landing-button:hover { transform:none; }
-}
-
-@media (max-width:359px) {
-  .hero-copy .download-actions { flex-direction:column; align-items:center; gap:12px; }
-
 }
 
 .demo-controls { display:flex; justify-content:center; margin-top:24px; }
