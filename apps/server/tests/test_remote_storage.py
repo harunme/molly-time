@@ -387,13 +387,10 @@ def test_small_remote_files_keep_server_validation(remote, kind, filename, compl
     oss.objects[obj] = content
     result = web.post(f"/api/manage/uploads/{key}/complete", json=completion_body)
     assert result.status_code == 200
-    if kind in ("image", "preview"):
-        assert result.json()["status"] == "ready"
-        assert result.json()["taskId"] is None
-        assert not run_once()
-        assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
-    else:
-        assert run_once()
+    assert result.json()["status"] == "processing"
+    assert result.json()["taskId"] is not None
+    assert run_once()
+    assert not (config.get_settings().data_dir / "uploads" / f"{key}.part").exists()
     assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
     with Session(db.get_engine()) as session:
         assert session.get(MediaFile, key).sha256 == hashlib.sha256(content).hexdigest()
@@ -406,3 +403,88 @@ def test_cancel_removes_metadata_left_by_incomplete_completion(remote):
     assert metadata_path(key).exists()
     assert web.post(f"/api/manage/uploads/{key}/cancel").status_code == 200
     assert not metadata_path(key).exists()
+
+
+def test_artwork_completion_never_waits_for_oss_and_deduplicates_retry(remote, monkeypatch):
+    web, oss = remote
+    output = io.BytesIO()
+    Image.new("RGB", (32, 32), "blue").save(output, "JPEG")
+    content = output.getvalue()
+    key, obj = start(web, len(content), kind="image", filename="cover.jpg")
+    # A lost create response reuses its existing reservation and upload ID.
+    same, _ = start(web, len(content), kind="image", filename="cover.jpg")
+    assert same == key
+    oss.objects[obj] = content
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("The completion request must never call OSS")
+
+    with monkeypatch.context() as patch:
+        for method in ["size_if_exists", "size", "complete", "parts", "download"]:
+            patch.setattr(oss, method, forbidden)
+        first = web.post(f"/api/manage/uploads/{key}/complete", json={})
+        again = web.post(f"/api/manage/uploads/{key}/complete", json={})
+    assert first.status_code == again.status_code == 200
+    assert first.json()["status"] == "processing"
+    assert first.json()["taskId"] == again.json()["taskId"]
+    with Session(db.get_engine()) as session:
+        assert session.get(MediaFile, key) is None
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    assert not run_once()
+
+
+def test_failed_artwork_worker_retries_existing_object_without_reupload(remote, monkeypatch):
+    web, oss = remote
+    output = io.BytesIO()
+    Image.new("RGB", (32, 32), "blue").save(output, "JPEG")
+    content = output.getvalue()
+    key, obj = start(web, len(content), kind="image", filename="cover.jpg")
+    oss.objects[obj] = content
+    response = web.post(f"/api/manage/uploads/{key}/complete", json={}).json()
+
+    def unavailable(*args):
+        raise OSError("temporary storage failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(oss, "download", unavailable)
+        assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "failed"
+    with Session(db.get_engine()) as session:
+        assert session.get(MediaFile, key) is None
+    assert web.post(f"/api/manage/tasks/{response['taskId']}/retry").status_code == 200
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    assert oss.completed == 0
+    assert oss.objects[obj] == content
+
+
+def test_artwork_processing_retry_reuses_completed_download(remote, monkeypatch):
+    from mollytime_server import media_worker
+
+    web, oss = remote
+    output = io.BytesIO()
+    Image.new("RGB", (32, 32), "blue").save(output, "JPEG")
+    content = output.getvalue()
+    key, obj = start(web, len(content), kind="image", filename="cover.jpg")
+    oss.objects[obj] = content
+    queued = web.post(f"/api/manage/uploads/{key}/complete", json={}).json()
+    downloads = []
+    original = oss.download
+
+    def download(*args):
+        downloads.append(args[0])
+        return original(*args)
+
+    def unavailable(*args):
+        raise OSError("temporary processing failure after download")
+
+    monkeypatch.setattr(oss, "download", download)
+    with monkeypatch.context() as patch:
+        patch.setattr(media_worker, "inspect_artwork", unavailable)
+        assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "failed"
+    assert web.post(f"/api/manage/tasks/{queued['taskId']}/retry").status_code == 200
+    assert run_once()
+    assert web.get(f"/api/manage/uploads/{key}").json()["status"] == "ready"
+    assert downloads == [obj]

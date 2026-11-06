@@ -66,6 +66,7 @@ const uploadBytes = (value: number) => value < 1024 ? `${value} B` : value < 102
 
 /** One passive summary per card, regardless of how many files belong to it. */
 export function ItemUploadStatus({ rows }: { rows: Upload[] }) {
+  rows = rows.filter(row => row.kind !== 'image' && row.kind !== 'preview');
   if (!rows.length) return null;
   const active = rows.filter(row => row.status === 'uploading' && hasFile(row.id) && !live.get(row.id)?.paused && !live.get(row.id)?.error);
   const total = active.reduce((sum, row) => sum + row.size, 0);

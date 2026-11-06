@@ -45,6 +45,7 @@ final class SessionStore {
     let storage = FamilyStorageStore()
     let artwork = ResourceCache<UIImage>()
     let artworkDisk = ArtworkDiskCache()
+    let artworkUploads = ArtworkUploadQueue()
     let videoDisk = VideoDiskCache()
     let library = LibraryStore()
     let trashDeletions = TrashDeletionStore()
@@ -123,6 +124,7 @@ final class SessionStore {
         reminderUpload = UploadModel(); reminderUpload.configureDraft(scope: scope, purpose: "reminder")
     }
     private func configureUploadDrafts() {
+        artworkUploads.configure(scope: scope, api: api)
         upload.configureDraft(scope: scope, purpose: "library")
         reminderUpload.configureDraft(scope: scope, purpose: "reminder")
     }
@@ -146,6 +148,7 @@ final class SessionStore {
     }
     func resumeUploads() {
         guard session != nil, canManage else { return }
+        artworkUploads.resume(api: api)
         upload.resumeAutomatically(api: api)
         reminderUpload.resumeAutomatically(api: api)
     }
@@ -223,6 +226,7 @@ final class SessionStore {
         deviceRefresh.reset()
         storage.reset()
         artwork.removeAll()
+        artworkUploads.reset()
         library.reset()
         trashDeletions.reset()
         upload.pause(); upload = UploadModel()

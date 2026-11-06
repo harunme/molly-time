@@ -685,7 +685,12 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
       if (next !== ids) { ids = next; refresh(value => value + 1); }
     };
     window.addEventListener('mollytime:uploads', update);
-    return () => window.removeEventListener('mollytime:uploads', update);
+    const artworkSaved = () => refresh(value => value + 1);
+    window.addEventListener('mollytime:artwork-saved', artworkSaved);
+    return () => {
+      window.removeEventListener('mollytime:uploads', update);
+      window.removeEventListener('mollytime:artwork-saved', artworkSaved);
+    };
   }, []);
   const filtered = createdFolder ? [createdFolder, ...list.data.filter(item => item.id !== createdFolder.id)] : list.data;
   useEffect(() => {
@@ -838,7 +843,7 @@ function Library({ run, readonly, parent, parentChanged }: { run: Run; readonly:
                   disabled={publication.busy}
                   onClick={() => openItem(item)}>
                   <span className="desktop-cover-art">
-                    <CoverArtwork key={item.imageUrl} src={item.imageUrl} preview={item.imagePreviewUrl} />
+                    <CoverArtwork key={item.imageUrl} itemID={item.id} src={item.imageUrl} preview={item.imagePreviewUrl} />
                     {item.type !== "Episode" ? <FolderOpen className="desktop-fallback-icon" /> : <FileVideo className="desktop-fallback-icon" />}
                     {item.type !== "Episode" && <span className="desktop-folder-badge" aria-hidden="true"><FolderOpen /></span>}
                     {item.type !== "Series" && <span className="desktop-cover-caption">{item.type === "Season" ? (item.indexNumber ? `SEASON ${String(item.indexNumber).padStart(2, "0")}` : "分季") : (item.indexNumber ? `EP ${String(item.indexNumber).padStart(2, "0")}` : "视频")}</span>}

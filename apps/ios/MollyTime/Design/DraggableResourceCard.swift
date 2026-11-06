@@ -146,7 +146,13 @@ struct DraggableResourceCard: UIViewControllerRepresentable {
                 self?.menuPresented = false
                 self?.performMenuAction()
             }
-            if let animator { animator.addCompletion(finish) } else { finish() }
+            if let animator {
+                // Begin the sheet while the menu dismisses. Waiting for its
+                // completion adds ~725 ms before the sheet even starts on device.
+                // Navigation and drag editing still wait for the menu to finish.
+                if pendingMenuAction == .manage { animator.addAnimations(finish) }
+                else { animator.addCompletion(finish) }
+            } else { finish() }
         }
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configuration: UIContextMenuConfiguration, highlightPreviewForItemWithIdentifier identifier: any NSCopying) -> UITargetedPreview? {
             coverPreview()

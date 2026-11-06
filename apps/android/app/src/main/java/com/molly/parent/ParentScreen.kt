@@ -53,6 +53,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 internal data class ParentSheet(
@@ -1155,16 +1157,26 @@ internal fun ResourceCover(
             mutableStateOf<Bitmap?>(api?.artwork?.cached(item.optString("imageUrl")))
         }
     val url = item.optString("imageUrl")
+    val itemID = item.getString("id")
+    val draft = api?.artworkUploads?.drafts?.get(itemID)
+    var local by remember(api, draft?.id) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(api, draft?.id) {
+        local = draft?.let { withContext(Dispatchers.IO) { android.graphics.BitmapFactory.decodeByteArray(it.data, 0, it.data.size) } }
+    }
     LaunchedEffect(api, url) { if (api != null && url.isNotBlank()) bitmap = api.artwork.load(url) }
+    LaunchedEffect(api, url, bitmap, draft?.savedURL) {
+        if (bitmap != null) api?.artworkUploads?.acknowledge(itemID, url)
+    }
+    val displayed = local ?: bitmap
     val colors = listOf(Color(0xFF3B6350), Color(0xFF38475C), Color(0xFF8A633B))
     val background = colors[(item.optString("id").hashCode() and Int.MAX_VALUE) % colors.size]
     Box(
         modifier.background(if (compact) MaterialTheme.colorScheme.surfaceVariant else background),
         contentAlignment = Alignment.Center,
     ) {
-        if (bitmap != null)
+        if (displayed != null)
             Image(
-                bitmap!!.asImageBitmap(),
+                displayed.asImageBitmap(),
                 null,
                 Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

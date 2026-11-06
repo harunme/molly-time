@@ -123,6 +123,7 @@ def cleanup_upload_files(db, row, target) -> bool:
                 store.delete(key)
         directory = get_settings().data_dir / "uploads"
         (directory / f"{row.id}.part").unlink(missing_ok=True)
+        (directory / f"{row.id}.download").unlink(missing_ok=True)
         metadata_path(row.id).unlink(missing_ok=True)
         local = LocalStorage(root)
         for key in local_keys:

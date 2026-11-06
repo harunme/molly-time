@@ -21,6 +21,11 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
   const location = useLocation(), navigate = useNavigate();
   const [pendingSerial, refreshPending] = useState(0);
   const [serial, refresh] = useState(0), [search, setSearch] = useState(''), [mode, setMode] = useState<'grid' | 'list'>('grid');
+  useEffect(() => {
+    const saved = () => refresh(value => value + 1);
+    window.addEventListener('mollytime:artwork-saved', saved);
+    return () => window.removeEventListener('mollytime:artwork-saved', saved);
+  }, []);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   const [editing, setEditing] = useState<{ kind: 'preview' | 'upload' | 'subtitle' | 'share'; item: Resource }>();
   const [moving, setMoving] = useState<Resource>();
@@ -82,7 +87,7 @@ export function MobileLibrary({ readonly, editor, uploads }: { readonly: boolean
         onPointerDown={event => { if (event.pointerType !== 'touch' || publication.selecting) return; press.current = { x: event.clientX, y: event.clientY }; clearTimeout(hold.current); hold.current = setTimeout(() => { suppressClick.current = Date.now() + 700; setActions(item); }, 450); }}
         onPointerMove={event => { if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 8) clearTimeout(hold.current); }}
         onPointerUp={() => { clearTimeout(hold.current); press.current = undefined; }} onPointerCancel={() => { clearTimeout(hold.current); press.current = undefined; }}
-        onContextMenu={event => { event.preventDefault(); setActions(item); }}>{item.type === 'Episode' ? <Play size={29} strokeWidth={1.2} /> : <Folder size={38} strokeWidth={1.15} />}{item.imageUrl && <CoverArtwork src={item.imageUrl} preview={item.imagePreviewUrl} />}{item.type === 'Episode' && <span className="m-media-tag">{item.runtimeMs ? `${Math.floor(item.runtimeMs / 60000)}:${String(Math.floor(item.runtimeMs / 1000) % 60).padStart(2, '0')}` : '视频'}</span>}</button>{publication.selector(item)}</div>
+        onContextMenu={event => { event.preventDefault(); setActions(item); }}>{item.type === 'Episode' ? <Play size={29} strokeWidth={1.2} /> : <Folder size={38} strokeWidth={1.15} />}<CoverArtwork itemID={item.id} src={item.imageUrl} preview={item.imagePreviewUrl} />{item.type === 'Episode' && <span className="m-media-tag">{item.runtimeMs ? `${Math.floor(item.runtimeMs / 60000)}:${String(Math.floor(item.runtimeMs / 1000) % 60).padStart(2, '0')}` : '视频'}</span>}</button>{publication.selector(item)}</div>
       <div className="m-content-info"><button className="m-content-name" title={item.name} disabled={publication.selecting && item.type !== 'Episode'} onClick={() => void open(item)}>{item.name}</button>{!fileUploads.forItem(item.id).length && showPublicationStatus(item) && <p className="m-content-state">{publicationLabel(item)}</p>}{<ItemUploadStatus rows={fileUploads.forItem(item.id)} />}</div>
       {!publication.selecting && <button className="m-content-more" aria-label={`更多操作 ${item.name}`} onClick={() => setActions(item)}><MoreHorizontal size={20} /></button>}
     </article>)}</div>

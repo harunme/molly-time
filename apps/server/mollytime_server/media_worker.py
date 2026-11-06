@@ -13,7 +13,8 @@ import uuid
 from pathlib import Path
 
 from oss2.exceptions import OssError
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
+from fastapi import HTTPException
 from sqlalchemy import or_, update
 
 from .config import get_settings
@@ -21,12 +22,47 @@ from .covers import extract_cover
 from .db import get_session_factory, init_db
 from .management_models import MediaOptions, MediaTask, ResourceState, UploadSession, UploadTarget
 from .models import Item, MediaFile
+from .remote_uploads import verified_parts
 from .storage import build_storage
 from .transactions import external_io
 from .upload_metadata import metadata_path, read_metadata
 from .utils.image import atomic_write
 
 logger = logging.getLogger(__name__)
+
+
+def inspect_artwork(source: Path, kind: str) -> str:
+    """Validate the actual image format and keep bounded animation limits."""
+    try:
+        with Image.open(source) as image:
+            mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "GIF": "image/gif"}.get(image.format)
+            if mime is None or (image.format == "GIF" and kind != "preview"):
+                raise ValueError("封面图片无效，请选择完整的 JPG、PNG 或 WebP 图片")
+            if kind == "preview":
+                count = getattr(image, "n_frames", 1)
+                width = min(640, image.width)
+                height = max(1, round(image.height * width / image.width))
+                if count < 2:
+                    raise ValueError("动态预览需要多帧 WebP、GIF 或 APNG 动图")
+                if count > 240 or count * width * height > 32_000_000:
+                    raise ValueError("动态预览过大，请使用较短的动图")
+            image.verify()
+            return mime
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+        raise ValueError("封面图片无效，请选择完整的 JPG、PNG 或 WebP 图片") from error
+
+
+def finalize_remote_artwork(storage, upload, target):
+    # Retrying after a lost database commit reuses the completed OSS object.
+    size = storage.size_if_exists(target.object_key)
+    if size is None:
+        parts = verified_parts(target, upload)
+        if sum(part["size"] for part in parts) != upload.size:
+            raise ValueError("文件尚未上传完整，请取消后重新上传")
+        storage.complete(target.object_key, target.multipart_id, parts)
+        size = storage.size(target.object_key)
+    if size != upload.size:
+        raise ValueError("云端文件大小不一致，请取消后重新上传")
 
 
 def inspect_video(path: Path) -> int:
@@ -124,6 +160,8 @@ def process(task_id):
                 folder.mkdir(parents=True, exist_ok=True)
                 client_video = upload.kind == "video" and (remote or metadata_path(upload.id).is_file())
                 storage = build_storage("oss") if remote else None
+                if remote and upload.kind in ("image", "preview"):
+                    finalize_remote_artwork(storage, upload, target)
                 if remote and client_video and storage.size(target.object_key) != upload.size:
                     raise ValueError("云端文件大小已变化，请重新上传")
                 if remote and not client_video:
@@ -132,7 +170,18 @@ def process(task_id):
                         raise ValueError("文件超出处理容量限制，请联系管理员")
                     if shutil.disk_usage(source.parent).free < upload.size + 64 * 1024**2:
                         raise ValueError("处理磁盘空间不足，请稍后重试")
-                    storage.download(target.object_key, source, upload.size)
+                    if upload.kind in ("image", "preview"):
+                        # A completed download survives worker retries. Publish
+                        # it atomically so a partial download cannot be reused.
+                        if not source.is_file() or source.stat().st_size != upload.size:
+                            partial = source.with_suffix(".download")
+                            try:
+                                storage.download(target.object_key, partial, upload.size)
+                                partial.replace(source)
+                            finally:
+                                partial.unlink(missing_ok=True)
+                    else:
+                        storage.download(target.object_key, source, upload.size)
                 sha256 = ""
                 if not (remote and client_video) and (
                     not source.is_file() or source.stat().st_size != upload.size
@@ -162,12 +211,8 @@ def process(task_id):
                             cover_data = None
                             logger.warning("Automatic cover extraction failed for %s", upload.id)
                     mime = "video/mp4"
-                elif upload.kind == "image":
-                    with Image.open(source) as image:
-                        image.verify()
-                    mime = "image/" + (
-                        "jpeg" if destination.suffix in (".jpg", ".jpeg") else destination.suffix[1:]
-                    )
+                elif upload.kind in ("image", "preview"):
+                    mime = inspect_artwork(source, upload.kind)
                 else:
                     content = source.read_text(encoding="utf-8-sig")
                     if "-->" not in content or (
@@ -179,6 +224,11 @@ def process(task_id):
                     staging = destination.with_suffix(destination.suffix + ".tmp")
                     shutil.copyfile(source, staging)
                     staging.replace(destination)
+            if upload.kind in ("image", "preview"):
+                from .trash import ensure_active
+
+                db.refresh(item)
+                ensure_active(db, item)
             if db.get(MediaFile, upload.id) is None:
                 old = (
                     db.query(MediaFile)
@@ -208,7 +258,7 @@ def process(task_id):
             db.flush()
             if db.get(MediaOptions, upload.id) is None:
                 db.add(MediaOptions(media_id=upload.id, retention="backup", label=upload.filename))
-            if upload.kind == "image":
+            if upload.kind in ("image", "preview"):
                 item.primary_image_tag = upload.id
             if runtime is not None:
                 item.runtime_ticks = runtime
@@ -239,7 +289,7 @@ def process(task_id):
                             )
                         )
                     item.primary_image_tag = image_id
-            upload.status, upload.error = "ready", ""
+            upload.offset, upload.status, upload.error = upload.size, "ready", ""
             task.status, task.error, task.lease_until = "done", "", None
             db.commit()
             # Source can be removed only after the catalog transaction is durable.
@@ -254,8 +304,8 @@ def process(task_id):
             task = db.get(MediaTask, task_id)
             upload = db.get(UploadSession, task.upload_id)
             message = (
-                str(error)
-                if isinstance(error, ValueError)
+                (str(error.detail) if isinstance(error, HTTPException) else str(error))
+                if isinstance(error, (ValueError, HTTPException))
                 else "文件检查失败，请检查文件或服务日志后重试"
             )
             task.status, task.error, task.lease_until = "failed", message, None
@@ -269,7 +319,8 @@ def process(task_id):
         finally:
             if remote:
                 try:
-                    source.unlink(missing_ok=True)
+                    if upload.kind not in ("image", "preview") or upload.status == "ready":
+                        source.unlink(missing_ok=True)
                     cover.unlink(missing_ok=True)
                 except OSError:
                     logger.exception("Remote processing temporary cleanup failed for %s", upload.id)

@@ -1,6 +1,7 @@
-import { storedUploads, saveUpload, removeStoredUpload, setStoredPause } from './upload-store';
+import { storedUploads, saveUpload, removeStoredUpload, setStoredPause, type SavedUpload } from './upload-store';
 import SparkMD5 from 'spark-md5';
-import { api, ApiError, type Upload } from './api';
+import { api, ApiError, type Upload, type Resource } from './api';
+import { previewArtwork, confirmArtwork, clearArtworkPreviews } from './artwork-preview';
 import { sha256Blob as sha } from './file-hash';
 import { getUploadLimits, validateUploadSize } from './upload-limits';
 import { prepareVideo } from './video-metadata';
@@ -17,15 +18,23 @@ const controllers = new Map<string, AbortController>();
 const retryOnReconnect = new Set<string>();
 const recovery = new Map<string, string>();
 let restoring: Promise<void> | undefined;
+const artworkJobs = new Map<string, { record: SavedUpload; running: boolean; controller?: AbortController }>();
 export function restoreUploads(account: string): Promise<void> {
   if (owner === account) return restoring ?? Promise.resolve();
   if (owner) stopUploads();
   owner = account;
   const epoch = generation;
   restoring = (async () => {
-    const saved = await storedUploads().catch(() => []);
+    const saved = (await storedUploads().catch(() => [])).sort((a, b) => a.savedAt - b.savedAt);
     for (const entry of saved) {
       if (owner !== account || generation !== epoch) return;
+      if (entry.artwork) {
+        if (entry.owner === account) {
+          previewArtwork(entry.artwork.itemID, entry.artwork.kind, entry.file, entry.id);
+          artworkJobs.set(entry.id, { record: entry, running: false });
+        }
+        continue;
+      }
       // Expired local copies are discarded even when they belonged to another login.
       if (Date.now() - entry.savedAt > 7 * 86400000) { await removeStoredUpload(entry.id).catch(() => {}); continue; }
       if (entry.owner !== account) continue;
@@ -46,7 +55,7 @@ export function restoreUploads(account: string): Promise<void> {
         }
       }
     }
-    changed(); pump();
+    changed(); pump(); resumeArtwork();
   })();
   return restoring;
 }
@@ -66,6 +75,7 @@ export function forgetUpload(id: string) {
 }
 const reconnect = () => {
   if (!navigator.onLine || document.hidden) return;
+  resumeArtwork();
   for (const id of retryOnReconnect) {
     if (!files.has(id) || paused.has(id)) continue;
     retryOnReconnect.delete(id); waiting.add(id);
@@ -86,32 +96,108 @@ const suspend = () => {
 };
 window.addEventListener('offline', suspend);
 window.addEventListener('pagehide', suspend);
-document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); else reconnect(); });
 
 function changed() { window.dispatchEvent(new Event('mollytime:uploads')); }
 async function fingerprint(file: File) {
   return `${file.size}:${await sha(new Blob([file.slice(0, 1024**2), file.slice(Math.max(0, file.size - 1024**2))]))}`;
 }
 export async function enqueue(file: File, itemId: string, kind: string, language = 'und') {
+  if (kind === 'image' || kind === 'preview') {
+    const record: SavedUpload = { id: `artwork-${crypto.randomUUID()}`, owner, file, paused: false, savedAt: Date.now(), artwork: { itemID: itemId, kind } };
+    previewArtwork(itemId, kind, file, record.id);
+    artworkJobs.set(record.id, { record, running: false });
+    void saveUpload(record).catch(() => {}).finally(resumeArtwork);
+    return;
+  }
   const epoch = generation;
   validateUploadSize(file, kind, await getUploadLimits());
   const row = await api<Upload>('/uploads', 'POST', { itemId, filename: file.name, size: file.size, fingerprint: await fingerprint(file), kind, language });
   if (epoch !== generation) throw new Error('登录已变更，请重新上传');
-  if (kind === 'image' || kind === 'preview') {
-    try {
-      await transfer(row.id, file);
-    } catch (error) {
-      // Inline failures belong to the cover form; release the session for a new selection.
-      await api(`/uploads/${row.id}/cancel`, 'POST').catch(() => undefined);
-      throw error;
-    }
-    return;
-  }
   files.set(row.id, file);
   await persist(row.id, file);
   if (epoch !== generation) return;
   waiting.add(row.id);
   live.set(row.id, { offset: 0, error: '', paused: false, recovery: recovery.get(row.id) }); changed(); pump();
+}
+
+function resumeArtwork() {
+  if (!owner || !navigator.onLine || document.hidden) return;
+  for (const [id, job] of artworkJobs) {
+    if (job.running || job.record.owner !== owner) continue;
+    // Serialise replacements of the same image; an older upload must not
+    // finish after a more recently selected one and overwrite it on the server.
+    if ([...artworkJobs.values()].find(other => other.record.artwork?.itemID === job.record.artwork?.itemID
+        && other.record.artwork?.kind === job.record.artwork?.kind) !== job) continue;
+    job.running = true;
+    const epoch = generation;
+    const controller = new AbortController(); job.controller = controller;
+    const superseded = () => {
+      const jobs = [...artworkJobs.values()];
+      return jobs.slice(jobs.indexOf(job) + 1).some(other => other.record.artwork?.itemID === job.record.artwork?.itemID
+        && other.record.artwork?.kind === job.record.artwork?.kind);
+    };
+    const discard = async () => {
+      await removeStoredUpload(id).catch(() => {});
+      if (epoch === generation) artworkJobs.delete(id);
+    };
+    void (async () => {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (epoch !== generation || controller.signal.aborted) return;
+        try {
+          const artwork = job.record.artwork!;
+          if (!artwork.upload && superseded()) { await discard(); return; }
+          validateUploadSize(job.record.file, artwork.kind, await getUploadLimits());
+          let row = artwork.upload
+            ? await api<Upload>(`/uploads/${artwork.upload.id}`, 'GET', undefined, undefined, controller.signal)
+            : await api<Upload>('/uploads', 'POST', { itemId: artwork.itemID, filename: job.record.file.name, kind: artwork.kind,
+                size: job.record.file.size, fingerprint: await fingerprint(job.record.file) }, undefined, controller.signal);
+          if (epoch !== generation) return;
+          artwork.upload = row;
+          await saveUpload(job.record).catch(() => {});
+          if (superseded() && row.status !== 'processing') {
+            if (row.status === 'uploading' || row.status === 'failed') {
+              await api(`/uploads/${row.id}/cancel`, 'POST', undefined, undefined, controller.signal);
+            }
+            await discard(); return;
+          }
+          if (row.status === 'cancelled') throw new ApiError('上传已结束', 410);
+          if (row.status === 'failed' && row.taskId) row = await api<Upload>(`/tasks/${row.taskId}/retry`, 'POST', undefined, undefined, controller.signal);
+          if (row.status === 'uploading') await transfer(row.id, job.record.file, controller.signal, epoch);
+          await waitForArtwork(row.id, epoch, controller.signal);
+          const resource = await api<Resource>(`/resources/${artwork.itemID}`, 'GET', undefined, undefined, controller.signal);
+          if (epoch !== generation) return;
+          confirmArtwork(artwork.itemID, artwork.kind, id, artwork.kind === 'preview' ? resource.imagePreviewUrl || resource.imageUrl : resource.imageUrl);
+          await discard(); changed();
+          window.dispatchEvent(new Event('mollytime:artwork-saved'));
+          return;
+        } catch (error) {
+          if (epoch !== generation || controller.signal.aborted) return;
+          if (error instanceof ApiError && [400, 401, 403, 413, 422].includes(error.status)) return;
+          if (error instanceof ApiError && [404, 410].includes(error.status)) {
+            job.record.artwork!.upload = undefined;
+            await saveUpload(job.record).catch(() => {});
+          }
+          if (attempt < 5) await new Promise(resolve => window.setTimeout(resolve, [2000, 5000, 15000, 60000, 300000][attempt]));
+        }
+      }
+    })().finally(() => { job.running = false; job.controller = undefined; if (!artworkJobs.has(id)) resumeArtwork(); });
+  }
+}
+
+async function waitForArtwork(id: string, epoch: number, signal?: AbortSignal) {
+  // Keep the local preview until the worker commits the new one. Polling may stop
+  // when the page closes; the durable server task continues independently.
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (epoch !== generation || signal?.aborted) throw new Error('登录已变更，请重新打开资料库');
+    const row = await api<Upload>(`/uploads/${id}`, 'GET', undefined, undefined, signal);
+    if (epoch !== generation) throw new Error('登录已变更，请重新打开资料库');
+    if (row.status === 'ready') { changed(); return; }
+    if (row.status === 'failed') throw new Error(`${row.error || '封面处理失败'}；可在上传任务中重试处理或取消。`);
+    if (row.status !== 'processing') throw new Error('封面上传已结束，请查看上传任务。');
+    await new Promise(resolve => window.setTimeout(resolve, 1000));
+  }
+  throw new Error('封面仍在后台处理中，可离开页面，稍后在上传任务中查看。');
 }
 export async function resume(row: Upload, selected?: File) {
   const epoch = generation;
@@ -137,6 +223,8 @@ export function hasActiveUploads() { return running.size > 0 || waiting.size > 0
 export function hasFile(id: string) { return files.has(id); }
 export function stopUploads() {
   generation++;
+  for (const job of artworkJobs.values()) job.controller?.abort();
+  artworkJobs.clear(); clearArtworkPreviews();
   const account = owner;
   owner = ''; restoring = undefined;
   for (const controller of controllers.values()) controller.abort();
@@ -169,6 +257,7 @@ async function transfer(id: string, file = files.get(id)!, signal?: AbortSignal,
   };
   const stopped = () => paused.has(id) || epoch !== generation || !!signal?.aborted;
   let row = await request<Upload>(`/uploads/${id}`);
+  const transferAttempts = row.kind === 'image' || row.kind === 'preview' ? 1 : 3;
   if (['ready', 'processing', 'cancelled'].includes(row.status)) { forgetUpload(id); return; }
   if (row.kind === 'video') {
     live.set(id, { offset: row.offset, error: '', paused: paused.has(id), preparing: true, recovery: recovery.get(id) }); changed();
@@ -186,7 +275,7 @@ async function transfer(id: string, file = files.get(id)!, signal?: AbortSignal,
       if (existing.has(number)) continue;
       const chunk = file.slice((number - 1) * partSize, number * partSize);
       const md5 = btoa(SparkMD5.ArrayBuffer.hash(await chunk.arrayBuffer(), true));
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < transferAttempts; attempt++) {
         try {
           const signed = await request<{ url: string; headers: Record<string, string> }>(`/uploads/${id}/part-url`, 'POST', { number, md5 });
           let result: Response;
@@ -194,7 +283,7 @@ async function transfer(id: string, file = files.get(id)!, signal?: AbortSignal,
           catch (error) { if (signal?.aborted) throw error; throw new ApiError('连接中断，恢复连接后继续上传', 0); }
           if (!result.ok) throw new Error('云端上传失败，请重试；若持续失败请联系管理员检查跨域配置');
           break;
-        } catch (error) { if (attempt === 2) throw error; }
+        } catch (error) { if (attempt === transferAttempts - 1) throw error; }
       }
       offset += chunk.size;
       if (row.kind !== 'image' && row.kind !== 'preview') { live.set(id, { offset, error: '', paused: paused.has(id), recovery: recovery.get(id) }); changed(); }
@@ -206,9 +295,9 @@ async function transfer(id: string, file = files.get(id)!, signal?: AbortSignal,
     const part = file.slice(row.offset, row.offset + 8 * 1024**2);
     const hash = await sha(part);
     let result: Upload | undefined;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < transferAttempts; attempt++) {
       try { result = await request<Upload>(`/uploads/${id}/chunks?offset=${row.offset}`, 'PUT', part, { 'X-Chunk-SHA256': hash }); break; }
-      catch (error) { if (attempt === 2) throw error; }
+      catch (error) { if (attempt === transferAttempts - 1) throw error; }
     }
     row = result!;
     if (row.kind !== 'image' && row.kind !== 'preview') { live.set(id, { offset: row.offset, error: '', paused: paused.has(id), recovery: recovery.get(id) }); changed(); }

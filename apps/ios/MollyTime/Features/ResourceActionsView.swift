@@ -108,7 +108,7 @@ struct ResourceActionsView: View {
             let format = UIGraphicsImageRendererFormat(); format.scale = 1
             let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
             guard let jpeg = resized.jpegData(compressionQuality: 0.85) else { throw APIError.invalidResponse }
-            try await ResourceArtworkUpload.send(jpeg, itemID: item.id, api: client)
+            store.artworkUploads.enqueue(jpeg, itemID: item.id, api: client)
             dismiss()
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }

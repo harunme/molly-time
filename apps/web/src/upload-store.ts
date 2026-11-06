@@ -1,5 +1,7 @@
 /** Files remain local to this browser and are isolated by signed-in account. */
-export type SavedUpload = { id: string; owner: string; file: File; paused: boolean; savedAt: number };
+import type { Upload } from './api';
+export type SavedUpload = { id: string; owner: string; file: File; paused: boolean; savedAt: number;
+  artwork?: { itemID: string; kind: 'image' | 'preview'; upload?: Upload } };
 const DATABASE = 'mollytime-upload-recovery';
 let opening: Promise<IDBDatabase> | undefined;
 function database() {

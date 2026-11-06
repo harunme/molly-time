@@ -2,7 +2,6 @@
 
 import datetime as dt
 import hashlib
-import logging
 import os
 import shutil
 import uuid
@@ -10,7 +9,6 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
@@ -739,15 +737,20 @@ def create_upload(body, user, db):
         or (body.kind not in ("image", "preview") and item.type != "Episode")
     ):
         raise HTTPException(422, "请上传 MP4 视频、SRT/VTT 字幕或图片，并检查文件大小")
-    if (
-        db.query(UploadSession.id)
+    existing = (
+        db.query(UploadSession)
         .filter(
             UploadSession.item_id == item.id,
             UploadSession.kind == body.kind,
             UploadSession.status.in_(["uploading", "processing"]),
         )
         .first()
-    ):
+    )
+    if existing:
+        # Retrying a lost artwork-create response must not strand a reservation
+        # or upload the same file twice. Different replacements still serialize.
+        if body.kind in ("image", "preview") and existing.fingerprint == body.fingerprint and existing.size == body.size:
+            return upload_dto(db, existing)
         raise HTTPException(409, "此资源已有同类文件正在上传或处理")
     ensure_capacity(db, user.family_id, body.size)
     remaining = db.query(func.coalesce(func.sum(UploadSession.size - UploadSession.offset), 0)).filter(
@@ -877,76 +880,27 @@ def accept_video_metadata(row, body, *, required=False):
         raise HTTPException(422, str(error)) from error
 
 
-def complete_cover(db, row, target):
-    """Validate and publish a bounded image inline, under the upload lock."""
-    remote = bool(target and target.backend == "oss")
-    source = get_settings().data_dir / "uploads" / f"{row.id}.part"
-    root = get_settings().resolved_media_dir().resolve()
-    destination = root / "managed" / row.family_id / f"{row.id}{Path(row.filename).suffix.lower()}"
-    try:
-        with external_io(db, row, target):
-            try:
-                if remote:
-                    source.parent.mkdir(parents=True, exist_ok=True)
-                    build_storage("oss").download(target.object_key, source, row.size)
-                if not source.is_file() or source.stat().st_size != row.size:
-                    raise HTTPException(422, "封面文件缺失或大小不一致，请重新上传")
-                try:
-                    with Image.open(source) as image:
-                        mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "GIF": "image/gif"}.get(image.format)
-                        if mime is None:
-                            raise ValueError("unsupported image format")
-                        if image.format == "GIF" and row.kind != "preview":
-                            raise ValueError("GIF is only accepted as a preview")
-                        if row.kind == "preview":
-                            count = getattr(image, "n_frames", 1)
-                            width = min(640, image.width)
-                            height = max(1, round(image.height * width / image.width))
-                            if count < 2:
-                                raise HTTPException(422, "动态预览需要多帧 WebP、GIF 或 APNG 动图")
-                            if count > 240 or count * width * height > 32_000_000:
-                                raise HTTPException(422, "动态预览过大，请使用较短的动图")
-                        image.verify()
-                except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
-                    raise HTTPException(422, "封面图片无效，请选择完整的 JPG、PNG 或 WebP 图片") from error
-                with source.open("rb") as stream:
-                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
-                if not remote:
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    staging = destination.with_suffix(destination.suffix + ".tmp")
-                    shutil.copyfile(source, staging)
-                    staging.replace(destination)
-            finally:
-                if remote:
-                    source.unlink(missing_ok=True)
-        # The resource may have been archived while storage I/O was in progress.
-        item = owned(db, Item, row.item_id, row.family_id)
-        db.refresh(item)
-        ensure_active(db, item)
-        for old in db.query(MediaFile).filter_by(item_id=item.id, kind=row.kind).all():
-            old.kind = "retired_" + row.kind
-        db.add(MediaFile(
-            id=row.id, family_id=row.family_id, item_id=item.id, kind=row.kind,
-            storage="oss" if remote else "local",
-            path=target.object_key if remote else str(destination.relative_to(root)),
-            mime=mime, language=row.language, is_default=False, index=0,
-            size_bytes=row.size, sha256=digest,
-        ))
-        db.flush()
-        db.add(MediaOptions(media_id=row.id, retention="backup", label=row.filename))
-        item.primary_image_tag = row.id
-        row.offset, row.status, row.error = row.size, "ready", ""
+def queue_artwork(db, row):
+    """Accept artwork durably; storage finalization and validation belong to the worker."""
+    with external_io(db, row):
+        pass
+    with upload_lock(row.id):
+        db.refresh(row)
+        if row.status in ("processing", "ready"):
+            return upload_dto(db, row)
+        if row.status != "uploading":
+            raise HTTPException(409, "上传已经结束，请重试处理或重新上传")
+        target = transport(db, row)
+        if target and aware(target.expires_at) <= dt.datetime.now(dt.UTC):
+            raise HTTPException(410, "上传已过期")
+        ensure_active(db, owned(db, Item, row.item_id, row.family_id))
+        if not (target and target.backend == "oss") and row.offset != row.size:
+            raise HTTPException(409, "文件尚未上传完整")
+        row.status = "processing"
+        if not db.query(MediaTask).filter(MediaTask.upload_id == row.id).first():
+            db.add(MediaTask(upload_id=row.id))
         db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    # Keep the upload source until the catalog transaction has committed.
-    if not remote:
-        try:
-            source.unlink(missing_ok=True)
-        except OSError:
-            logging.getLogger(__name__).exception("Committed cover source cleanup failed for %s", row.id)
-    return upload_dto(db, row)
+        return upload_dto(db, row)
 
 
 @router.post("/uploads/{upload_id}/complete")
@@ -957,6 +911,8 @@ def complete_upload(
     row = owned(db, UploadSession, upload_id, user.family_id)
     if row.status == "processing" or row.status == "ready":
         return upload_dto(db, row)
+    if row.kind in ("image", "preview"):
+        return queue_artwork(db, row)
     target = transport(db, row)
     if target and target.backend == "oss":
         with external_io(db, row):
@@ -979,8 +935,6 @@ def complete_upload(
                     size = store.size(target.object_key)
                 if size != row.size:
                     raise HTTPException(409, "云端文件大小不一致")
-            if row.kind in ("image", "preview"):
-                return complete_cover(db, row, target)
             row.offset = row.size
             row.status = "processing"
             if not db.query(MediaTask).filter(MediaTask.upload_id == row.id).first():
@@ -998,8 +952,6 @@ def complete_upload(
             raise HTTPException(410, "上传已过期")
         if row.status != "uploading" or row.offset != row.size:
             raise HTTPException(409, "文件尚未上传完整")
-        if row.kind in ("image", "preview"):
-            return complete_cover(db, row, target)
         with external_io(db, row):
             accept_video_metadata(row, body)
         row.status = "processing"

@@ -13,55 +13,91 @@ async function login(page: Page, path = '/manage/#/library') {
 const task = (index: number): Upload => ({ id: `task-${index}`, itemId: 'episode', filename: `英语启蒙故事-第${index + 1}集.mp4`,
   size: 1024, offset: 1024, status: 'ready', fingerprint: 'fixture', kind: 'video', error: '', taskId: null, taskStatus: null });
 
-test('menu cover upload opens the picker directly and shows progress and errors on its card', async ({ page }) => {
+test('cover changes immediately and retries silently while the server is unavailable', async ({ page }, testInfo) => {
   await login(page);
   const tile = page.locator('.resource-tile').filter({ has: page.getByRole('button', { name: '英语启蒙', exact: true }) });
-  const original = await tile.locator('img').getAttribute('src');
-  const choose = async (files: Parameters<import('@playwright/test').FileChooser['setFiles']>[0]) => {
-    await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
-    await expect(page.getByRole('menuitem', { name: '编辑', exact: true })).toHaveCount(0);
-    const picker = page.waitForEvent('filechooser');
-    await page.getByRole('menuitem', { name: '上传封面', exact: true }).click();
-    await (await picker).setFiles(files);
-  };
-  await choose([]);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await choose({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
-  await expect(tile.getByRole('alert')).toContainText('封面图片无效');
-  await page.mouse.move(0, 0); // Compare the poster, not a hovered animated preview.
-  await expect(tile.locator('img')).toHaveAttribute('src', original!);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-
+  let attempts = 0;
+  await page.route('**/api/manage/uploads/*/chunks?*', async route => {
+    attempts++;
+    if (attempts === 1) { await route.fetch(); await route.abort('connectionreset'); }
+    else await route.continue();
+  });
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/manage/uploads/*/complete', async route => {
-    await gate;
-    await route.continue();
-  });
+  await page.route('**/api/manage/uploads/*/complete', async route => { await gate; await route.continue(); });
+  await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
+  const picker = page.waitForEvent('filechooser');
+  await page.getByRole('menuitem', { name: '上传封面', exact: true }).click();
+  await (await picker).setFiles({ name: 'cover.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAE0lEQVR4nGNkaGDACpiwCw9WCQBqCACQJ5at+QAAAABJRU5ErkJggg==', 'base64') });
   try {
-    const completing = page.waitForRequest('**/api/manage/uploads/*/complete');
-    await choose({
-      name: 'cover.png', mimeType: 'image/png',
-      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAE0lEQVR4nGNkaGDACpiwCw9WCQBqCACQJ5at+QAAAABJRU5ErkJggg==', 'base64'),
-    });
-    await completing;
-    await expect(tile.getByRole('status')).toHaveText('正在上传封面…');
-    await page.mouse.move(0, 0);
-    await expect(tile.locator('img')).toHaveAttribute('src', original!);
-    await expect(page.getByRole('button', { name: '上传任务', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    release();
-    await expect(tile.getByRole('status')).toHaveCount(0);
-    const resource = await (await page.request.get('/api/manage/resources/series')).json();
-    await page.mouse.move(0, 0);
-    await expect(tile.locator('img')).toHaveAttribute('src', resource.imageUrl);
+    await expect(tile.locator('img')).toHaveAttribute('src', /^blob:/);
     await expect(tile.locator('img')).toHaveAttribute('data-loaded', 'true');
-    await expect(tile.locator('.desktop-folder-badge')).toBeVisible();
-    expect(await tile.locator('.desktop-cover').evaluate(node => getComputedStyle(node, '::before').display)).toBe('none');
-    await page.screenshot({ path: '../../artifacts/library-folder-cover.png', fullPage: true });
+    await expect.poll(() => attempts).toBe(1);
     await expect(tile.getByRole('alert')).toHaveCount(0);
-    await expect(page).toHaveURL(/\/library$/);
+    await expect(tile.getByRole('status')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('local-cover-during-retry.png'), fullPage: true });
+    release();
+    await page.mouse.move(0, 0);
+    await page.locator('.page-title h1').click();
+    await expect(tile.locator('img')).toHaveAttribute('src', /\/api\/items\/series\/image\?.*v=/, { timeout: 15000 });
+    await expect(tile.getByRole('alert')).toHaveCount(0);
+    expect(attempts).toBe(1); // Lost acknowledgement must not re-send accepted bytes.
   } finally { release(); }
+});
+
+test('pending local cover survives a page reload and resumes without user action', async ({ page }) => {
+  await login(page);
+  let offline = true;
+  await page.route('**/api/manage/uploads/options', route => offline ? route.abort('connectionreset') : route.continue());
+  const tile = page.locator('.resource-tile').filter({ has: page.getByRole('button', { name: '英语启蒙', exact: true }) });
+  await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
+  const picker = page.waitForEvent('filechooser');
+  await page.getByRole('menuitem', { name: '上传封面', exact: true }).click();
+  await (await picker).setFiles({ name: 'restored.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAE0lEQVR4nGNkaGDACpiwCw9WCQBqCACQJ5at+QAAAABJRU5ErkJggg==', 'base64') });
+  await expect(tile.locator('img')).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => page.evaluate(async () => {
+    const { storedUploads } = await import('/manage/src/upload-store.ts');
+    return (await storedUploads()).filter(row => row.artwork).length;
+  })).toBe(1);
+  await page.reload();
+  await expect(tile.locator('img')).toHaveAttribute('src', /^blob:/);
+  await expect(tile.getByRole('alert')).toHaveCount(0);
+  offline = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.mouse.move(0, 0);
+  await page.locator('.page-title h1').click();
+  await expect(tile.locator('img')).toHaveAttribute('src', /\/api\/items\/series\/image\?.*v=/, { timeout: 15000 });
+});
+
+test('a newer cover replaces a failed pending selection without an old upload overwriting it', async ({ page }) => {
+  await login(page);
+  const tile = page.locator('.resource-tile').filter({ has: page.getByRole('button', { name: '英语启蒙', exact: true }) });
+  let obsolete = '';
+  await page.route('**/api/manage/uploads/*/chunks?*', async route => {
+    const id = new URL(route.request().url()).pathname.split('/')[4];
+    if (!obsolete) obsolete = id;
+    if (id === obsolete) await route.abort('connectionreset'); else await route.continue();
+  });
+  const select = async (filename: string, bytes: string) => {
+    await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
+    const picker = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: '上传封面', exact: true }).click();
+    await (await picker).setFiles({ name: filename, mimeType: 'image/png', buffer: Buffer.from(bytes, 'base64') });
+  };
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAE0lEQVR4nGNkaGDACpiwCw9WCQBqCACQJ5at+QAAAABJRU5ErkJggg==';
+  await select('old.png', png);
+  await expect.poll(() => obsolete).not.toBe('');
+  const first = await tile.locator('img').getAttribute('src');
+  await select('new.png', png);
+  await expect(tile.locator('img')).not.toHaveAttribute('src', first!);
+  await page.mouse.move(0, 0);
+  await page.locator('.page-title h1').click();
+  await expect(tile.locator('img')).toHaveAttribute('src', /\/api\/items\/series\/image\?.*v=/, { timeout: 15000 });
+  expect((await (await page.request.get(`/api/manage/uploads/${obsolete}`)).json()).status).toBe('cancelled');
+  await expect(tile.getByRole('alert')).toHaveCount(0);
 });
 
 test('task modal preserves the current folder and supports browser history', async ({ page }) => {

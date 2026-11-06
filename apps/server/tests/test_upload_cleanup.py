@@ -72,7 +72,7 @@ def test_orphaned_cloud_cover_and_local_processing_files_are_removed(remote):
     oss.objects[cover] = b"cover"
     root = config.get_settings().resolved_media_dir()
     paths = [root / f"managed/f1/{key}{suffix}" for suffix in (".mp4", ".mp4.tmp", "-cover.jpg")]
-    paths += [config.get_settings().data_dir / "uploads" / f"{key}.part"]
+    paths += [config.get_settings().data_dir / "uploads" / f"{key}{suffix}" for suffix in (".part", ".download")]
     for path in paths:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"orphan")

@@ -133,6 +133,66 @@ struct APIClientTests {
         checkEqual(offsets, [0, 4 * 1024 * 1024])
         checkEqual(changes, 1)
     }
+    @Test func localCoverSurvivesRestartAndSilentlyResumesAcceptedBytes() async throws {
+        let api = try makeClient()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let data = Data([1, 2, 3])
+        var creates = 0, chunks = 0, offset = 0
+        func upload(_ state: String) -> Data {
+            Data("{\"id\":\"u\",\"itemId\":\"e\",\"offset\":\(offset),\"size\":3,\"status\":\"\(state)\",\"transport\":\"local\",\"partSize\":4194304,\"error\":\"\"}".utf8)
+        }
+        StubURLProtocol.handler = { request in
+            switch request.url!.path {
+            case "/api/manage/uploads": creates += 1; return (200, [:], upload("uploading"))
+            case "/api/manage/uploads/u/chunks":
+                chunks += 1; offset = 3
+                throw URLError(.networkConnectionLost) // Server accepted bytes; response was lost.
+            case "/api/manage/uploads/u": return (200, [:], upload("uploading"))
+            case "/api/manage/uploads/u/complete": return (200, [:], upload("ready"))
+            case "/api/manage/resources/e":
+                return (200, [:], Data(#"{"id":"e","name":"video","type":"Episode","overview":"","status":"published","ready":true,"runtimeMs":0,"imageUrl":"/image?v=new"}"#.utf8))
+            default: Issue.record("Unexpected request: \(request.url!.path)"); throw APIError.invalidResponse
+            }
+        }
+        let first = ArtworkUploadQueue(root: root)
+        first.configure(scope: "server|alice", api: api)
+        first.enqueue(data, itemID: "e", api: api)
+        #expect(first.drafts["e"]?.data == data) // Visible before any request runs.
+        first.reset()
+        let restored = ArtworkUploadQueue(root: root, delay: { _ in await Task.yield() })
+        defer { restored.reset() }
+        restored.configure(scope: "server|bob", api: api)
+        #expect(restored.drafts.isEmpty)
+        restored.configure(scope: "server|alice", api: api)
+        #expect(restored.drafts["e"]?.data == data)
+        for _ in 0..<300 {
+            if restored.drafts["e"]?.savedURL != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(restored.drafts["e"]?.savedURL == "/image?v=new")
+        #expect(creates == 1 && chunks == 1)
+        restored.acknowledge(itemID: "e", imageURL: "/image?v=old")
+        #expect(restored.drafts["e"] != nil)
+        restored.acknowledge(itemID: "e", imageURL: "/image?v=new")
+        #expect(restored.drafts.isEmpty)
+    }
+
+    @Test func artworkPollingDoesNotReuploadOrCancelAQueuedJob() async throws {
+        let api = try makeClient()
+        let json = #"{"id":"u","itemId":"e","offset":3,"size":3,"status":"processing","transport":"local","partSize":4194304,"error":"","taskId":"job"}"#
+        let resume = try JSONDecoder().decode(Upload.self, from: Data(json.utf8))
+        var reads = 0
+        StubURLProtocol.handler = { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.path == "/api/manage/uploads/u")
+            reads += 1
+            return (200, [:], Data((reads == 1 ? json : json.replacingOccurrences(of: "processing", with: "ready")).utf8))
+        }
+        try await ResourceArtworkUpload.send(Data([1, 2, 3]), itemID: "e", api: api, resume: resume)
+        #expect(reads == 2)
+    }
+
     @Test func testMutationIncludesScopedCookieAndCSRF() async throws {
         let api = try makeClient(); api.cookie = "session-value"; api.csrf = "csrf-value"
         StubURLProtocol.handler = { request in

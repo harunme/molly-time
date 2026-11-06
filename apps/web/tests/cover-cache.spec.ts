@@ -24,6 +24,7 @@ test('covers reuse the browser cache and replacement artwork gets a new URL', as
       headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': fingerprint }, data,
     })).ok()).toBe(true);
     expect((await page.request.post(`/api/manage/uploads/${row.id}/complete`, { headers })).ok()).toBe(true);
+    await expect.poll(async () => (await (await page.request.get(`/api/manage/uploads/${row.id}`)).json()).status).toBe('ready');
     const resource = await (await page.request.get('/api/manage/resources/series')).json();
     return resource.imageUrl as string;
   };

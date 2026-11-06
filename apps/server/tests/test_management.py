@@ -567,9 +567,11 @@ def test_cover_replacement_changes_image_reference(parent, completion_body):
         )
         completed = parent.post(f"/api/manage/uploads/{row['id']}/complete", json=completion_body)
         assert completed.status_code == 200
-        assert completed.json()["status"] == "ready"
-        assert completed.json()["taskId"] is None
+        assert completed.json()["status"] == "processing"
+        assert completed.json()["taskId"] is not None
         assert parent.post(f"/api/manage/uploads/{row['id']}/complete", json=completion_body).json() == completed.json()
+        assert run_once()
+        assert parent.get(f"/api/manage/uploads/{row['id']}").json()["status"] == "ready"
         assert not run_once()
         url = parent.get("/api/manage/resources/series").json()["imageUrl"]
         assert parent.get(url).status_code == 200
@@ -577,7 +579,7 @@ def test_cover_replacement_changes_image_reference(parent, completion_body):
     assert versions[0] != versions[1]
 
 
-def test_invalid_cover_keeps_previous_image_and_returns_inline_error(parent):
+def test_invalid_cover_keeps_previous_image_and_records_retryable_failure(parent):
     payload = b"not an image"
     row = parent.post("/api/manage/uploads", json={
         "itemId": "series", "filename": "broken.png", "kind": "image",
@@ -590,15 +592,18 @@ def test_invalid_cover_keeps_previous_image_and_returns_inline_error(parent):
     with Session(db.get_engine()) as session:
         previous = session.get(Item, "series").primary_image_tag
     response = parent.post(path + "/complete", json={})
-    assert response.status_code == 422
-    assert "封面图片无效" in response.json()["detail"]
-    assert not run_once()
+    assert response.status_code == 200
+    assert response.json()["status"] == "processing"
+    assert run_once()
+    failed = parent.get(path).json()
+    assert failed["status"] == "failed"
+    assert "封面图片无效" in failed["error"]
     with Session(db.get_engine()) as session:
         assert session.get(Item, "series").primary_image_tag == previous
         assert session.get(MediaFile, row["id"]) is None
     pending = parent.get("/api/manage/uploads?pending=true").json()
     assert [(upload["id"], upload["kind"], upload["status"]) for upload in pending] == [
-        (row["id"], "image", "uploading"),
+        (row["id"], "image", "failed"),
     ]
     assert parent.get("/api/manage/settings").json()["storage"]["reservedBytes"] == len(payload)
     assert parent.post(path + "/cancel").status_code == 200

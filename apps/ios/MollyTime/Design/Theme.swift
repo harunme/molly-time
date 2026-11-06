@@ -283,7 +283,8 @@ struct Artwork: View {
     private var cacheKey: String { "\(store.scope)|\(resource.imageUrl)" }
     var body: some View {
         ZStack {
-            if let image = (loadedKey == cacheKey ? image : nil) ?? store.artwork.cached(for: cacheKey) {
+            if let image = store.artworkUploads.drafts[resource.id].flatMap({ UIImage(data: $0.data) })
+                ?? (loadedKey == cacheKey ? image : nil) ?? store.artwork.cached(for: cacheKey) {
                 GeometryReader { geometry in
                     Image(uiImage: image).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -313,6 +314,9 @@ struct Artwork: View {
             }
         }
         .clipped().accessibilityHidden(true)
+        .onChange(of: store.artworkUploads.drafts[resource.id]?.savedURL) { _, _ in
+            if loadedKey == cacheKey { store.artworkUploads.acknowledge(itemID: resource.id, imageURL: resource.imageUrl) }
+        }
         .task(id: cacheKey) {
             let key = cacheKey
             guard !resource.imageUrl.isEmpty else { return }
@@ -333,6 +337,7 @@ struct Artwork: View {
                 }
                 guard !Task.isCancelled, key == cacheKey else { return }
                 image = loaded; loadedKey = key
+                store.artworkUploads.acknowledge(itemID: resource.id, imageURL: resource.imageUrl)
             } catch { /* Keep branded fallback when a cover is absent. */ }
         }
     }

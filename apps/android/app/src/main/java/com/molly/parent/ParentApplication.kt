@@ -210,6 +210,7 @@ class ParentApplication : Application() {
         client.accountScope =
             "${client.endpoint.origin}|${value.getJSONObject("user").getString("id")}"
         api?.takeIf { it !== client }?.artwork?.close()
+        api?.takeIf { it !== client }?.artworkUploads?.close()
         val changed = api !== client
         api = client
         session = value
@@ -222,6 +223,7 @@ class ParentApplication : Application() {
     fun clear(expired: Boolean = false) {
         beforeAccountChange?.invoke()
         api?.artwork?.close()
+        api?.artworkUploads?.close()
         api = null
         session = null
         if (expired) vault.expireActive() else vault.clear()

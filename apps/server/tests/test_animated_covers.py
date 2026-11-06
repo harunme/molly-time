@@ -9,6 +9,7 @@ from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import config, db
 from mollytime_server.images import image_ref
+from mollytime_server.media_worker import run_once
 from mollytime_server.models import Item, MediaFile
 from mollytime_server.utils.image import preview_to_file, resize_to_file
 
@@ -88,7 +89,10 @@ def upload_artwork(web, kind, data, filename):
     url = f"/api/manage/uploads/{row['id']}"
     assert web.put(url + "/chunks?offset=0", content=data,
                       headers={"X-Chunk-SHA256": hashlib.sha256(data).hexdigest()}).status_code == 200
-    return row["id"], web.post(url + "/complete")
+    completed = web.post(url + "/complete")
+    assert completed.status_code == 200 and completed.json()["status"] == "processing"
+    assert run_once()
+    return row["id"], web.get(url)
 
 
 def still(color="blue"):
@@ -135,7 +139,7 @@ def test_invalid_preview_cannot_replace_a_valid_one(parent, data, filename):  # 
     preview_id, result = upload_artwork(parent, "preview", animation(), "motion.webp")
     assert result.status_code == 200
     bad_id, result = upload_artwork(parent, "preview", data, filename)
-    assert result.status_code == 422
+    assert result.status_code == 200 and result.json()["status"] == "failed"
     with Session(db.get_engine()) as session:
         assert session.get(MediaFile, preview_id).kind == "preview"
         assert session.get(MediaFile, bad_id) is None

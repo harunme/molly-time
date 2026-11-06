@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 @Composable
@@ -135,7 +134,7 @@ internal fun ResourceActions(model: ParentViewModel, item: JSONObject, done: () 
                             withContext(Dispatchers.IO) {
                                 MediaPreparation.jpeg(context, uri, 1200, 85)
                             }
-                        sendArtwork(api, data, item.getString("id"))
+                        api.artworkUploads.enqueue(data, item.getString("id"))
                         done()
                     } catch (e: CancellationException) {
                         throw e
@@ -502,93 +501,3 @@ internal fun TrashScreen(model: ParentViewModel, back: () -> Unit) {
         )
     }
 }
-
-internal suspend fun sendArtwork(api: ParentApi, data: ByteArray, item: String) =
-    withContext(Dispatchers.IO) {
-        require(data.isNotEmpty() && data.size <= 20 * 1024 * 1024)
-        var upload =
-            api.request(
-                "/api/manage/uploads",
-                "POST",
-                json(
-                    "itemId" to item,
-                    "filename" to "cover.jpg",
-                    "kind" to "image",
-                    "size" to data.size,
-                    "fingerprint" to digest(data),
-                ),
-            )
-        val path = "/api/manage/uploads/${ParentApi.segment(upload.getString("id"))}"
-        try {
-            if (upload.optString("status") == "uploading") {
-                val oss = upload.getString("transport") == "oss"
-                val partSize = if (oss) upload.getInt("partSize") else 4 * 1024 * 1024
-                require(partSize in 1..8 * 1024 * 1024)
-                var offset = if (oss) 0 else upload.getInt("offset")
-                var number = 1
-                while (offset < data.size) {
-                    ensureActive()
-                    val end = minOf(offset + partSize, data.size)
-                    val chunk = data.copyOfRange(offset, end)
-                    if (oss) {
-                        val signed =
-                            api.request(
-                                "$path/part-url",
-                                "POST",
-                                json(
-                                    "number" to number,
-                                    "md5" to
-                                        android.util.Base64.encodeToString(
-                                            java.security.MessageDigest.getInstance("MD5")
-                                                .digest(chunk),
-                                            android.util.Base64.NO_WRAP,
-                                        ),
-                                ),
-                            )
-                        val request =
-                            okhttp3.Request.Builder()
-                                .url(api.endpoint.resolve(signed.getString("url")))
-                                .put(chunk.toRequestBody())
-                        val headers = signed.getJSONObject("headers")
-                        headers.keys().forEach { key ->
-                            require(
-                                key.lowercase() !in
-                                    listOf("cookie", "authorization", "x-csrf-token")
-                            )
-                            request.header(key, headers.getString(key))
-                        }
-                        api.anonymous.newCall(request.build()).execute().use {
-                            check(it.isSuccessful) { "封面上传未完成，请重试。" }
-                        }
-                    } else {
-                        upload =
-                            JSONObject(
-                                api.raw(
-                                        "$path/chunks?offset=$offset",
-                                        "PUT",
-                                        chunk,
-                                        "application/octet-stream",
-                                        mapOf("X-Chunk-SHA256" to digest(chunk)),
-                                    )
-                                    .toString(Charsets.UTF_8)
-                            )
-                        require(upload.getInt("offset") == end)
-                    }
-                    offset = end
-                    number++
-                }
-                upload = api.request("$path/complete", "POST")
-            }
-            repeat(30) {
-                if (upload.optString("status") == "ready") return@withContext
-                if (upload.optString("status") == "failed") error(upload.optString("error"))
-                delay(1000)
-                upload = api.request(path)
-            }
-            throw ApiFailure(409, "封面已上传，仍在处理中，可稍后返回资料库查看。")
-        } catch (e: Exception) {
-            if (upload.optString("status") == "uploading")
-                runCatching { api.request("$path/cancel", "POST") }
-            throw e
-        }
-    }

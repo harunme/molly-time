@@ -232,6 +232,7 @@ constructor(
             }
         }
         if (foreground) {
+            client.artworkUploads.resume()
             app.uploads.resumeAutomatically()
             app.reminderUploads.resumeAutomatically()
             startSync()
@@ -243,6 +244,7 @@ constructor(
         foreground = active
         if (active) {
             if (session != null) {
+                api?.artworkUploads?.resume()
                 app.uploads.resumeAutomatically()
                 app.reminderUploads.resumeAutomatically()
                 storageRevision++

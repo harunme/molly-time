@@ -75,6 +75,7 @@ class ParentApi(
     var onUnauthorized: (() -> Unit)? = null
     var onMutation: ((ParentInvalidation) -> Unit)? = null
     val artwork by lazy { ArtworkStore(this) }
+    val artworkUploads by lazy { ArtworkUploadQueue(this) }
     val anonymous =
         (transport?.newBuilder() ?: OkHttpClient.Builder())
             .followRedirects(false)

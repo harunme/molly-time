@@ -6,7 +6,9 @@ const apiOrigin = process.env.MOLLYTIME_TEST_API_ORIGIN || 'http://127.0.0.1:809
 const python = '../server/.venv/bin/python';
 
 async function channel(image: Locator) {
-  const bytes = await image.screenshot();
+  // The local preview is replaced after the saved image has decoded.
+  const bytes = await image.screenshot().catch(() => null);
+  if (!bytes) return -1;
   const pixel = JSON.parse(execFileSync(python, ['-c',
     'import io,json,sys; from PIL import Image; i=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert("RGB"); print(json.dumps(i.getpixel((i.width//2,i.height//2))))'],
   { input: bytes }).toString()) as number[];
@@ -29,6 +31,7 @@ test('legacy animated covers retain a first-frame fallback and loop on hover/foc
     headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': createHash('sha256').update(data).digest('hex') }, data,
   })).ok()).toBe(true);
   expect((await page.request.post(`/api/manage/uploads/${upload.id}/complete`, { headers })).ok()).toBe(true);
+  await expect.poll(async () => (await (await page.request.get(`/api/manage/uploads/${upload.id}`)).json()).status).toBe('ready');
   await page.getByRole('navigation', { name: '管理导航' }).getByRole('link', { name: '资源库', exact: true }).click();
   const parentCard = page.getByRole('button', { name: '打开 英语启蒙', exact: true });
   const parentImage = parentCard.locator('img');
@@ -135,8 +138,20 @@ test('static posters and complete motion previews upload independently in both a
   await tv.getByRole('button', { name: '打开设置', exact: true }).focus();
   await expect.poll(() => channel(tvImage)).toBe(2);
 
-  expect((await choose('上传动态预览', 'still.png', 'image/png', poster)).status()).toBe(422);
-  await expect(tile.getByRole('alert')).toContainText('动态预览需要多帧');
+  const session = await (await page.request.get('/api/manage/auth/session')).json();
+  const headers = { 'X-CSRF-Token': session.csrfToken };
+  const before = await (await page.request.get('/api/manage/resources/series')).json();
+  const invalid = await (await page.request.post('/api/manage/uploads', { headers, data: {
+    itemId: 'series', filename: 'still.png', kind: 'preview', size: poster.length, fingerprint: 'invalid-preview',
+  } })).json();
+  expect((await page.request.put(`/api/manage/uploads/${invalid.id}/chunks?offset=0`, {
+    headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-Chunk-SHA256': createHash('sha256').update(poster).digest('hex') }, data: poster,
+  })).ok()).toBe(true);
+  expect((await page.request.post(`/api/manage/uploads/${invalid.id}/complete`, { headers })).ok()).toBe(true);
+  await expect.poll(async () => (await (await page.request.get(`/api/manage/uploads/${invalid.id}`)).json()).status).toBe('failed');
+  expect((await (await page.request.get(`/api/manage/uploads/${invalid.id}`)).json()).error).toContain('动态预览需要多帧');
+  expect((await (await page.request.get('/api/manage/resources/series')).json()).imagePreviewUrl).toBe(before.imagePreviewUrl);
+  await expect(tile.getByRole('alert')).toHaveCount(0);
   await page.mouse.move(0, 0);
   await expect.poll(() => channel(image)).toBe(2);
   await tile.getByRole('button', { name: '更多操作 英语启蒙', exact: true }).click();
