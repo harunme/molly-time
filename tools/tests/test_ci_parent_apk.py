@@ -51,6 +51,21 @@ def test_first_parent_build_has_independent_channel(repository):
     )
 
 
+def test_shared_diagnostics_changes_trigger_parent_but_shared_web_does_not(repository):
+    before = ci.fingerprint(repository, "parent")[0]
+    web = repository / "apps/shared/client-diagnostics.ts"
+    web.parent.mkdir(parents=True, exist_ok=True)
+    web.write_text("browser-diagnostics")
+    assert ci.fingerprint(repository, "parent")[0] == before
+    native = repository / "apps/shared/android/com/molly/diagnostics/ClientDiagnostics.kt"
+    native.parent.mkdir(parents=True)
+    native.write_text("native-diagnostics")
+    changed, files = ci.fingerprint(repository, "parent")
+    assert changed != before and native.relative_to(repository).as_posix() in files
+    native.write_text("updated-native-diagnostics")
+    assert ci.fingerprint(repository, "parent")[0] != changed
+
+
 @pytest.mark.parametrize(
     "name",
     [

@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BridgePolicyTest {
+    @Test fun diagnosticsOnlyExposeAuthenticatedIngestion() {
+        assertTrue(BridgePolicy.allows("POST", "/api/client/error-logs"))
+        assertFalse(BridgePolicy.allows("GET", "/api/client/error-logs"))
+        assertFalse(BridgePolicy.allows("POST", "/api/client/error-logs?token=secret"))
+        assertFalse(BridgePolicy.allows("GET", "/api/manage/client-error-logs"))
+    }
     @Test fun liveTvIsReadOnlyAndCannotExposeOperatorApis() {
         assertTrue(BridgePolicy.allows("GET", "/api/live-tv"))
         for (method in listOf("POST", "PUT", "DELETE")) assertFalse(BridgePolicy.allows(method, "/api/live-tv"))

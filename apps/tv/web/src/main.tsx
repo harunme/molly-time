@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { getCurrentFocusKey, init, setFocus } from '@noriginmedia/norigin-spatial-navigation';
 import { LiveTv } from './live-tv';
 import { PlaybackSettings } from './playback-settings';
-import { ApiError, call, request, type Capabilities, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
+import { ApiError, call, request, diagnostics, type Capabilities, type Home, type Playlist, type PlaylistEpisode, type Series } from './api';
 import { appendItems, appendRow, catalogRequest, configureCatalog, loadHome, loadPlaylist, readPlaybackReturn, updateHomeProgress, updatePlaylistProgress } from './catalog';
 import { playlistItems, playlistHasMore, playlistFocus } from './catalog';
 import { finishScrolls, FocusButton, FocusRegion, isFirstGridRow } from './focus';
@@ -63,6 +63,7 @@ function App() {
   const homeFocus = (row: number, item: Series, rows = home.rows) => capabilities?.catalogSync && rows[row]?.id
     ? `home-${rows[row].id}-${item.id}` : legacyHomeFocus(row, item);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  useEffect(() => { diagnostics.screen(overlay ? `overlay.${overlay}` : folder ? 'catalog.folder' : 'catalog.home'); }, [overlay, !!folder, authenticated]);
   const watchPanelBack = useRef<(() => boolean) | null>(null);
   const [busy, setBusy] = useState(true);
   const [greeting, setGreeting] = useState<Greeting>();
@@ -656,4 +657,8 @@ function App() {
     </div>}
   </FocusRegion>;
 }
-createRoot(document.getElementById('root')!).render(<><App /><BrowserPlaybackHost /></>);
+createRoot(document.getElementById('root')!, {
+  onUncaughtError: (error, info) => diagnostics.capture(error, 'REACT_UNCAUGHT', true, info.componentStack ?? undefined),
+  onCaughtError: (error, info) => diagnostics.capture(error, 'REACT_CAUGHT', false, info.componentStack ?? undefined),
+  onRecoverableError: (error) => diagnostics.capture(error, 'REACT_RECOVERABLE'),
+}).render(<><App /><BrowserPlaybackHost /></>);

@@ -98,6 +98,7 @@ struct ResourceActionsView: View {
 
     private func updateCover(_ photo: PhotosPickerItem, item: Resource) async {
         guard !busy else { return }
+        ClientDiagnostics.shared.breadcrumb("cover.selected")
         busy = true; failure = nil; defer { busy = false }
         let client = store.api, account = store.sessionGeneration
         do {
@@ -109,8 +110,14 @@ struct ResourceActionsView: View {
             let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
             guard let jpeg = resized.jpegData(compressionQuality: 0.85) else { throw APIError.invalidResponse }
             store.artworkUploads.enqueue(jpeg, itemID: item.id, api: client)
+            ClientDiagnostics.shared.breadcrumb("cover.enqueued")
             dismiss()
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch {
+            if !Task.isCancelled {
+                ClientDiagnostics.shared.capture(error, code: "COVER_PREPARATION_ERROR")
+                failure = error.localizedDescription
+            }
+        }
     }
 }
 

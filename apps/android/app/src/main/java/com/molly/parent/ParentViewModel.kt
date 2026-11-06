@@ -373,7 +373,13 @@ constructor(
         }
     }
 
+    fun selectTab(value: Int) {
+        app.diagnostics.breadcrumb("tab.select.$value")
+        tab = value
+    }
+
     fun ensureTab() {
+        app.diagnostics.screen(when (tab) { 0 -> "tab.library"; 1 -> "tab.tv"; else -> "tab.account" })
         when (tab) {
             0 -> if (page == 0 && !libraryBusy) loadLibrary()
             1 -> {
@@ -671,6 +677,7 @@ constructor(
 
     private fun failure(e: Exception, client: ParentApi, show: (String) -> Unit) {
         if (e is CancellationException) throw e
+        if (api === client && (e !is ApiFailure || e.status >= 500)) app.diagnostics.capture(e, "PARENT_OPERATION_ERROR")
         if (api !== client) return
         if (e is ApiFailure && e.status == 401) {
             clearSession(true)

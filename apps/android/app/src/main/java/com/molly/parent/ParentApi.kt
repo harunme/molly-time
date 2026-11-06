@@ -74,6 +74,8 @@ class ParentApi(
     var accountScope = endpoint.origin.toString()
     var onUnauthorized: (() -> Unit)? = null
     var onMutation: ((ParentInvalidation) -> Unit)? = null
+    var onDiagnostic: ((Throwable, String) -> Unit)? = null
+    var onBreadcrumb: ((String) -> Unit)? = null
     val artwork by lazy { ArtworkStore(this) }
     val artworkUploads by lazy { ArtworkUploadQueue(this) }
     val anonymous =

@@ -172,6 +172,10 @@ final class BackgroundUploadTransport: NSObject, @preconcurrency URLSessionDataD
 @MainActor
 final class UploadAppDelegate: NSObject, UIApplicationDelegate {
     let store = SessionStore()
+    override init() {
+        super.init()
+        ClientDiagnostics.shared.start()
+    }
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
         guard identifier.hasPrefix(BackgroundUploadTransport.prefix) else { completionHandler(); return }

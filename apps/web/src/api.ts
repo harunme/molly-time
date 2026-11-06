@@ -6,8 +6,12 @@ export type Upload = { id: string; itemId: string; filename: string; size: numbe
 export type WatchDeviceSegment = { deviceId: string | null; playedMs: number };
 export type WatchReport = { devices?: { id: string | null; name: string }[]; timezone: string; totalPlayedMs: number; episodeCount: number; statisticsSince: string | null; lastSync: string | null; days: { date: string; playedMs: number; devices?: WatchDeviceSegment[] }[]; hours: { hour: number; playedMs: number; devices?: WatchDeviceSegment[] }[]; contents: { id: string; name: string; playedMs: number }[]; sessions: { id: string; name: string; childName: string; deviceName: string; startedAt: string; playedMs: number; positionMs: number; ended: boolean; lastSync: string | null }[] };
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+import { bindDiagnostics, diagnostics } from './diagnostics';
 let csrf = '';
-export function setSession(session: Session | undefined) { csrf = session?.csrfToken || ''; }
+export function setSession(session: Session | undefined) {
+  csrf = session?.csrfToken || '';
+  bindDiagnostics(session?.user.id || '', csrf);
+}
 export async function api<T>(path: string, method = 'GET', body?: unknown, extraHeaders?: Record<string, string>, signal?: AbortSignal): Promise<T> {
   const raw = body instanceof Blob;
   const requestCsrf = csrf;
@@ -20,6 +24,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, extra
     throw new ApiError(navigator.onLine ? '连接中断，请检查网络后重试' : '网络已断开，恢复连接后可重试', 0);
   }
   if (!response.ok) {
+    if (response.status >= 500) diagnostics.capture(new Error(), 'API_SERVER_ERROR');
     const data = await response.json().catch(() => ({}));
     if (response.status === 401 && requestCsrf && requestCsrf === csrf) window.dispatchEvent(new Event('mollytime:unauthorized'));
     const message = typeof data.detail === 'string' ? data.detail : response.status === 422 ? '请检查输入内容和文件格式' : '操作失败，请重试';

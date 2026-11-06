@@ -126,6 +126,7 @@ internal fun ResourceActions(model: ParentViewModel, item: JSONObject, done: () 
     }
     val cover =
         rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            (context.applicationContext as ParentApplication).diagnostics.breadcrumb(if (uri != null) "cover.selected" else "cover.cancelled")
             if (uri != null)
                 scope.launch {
                     busy = true
@@ -135,10 +136,12 @@ internal fun ResourceActions(model: ParentViewModel, item: JSONObject, done: () 
                                 MediaPreparation.jpeg(context, uri, 1200, 85)
                             }
                         api.artworkUploads.enqueue(data, item.getString("id"))
+                        (context.applicationContext as ParentApplication).diagnostics.breadcrumb("cover.enqueued")
                         done()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
+                        (context.applicationContext as ParentApplication).diagnostics.capture(e, "COVER_PREPARATION_ERROR")
                         failure = e.message
                     } finally {
                         busy = false

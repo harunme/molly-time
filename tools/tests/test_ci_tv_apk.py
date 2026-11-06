@@ -19,6 +19,7 @@ def repository(tmp_path):
         "apps/tv/settings.gradle.kts": 'include(":client")',
         "apps/tv/client/src/main/AndroidManifest.xml": "manifest",
         "apps/tv/client/src/main/java/Player.kt": "native-player",
+        "apps/shared/android/com/molly/diagnostics/ClientDiagnostics.kt": "shared-diagnostics",
         "apps/tv/client/src/main/res/raw/icon.xml": "icon",
         "apps/tv/client/version.properties": "versionCode=3\nversionName=0.1.1\nversionEpoch=2026-10\n",
         "apps/tv/client/build.gradle.kts": "android-build",
@@ -66,6 +67,7 @@ def test_web_api_docs_tests_and_build_outputs_do_not_require_apk(repository):
 
 
 @pytest.mark.parametrize("name", [
+    "apps/shared/android/com/molly/diagnostics/ClientDiagnostics.kt",
     "apps/tv/client/src/main/java/Player.kt", "apps/tv/client/src/main/res/raw/icon.xml",
     "apps/tv/client/src/main/AndroidManifest.xml", "apps/tv/client/build.gradle.kts",
     "apps/tv/gradle/libs.versions.toml", "apps/tv/gradle/wrapper/gradle-wrapper.jar",

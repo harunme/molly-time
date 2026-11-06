@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { diagnostics } from './diagnostics';
 
 type Preview = { token: string; url: string; local: boolean };
 type Artwork = { image?: Preview; preview?: Preview };
@@ -10,12 +11,14 @@ export function useLocalArtwork(itemID?: string) {
   return useSyncExternalStore(subscribe, () => itemID ? items.get(itemID) : undefined);
 }
 export function previewArtwork(itemID: string, kind: 'image' | 'preview', file: File, token: string) {
+  diagnostics.breadcrumb('cover.preview');
   const current = items.get(itemID) ?? {}, old = current[kind];
   if (old?.local) URL.revokeObjectURL(old.url);
   items.set(itemID, { ...current, [kind]: { token, url: URL.createObjectURL(file), local: true } });
   changed();
 }
 export function confirmArtwork(itemID: string, kind: 'image' | 'preview', token: string, url: string) {
+  diagnostics.breadcrumb('cover.saved');
   if (!url || items.get(itemID)?.[kind]?.token !== token) return;
   // Decode the saved image before replacing the already visible local preview.
   const image = new Image();

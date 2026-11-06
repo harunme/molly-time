@@ -223,9 +223,14 @@ class ShellActivity : AppCompatActivity() {
                 // enforces authorization and reports errors on the playback screen.
                 // Do not queue the launch behind a previous video's network requests.
                 if (method == "playEpisode") runOnUiThread(task)
-                else (if (local) app.catalog.reads else app.io).execute(task)
+                else (if (method == "request" && args.optString("path") == "/api/client/error-logs") app.diagnosticsIo
+                    else if (local) app.catalog.reads else app.io).execute(task)
             })
         view.webViewClient = object : WebViewClient() {
+            override fun onRenderProcessGone(v: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                app.diagnostics.capture(IllegalStateException(), "WEBVIEW_RENDERER_GONE", true)
+                return false
+            }
             override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean =
                 !trustedWebOrigin(req.url) || !req.url.path.orEmpty().startsWith("/tv/")
 
@@ -277,6 +282,7 @@ class ShellActivity : AppCompatActivity() {
     private fun handle(method: String, args: JSONObject, current: Int): Any = when (method) {
         "ready" -> JSONObject().put("ok", true)
         "getCapabilities" -> JSONObject().put("bridgeVersion", 1).put("shellVersion", BuildConfig.VERSION_NAME)
+            .put("diagnosticsOwner", app.diagnosticsScope())
             .put("catalogSync", true).put("offlinePlayback", true).put("watchControl", true)
             .put("serverUrl", app.session.server).put("webVersion", app.webBundles.selectedVersion()).put("authenticated", app.session.refresh.isNotEmpty())
             .put("childId", app.session.childId).put("nativePlayback", true).put("devicePairing", true).put("devicePairingReset", true)
@@ -342,11 +348,18 @@ class ShellActivity : AppCompatActivity() {
             val verb = args.getString("method")
             val path = args.getString("path")
             require(BridgePolicy.allows(verb, path)) { "接口不允许访问" }
-            if (path.substringBefore('?') == "/api/home") app.api.homeSchemaVersion = args.optInt("homeSchemaVersion", 1).coerceIn(1, 2)
-            val result = if (path == "/api/watch-control" && verb == "GET") app.watchControl.refreshOrCached()
-                else org.json.JSONTokener(app.api.text(verb, path, args.optJSONObject("body"))).nextValue()
-            if (path == "/api/watch-control/commands" && result is JSONObject) app.watchControl.accept(result)
-            result
+            if (path == "/api/client/error-logs") require(args.optString("diagnosticsOwner") == app.diagnosticsScope()) { "日志账号已变化" }
+            if (path == "/api/client/error-logs") {
+                val status = app.api.reportDiagnostic(args.getJSONObject("body"), args.getString("diagnosticsOwner"))
+                if (status !in 200..299) throw ApiFailure(status)
+                JSONObject().put("ok", true)
+            } else {
+                if (path.substringBefore('?') == "/api/home") app.api.homeSchemaVersion = args.optInt("homeSchemaVersion", 1).coerceIn(1, 2)
+                val result = if (path == "/api/watch-control" && verb == "GET") app.watchControl.refreshOrCached()
+                    else org.json.JSONTokener(app.api.text(verb, path, args.optJSONObject("body"))).nextValue()
+                if (path == "/api/watch-control/commands" && result is JSONObject) app.watchControl.accept(result)
+                result
+            }
         }
         "playLiveChannel" -> {
             val id = args.getString("channelId")

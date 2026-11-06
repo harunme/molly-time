@@ -162,6 +162,7 @@ class SessionVault(context: Context) {
 }
 
 class ParentApplication : Application() {
+    lateinit var diagnostics: com.molly.diagnostics.ClientDiagnostics
     lateinit var vault: SessionVault
     var api: ParentApi? = null
         private set
@@ -181,6 +182,8 @@ class ParentApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        diagnostics = com.molly.diagnostics.ClientDiagnostics(this, "android-parent", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        diagnostics.install()
         vault = SessionVault(this)
         beforeAccountChange = {
             uploads.pause()
@@ -214,6 +217,13 @@ class ParentApplication : Application() {
         val changed = api !== client
         api = client
         session = value
+        client.onDiagnostic = { error, code -> if (api === client) diagnostics.capture(error, code) }
+        client.onBreadcrumb = { name -> if (api === client) diagnostics.breadcrumb(name) }
+        diagnostics.bind(com.molly.diagnostics.ClientDiagnostics.scope(client.endpoint.origin.toString(), value.getJSONObject("user").getString("id"))) { owner, body ->
+            if (api !== client || owner != com.molly.diagnostics.ClientDiagnostics.scope(client.endpoint.origin.toString(), session?.optJSONObject("user")?.optString("id").orEmpty())) 401
+            else try { client.request("/api/client/error-logs", "POST", body); 200 }
+            catch (error: ApiFailure) { error.status }
+        }
         if (changed) {
             uploads.bind(client, accountKey)
             reminderUploads.bind(client, accountKey)
@@ -221,6 +231,7 @@ class ParentApplication : Application() {
     }
 
     fun clear(expired: Boolean = false) {
+        diagnostics.bind("", null)
         beforeAccountChange?.invoke()
         api?.artwork?.close()
         api?.artworkUploads?.close()

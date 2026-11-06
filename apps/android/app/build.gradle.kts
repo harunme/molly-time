@@ -60,6 +60,7 @@ android {
 
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/startupSoundAssets"))
+    sourceSets.getByName("main").java.srcDir("../../shared/android")
     androidResources { noCompress += "mp3" }
     buildFeatures { compose = true; buildConfig = true }
     testOptions { unitTests.isIncludeAndroidResources = true }

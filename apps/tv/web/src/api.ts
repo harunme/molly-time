@@ -1,5 +1,7 @@
 import { demoCall, demoEnabled, demoImage, demoRequest } from './demo';
-export type Capabilities = { bridgeVersion: number; authenticated: boolean; childId: string; nativePlayback: boolean; liveTv?: boolean; serverUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string; catalogSync?: boolean; offlinePlayback?: boolean; watchControl?: boolean };
+import { createClientDiagnostics } from '../../../shared/client-diagnostics';
+export const diagnostics = createClientDiagnostics('tv-web');
+export type Capabilities = { bridgeVersion: number; diagnosticsOwner?: string; authenticated: boolean; childId: string; nativePlayback: boolean; liveTv?: boolean; serverUrl?: string; webVersion?: string; devicePairing?: boolean; devicePairingReset?: boolean; clientUpdates?: boolean; shellVersion?: string; catalogSync?: boolean; offlinePlayback?: boolean; watchControl?: boolean };
 export type ImageRef = { url: string; directUrl?: string | null; previewUrl?: string | null };
 export type Series = { id: string; name: string; type?: 'episode' | 'folder'; episodeCount?: number; runtimeMs?: number; positionMs?: number; completed?: boolean; offlineAvailable?: boolean; overview?: string; image?: ImageRef };
 export type Season = { id: string; name: string; image?: ImageRef; indexNumber?: number; episodeCount?: number };
@@ -28,7 +30,7 @@ if (port) port.onmessage = (event) => {
   else request.resolve(response.result);
 };
 
-export function call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
+function rawCall<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
   if (demoEnabled) return Promise.resolve().then(() => demoCall(method, args) as T);
   if (!port) return browserCall(method, args) as Promise<T>;
   if (pending.size >= 24) return Promise.reject(new ApiError('请求过多，请稍后重试'));
@@ -37,6 +39,20 @@ export function call<T>(method: string, args: Record<string, unknown> = {}): Pro
     const timer = setTimeout(() => { pending.delete(id); reject(new ApiError('连接超时，请重试')); }, 35000);
     pending.set(id, { resolve: (data) => resolve(data as T), reject, timer });
     port.postMessage(JSON.stringify({ id, method, args }));
+  });
+}
+export function call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
+  return rawCall<T>(method, args).then((result) => {
+    if (method === 'getCapabilities') {
+      const caps = result as { authenticated?: boolean; diagnosticsOwner?: string };
+      diagnostics.bind(caps.authenticated ? caps.diagnosticsOwner || '' : '', async (body) => {
+        try { await rawCall('request', { path: '/api/client/error-logs', method: 'POST', body, diagnosticsOwner: caps.diagnosticsOwner }); return 'ack'; }
+        catch (error) { return error instanceof ApiError && [400, 409, 413, 422].includes(error.status) ? 'drop' : 'retry'; }
+      });
+    }
+    if (method === 'pairingReset') diagnostics.bind('');
+    if (method === 'pairingPoll' && (result as { status?: string }).status === 'authorized') void call('getCapabilities').catch(() => {});
+    return result;
   });
 }
 export const request = <T>(path: string, method = 'GET', body?: Record<string, unknown>) =>
@@ -86,6 +102,7 @@ function saveBinding() {
   localStorage.setItem(bindingKey, JSON.stringify({ accessToken: access, refreshToken: refresh, deviceId }));
 }
 function clearBinding() {
+  diagnostics.bind('');
   bindingVersion++;
   access = ''; refresh = ''; deviceId = '';
   try { localStorage.removeItem(bindingKey); } catch { /* Storage can be unavailable in a restricted browser. */ }
@@ -129,7 +146,7 @@ async function fetchApi(path: string, method = 'GET', body?: unknown, retry = tr
 }
 async function browserCall(method: string, args: Record<string, unknown>): Promise<unknown> {
   switch (method) {
-    case 'getCapabilities': return { bridgeVersion: 1, serverUrl: location.origin, authenticated: !!refresh, childId: '', nativePlayback: false, devicePairing: true, devicePairingReset: true };
+    case 'getCapabilities': return { bridgeVersion: 1, serverUrl: location.origin, authenticated: !!refresh, diagnosticsOwner: deviceId, childId: '', nativePlayback: false, devicePairing: true, devicePairingReset: true };
     case 'ready': return { ok: true };
     case 'pairingStart': {
       const cached = readPairing();
@@ -186,6 +203,7 @@ async function browserCall(method: string, args: Record<string, unknown>): Promi
       return { ok: true };
     }
     case 'request': {
+      if (args.path === '/api/client/error-logs' && args.diagnosticsOwner !== deviceId) throw new ApiError('日志账号已变化', 409);
       const result = await fetchApi(String(args.path), String(args.method), args.body);
       return result;
     }

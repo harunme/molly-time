@@ -17,6 +17,14 @@ class ApiFailure(val status: Int) : Exception(when (status) {
 })
 
 class MollyTimeApi(private val session: SessionStore, private val deviceName: () -> String) {
+    fun reportDiagnostic(body: JSONObject, expectedScope: String): Int {
+        val credentials = session.credentials()
+        if (com.molly.diagnostics.ClientDiagnostics.scope(credentials.server, credentials.device) != expectedScope) return 409
+        val request = Request.Builder().url(credentials.server + "/api/client/error-logs")
+            .header("Authorization", "Bearer ${credentials.access}")
+            .post(body.toString().toRequestBody(jsonType)).build()
+        return requestHttp.newCall(request).execute().use { it.code }
+    }
     private var registeredIdentityBinding = ""
     private var pairingCode = ""
     private var pairingServer = ""

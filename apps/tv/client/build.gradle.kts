@@ -79,6 +79,7 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
     sourceSets.getByName("main").assets.srcDir(prepareTvWebAssets.map { it.destinationDir })
     sourceSets.getByName("main").assets.srcDir(startupAssets)
+    sourceSets.getByName("main").java.srcDir("../../shared/android")
     androidResources { noCompress += "mp3" }
     signingConfigs {
         if (hasReleaseSigning) {

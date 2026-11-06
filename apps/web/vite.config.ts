@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { pwaPlugin } from "./pwa-plugin";
 import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
+  define: { __MOLLY_BUILD_VERSION__: JSON.stringify(process.env.GITHUB_SHA?.slice(0, 12) || new Date().toISOString()) },
   plugins: [tailwindcss(), pwaPlugin()],
   resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   base: "/manage/",

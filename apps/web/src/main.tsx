@@ -38,6 +38,7 @@ import { BrandMark, BrandWordmark } from "./brand";
 import { useReminderData } from "./reminders";
 import { DeviceNotifications } from "./device-notifications";
 import { DeviceErrorLogs } from "./device-error-logs";
+import { diagnostics } from "./diagnostics";
 import { Pagination, usePagedData } from "./pagination";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -223,6 +224,10 @@ function App() {
   const page = location.pathname.split("/")[1];
   const [session, updateSession] = useState<Session>(),
     [checking, setChecking] = useState(true);
+  useEffect(() => {
+    const known = ['overview', 'library', 'devices', 'family', 'operations', 'logs', 'uploads', 'trash', 'login'];
+    diagnostics.screen(`page.${known.includes(page) ? page : 'other'}`);
+  }, [page, session?.user.id]);
   const reminders = useReminderData(true, !!session?.user.email);
   const [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -1521,7 +1526,11 @@ normalizeEntryLinks();
 window.addEventListener("popstate", normalizeEntryLinks);
 window.addEventListener("hashchange", normalizeEntryLinks);
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.getElementById("root")!, {
+  onUncaughtError: (error, info) => diagnostics.capture(error, 'REACT_UNCAUGHT', true, info.componentStack ?? undefined),
+  onCaughtError: (error, info) => diagnostics.capture(error, 'REACT_CAUGHT', false, info.componentStack ?? undefined),
+  onRecoverableError: (error) => diagnostics.capture(error, 'REACT_RECOVERABLE'),
+}).render(
   <>
     <PwaStatus />
     <HashRouter><App /></HashRouter>

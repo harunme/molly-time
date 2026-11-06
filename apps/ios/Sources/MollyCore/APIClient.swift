@@ -16,6 +16,7 @@ public final class APIClient {
     public var onCookie: ((String) -> Void)?
     public var onStorageChange: (() -> Void)?
     public var onLibraryChange: (() -> Void)?
+    public var onDiagnostic: ((Error, String) -> Void)?
     private let session: URLSession
 
     public init(endpoint: Endpoint, session: URLSession? = nil) {
@@ -42,19 +43,30 @@ public final class APIClient {
             }
             return result
         }
-        catch { throw APIError.invalidResponse }
+        catch { onDiagnostic?(error, "API_DECODE_ERROR"); throw APIError.invalidResponse }
     }
 
     public func raw(_ path: String, method: String = "GET", query: [URLQueryItem] = [],
                     body: Data? = nil, headers: [String: String] = [:], timeout: TimeInterval? = nil) async throws -> Data {
         var request = try authenticatedRequest(path, method: method, query: query, body: body, headers: headers)
         if let timeout { request.timeoutInterval = timeout }
-        let (data, response) = try await session.data(for: request)
+        let data: Data, response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch {
+            if path != "/api/client/error-logs" { onDiagnostic?(error, "API_TRANSPORT_ERROR") }
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode >= 500, path != "/api/client/error-logs" {
+                onDiagnostic?(APIError.http(http.statusCode, ""), "API_HTTP_\(http.statusCode)")
+            }
             if http.statusCode == 401 {
                 // A failed login is not expiry of an existing session.
-                if path != "/api/manage/auth/login" { onUnauthorized?(); throw APIError.unauthorized }
+                if path != "/api/manage/auth/login" {
+                    if path != "/api/client/error-logs" { onUnauthorized?() }
+                    throw APIError.unauthorized
+                }
             }
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             throw APIError.http(http.statusCode, object?["detail"] as? String ?? "请求未完成（\(http.statusCode)），请稍后重试。")

@@ -179,7 +179,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
             }
         }
         markPath.reset()
-        PathParser.PathDataNode.nodesToPath(frame, markPath)
+        PathParser.nodesToPath(frame, markPath)
         return markPath
     }
     private fun openingFlower(progress: Float): Path {
@@ -188,7 +188,7 @@ class StartupLogoView(context: Context, private val cycleFinished: () -> Unit) :
         val frame = petalNodes ?: return paths[1]
         for (i in frame.indices) frame[i].interpolatePathDataNode(bud[i], open[i], progress)
         petalPath.reset()
-        PathParser.PathDataNode.nodesToPath(frame, petalPath)
+        PathParser.nodesToPath(frame, petalPath)
         return petalPath
     }
     private fun pose(canvas: Canvas, unfold: Float) {

@@ -190,6 +190,30 @@ class DeviceBootState(Base):
     started_at: Mapped[dt.datetime] = mapped_column(DateTime)
 
 
+class ClientErrorLog(Base):
+    """Authenticated client diagnostics, separate from legacy TV playback events."""
+
+    __tablename__ = "client_error_logs"
+    __table_args__ = (Index("ix_client_errors_owner_created", "user_id", "device_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    device_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    installation_id: Mapped[str] = mapped_column(String(36))
+    source: Mapped[str] = mapped_column(String(24), index=True)
+    code: Mapped[str] = mapped_column(String(80))
+    fatal: Mapped[bool] = mapped_column(Boolean, default=False)
+    error_type: Mapped[str] = mapped_column(String(128))
+    stack: Mapped[list] = mapped_column(JSON, default=list)
+    breadcrumbs: Mapped[list] = mapped_column(JSON, default=list)
+    screen: Mapped[str] = mapped_column(String(80), default="")
+    app_version: Mapped[str] = mapped_column(String(80))
+    os_version: Mapped[str] = mapped_column(String(128), default="")
+    device_model: Mapped[str] = mapped_column(String(128), default="")
+    occurred_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now, index=True)
+
+
 class DeviceErrorLog(Base):
     """Bounded, structured device diagnostics. Never store request URLs or credentials."""
 

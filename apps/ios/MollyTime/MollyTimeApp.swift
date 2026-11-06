@@ -45,6 +45,7 @@ struct MollyTimeApp: App {
             }
             .onChange(of: scenePhase, initial: true) { _, phase in
                 if phase == .active {
+                    Task { await ClientDiagnostics.shared.flush() }
                     startup.start(reduceMotion: reduceMotion)
                     store.resumeUploads()
                 } else {
@@ -104,6 +105,9 @@ struct ParentTabs: View {
                     .tabItem { Label("电视", systemImage: "tv") }.tag(1)
                 AccountView()
                     .tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(2)
+            }
+            .onChange(of: selectedTab, initial: true) { _, tab in
+                ClientDiagnostics.shared.screen(["tab.library", "tab.tv", "tab.account"][tab])
             }
             .navigationDestination(for: Resource.self) { resource in
                 if resource.isFolder { LibraryView(folder: resource) }

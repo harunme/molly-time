@@ -2,16 +2,16 @@
 
 import base64
 import binascii
-import io
 import datetime as dt
+import io
 import logging
 import secrets
 from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field, ConfigDict, field_validator
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .accounts import AccountProfile, account_dto, ensure_identity, find_login_user
 from .auth import hash_refresh_token, verify_password
@@ -94,6 +94,7 @@ def get_parent(request: Request, db: DbSession):
             "/api/manage/password",
             "/api/manage/home-config/preview",
             "/api/manage/account/email",
+            "/api/client/error-logs",
         ):
             raise HTTPException(403, "此操作需要家庭管理员")
     return user

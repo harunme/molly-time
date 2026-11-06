@@ -28,6 +28,10 @@ def native_inputs(root, target="tv"):
         for module in sorted(modules)
     ]
     directories += [root / project / "gradle"]
+    # Both APKs compile the same crash queue; changing it must rebuild both channels.
+    shared_android = root / "apps/shared/android"
+    if shared_android.is_dir():
+        directories.append(shared_android)
     if target == "tv" or (root / project / "buildSrc").is_dir():
         directories.append(root / project / "buildSrc")
     files = []

@@ -16,6 +16,7 @@ from .api import (
     account_invitations,
     catalog,
     children,
+    client_error_logs,
     client_release_uploads,
     client_updates,
     device_error_logs,
@@ -141,6 +142,7 @@ def create_app() -> FastAPI:
     app.include_router(account_invitations.router)
     app.include_router(client_updates.router)
     app.include_router(device_error_logs.device_router)
+    app.include_router(client_error_logs.router)
     app.include_router(pairing.router)
     app.include_router(users.router)
     app.include_router(children.router)

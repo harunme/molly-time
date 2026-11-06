@@ -102,6 +102,7 @@ class PhonePlaybackModel(application: Application) : AndroidViewModel(applicatio
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    app.diagnostics.capture(error, "PARENT_PLAYBACK_ERROR")
                     if (
                         !cacheDisabled &&
                             generateSequence<Throwable>(error) { it.cause }

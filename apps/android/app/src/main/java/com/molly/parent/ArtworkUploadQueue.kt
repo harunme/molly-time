@@ -47,6 +47,7 @@ class ArtworkUploadQueue(
     }
 
     suspend fun enqueue(data: ByteArray, item: String) {
+        api.onBreadcrumb?.invoke("cover.enqueue")
         check(!closed)
         require(data.isNotEmpty() && data.size <= 20 * 1024 * 1024)
         val previous = drafts[item]?.upload
@@ -110,11 +111,13 @@ class ArtworkUploadQueue(
                             ensureActive()
                             val value = drafts[current.item]?.takeIf { it.id == current.id } ?: return@launch
                             val next = value.copy(savedURL = resource.getString("imageUrl"))
+                            api.onBreadcrumb?.invoke("cover.saved")
                             drafts[current.item] = next; persist(next)
                             api.onMutation?.invoke(ParentInvalidation(library = true, storage = true))
                             return@launch
                         } catch (e: CancellationException) { throw e }
                         catch (e: Exception) {
+                            api.onDiagnostic?.invoke(e, "COVER_SAVE_ERROR")
                             if (e is ApiFailure && e.status in listOf(400, 401, 403, 413, 422)) return@launch
                             if (e is ApiFailure && e.status in listOf(404, 410)) {
                                 drafts[current.item]?.takeIf { it.id == current.id }?.copy(upload = null)?.let {
@@ -134,6 +137,7 @@ class ArtworkUploadQueue(
 
     fun acknowledge(item: String, url: String) {
         val draft = drafts[item]?.takeIf { it.savedURL == url } ?: return
+        api.onBreadcrumb?.invoke("cover.acknowledged")
         drafts.remove(item)
         scope.launch {
             writes.withLock {

@@ -75,6 +75,11 @@ final class SessionStore {
     }
     private func configureCallbacks() {
         let client = api
+        if let session { ClientDiagnostics.shared.bind(api: client, account: session.user.id) }
+        client.onDiagnostic = { [weak self, weak client] error, code in
+            guard let self, let client, self.api === client else { return }
+            ClientDiagnostics.shared.capture(error, code: code)
+        }
         client.onCookie = { [weak self, weak client] value in
             guard let self, let client, self.api === client else { return }
             guard let current = self.session else { return }
@@ -162,6 +167,7 @@ final class SessionStore {
         let record = SavedAccount(server: serverAddress, session: value, cookie: client.cookie)
         try remember(record)
         session = value; client.csrf = value.csrfToken; activeAccountID = record.id
+        ClientDiagnostics.shared.bind(api: client, account: value.user.id)
         message = nil
         configureUploadDrafts()
         resumeUploads()
@@ -218,6 +224,7 @@ final class SessionStore {
         configureCallbacks()
     }
     private func retireClient() {
+        api.onDiagnostic = nil
         api.onCookie = nil; api.onUnauthorized = nil
         api.onStorageChange = nil
         api.onLibraryChange = nil
@@ -264,6 +271,7 @@ final class SessionStore {
         clearSession(forget: true)
     }
     func clearSession(forget: Bool = false) {
+        ClientDiagnostics.shared.bind(api: nil)
         if let activeAccountID {
             do {
                 var updated = try AccountVault.read()

@@ -12,6 +12,7 @@ from pathlib import Path
 FALLBACK = "电视客户端版本更新"
 TV_PATHS = (
     "apps/tv/client", "apps/tv/gradle", "apps/tv/buildSrc",
+    "apps/shared/android",
     "apps/tv/build.gradle.kts", "apps/tv/settings.gradle.kts",
     "tools/build-tv-client.sh", "tools/android-env.sh", "tools/tv-apk-build.json",
 )

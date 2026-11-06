@@ -5,6 +5,14 @@ import java.util.concurrent.Executors
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MollyTimeApplication : Application() {
+    lateinit var diagnostics: com.molly.diagnostics.ClientDiagnostics
+    fun diagnosticsScope() = com.molly.diagnostics.ClientDiagnostics.scope(session.server, session.deviceId)
+    private fun bindDiagnostics() {
+        diagnostics.bind(diagnosticsScope()) { owner, body ->
+            if (owner != diagnosticsScope()) 401
+            else api.reportDiagnostic(body, owner)
+        }
+    }
     lateinit var session: SessionStore
     lateinit var api: MollyTimeApi
     lateinit var media: MediaStore
@@ -16,16 +24,23 @@ class MollyTimeApplication : Application() {
     lateinit var catalog: CatalogSync
     var catalogListener: ((String, org.json.JSONObject) -> Unit)? = null
     val webUpdateExecutor = Executors.newSingleThreadExecutor()
+    val diagnosticsIo = Executors.newSingleThreadExecutor()
     // Interactive playback never waits behind persisted event uploads or downloads.
     val playbackIo = Executors.newSingleThreadExecutor()
     // Persisted event queues retain their ordering; token rotation has its own lock.
     val io = Executors.newSingleThreadExecutor()
     override fun onCreate() {
         super.onCreate()
-        session = SessionStore(this) { if (::media.isInitialized) media.synchronizeOwner() }
+        diagnostics = com.molly.diagnostics.ClientDiagnostics(this, "tv-android", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        diagnostics.install()
+        session = SessionStore(this) {
+            if (::media.isInitialized) media.synchronizeOwner()
+            if (::api.isInitialized) bindDiagnostics()
+        }
         // Upgrade legacy parent-token TV sessions to revocable device credentials at next login.
         if (session.access.isNotEmpty() && session.deviceId.isEmpty()) session.clear()
         api = MollyTimeApi(session) { DeviceName.read(this) }
+        bindDiagnostics()
         InstallationTelemetry(this)
         watchControl = WatchControl(this, session, api)
         val covers = CoverStore(this, session, api)

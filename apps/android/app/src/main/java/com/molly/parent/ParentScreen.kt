@@ -195,12 +195,12 @@ fun ParentScreen(model: ParentViewModel, updater: UpdateViewModel? = null) {
                             containerColor = MaterialTheme.colorScheme.background,
                             bottomBar = {
                                 if (!wide && model.folder == null)
-                                    MollyNavigation(model.tab, false) { model.tab = it }
+                                    MollyNavigation(model.tab, false) { model.selectTab(it) }
                             },
                         ) { padding ->
                             Row(Modifier.fillMaxSize().padding(padding)) {
                                 if (wide && model.folder == null)
-                                    MollyNavigation(model.tab, true) { model.tab = it }
+                                    MollyNavigation(model.tab, true) { model.selectTab(it) }
                                 Box(
                                     Modifier.weight(1f).fillMaxHeight(),
                                     contentAlignment = Alignment.TopCenter,

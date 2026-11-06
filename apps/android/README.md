@@ -39,6 +39,8 @@ Debug 包名为 `com.molly.parent.debug`，正式包为 `com.molly.parent`。已
 
 ## 安全边界
 
+错误诊断已接入统一后台：未捕获异常先落盘，恢复原账号后补传；Android 11 及以上同时补录系统进程退出原因。封面更换和根 tab 切换保留固定名称的操作记录。详见[客户端错误上报](../../docs/client-diagnostics.md)。
+
 权限、归属、额度和观看规则由服务端裁决。凭证请求限定当前 HTTPS origin 的 `/api/`，拒绝重定向；外部 OSS 媒体和上传签名请求不携带家长 Cookie、CSRF 或 Authorization。账号会话使用 Android Keystore AES-GCM 加密；禁用云备份和设备迁移，媒体缓存和上传草稿放在不备份目录。保存的页面导航不包含 Cookie、CSRF 或密码，不记录签名 URL 或凭证日志。
 
 ## 验证记录（2026-11-06）
