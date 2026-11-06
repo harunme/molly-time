@@ -28,7 +28,9 @@ internal fun UploadPanel(
     reminderKind: String? = null,
     viewVideo: (JSONObject) -> Unit = {},
 ) {
-    val draft by controller.state.collectAsState()
+    // Capture this composition's draft: progress semantics can run after the state is cleared,
+    // before recomposition removes the old progress indicator.
+    val draft = controller.state.collectAsState().value
     val other by
         (if (reminderKind == null) model.reminderUploads else model.uploads).state.collectAsState()
     val busy = draft?.optBoolean("busy") == true
