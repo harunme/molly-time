@@ -730,7 +730,7 @@ def create_upload(body, user, db):
     limit = upload_limits()[body.kind]
     if body.size > limit:
         label = {"video": "视频", "subtitle": "字幕", "image": "封面", "preview": "动态预览"}[body.kind]
-        maximum = f"{limit / 1024**3:g} GB" if limit >= 1024**3 else f"{limit / 1024**2:g} MB"
+        maximum = f"{limit / 1024**3:g} GiB" if limit >= 1024**3 else f"{limit / 1024**2:g} MiB"
         raise HTTPException(413, f"单个{label}不能超过 {maximum}")
     if (
         ext not in extensions[body.kind]

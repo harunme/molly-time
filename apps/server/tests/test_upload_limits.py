@@ -10,6 +10,7 @@ from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import config, db
 from mollytime_server.management_models import UploadSession, UploadTarget
+from mollytime_server.models import Family
 
 VIDEO_LIMIT = 10 * 1024**3
 
@@ -35,7 +36,7 @@ def test_oversize_upload_creates_no_session_or_cloud_multipart(remote, backend):
     config.get_settings().storage_backend = backend
     result = web.post("/api/manage/uploads", json=body(VIDEO_LIMIT + 1))
     assert result.status_code == 413
-    assert result.json()["detail"] == "单个视频不能超过 10 GB"
+    assert result.json()["detail"] == "单个视频不能超过 10 GiB"
     with Session(db.get_engine()) as session:
         assert session.scalar(select(func.count()).select_from(UploadSession)) == 0
         assert session.scalar(select(func.count()).select_from(UploadTarget)) == 0
@@ -47,6 +48,10 @@ def test_oversize_upload_creates_no_session_or_cloud_multipart(remote, backend):
 def test_large_files_up_to_limit_are_allowed(remote, backend, size, monkeypatch):
     web, _ = remote
     config.get_settings().storage_backend = backend
+    # Exercise the per-file limit independently of the new 5 GiB family default.
+    with Session(db.get_engine()) as session:
+        session.get(Family, "f1").storage_limit_bytes = 0
+        session.commit()
     # Size validation is independent of the runner's available disk space.
     monkeypatch.setattr("mollytime_server.api.manage_resources.shutil.disk_usage",
                         lambda _path: SimpleNamespace(free=3 * VIDEO_LIMIT))
@@ -61,13 +66,13 @@ def test_effective_limit_uses_smaller_processing_capacity(parent, monkeypatch):
     assert parent.get("/api/manage/uploads/options").json()["video"] == 200 * 1024**2
     response = parent.post("/api/manage/uploads", json=body(200 * 1024**2 + 1))
     assert response.status_code == 413
-    assert response.json()["detail"] == "单个视频不能超过 200 MB"
+    assert response.json()["detail"] == "单个视频不能超过 200 MiB"
 
 
 @pytest.mark.parametrize("kind,filename,size,limit", [
-    ("subtitle", "captions.srt", 5 * 1024**2 + 1, "字幕不能超过 5 MB"),
-    ("image", "cover.jpg", 20 * 1024**2 + 1, "封面不能超过 20 MB"),
-    ("preview", "preview.webp", 20 * 1024**2 + 1, "动态预览不能超过 20 MB"),
+    ("subtitle", "captions.srt", 5 * 1024**2 + 1, "字幕不能超过 5 MiB"),
+    ("image", "cover.jpg", 20 * 1024**2 + 1, "封面不能超过 20 MiB"),
+    ("preview", "preview.webp", 20 * 1024**2 + 1, "动态预览不能超过 20 MiB"),
 ])
 def test_other_media_keep_their_size_limits(parent, kind, filename, size, limit):
     response = parent.post("/api/manage/uploads", json=body(size, kind, filename))

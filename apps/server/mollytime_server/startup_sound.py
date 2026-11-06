@@ -55,7 +55,7 @@ def remove():
 
 def save(payload: bytes, filename: str):
     if not payload or len(payload) > MAX_UPLOAD:
-        raise HTTPException(413, "请选择不超过 5 MB 的音频")
+        raise HTTPException(413, "请选择不超过 5 MiB 的音频")
     # Restrict to self-contained audio containers; never let a playlist direct
     # ffmpeg to server-local files or network resources.
     supported = (payload.startswith((b"ID3", b"OggS"))

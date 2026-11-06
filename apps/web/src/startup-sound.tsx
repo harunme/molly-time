@@ -50,10 +50,10 @@ export function StartupSound({ notify }: { notify: (message: string) => void }) 
           <Label htmlFor="startup-sound-file">选择音频</Label>
           <Input ref={input} id="startup-sound-file" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,.mp3,.wav,.m4a,.ogg" onChange={e => {
             const selected = e.target.files?.[0]; setError("");
-            if (selected && selected.size > 5 * 1024 * 1024) { setError("请选择不超过 5 MB 的音频"); e.target.value = ""; setFile(undefined); return; }
+            if (selected && selected.size > 5 * 1024 * 1024) { setError("请选择不超过 5 MiB 的音频"); e.target.value = ""; setFile(undefined); return; }
             setFile(selected);
           }} />
-          <p className="muted">支持 MP3、WAV、M4A 和 OGG，最长 5 秒，最大 5 MB。建议使用 2 秒左右的轻柔音效。</p>
+          <p className="muted">支持 MP3、WAV、M4A 和 OGG，最长 5 秒，最大 5 MiB。建议使用 2 秒左右的轻柔音效。</p>
           {(preview || config?.audioUrl) && <div className="my-4"><Label>试听{file ? "所选音频" : "待发布音效"}</Label><audio key={preview || config?.audioUrl} controls preload="metadata" src={preview || config?.audioUrl || undefined} /></div>}
           <div className="actions">
             <Button type="submit" disabled={!file || busy}>{busy ? "正在处理…" : "保存启动音效"}</Button>

@@ -29,16 +29,16 @@ test('oversize videos are rejected before resources or upload sessions are creat
   const upload = page.getByLabel('选择上传视频', { exact: true });
   await expect(upload).toBeAttached();
   await selectOversizeFile(upload, limits.video + 1);
-  await expect(page.getByRole('alert')).toContainText('超过单个视频上限 10.0 GB');
+  await expect(page.getByRole('alert')).toContainText('超过单个视频上限 10.0 GiB');
   expect(created).toEqual([]);
 
   await navigation.getByRole('link', { name: '我的电视', exact: true }).click();
-  await expect(page.getByText('单个视频上限：10.0 GB', { exact: true })).toBeVisible();
+  await expect(page.getByText('单个视频上限：10.0 GiB', { exact: true })).toBeVisible();
   for (const label of ['上传剩 1 集提醒视频', '上传休息提醒视频']) {
     const input = page.getByLabel(label, { exact: true });
     await expect(input).toBeEnabled();
     await selectOversizeFile(input, limits.video + 1);
-    await expect(page.getByRole('alert')).toContainText('超过单个视频上限 10.0 GB');
+    await expect(page.getByRole('alert')).toContainText('超过单个视频上限 10.0 GiB');
     expect(created).toEqual([]);
   }
 });

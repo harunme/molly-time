@@ -74,7 +74,7 @@ function InstallInstructions() {
       const link = document.createElement("a");
       link.href = url.href; link.download = "mollytime-tv.apk";
       document.body.append(link); link.click(); link.remove();
-      setStatus(`v${release.versionName} · ${(release.size / 1024 / 1024).toFixed(1)} MB · 已开始下载，请将安装包转移到电视。`);
+      setStatus(`v${release.versionName} · ${(release.size / 1024 / 1024).toFixed(1)} MiB · 已开始下载，请将安装包转移到电视。`);
     } catch (failure) {
       setStatus(failure instanceof Error && failure.name !== "AbortError" ? failure.message : "网络连接超时，请重试。");
     } finally { clearTimeout(timeout); setBusy(false); }

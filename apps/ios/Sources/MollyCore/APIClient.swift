@@ -31,8 +31,8 @@ public final class APIClient {
 
     public func request<T: Decodable>(_ path: String, method: String = "GET",
                                      query: [URLQueryItem] = [], body: Data? = nil,
-                                     headers: [String: String] = [:]) async throws -> T {
-        let data = try await raw(path, method: method, query: query, body: body, headers: headers)
+                                     headers: [String: String] = [:], timeout: TimeInterval? = nil) async throws -> T {
+        let data = try await raw(path, method: method, query: query, body: body, headers: headers, timeout: timeout)
         do {
             let result = try JSONDecoder().decode(T.self, from: data)
             if let upload = result as? Upload,
@@ -46,8 +46,9 @@ public final class APIClient {
     }
 
     public func raw(_ path: String, method: String = "GET", query: [URLQueryItem] = [],
-                    body: Data? = nil, headers: [String: String] = [:]) async throws -> Data {
-        let request = try authenticatedRequest(path, method: method, query: query, body: body, headers: headers)
+                    body: Data? = nil, headers: [String: String] = [:], timeout: TimeInterval? = nil) async throws -> Data {
+        var request = try authenticatedRequest(path, method: method, query: query, body: body, headers: headers)
+        if let timeout { request.timeoutInterval = timeout }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {

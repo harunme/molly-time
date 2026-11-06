@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MonthPicker } from "@/components/ui/month-picker";
-import { api, bytes as largeBytes, dateTime } from "./api";
+import { api, bytes, dateTime } from "./api";
 import { Pagination, useDebounced, usePagedData } from "./pagination";
 
 type Usage = {
@@ -37,8 +37,6 @@ const currentMonth = () => new Intl.DateTimeFormat("sv-SE", {
   timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit",
 }).format(new Date());
 const exactBytes = (value: number) => `${value.toLocaleString("zh-CN")} 字节`;
-const bytes = (value: number) => value < 1024 ? `${value} B`
-  : value < 1024 ** 2 ? `${(value / 1024).toFixed(1)} KB` : largeBytes(value);
 
 function UsageNotes() {
   return <p className="muted">存储为当前家庭引用的文件容量，包含旧版本和有效分享保留的文件，同一文件在家庭内仅计算一次；家庭之间可能共用文件，家庭容量之和不代表平台实际存储。流量按北京时间自然月汇总，包含播放、下载、字幕和封面。OSS 公网下行按访问日志实际返回字节入账，缓存重播不重复计算；日志存在延迟和遗漏，不作为结算账单。</p>;

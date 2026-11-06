@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import { SelectField } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { api, bytes as largeBytes, dateTime, type Page } from './api';
+import { api, bytes, dateTime, type Page } from './api';
 import { confirmAction } from './feedback';
 import { Pagination, usePagedData } from './pagination';
 import { ResourceSummary } from './resource-summary';
@@ -20,8 +20,6 @@ type TrashItem = {
   videoCount: number; deleting: boolean; error: string; storage: Storage;
 };
 type TrashPage = Page<TrashItem> & { storage: Storage; entryCount: number; retentionDays: number };
-const bytes = (value: number) => value < 1024 ? `${value} B`
-  : value < 1024 ** 2 ? `${(value / 1024).toFixed(1)} KB` : largeBytes(value);
 
 export function TrashRetentionSettings({ readonly, run, notify }: { readonly: boolean; run: (action: () => Promise<void>) => Promise<void>; notify: (value: string) => void }) {
   const [retentionDays, setRetentionDays] = useState('7');

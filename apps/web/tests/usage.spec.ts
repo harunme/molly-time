@@ -84,12 +84,12 @@ test("OSS reports show attributed bytes, unmatched traffic and synchronization f
   });
   await login(page, true);
   await page.getByRole("navigation").getByRole("link", { name: "家庭设置", exact: true }).click();
-  await expect(page.getByText("OSS 公网下行 104.0 MB", { exact: false })).toBeVisible();
+  await expect(page.getByText("OSS 公网下行 104.0 MiB", { exact: false })).toBeVisible();
   await expect(page.getByText(sync.error, { exact: false })).toBeVisible();
   await page.getByRole("navigation").getByRole("link", { name: "运营设置", exact: true }).click();
   await page.getByRole("tab", { name: "家庭用量", exact: true }).click();
   const summary = page.getByText("所选月份 OSS 日志公网下行", { exact: false });
-  await expect(summary).toContainText("128.0 MB");
-  await expect(summary).toContainText("未归属家庭 24.0 MB");
+  await expect(summary).toContainText("128.0 MiB");
+  await expect(summary).toContainText("未归属家庭 24.0 MiB");
   await expect(page.getByText(sync.error, { exact: false })).toBeVisible();
 });

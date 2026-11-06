@@ -88,7 +88,7 @@ def download_playlist(url):
                 chunks.append(chunk)
                 size += len(chunk)
                 if size > MAX_BYTES:
-                    raise ValueError("列表不能超过 2 MB")
+                    raise ValueError("列表不能超过 2 MiB")
             data = b"".join(chunks)
             try:
                 return data.decode("utf-8-sig")
@@ -101,7 +101,7 @@ def download_playlist(url):
 
 def parse_playlist(text, family_id):
     if len(text.encode("utf-8")) > MAX_BYTES:
-        raise ValueError("列表不能超过 2 MB")
+        raise ValueError("列表不能超过 2 MiB")
     channels, seen, skipped = [], set(), 0
     group, pending = "未分组", None
     for raw in text.lstrip("\ufeff").splitlines():

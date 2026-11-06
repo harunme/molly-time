@@ -2,6 +2,8 @@
 
 Android 8.0（API 26）及以上的原生家长端，使用 Jetpack Compose / Material 3 和 Media3，独立于 `apps/tv/client` 电视端。默认连接 `https://mollytime.app`，与 iOS 共用账号、家庭及 Cookie / CSRF API。当前 iOS 源码是产品行为依据，规则见 [AGENTS.md](AGENTS.md)。
 
+存储容量与网页、iOS 统一按 1024 换算，使用 B、KiB、MiB、GiB 等 IEC 单位，非字节单位保留一位小数；100 × 1024³ 字节显示为 `100.0 GiB`，不依赖系统文件大小格式化或系统语言。共用测试样例为 `tools/fixtures/storage-byte-format.tsv`。
+
 ## 构建与运行
 
 在仓库根目录执行：

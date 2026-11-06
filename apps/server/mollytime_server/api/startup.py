@@ -43,7 +43,7 @@ async def upload_sound(request: Request, user: Operator, db: DbSession,
     payload = bytearray()
     async for chunk in request.stream():
         if len(payload) + len(chunk) > startup_sound.MAX_UPLOAD:
-            raise HTTPException(413, "请选择不超过 5 MB 的音频")
+            raise HTTPException(413, "请选择不超过 5 MiB 的音频")
         payload.extend(chunk)
     return await run_in_threadpool(startup_sound.save, bytes(payload), filename)
 

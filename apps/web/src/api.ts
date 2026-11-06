@@ -27,6 +27,6 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, extra
   }
   return response.json();
 }
-export const bytes = (value: number) => value >= 1024**3 ? `${(value / 1024**3).toFixed(1)} GB` : `${(value / 1024**2).toFixed(1)} MB`;
+export { formatStorageBytes as bytes } from './storage-format';
 export const minutes = (value: number) => value < 60000 ? `${Math.round(value / 1000)} 秒` : `${(value / 60000).toFixed(1)} 分钟`;
 export const dateTime = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未同步';

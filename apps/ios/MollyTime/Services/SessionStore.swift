@@ -50,8 +50,8 @@ final class SessionStore {
     let library = LibraryStore()
     let trashDeletions = TrashDeletionStore()
     var recentlyDeleted: DeletedSnapshot?
-    private var restoreTask: Task<Void, Never>?
-    var restoring = true
+    let restoration = SessionRestoration()
+    var restoring: Bool { restoration.restoring }
     var message: String?
     var serverAddress: String
     var canManage: Bool { session?.canManage == true }
@@ -142,10 +142,12 @@ final class SessionStore {
         accounts = updated
     }
     func restoreIfNeeded() async {
-        if let restoreTask { await restoreTask.value; return }
-        let task = Task { await restore() }
-        restoreTask = task
-        await task.value
+        guard session == nil, !api.cookie.isEmpty else { restoration.finish(); return }
+        let client = api, requestEpoch = epoch
+        await restoration.restoreIfNeeded { [weak self] in
+            guard let self, self.api === client, self.epoch == requestEpoch else { throw CancellationError() }
+            try await self.restore(client: client, requestEpoch: requestEpoch)
+        }
     }
     func resumeUploads() {
         guard session != nil, canManage else { return }
@@ -153,21 +155,18 @@ final class SessionStore {
         upload.resumeAutomatically(api: api)
         reminderUpload.resumeAutomatically(api: api)
     }
-    func restore() async {
-        defer { restoring = false }
-        guard !api.cookie.isEmpty else { return }
-        let client = api; let requestEpoch = epoch
-        do {
-            let value: ParentSession = try await client.request("/api/manage/auth/session")
-            guard api === client, epoch == requestEpoch else { return }
-            let record = SavedAccount(server: serverAddress, session: value, cookie: client.cookie)
-            try remember(record)
-            session = value; client.csrf = value.csrfToken; activeAccountID = record.id
-            configureUploadDrafts()
-            resumeUploads()
-            UserDefaults.standard.set(record.id, forKey: "activeAccountID")
-            SecureSession.write(nil, server: serverAddress)
-        } catch { if epoch == requestEpoch { message = error.localizedDescription } }
+    private func restore(client: APIClient, requestEpoch: UUID) async throws {
+        let value: ParentSession = try await client.request("/api/manage/auth/session", timeout: 10)
+        try Task.checkCancellation()
+        guard api === client, epoch == requestEpoch else { throw CancellationError() }
+        let record = SavedAccount(server: serverAddress, session: value, cookie: client.cookie)
+        try remember(record)
+        session = value; client.csrf = value.csrfToken; activeAccountID = record.id
+        message = nil
+        configureUploadDrafts()
+        resumeUploads()
+        UserDefaults.standard.set(record.id, forKey: "activeAccountID")
+        SecureSession.write(nil, server: serverAddress)
     }
     func login(username: String, password: String, server: String) async throws {
         guard !switchingAccount else { throw APIError.http(409, "正在切换账号，请稍候。") }
@@ -212,6 +211,7 @@ final class SessionStore {
         }
         configureUploadDrafts()
         epoch = UUID(); message = nil
+        restoration.finish()
         UserDefaults.standard.set(serverAddress, forKey: "serverAddress")
         UserDefaults.standard.set(record.id, forKey: "activeAccountID")
         SecureSession.write(nil, server: record.server)
@@ -277,6 +277,7 @@ final class SessionStore {
         // A fresh API ensures late responses from the old session cannot affect a new login.
         api = APIClient(endpoint: api.endpoint)
         session = nil; activeAccountID = nil; epoch = UUID()
+        restoration.finish()
         UserDefaults.standard.removeObject(forKey: "activeAccountID")
         configureCallbacks()
     }

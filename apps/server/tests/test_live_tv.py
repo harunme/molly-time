@@ -310,5 +310,5 @@ def test_old_episode_reminder_does_not_block_a_new_live_session(operator):  # no
 
 
 def test_import_size_limit():
-    with pytest.raises(ValueError, match="2 MB"):
+    with pytest.raises(ValueError, match="2 MiB"):
         parse_playlist("x" * (MAX_BYTES + 1), "platform")

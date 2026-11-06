@@ -36,7 +36,7 @@ internal fun UpdateUi(updater: UpdateViewModel, source: String, ready: Boolean) 
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "${updater.received/1024/1024} / ${(updater.release?.size?:0)/1024/1024} MB"
+                        "${updater.received/1024/1024} / ${(updater.release?.size?:0)/1024/1024} MiB"
                     )
                 }
             }

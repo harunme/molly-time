@@ -562,7 +562,7 @@ function App() {
     {compatibilityWarning && <p role="alert" className="error">{compatibilityWarning}</p>}
     <div className="update-state-line">
       <p role="status" className="update-state">{clientUpdate?.message ?? '正在检查更新…'}</p>
-      {clientUpdate?.release && <span className="update-package">{clientUpdate.phase !== 'available' && `版本 ${clientUpdate.release.versionName} · `}{Math.ceil(clientUpdate.release.size / (1024 * 1024))} MB</span>}
+      {clientUpdate?.release && <span className="update-package">{clientUpdate.phase !== 'available' && `版本 ${clientUpdate.release.versionName} · `}{Math.ceil(clientUpdate.release.size / (1024 * 1024))} MiB</span>}
     </div>
     {['downloading', 'preparing'].includes(clientUpdate?.phase ?? '') && <div className="update-progress" role="progressbar" aria-label="更新下载进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={clientUpdate?.percent ?? 0}>
       <span style={{ width: `${clientUpdate?.percent ?? 0}%` }} />

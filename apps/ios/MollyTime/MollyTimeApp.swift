@@ -8,15 +8,20 @@ struct MollyTimeApp: App {
     @State private var startup = StartupExperience()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    private var showingStartup: Bool {
+        (store.restoring && store.restoration.failure == nil) || !startup.finished
+    }
     var body: some Scene {
         WindowGroup {
             ZStack {
                 // Mount the authenticated page during the launch experience so
                 // its first request overlaps the animation instead of following it.
-                if !store.restoring {
+                if store.restoration.failure != nil || !store.restoring {
                     Group {
                         if store.session != nil {
                             ParentTabs().id(store.sessionGeneration)
+                        } else if let failure = store.restoration.failure {
+                            SessionRecoveryView(message: failure)
                         } else {
                             LoginView()
                         }
@@ -24,16 +29,20 @@ struct MollyTimeApp: App {
                     .allowsHitTesting(startup.finished)
                     .accessibilityHidden(!startup.finished)
                 }
-                if store.restoring || !startup.finished {
+                if showingStartup {
                     StartupView(startedAt: startup.startedAt).zIndex(1)
                         .transition(.opacity)
                 }
             }
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: store.restoring || !startup.finished)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: showingStartup)
             .environment(store)
             .tint(Palette.ink)
             .buttonBorderShape(.capsule)
             .task { await store.restoreIfNeeded() }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                await store.restoreIfNeeded()
+            }
             .onChange(of: scenePhase, initial: true) { _, phase in
                 if phase == .active {
                     startup.start(reduceMotion: reduceMotion)
@@ -43,6 +52,40 @@ struct MollyTimeApp: App {
                 }
             }
         }
+    }
+}
+
+private struct SessionRecoveryView: View {
+    let message: String
+    @Environment(SessionStore.self) private var store
+    @AccessibilityFocusState private var failureFocused: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                BrandLockup()
+                Text("暂时无法恢复登录")
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($failureFocused)
+                Text(message).foregroundStyle(.secondary)
+                Text("登录信息已保留，无需重新输入账号和密码。")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button {
+                    Task { await store.restoreIfNeeded() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if store.restoring { ProgressView().tint(.black) }
+                        Text(store.restoring ? "正在重试…" : "重试")
+                    }.frame(maxWidth: .infinity, minHeight: 24)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(store.restoring)
+                .accessibilityIdentifier("session.retry")
+            }
+            .padding(28).frame(maxWidth: 480).frame(maxWidth: .infinity)
+        }.mollyPageBackground()
+            .onAppear { failureFocused = true }
     }
 }
 

@@ -288,7 +288,7 @@ apps/server/.venv/bin/python tools/rebuild-watch-statistics.py --rebuild-family 
 
 ### 家庭空间额度与超管用户管理
 
-新建家庭的 `families.storage_limit_bytes` 默认是 5 × 1024³ 字节（界面 5 GB）。额度按家庭共享，不按设备或成员重复累计，也不预分配实际存储。启动时兼容升级 SQLite/MySQL 旧表：已有家庭该字段为 NULL，继续沿用原 `MOLLYTIME_FAMILY_STORAGE_LIMIT_BYTES`（默认 0，即不限额）；不批量降低旧用户额度。超管明确保存后写入该家庭的独立额度，0 为不限额，之后不受全局兼容配置影响。
+新建家庭的 `families.storage_limit_bytes` 默认是 5 × 1024³ 字节（界面 5 GiB）。额度按家庭共享，不按设备或成员重复累计，也不预分配实际存储。启动时兼容升级 SQLite/MySQL 旧表：已有家庭该字段为 NULL，继续沿用原 `MOLLYTIME_FAMILY_STORAGE_LIMIT_BYTES`（默认 0，即不限额）；不批量降低旧用户额度。超管明确保存后写入该家庭的独立额度，0 为不限额，之后不受全局兼容配置影响。
 
 - `GET /api/manage/operations/users?q=&page=1&pageSize=20`：仅超管可用，搜索邮箱、账号 ID、用户名、家庭名称；返回用户角色、所属家庭、已用空间、上传预留和额度，不返回凭据。
 - `PUT /api/manage/operations/users/{user_id}/storage`：提交整数字节数 `limitBytes` 与读取时的 `expectedLimitBytes`。使用现有来源、会话、CSRF 与超管校验，拒绝负数、小数、布尔、字符串及超过 JavaScript 精确整数范围的数值；额度已变化返回 409，不覆盖其他超管的更新。

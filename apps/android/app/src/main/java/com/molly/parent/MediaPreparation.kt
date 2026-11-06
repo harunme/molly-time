@@ -31,7 +31,7 @@ object MediaPreparation {
                 }
                 out.toByteArray()
             }
-        require(data.size <= 20 * 1024 * 1024) { "图片不能超过 20 MB" }
+        require(data.size <= 20 * 1024 * 1024) { "图片不能超过 20 MiB" }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "无法读取图片，请重新选择。" }

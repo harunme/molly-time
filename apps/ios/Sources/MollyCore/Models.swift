@@ -153,6 +153,15 @@ public enum DisplayFormat {
         return String(format: "%lld:%02lld", seconds / 60, seconds % 60)
     }
     public static func bytes(_ value: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
+        // Match the web and Android contract, independent of system locale and file-size defaults.
+        let units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"]
+        var amount = Double(value), unit = 0
+        while amount >= 1024 && unit < units.count - 1 {
+            amount /= 1024
+            unit += 1
+        }
+        guard unit > 0 else { return "\(value) B" }
+        let rounded = (amount * 10).rounded(.toNearestOrAwayFromZero) / 10
+        return String(format: "%.1f %@", locale: Locale(identifier: "en_US_POSIX"), rounded, units[unit])
     }
 }

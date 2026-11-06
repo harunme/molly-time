@@ -44,11 +44,11 @@ export function LiveTvOperations({ notify }: { notify: (message: string) => void
             <Button type="button" variant="bordered" onClick={() => setUrl(example)}>填入 vbskycn IPv4 示例</Button>
             <Button type="button" variant="bordered" disabled={!data.sourceUrl} onClick={() => { void perform(() => api('/operations/live-tv/import', 'POST', { sourceUrl: data.sourceUrl }), '订阅已刷新'); }}>刷新当前订阅</Button>
           </div>
-          <Label htmlFor="live-file">或上传 M3U / TXT 列表（最大 2 MB）</Label>
+          <Label htmlFor="live-file">或上传 M3U / TXT 列表（最大 2 MiB）</Label>
           <Input id="live-file" type="file" accept=".m3u,.m3u8,.txt" onChange={e => {
             const file = e.target.files?.[0]; e.target.value = '';
             if (!file) return;
-            if (file.size > 2 * 1024 * 1024) { setError('列表不能超过 2 MB'); return; }
+            if (file.size > 2 * 1024 * 1024) { setError('列表不能超过 2 MiB'); return; }
             void perform(async () => api('/operations/live-tv/import', 'POST', { content: await file.text() }), '频道已导入并开启');
           }} />
           <p className="muted">导入成功会替换当前频道列表并对所有家庭开启；失败会保留原列表。订阅暂由运营手动刷新。</p>

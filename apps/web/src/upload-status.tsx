@@ -62,7 +62,6 @@ export function useItemUploads(itemIds: string[], settled?: () => void) {
   return { rows, error, refresh: () => refreshRef.current(), forItem: (id: string) => rows.filter(row => row.itemId === id) };
 }
 
-const uploadBytes = (value: number) => value < 1024 ? `${value} B` : value < 1024 ** 2 ? `${Math.ceil(value / 1024)} KB` : bytes(value);
 
 /** One passive summary per card, regardless of how many files belong to it. */
 export function ItemUploadStatus({ rows }: { rows: Upload[] }) {
@@ -98,7 +97,7 @@ export function FileUploadStatus({ row, readonly, changed, showFilename = true }
   return <section className="file-upload-status" aria-label={`${row.filename} 上传状态`} data-status={failed ? 'failed' : row.status}>
     <div className="file-upload-caption">{showFilename && <span title={row.filename}>{row.filename}</span>}<span role="status">{status}</span></div>
     {row.status === 'uploading' && <Progress value={percent} aria-label={`${row.filename} 上传进度`} />}
-    <div className="file-upload-detail"><span>{row.status === 'processing' ? '处理完成后自动更新' : `${uploadBytes(offset)} / ${uploadBytes(row.size)}`}</span>
+    <div className="file-upload-detail"><span>{row.status === 'processing' ? '处理完成后自动更新' : `${bytes(offset)} / ${bytes(row.size)}`}</span>
       {!readonly && <div className="file-upload-actions">
         {row.status === 'uploading' && hasFile(row.id) && <Button type="button" variant="ghost" size="sm" disabled={busy || current?.preparing} onClick={() => {
           if (current?.paused || current?.error) void act(() => resume(row)); else { pause(row.id); changed(); }

@@ -3,7 +3,6 @@
 package com.molly.parent
 
 import android.graphics.Bitmap
-import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
@@ -1407,8 +1406,7 @@ internal fun AccountScreen(
         user.optString("displayName").takeUnless { it.isEmpty() || it == "null" }
             ?: user.getString("name")
     val storage = model.settings?.optJSONObject("storage")
-    val context = LocalContext.current
-    fun bytes(key: String) = Formatter.formatFileSize(context, storage?.optLong(key) ?: 0)
+    fun bytes(key: String) = storageBytes(storage?.optLong(key) ?: 0)
     LazyColumn(
         modifier,
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
