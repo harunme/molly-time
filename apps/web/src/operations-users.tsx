@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -48,9 +49,9 @@ export function OperationsUsers() {
         <TableCell>{account.familyName}</TableCell><TableCell>{roles[account.role] || account.role}</TableCell>
         <TableCell>{bytes(account.storage.usedBytes)}</TableCell><TableCell>{bytes(account.storage.reservedBytes)}</TableCell>
         <TableCell>{account.storage.limitBytes === 0 ? "不限额" : bytes(account.storage.limitBytes)}</TableCell>
-        <TableCell><Button variant="bordered" size="sm" aria-label={`配置 ${account.email || account.name} 的家庭空间额度`} onClick={() => {
+        <TableCell><div className="flex flex-wrap gap-2"><Button variant="bordered" size="sm" aria-label={`配置 ${account.email || account.name} 的家庭空间额度`} onClick={() => {
           setEditing(account); setAmount(String(account.storage.limitBytes / GB)); setFailure("");
-        }}>配置额度</Button></TableCell>
+        }}>配置额度</Button><Button variant="bordered" size="sm" asChild><Link to={`/operations/videos?userId=${encodeURIComponent(account.id)}`} aria-label={`查看 ${account.email || account.name} 的家庭视频`}>查看视频</Link></Button></div></TableCell>
       </TableRow>)}</TableBody></Table>
     </div>}
     <Pagination {...list} label="用户列表分页" loading={list.refreshing} />

@@ -27,6 +27,9 @@ def test_new_defaults_legacy_preservation_and_idempotent_migration(tmp_path):
         connection.exec_driver_sql("INSERT INTO families (id, name) VALUES ('old', 'Legacy')")
     db.upgrade_storage_quotas(engine)
     db.upgrade_storage_quotas(engine)
+    # Family ORM writes trigger watch-rollup hooks. Complete the surrounding
+    # schema after exercising the legacy ALTER, as normal startup does.
+    db.Base.metadata.create_all(engine)
     with Session(engine) as session:
         assert session.get(Family, "old").storage_limit_bytes is None
         assert storage_limit(session, "old") == config.get_settings().family_storage_limit_bytes

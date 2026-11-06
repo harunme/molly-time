@@ -28,6 +28,7 @@ from .api import (
     manage_resources,
     manage_trash,
     operations,
+    operations_videos,
     pairing,
     playback,
     playback_settings,
@@ -160,6 +161,7 @@ def create_app() -> FastAPI:
     app.include_router(manage_family.router)
     app.include_router(device_error_logs.manage_router)
     app.include_router(operations.router)
+    app.include_router(operations_videos.router)
     app.include_router(startup.router)
     app.include_router(usage.router)
     app.include_router(manage_client_releases.router)
