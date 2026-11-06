@@ -43,7 +43,7 @@ internal fun UpdateUi(updater: UpdateViewModel, source: String, ready: Boolean) 
         },
         confirmButton = {
             when {
-                updater.stage in listOf("ready", "awaiting") && updater.release != null ->
+                updater.stage == "ready" && updater.release != null ->
                     QuietAction("安装更新") { activity?.let { updater.install(it) } }
                 updater.stage == "error" -> QuietAction("重新检查") { updater.check(source, true) }
                 updater.release != null && !updater.busy ->

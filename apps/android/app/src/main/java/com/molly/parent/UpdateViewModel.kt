@@ -46,7 +46,7 @@ constructor(
 
     private var permissionPending = false
     val busy
-        get() = stage in listOf("checking", "downloading", "installing")
+        get() = stage in listOf("checking", "downloading", "installing", "awaiting")
 
     fun check(source: String, manual: Boolean = false) {
         val origin = runCatching { Endpoint(source).origin.toString() }.getOrNull() ?: return
@@ -144,7 +144,9 @@ constructor(
     fun install(activity: Activity) {
         val value = release ?: return
         val apk = file ?: return
-        if (stage == "installing") return
+        // Awaiting Android's result is still an active install. Retrying here
+        // would abandon the session the user has just approved.
+        if (busy || permissionPending) return
         if (!activity.packageManager.canRequestPackageInstalls()) {
             permissionPending = true
             try {
@@ -163,7 +165,10 @@ constructor(
         }
         stage = "installing"
         message = "正在准备安装…"
-        ClientUpdateInstaller(activity).install(apk, value, operation) { text, waiting ->
+        ClientUpdateInstaller(activity).install(apk, value, operation) onPrepared@ { text, waiting ->
+            // A system callback can arrive before the worker's commit notification.
+            // Never overwrite a final result (or a confirmation launch error).
+            if (stage != "installing") return@onPrepared
             message = text
             stage = if (waiting) "awaiting" else "ready"
             visible = true
@@ -194,10 +199,17 @@ constructor(
             return
         val status =
             intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        @Suppress("DEPRECATION")
+        val confirm = if (status == PackageInstaller.STATUS_PENDING_USER_ACTION)
+            intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) else null
+        // Recreation can retain the original launch Intent even after setIntent.
+        // Consume that original object before opening the system confirmation.
+        intent.action = null
+        intent.removeExtra(Intent.EXTRA_INTENT)
         visible = true
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            @Suppress("DEPRECATION")
-            val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+            stage = "awaiting"
+            message = "请在系统安装界面确认更新，确认后等待安装完成"
             if (confirm != null)
                 runCatching { activity.startActivity(confirm) }
                     .onFailure {
@@ -221,7 +233,12 @@ constructor(
                     "更新已安装，请重新打开 MollyTime"
                 }
                 PackageInstaller.STATUS_FAILURE_ABORTED -> "尚未安装，更新包已保留"
-                else -> "安装未完成（状态 $status），请重试；无需卸载当前应用"
+                else -> {
+                    val detail = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+                        ?.replace(Regex("\\s+"), " ")?.take(300)?.takeIf { it.isNotBlank() }
+                    "安装未完成（状态 $status）" +
+                        (detail?.let { "：$it" } ?: "，请重试；无需卸载当前应用")
+                }
             }
     }
 

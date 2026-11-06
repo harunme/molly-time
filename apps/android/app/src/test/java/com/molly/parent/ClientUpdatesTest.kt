@@ -177,6 +177,95 @@ class ClientUpdatesTest {
     }
 
     @Test
+    fun approvedInstallRemainsBusyAndCannotBeReplacedByAnotherInstallOrCheck() {
+        val client = ClientUpdates(app, transport { r ->
+            response(r, if (r.url.encodedPath.endsWith(".apk")) data
+                else json("release" to release().json()).toString().toByteArray())
+        })
+        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().get()
+        val prefs = app.getSharedPreferences("molly.updates", 0)
+        val model = UpdateViewModel(app, client)
+        fun finishWork() {
+            client.executor.submit {}.get(3, java.util.concurrent.TimeUnit.SECONDS)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        }
+        try {
+            model.check("https://fixture.example", true)
+            finishWork()
+            model.download()
+            finishWork()
+            assertEquals("ready", model.stage)
+            prefs.edit().putInt("session", 42).putString("nonce", "test-nonce").commit()
+            val confirmation = Intent("fixture.CONFIRM_INSTALL")
+            model.result(activity, Intent(ClientUpdateInstaller.INSTALL_RESULT)
+                .putExtra(PackageInstaller.EXTRA_SESSION_ID, 42)
+                .putExtra("nonce", "test-nonce")
+                .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_PENDING_USER_ACTION)
+                .putExtra(Intent.EXTRA_INTENT, confirmation))
+            assertEquals(confirmation.action, org.robolectric.Shadows.shadowOf(activity).nextStartedActivity.action)
+            assertEquals("awaiting", model.stage)
+            assertTrue(model.busy)
+
+            // Returning from Android's confirmation is not a failed installation.
+            model.install(activity)
+            model.check("https://fixture.example", true)
+            finishWork()
+            assertEquals("awaiting", model.stage)
+            assertEquals(42, prefs.getInt("session", -1))
+            assertNull(org.robolectric.Shadows.shadowOf(activity).nextStartedActivity)
+
+            model.result(activity, Intent(ClientUpdateInstaller.INSTALL_RESULT)
+                .putExtra(PackageInstaller.EXTRA_SESSION_ID, 42)
+                .putExtra("nonce", "test-nonce")
+                .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE_ABORTED))
+            assertEquals("ready", model.stage)
+            assertFalse(model.busy)
+        } finally {
+            client.executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun installerFailureIncludesSystemReasonAndReleasesTheSession() {
+        val activity = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java).setup().get()
+        val model = UpdateViewModel(app)
+        val prefs = app.getSharedPreferences("molly.updates", 0)
+        prefs.edit().putInt("session", 42).putString("nonce", "test-nonce").commit()
+        model.result(activity, Intent(ClientUpdateInstaller.INSTALL_RESULT)
+            .putExtra(PackageInstaller.EXTRA_SESSION_ID, 42)
+            .putExtra("nonce", "test-nonce")
+            .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE_CONFLICT)
+            .putExtra(PackageInstaller.EXTRA_STATUS_MESSAGE, "INSTALL_FAILED_UPDATE_INCOMPATIBLE\n signatures differ"))
+        assertTrue(model.message.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE signatures differ"))
+        assertFalse(model.busy)
+        assertFalse(prefs.contains("session"))
+    }
+
+    @Test
+    fun activityRecreationDoesNotReplayConsumedInstallConfirmation() {
+        val prefs = app.getSharedPreferences("molly.updates", 0)
+        prefs.edit().putInt("session", 42).putString("nonce", "test-nonce").commit()
+        val callback = Intent(app, androidx.activity.ComponentActivity::class.java)
+            .setAction(ClientUpdateInstaller.INSTALL_RESULT)
+            .putExtra(PackageInstaller.EXTRA_SESSION_ID, 42)
+            .putExtra("nonce", "test-nonce")
+            .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_PENDING_USER_ACTION)
+            .putExtra(Intent.EXTRA_INTENT, Intent("fixture.CONFIRM_INSTALL"))
+        val model = UpdateViewModel(app)
+        val controller = Robolectric.buildActivity(androidx.activity.ComponentActivity::class.java, callback).setup()
+        try {
+            model.result(controller.get(), controller.get().intent)
+            assertEquals("fixture.CONFIRM_INSTALL", org.robolectric.Shadows.shadowOf(controller.get()).nextStartedActivity.action)
+            assertNotEquals(ClientUpdateInstaller.INSTALL_RESULT, controller.get().intent.action)
+            controller.recreate()
+            model.result(controller.get(), controller.get().intent)
+            assertNull(org.robolectric.Shadows.shadowOf(controller.get()).nextStartedActivity)
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
     fun dismissedCheckCannotReopenDialogWhenItsResponseArrives() {
         val entered = java.util.concurrent.CountDownLatch(1)
         val proceed = java.util.concurrent.CountDownLatch(1)
