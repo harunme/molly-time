@@ -10,7 +10,6 @@ struct LoginView: View {
     @State private var username = ""
     @State private var password = ""
     @State private var server = "https://mollytime.app"
-    @State private var connectionSettings = false
     @State private var busy = false
     @State private var failure: String?
     @State private var focus: LoginField?
@@ -58,18 +57,9 @@ struct LoginView: View {
                         .padding(.top, 4)
                     Button("使用邀请码加入") { focus = nil; registering = true }
                         .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).disabled(busy)
-                    Button {
-                        focus = nil
-                        connectionSettings = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "network")
-                            Text(isOfficialServer ? "MollyTime 官方服务" : "自定义服务")
-                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-                        }.font(.footnote).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-                    }.buttonStyle(.plain).disabled(busy)
-                        .accessibilityLabel("连接设置，\(isOfficialServer ? "MollyTime 官方服务" : "自定义服务")")
+                    Label(isOfficialServer ? "MollyTime 官方服务" : "自定义服务", systemImage: "network")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                     if !isAccountSwitch && !store.accounts.isEmpty {
                         Button("使用已保存的账号") { showingAccounts = true }
                             .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).disabled(busy)
@@ -95,7 +85,6 @@ struct LoginView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(busy) }
             }
         }
-        .sheet(isPresented: $connectionSettings) { LoginConnectionSettings(address: $server) }
         .sheet(isPresented: $showingAccounts) { NavigationStack { AccountSwitcherView() } }
         .sheet(isPresented: $registering) {
             InvitationRegistrationView(server: server, returnToLogin: { email in
@@ -161,38 +150,6 @@ struct LoginView: View {
             }
             catch { failure = error.localizedDescription }
         }
-    }
-}
-
-private struct LoginConnectionSettings: View {
-    @Binding var address: String
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft = ""
-    @State private var failure: String?
-    var body: some View {
-        NavigationStack {
-            MollyForm {
-                Section {
-                    TextField("https://mollytime.app", text: $draft)
-                        .textFieldStyle(MollyInputStyle()).keyboardType(.URL).textContentType(.URL)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .submitLabel(.done).onSubmit(save)
-                        .accessibilityLabel("HTTPS 服务地址")
-                    Button("使用 MollyTime 官方服务") { draft = "https://mollytime.app"; failure = nil }
-                } header: { Text("服务地址") } footer: {
-                    Text("默认连接官方服务。如果你使用自部署的 MollyTime，可以填写自己的 HTTPS 地址。")
-                }
-                if let failure { Section { Text(failure).foregroundStyle(.red) } }
-            }.navigationTitle("连接设置").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
-                }
-        }.onAppear { draft = address }
-    }
-    private func save() {
-        do { address = try Endpoint(draft).origin.absoluteString; dismiss() }
-        catch { failure = error.localizedDescription }
     }
 }
 

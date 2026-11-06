@@ -31,15 +31,11 @@ class MainActivityTest {
         compose.onNodeWithText("请输入账号和密码").performScrollTo().assertIsDisplayed()
         assertNull(model.session)
     }
-    @Test fun connectionSettingsAreSeparateAndRejectUnsafeOrigins() {
+    @Test fun officialServiceIsReadOnly() {
         val model = login()
-        compose.onNodeWithText("MollyTime 官方服务").performScrollTo().performClick()
-        compose.mainClock.advanceTimeBy(1_000)
-        compose.waitForIdle()
-        compose.onNodeWithText("连接设置").assertIsDisplayed()
-        compose.onNodeWithContentDescription("https://mollytime.app").performTextReplacement("http://unsafe.example")
-        compose.onNodeWithText("保存连接设置").performClick()
-        compose.onNodeWithText("请输入完整的 HTTPS 服务地址").assertExists()
+        compose.onNodeWithText("MollyTime 官方服务").performScrollTo().assertIsDisplayed().assertHasNoClickAction()
+        compose.onNodeWithText("连接设置").assertDoesNotExist()
+        compose.onNodeWithText("保存连接设置").assertDoesNotExist()
         assertEquals("https://mollytime.app", model.server)
     }
     @Test fun passwordVisibilityCanBeToggledWithoutLosingInput() {

@@ -174,7 +174,7 @@ fun ParentScreen(model: ParentViewModel, updater: UpdateViewModel? = null) {
                     pages.isNotEmpty() &&
                         (model.session != null ||
                             JSONObject(pages.last()).getString("kind") in
-                                listOf("registration", "accounts", "addAccount", "connection")) -> {
+                                listOf("registration", "accounts", "addAccount")) -> {
                         val page = JSONObject(pages.last())
                         DetailHost(
                             model,
@@ -187,7 +187,6 @@ fun ParentScreen(model: ParentViewModel, updater: UpdateViewModel? = null) {
                     model.session == null ->
                         LoginScreen(
                             model,
-                            onConnection = { sheet = ParentSheet("connection") },
                             onRegistration = { navigate("registration", null) },
                             onAccounts = { navigate("accounts", null) },
                         )
@@ -328,7 +327,6 @@ fun ParentScreen(model: ParentViewModel, updater: UpdateViewModel? = null) {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     when (current.kind) {
-                        "connection" -> ConnectionSheet(model) { sheet = null }
                         "serverInfo" -> {
                             SheetHeading("连接设置", "当前连接的 MollyTime 服务")
                             SurfaceBlock {
@@ -558,7 +556,6 @@ fun ParentScreen(model: ParentViewModel, updater: UpdateViewModel? = null) {
 @Composable
 internal fun LoginScreen(
     model: ParentViewModel,
-    onConnection: () -> Unit,
     onRegistration: () -> Unit = {},
     onAccounts: () -> Unit = {},
     saved: JSONObject? = null,
@@ -672,26 +669,21 @@ internal fun LoginScreen(
             if (model.accounts.isNotEmpty())
                 QuietAction("切换账号", enabled = !model.loginBusy, onClick = onAccounts)
             Spacer(Modifier.height(20.dp))
-            TextButton(
-                onClick = {
-                    focus.clearFocus()
-                    onConnection()
-                },
-                enabled = !model.loginBusy,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                colors =
-                    ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
+            Row(
+                modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 44.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Public, null, Modifier.size(16.dp))
+                Icon(
+                    Icons.Outlined.Public, null, Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     if (model.server.trimEnd('/') == "https://mollytime.app") "MollyTime 官方服务"
                     else "自定义服务",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Icon(Icons.Outlined.ChevronRight, null, Modifier.size(16.dp))
             }
         }
     }
@@ -1517,34 +1509,6 @@ internal fun AccountScreen(
                     )
             }
         }
-    }
-}
-
-@Composable
-internal fun ConnectionSheet(model: ParentViewModel, dismiss: () -> Unit) {
-    var address by rememberSaveable { mutableStateOf(model.server) }
-    var error by remember { mutableStateOf<String?>(null) }
-    SheetHeading("连接设置", "默认连接 MollyTime 官方服务")
-    FieldLabel("服务地址")
-    MollyTextField(
-        address,
-        {
-            address = it
-            error = null
-        },
-        "https://mollytime.app",
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-        error = error != null,
-    )
-    error?.let { ErrorMessage(it) }
-    Hint("如使用自己的服务，请输入完整的 HTTPS 地址。")
-    PrimaryAction("保存连接设置") {
-        runCatching { Endpoint(address).origin.toString() }
-            .onSuccess {
-                model.server = it
-                dismiss()
-            }
-            .onFailure { error = "请输入完整的 HTTPS 服务地址" }
     }
 }
 

@@ -95,7 +95,6 @@ internal fun DetailHost(
             DetailFrame("添加账号", back) {
                 LoginScreen(
                     model,
-                    { navigate("connection", null) },
                     { navigate("registration", null) },
                     { navigate("accounts", null) },
                     item,
@@ -160,7 +159,6 @@ internal fun DetailHost(
                     }
                 }
             }
-        "connection" -> DetailFrame("连接设置", back) { ConnectionSheet(model, back) }
     }
 }
 

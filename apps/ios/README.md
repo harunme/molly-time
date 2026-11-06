@@ -7,7 +7,7 @@
 1. 安装完整 **Xcode 16 或更新版本**及 iOS Simulator runtime。仅 Command Line Tools 不能编译 iOS App。
 2. 打开 `MollyTime.xcodeproj`，选择 `MollyTime` scheme 和 iPhone 模拟器运行。
 3. 真机运行时，在 Signing & Capabilities 选择自己的 Personal Team；必要时修改 Bundle Identifier 为自己的唯一标识。免费 Apple 账号可用于个人真机调试，TestFlight / App Store 分发需要付费会员。
-4. 使用已有 MollyTime 账号登录。登录页「连接设置」可切换另一个 HTTPS 服务。未登录时仅显示登录页，登录后展示真实片库。
+4. 使用已有 MollyTime 账号登录。登录页仅展示服务标识，不提供服务地址修改入口。未登录时仅显示登录页，登录后展示真实片库。
 
 工程不依赖 CocoaPods、第三方 Swift 包或 XcodeGen。`MollyCore` 是同目录本地 Swift Package。新增 Swift 文件后运行：
 
@@ -127,7 +127,7 @@ swift test --package-path apps/ios --scratch-path /tmp/molly-ios-native \
 
 - 移除三个主页面顶部重复的 tab 名称，保留底部原生导航标签；使用紧凑的生活化开场、茉莉花与叶绿细节，不恢复大面积介绍区。
 - 封面改为账号会话内共享的有界内存缓存（64 MB / 200 项），合并并发请求；卡片滚动消失不取消共享加载，重新出现同步读取缓存，不先清空图片。十分钟后可重新验证，失败保留已有封面。退出账号清理缓存，并拒绝旧请求回写；不在磁盘持久化私人封面。
-- 登录表单采用固定布局、完整点按区域与明确焦点描边；凭据输入使用原生 UITextField 交接焦点，连接设置独立为面板。
+- 登录表单采用固定布局、完整点按区域与明确焦点描边；凭据输入使用原生 UITextField 交接焦点，服务标识为只读展示。
 - 21 项核心测试通过，包含缓存命中、并发合并、离屏取消、失败保留旧图和退出账号后的迟到响应隔离；模拟器及真机编译成功，已覆盖安装到连接的 iPhone。
 ## 2026-11-04 回归黄色主题与 TV 启动体验
 
