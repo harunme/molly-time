@@ -93,8 +93,9 @@ def download_file(package: PackageName, version: int, digest: str, user: Operato
         logging.getLogger(__name__).exception("Cannot fetch client APK")
         raise HTTPException(503, "安装包下载不可用，请检查 OSS 文件和存储配置")
     channel = "-debug" if package.endswith(".debug") else ""
+    client = "android" if package.startswith("com.molly.parent") else "tv"
     return FileResponse(
         path,
         media_type="application/vnd.android.package-archive",
-        filename=f"mollytime-tv{channel}-{release.versionName}.apk",
+        filename=f"mollytime-{client}{channel}-{release.versionName}.apk",
     )

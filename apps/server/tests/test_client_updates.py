@@ -366,6 +366,13 @@ def test_parent_discovery_download_and_inventory_are_separate(operator, package)
         "/api/manage/operations/client-releases", params={"packageName": package}
     ).json()
     assert inventory["total"] == 1 and inventory["items"][0]["packageName"] == package
+    private_url = operator.get(
+        f"/api/manage/operations/client-releases/{package}/{release.versionCode}/{release.sha256}/download-url"
+    ).json()["url"]
+    private_download = operator.get(private_url)
+    channel = "-debug" if package.endswith(".debug") else ""
+    assert private_download.content == apk
+    assert f"mollytime-android{channel}-{release.versionName}.apk" in private_download.headers["content-disposition"]
     assert (
         operator.get("/api/client/releases/latest").json()["release"]["packageName"]
         == "com.molly.tv"
