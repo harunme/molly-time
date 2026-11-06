@@ -10,6 +10,7 @@ import { ClientReleases } from "./client-releases";
 import { Invitations } from "./invitations";
 import { OperationsAnalytics } from "./analytics";
 import { OperationsUsage } from "./usage";
+import { OperationsUsers } from "./operations-users";
 import { BackupSettings } from "./backup-settings";
 import { LiveTvOperations } from "./live-tv";
 import { StartupSound } from "./startup-sound";
@@ -34,7 +35,7 @@ type Form = StorageConfig & {
 export function Operations({ notify }: { notify: (message: string) => void; }) {
   const tab = useParams()["*"] || "";
   const navigate = useNavigate();
-  const validTab = ["analytics", "storage", "backups", "client-releases", "invitations", "usage", "live-tv", "startup-sound"].includes(tab);
+  const validTab = ["users", "analytics", "storage", "backups", "client-releases", "invitations", "usage", "live-tv", "startup-sound"].includes(tab);
   const [form, setForm] = useState<Form>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -87,7 +88,7 @@ export function Operations({ notify }: { notify: (message: string) => void; }) {
       <div className="page-title">
         <div>
           <h1>运营设置</h1>
-          <p>查看平台使用统计，管理家庭用量、用户邀请、平台存储、数据库备份和电视客户端版本，仅平台超管可访问。</p>
+          <p>查看平台使用统计，管理用户额度、家庭用量、用户邀请、平台存储、数据库备份和电视客户端版本，仅平台超管可访问。</p>
         </div>
       </div>
       <Tabs className="operations-tabs" value={tab} activationMode="manual" onValueChange={(value) => navigate(`/operations/${value}`)}>
@@ -96,6 +97,7 @@ export function Operations({ notify }: { notify: (message: string) => void; }) {
           <TabsTrigger value="storage">文件存储</TabsTrigger>
           <TabsTrigger value="backups">数据库备份</TabsTrigger>
           <TabsTrigger value="client-releases">客户端版本</TabsTrigger>
+          <TabsTrigger value="users">用户管理</TabsTrigger>
           <TabsTrigger value="invitations">用户邀请</TabsTrigger>
           <TabsTrigger value="usage">家庭用量</TabsTrigger>
           <TabsTrigger value="live-tv">电视直播</TabsTrigger>
@@ -104,6 +106,7 @@ export function Operations({ notify }: { notify: (message: string) => void; }) {
         <TabsContent value="analytics"><OperationsAnalytics /></TabsContent>
         <TabsContent value="live-tv"><LiveTvOperations notify={notify} /></TabsContent>
         <TabsContent value="startup-sound"><StartupSound notify={notify} /></TabsContent>
+        <TabsContent value="users"><OperationsUsers /></TabsContent>
         <TabsContent value="storage">
           {error && (
             <Alert variant="destructive" className="error" role="alert"><AlertDescription>

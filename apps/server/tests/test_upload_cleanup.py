@@ -12,7 +12,7 @@ from test_tv_playback import client  # noqa: F401
 
 from mollytime_server import config, db, media_worker
 from mollytime_server.management_models import MediaTask, UploadSession, UploadTarget
-from mollytime_server.models import MediaFile
+from mollytime_server.models import Family, MediaFile
 from mollytime_server.remote_uploads import expire_uploads
 from mollytime_server.upload_metadata import metadata_path
 
@@ -179,7 +179,9 @@ def test_cleaned_task_cannot_be_retried_and_quota_is_released(remote):
     with Session(db.get_engine()) as session:
         task_id = session.query(MediaTask).filter_by(upload_id=key).one().id
         used = sum(obj["size"] for obj in family_objects(session, "f1").values())
-    config.get_settings().family_storage_limit_bytes = used + 10
+    with Session(db.get_engine()) as session:
+        session.get(Family, "f1").storage_limit_bytes = used + 10
+        session.commit()
     assert expire_uploads() == 1
     assert web.post(f"/api/manage/tasks/{task_id}/retry").status_code == 409
     start(web)  # The expired failed upload no longer reserves this family's capacity.

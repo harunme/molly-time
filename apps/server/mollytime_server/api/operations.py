@@ -6,11 +6,12 @@ import uuid
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
+from ..accounts import AccountIdentity
 from ..backup_settings import BackupConfig
 from ..backup_settings import get_config as get_backup_config
 from ..backup_settings import get_status as get_backup_status
@@ -19,11 +20,14 @@ from ..client_releases import inventory, publication_lock
 from ..deps import DbSession
 from ..manage_auth import Parent
 from ..management_models import OperationsStorage, UploadSession, UploadTarget
-from ..models import MediaFile
+from ..models import Family, MediaFile, User
+from ..remote_uploads import upload_lock
 from ..share_models import ObjectCleanup, ShareFile
 from ..storage.oss import OssStorage
 from ..storage.settings import FIELDS, encode, get_storage_settings
+from ..storage_quotas import MAX_STORAGE_LIMIT_BYTES, storage_limit
 from ..transactions import external_io, serialize_sqlite_write
+from ..usage import storage_totals
 
 router = APIRouter(prefix="/api/manage/operations", tags=["operations"])
 
@@ -35,6 +39,74 @@ def superadmin(user: Parent):
 
 
 Operator = Annotated[object, Depends(superadmin)]
+
+
+@router.get("/users")
+def users(
+    user: Operator, db: DbSession,
+    q: str = Query(default="", max_length=254),
+    page: int = Query(default=1, ge=1), pageSize: int = Query(default=20, ge=1, le=100),
+):
+    query = db.query(User, Family, AccountIdentity).select_from(User).join(
+        Family, Family.id == User.family_id,
+    ).outerjoin(AccountIdentity, AccountIdentity.user_id == User.id)
+    if q.strip():
+        pattern = "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = query.filter(
+            User.name.ilike(pattern, escape="\\")
+            | Family.name.ilike(pattern, escape="\\")
+            | AccountIdentity.account_id.ilike(pattern, escape="\\")
+            | AccountIdentity.email.ilike(pattern, escape="\\")
+        )
+    total = query.count()
+    rows = query.order_by(User.created_at.desc(), User.id).offset(
+        (page - 1) * pageSize,
+    ).limit(pageSize).all()
+    # Batch disk accounting; do not perform one object walk per user.
+    limits = {family.id: storage_limit(db, family.id) for _, family, _ in rows}
+    usage = storage_totals(db, list(limits))
+    return {
+        "total": total, "page": page, "pageSize": pageSize,
+        "items": [{
+            "id": account.id, "name": account.name,
+            "accountId": identity.account_id if identity else None,
+            "email": identity.email if identity else None,
+            "role": account.role, "disabled": account.is_disabled,
+            "familyId": family.id, "familyName": family.name,
+            "storage": {
+                "usedBytes": usage[family.id]["usedBytes"],
+                "reservedBytes": usage[family.id]["reservedBytes"],
+                "limitBytes": limits[family.id],
+            },
+        } for account, family, identity in rows],
+    }
+
+
+class UserStorageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limitBytes: int = Field(strict=True, ge=0, le=MAX_STORAGE_LIMIT_BYTES)
+    expectedLimitBytes: int = Field(strict=True, ge=0, le=MAX_STORAGE_LIMIT_BYTES)
+
+
+@router.put("/users/{user_id}/storage")
+def update_user_storage(user_id: str, body: UserStorageBody, user: Operator, db: DbSession):
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(404, "用户不存在")
+    family_id = target.family_id
+    with external_io(db):
+        pass
+    # Serialize with new upload reservations and share claims, not just other admins.
+    with upload_lock(f"family-{family_id}"):
+        serialize_sqlite_write(db)
+        family = db.query(Family).filter_by(id=family_id).with_for_update().first()
+        if family is None:
+            raise HTTPException(404, "用户片库不存在")
+        if storage_limit(db, family_id) != body.expectedLimitBytes:
+            raise HTTPException(409, "空间额度已被修改，请刷新用户列表后重试")
+        family.storage_limit_bytes = body.limitBytes
+        db.commit()
+    return {"familyId": family_id, "limitBytes": body.limitBytes}
 
 
 @router.get("/backups")

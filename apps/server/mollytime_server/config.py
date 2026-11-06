@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     oss_cdn_domain: str | None = None  # reserved; never rewrite a signed host
     oss_upload_ttl: int = Field(default=900, ge=60, le=3600)
     upload_expiry_hours: int = Field(default=72, ge=1)
-    family_storage_limit_bytes: int = Field(default=0, ge=0)  # 0 = unlimited
+    # Legacy families only; new families have a persisted 5 GiB quota. 0 = unlimited.
+    family_storage_limit_bytes: int = Field(default=0, ge=0)
     media_processing_max_bytes: int = Field(default=10 * 1024**3, gt=0)
     oss_signed_url_ttl: int = Field(default=3600, ge=60, le=14400)
     oss_log_bucket: str | None = None  # Same-region access-log destination; opt-in.

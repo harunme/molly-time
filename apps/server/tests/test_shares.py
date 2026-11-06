@@ -179,7 +179,9 @@ def test_single_video_target_duplicate_deleted_claim_and_quota(parent, recipient
         == 404
     )
     # f2 already references the subtitle: only the 10-byte video is new.
-    config.get_settings().family_storage_limit_bytes = 17
+    with Session(db.get_engine()) as session:
+        session.get(Family, "f2").storage_limit_bytes = 17
+        session.commit()
     assert (
         recipient.post(
             "/api/manage/shares/accept",
@@ -190,7 +192,9 @@ def test_single_video_target_duplicate_deleted_claim_and_quota(parent, recipient
     with Session(db.get_engine()) as session:
         assert session.query(ShareClaim).count() == 0
         assert session.query(Item).filter_by(family_id="f2").count() == 2
-    config.get_settings().family_storage_limit_bytes = 18
+    with Session(db.get_engine()) as session:
+        session.get(Family, "f2").storage_limit_bytes = 18
+        session.commit()
     episode = accept(recipient, share, targetFolderId="receiver-folder")
     assert accept(recipient, share) == episode
     second = create(parent, "e1")

@@ -13,7 +13,7 @@ from test_tv_playback import client  # noqa: F401
 from mollytime_server import config, db
 from mollytime_server.management_models import Device, MediaOptions, UploadTarget
 from mollytime_server.media_worker import run_once
-from mollytime_server.models import MediaFile
+from mollytime_server.models import Family, MediaFile
 from mollytime_server.remote_uploads import expire_uploads
 from mollytime_server.storage import build_storage
 from mollytime_server.upload_metadata import metadata_path
@@ -132,7 +132,9 @@ def test_remote_cancel_expiry_and_quota(remote):
     expire_uploads()
     assert obj in oss.aborted
     assert client.get(f"/api/manage/uploads/{key}").json()["status"] == "cancelled"
-    config.get_settings().family_storage_limit_bytes = 1
+    with Session(db.get_engine()) as session:
+        session.get(Family, "f1").storage_limit_bytes = 1
+        session.commit()
     assert (
         client.post(
             "/api/manage/uploads",

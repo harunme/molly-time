@@ -284,3 +284,14 @@ apps/server/.venv/bin/python tools/rebuild-watch-statistics.py --rebuild-family 
 资源统计改为数据库内条件聚合，视频时长仍逐条向下取整后求和；字幕文件数与
 包含字幕的视频数分开计算。启动迁移会补充 `(family_id, parent_id)` 和
 `(family_id, kind, item_id)` 索引，供目录递归和文件聚合使用。
+
+
+### 家庭空间额度与超管用户管理
+
+新建家庭的 `families.storage_limit_bytes` 默认是 5 × 1024³ 字节（界面 5 GB）。额度按家庭共享，不按设备或成员重复累计，也不预分配实际存储。启动时兼容升级 SQLite/MySQL 旧表：已有家庭该字段为 NULL，继续沿用原 `MOLLYTIME_FAMILY_STORAGE_LIMIT_BYTES`（默认 0，即不限额）；不批量降低旧用户额度。超管明确保存后写入该家庭的独立额度，0 为不限额，之后不受全局兼容配置影响。
+
+- `GET /api/manage/operations/users?q=&page=1&pageSize=20`：仅超管可用，搜索邮箱、账号 ID、用户名、家庭名称；返回用户角色、所属家庭、已用空间、上传预留和额度，不返回凭据。
+- `PUT /api/manage/operations/users/{user_id}/storage`：提交整数字节数 `limitBytes` 与读取时的 `expectedLimitBytes`。使用现有来源、会话、CSRF 与超管校验，拒绝负数、小数、布尔、字符串及超过 JavaScript 精确整数范围的数值；额度已变化返回 409，不覆盖其他超管的更新。
+- 配额修改与上传预留、分享领取使用同一家庭锁。新上传及领取校验已用空间＋上传预留＋新增字节；额度调低后不删除已有媒体或取消在途上传。`GET /api/manage/settings` 返回该家庭的有效额度，网页、iOS、Android 沿用现有读取和刷新方式展示。
+
+验证：家庭默认值、旧表迁移和幂等性、权限/CSRF、输入边界、同家庭共享与跨家庭隔离、配置冲突、上传预留、分享领取、降低及不限额等相关服务端测试共 148 项通过；网页构建及用户管理桌面/手机浏览器流程通过。验证使用隔离测试数据库，未修改生产额度。

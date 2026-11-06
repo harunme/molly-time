@@ -44,6 +44,27 @@ def get_session_factory() -> sessionmaker[Session]:
     return _SessionLocal
 
 
+def upgrade_storage_quotas(engine) -> None:
+    """NULL keeps the legacy global limit; new ORM-created libraries get 5 GiB."""
+    with engine.begin() as connection:
+        mysql = engine.dialect.name == "mysql"
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        if mysql and connection.exec_driver_sql(
+            "SELECT GET_LOCK('mollytime_storage_quotas', 30)"
+        ).scalar() != 1:
+            raise RuntimeError("Cannot acquire storage quota migration lock")
+        try:
+            columns = inspect(connection).get_columns("families")
+            if "storage_limit_bytes" not in {column["name"] for column in columns}:
+                connection.exec_driver_sql(
+                    "ALTER TABLE families ADD COLUMN storage_limit_bytes BIGINT NULL"
+                )
+        finally:
+            if mysql:
+                connection.exec_driver_sql("SELECT RELEASE_LOCK('mollytime_storage_quotas')")
+
+
 def upgrade_reminder_sessions(engine) -> None:
     """Add session binding to early reminder tables without replacing existing rows."""
     with engine.begin() as connection:
@@ -246,6 +267,7 @@ def init_db() -> None:
     upgrade_share_credentials(engine)
     Base.metadata.create_all(bind=engine)
     # create_all creates new tables but does not upgrade columns in existing ones.
+    upgrade_storage_quotas(engine)
     upgrade_watch_control_daily(engine)
     upgrade_reminder_sessions(engine)
     upgrade_trash_entries(engine)

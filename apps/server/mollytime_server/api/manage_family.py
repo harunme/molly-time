@@ -18,6 +18,7 @@ from ..management_models import Device, FamilySettings, WatchInterval, WatchSess
 from ..models import ChildProfile, Family, Item
 from ..playback_settings import SubtitlePreference, default_subtitle, save_default_subtitle
 from ..storage.settings import get_storage_settings
+from ..storage_quotas import storage_limit
 from ..transactions import external_io, serialize_sqlite_write
 from ..usage import storage_totals
 from .manage_resources import owned
@@ -132,7 +133,7 @@ def settings(user: Parent, db: DbSession):
             "backend": backend,
             "usedBytes": usage["usedBytes"],
             "reservedBytes": usage["reservedBytes"],
-            "limitBytes": get_settings().family_storage_limit_bytes,
+            "limitBytes": storage_limit(db, user.family_id),
         },
     }
 

@@ -29,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+from .storage_quotas import DEFAULT_STORAGE_LIMIT_BYTES
 
 
 def _uuid() -> str:
@@ -50,6 +51,10 @@ class Family(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+    storage_limit_bytes: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, default=DEFAULT_STORAGE_LIMIT_BYTES,
+    )
 
     users: Mapped[list[User]] = relationship(back_populates="family")
     children: Mapped[list[ChildProfile]] = relationship(back_populates="family")

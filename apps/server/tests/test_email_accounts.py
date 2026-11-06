@@ -66,6 +66,8 @@ def test_invited_account_can_login_by_email_or_id_with_family_isolation(operator
         internal_id = identity.user_id
         user = session.get(User, internal_id)
         family_id = user.family_id
+        from mollytime_server.models import Family
+        assert session.get(Family, family_id).storage_limit_bytes == 5 * 1024**3
         assert user.role == "admin" and family_id not in ("f1", "f2")
         assert session.get(AccountInvitation, row["id"]).accepted_at is not None
         assert session.get(AccountInvitation, row["id"]).user_id == internal_id

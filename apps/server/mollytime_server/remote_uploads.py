@@ -17,6 +17,7 @@ from .models import MediaFile
 from .share_models import ContentShare, ShareFile
 from .storage import build_storage
 from .storage.local import LocalStorage
+from .storage_quotas import storage_limit
 from .transactions import external_io
 from .upload_metadata import metadata_path
 
@@ -65,7 +66,7 @@ def verified_parts(target, row):
 
 
 def ensure_capacity(db, family, size):
-    limit = get_settings().family_storage_limit_bytes
+    limit = storage_limit(db, family)
     if not limit:
         return
     from .usage import family_objects
