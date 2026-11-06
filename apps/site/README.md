@@ -17,7 +17,7 @@ pnpm --dir apps/site test # 在构建后验证静态页面及下载逻辑
 
 生产环境通过 FastAPI 挂载到 `/`，其余路由优先于官网。官网文件默认位于 `MOLLYTIME_PARENT_WEB_DIR/site`，可用 `MOLLYTIME_SITE_WEB_DIR` 单独指定。未构建官网时保留原有根路径 JSON 响应。`tools/build-web.sh`、标准 Docker 构建和 GitHub 发布流程均包含官网；现有预构建镜像和受限发布接收器无需新增目录白名单。
 
-下载按钮按点击读取 `/api/client/releases/latest` 的正式频道。未发布、超时和失败都有提示，重试无需刷新页面。只接受同源、符合现有 API 路径的安装包地址。
+首屏主按钮下载 Android 家长端，旁边保留电视端下载，下方可进入网页版家长后台。下载按钮按点击读取 `/api/client/releases/latest?packageName=…` 的对应正式频道（家长端 `com.molly.parent`、电视端 `com.molly.tv`），后续发版无需修改官网链接。未发布、超时和失败都有独立提示，重试无需刷新页面。只接受同源、符合所选客户端 API 路径的安装包地址。
 
 配图沿用 AstroWind 模板，原版 Unsplash 照片下载到本地，避免加载外部图片。文案围绕已有功能，不承诺预置内容或所有品牌电视兼容。首页精简为首屏、核心功能、开始使用和 FAQ。安装包下载由首屏按钮直接触发，没有底部下载卡片和页脚。
 

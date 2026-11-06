@@ -21,9 +21,9 @@ test('homepage has working navigation, metadata, FAQ and no browser errors', asy
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('让孩子的每次观看，都有你的用心在里面。');
   await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', 'https://mollytime.app');
-  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveAttribute('href', '/manage/');
-  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveCSS('background-color', 'rgb(248, 222, 126)');
-  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveCSS('color', 'rgb(63, 58, 50)');
+  await expect(page.getByRole('link', { name: '使用网页版家长后台' })).toHaveAttribute('href', '/manage/');
+  await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('background-color', 'rgb(248, 222, 126)');
+  await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('color', 'rgb(63, 58, 50)');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 244)');
   await page.getByRole('navigation', { name: '主要导航', exact: true }).getByRole('link', { name: '产品功能' }).click();
   await expect(page).toHaveURL(/#features$/);
@@ -33,7 +33,7 @@ test('homepage has working navigation, metadata, FAQ and no browser errors', asy
   await expect(page.locator('#faqs details').first()).not.toHaveAttribute('open', '');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
-  await expect(page.getByRole('link', { name: '进入家长后台' }).first()).toHaveCSS('color', 'rgb(63, 58, 50)');
+  await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('color', 'rgb(63, 58, 50)');
   await capture(page, 'test-results/dark.png');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
@@ -64,37 +64,54 @@ test('mobile menu, anchors and layout at narrow phone widths', async ({ page }) 
   await capture(page, 'test-results/mobile.png');
 });
 
-test('download absence and server failure permit retry', async ({ page }) => {
-  let attempts = 0;
-  await page.route('**/api/client/releases/latest', (route) => {
-    attempts++;
-    return route.fulfill(attempts === 1 ? { json: { release: null } } : { status: 503, body: 'unavailable' });
+for (const channel of [
+  { name: '下载 Android 家长端', packageName: 'com.molly.parent', status: '#download-android-status', filename: 'mollytime-android.apk' },
+  { name: '下载电视端', packageName: 'com.molly.tv', status: '#download-status', filename: 'mollytime-tv.apk' },
+]) {
+  test(`${channel.packageName}: absence and server failure permit retry`, async ({ page }) => {
+    let attempts = 0;
+    await page.route('**/api/client/releases/latest?*', (route) => {
+      expect(new URL(route.request().url()).searchParams.get('packageName')).toBe(channel.packageName);
+      attempts++;
+      return route.fulfill(attempts === 1 ? { json: { release: null } } : { status: 503, body: 'unavailable' });
+    });
+    await page.goto('/#download');
+    const button = page.getByRole('button', { name: channel.name });
+    await button.click();
+    await expect(page.locator(channel.status)).toContainText('尚未发布');
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect(page.locator(channel.status)).toContainText('请稍后重试');
+    await expect(button).toBeEnabled();
   });
-  await page.goto('/#download');
-  const button = page.getByRole('button', { name: '下载电视端' });
-  await button.click();
-  await expect(page.locator('#download-status')).toContainText('尚未发布');
-  await expect(button).toBeEnabled();
-  await button.click();
-  await expect(page.locator('#download-status')).toContainText('请稍后重试');
-  await expect(button).toBeEnabled();
-});
 
-test('formal channel APK downloads and untrusted destinations are rejected', async ({ page }) => {
-  const path = `/api/client/releases/com.molly.tv/7/${'a'.repeat(64)}.apk`;
-  let destination = path;
-  await page.route('**/api/client/releases/latest', (route) => route.fulfill({ json: {
-    release: { packageName: 'com.molly.tv', url: destination, versionName: '1.0.0', size: 1048576 },
-  } }));
-  await page.route(`**${path}`, (route) => route.fulfill({ body: 'apk-fixture', contentType: 'application/vnd.android.package-archive', headers: { 'Content-Disposition': 'attachment; filename="mollytime-tv.apk"' } }));
-  await page.goto('/#download');
-  const button = page.getByRole('button', { name: '下载电视端' });
-  const pending = page.waitForEvent('download');
-  await button.click();
-  expect((await pending).suggestedFilename()).toBe('mollytime-tv.apk');
-  await expect(page.locator('#download-status')).toContainText('v1.0.0 · 1.0 MB');
-  destination = `https://untrusted.example${path}`;
-  await button.click();
-  await expect(page.locator('#download-status')).toContainText('地址无效');
-  await expect(button).toBeEnabled();
-});
+  test(`${channel.packageName}: downloads latest formal APK and rejects wrong channel or URL`, async ({ page }) => {
+    const path = `/api/client/releases/${channel.packageName}/7/${'a'.repeat(64)}.apk`;
+    let destination = path;
+    let packageName = channel.packageName;
+    await page.route('**/api/client/releases/latest?*', (route) => {
+      expect(new URL(route.request().url()).searchParams.get('packageName')).toBe(channel.packageName);
+      return route.fulfill({ json: {
+        release: { packageName, url: destination, versionName: '1.0.0', size: 1048576 },
+      } });
+    });
+    await page.route(`**${path}`, (route) => route.fulfill({ body: 'apk-fixture', contentType: 'application/vnd.android.package-archive', headers: { 'Content-Disposition': `attachment; filename="${channel.filename}"` } }));
+    await page.goto('/#download');
+    const button = page.getByRole('button', { name: channel.name });
+    const pending = page.waitForEvent('download');
+    await button.click();
+    expect((await pending).suggestedFilename()).toBe(channel.filename);
+    await expect(page.locator(channel.status)).toContainText('v1.0.0 · 1.0 MB');
+    for (const invalid of [`https://untrusted.example${path}`, path.replace(channel.packageName, `${channel.packageName}.debug`), `${path}?token=invalid`]) {
+      destination = invalid;
+      await button.click();
+      await expect(page.locator(channel.status)).toContainText('地址无效');
+      await expect(button).toBeEnabled();
+    }
+    packageName = `${channel.packageName}.debug`;
+    destination = path;
+    await button.click();
+    await expect(page.locator(channel.status)).toContainText('信息不完整');
+    await expect(button).toBeEnabled();
+  });
+}

@@ -19,8 +19,8 @@ const schema = {
     id="download"
     tagline="给孩子的家庭视频空间"
     actions={[
-      { variant: 'primary', text: '进入家长后台', href: '/manage/', icon: 'tabler:arrow-right' },
-      { id: 'download-button', type: 'button', text: '下载电视端', icon: 'tabler:download' },
+      { id: 'download-android-button', variant: 'primary', type: 'button', text: '下载 Android 家长端', icon: 'tabler:download', 'aria-describedby': 'download-android-status' },
+      { id: 'download-button', type: 'button', text: '下载电视端', icon: 'tabler:download', 'aria-describedby': 'download-status' },
     ]}
     image={{ src: '~/assets/images/hero-image.png', alt: '色彩斑斓的探索者，走向新的世界' }}
   >
@@ -39,7 +39,7 @@ const schema = {
   ]} />
 
   <Steps id="how-it-works" title="把故事带到大屏幕，就从这里开始。" items={[
-    { title: '第一步：<span class="font-medium">开通并登录账号</span>', description: '当前通过邀请开通账号。收到邀请后，按提示完成激活，再进入家长后台，为孩子添加档案。', icon: 'tabler:user-check' },
+    { title: '第一步：<span class="font-medium">开通并登录账号</span>', description: '当前通过邀请开通账号。收到邀请后，按提示完成激活，下载 Android 家长端或使用网页版登录，为孩子添加档案。', icon: 'tabler:user-check' },
     { title: '第二步：<span class="font-medium">安装并绑定电视</span>', description: '在家长后台的「我的电视」中查看安装方法并下载电视端。安装后打开 MollyTime，用手机扫描电视上的二维码，登录并确认绑定；也可在后台点击「绑定电视」，输入电视上的四位配对码。', icon: 'tabler:device-tv' },
     { title: '第三步：<span class="font-medium">添加与发布内容</span>', description: '上传你准备好的视频，整理系列与单集，再安排电视首页，把内容发布给孩子观看。也可以先整理内容，再连接电视。', icon: 'tabler:cloud-upload' },
     { title: '准备好了，选择孩子档案开始观看！', icon: 'tabler:check' },
@@ -48,6 +48,7 @@ const schema = {
   <FAQs id="faqs" tagline="使用帮助" title="开始之前，你可能想了解。" subtitle="关于内容、设备和第一次使用，先聊聊这些。" schema items={[
     { title: 'MollyTime 自带视频内容吗？', description: 'MollyTime 提供家庭视频管理和电视播放功能，视频由家长自行上传与整理。官网配图用于产品介绍，不代表应用内提供的视频资源。' },
     { title: '哪些电视可以使用？', description: '电视端面向支持安装 APK 的 Android 电视与电视盒子。不同品牌、系统版本的安装方式和兼容情况有所不同，请先在你的设备上测试。' },
+    { title: '家长端可以在手机上使用吗？', description: 'Android 8.0 及以上的手机可以从官网首屏下载家长端 APK。首次安装时，请按系统提示允许浏览器安装应用；以后可在应用的「我的 → 版本更新」中下载并安装新版。也可以使用网页版家长后台。' },
     { title: '换一台电视，需要重新上传内容吗？', description: '在同一账号下配对新电视即可访问已发布内容。设备配对和撤销可以在家长后台管理，无需为每台电视重复整理。' },
   ]} />
 

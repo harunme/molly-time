@@ -1,27 +1,41 @@
-<p id="download-status" class="mt-4 text-sm text-muted" aria-live="polite" hidden></p>
+---
+import Button from '~/components/ui/Button.astro';
+---
+<div class="mt-4">
+  <Button variant="link" href="/manage/" text="使用网页版家长后台" icon="tabler:arrow-right" class="inline-flex min-h-11 items-center px-3 text-sm" />
+  <p id="download-android-status" class="mt-2 text-sm text-muted" role="status" hidden></p>
+  <p id="download-status" class="mt-2 text-sm text-muted" role="status" hidden></p>
+</div>
 <script>
-  const button = document.querySelector<HTMLButtonElement>('#download-button');
-  const status = document.querySelector<HTMLElement>('#download-status');
-  button?.addEventListener('click', async () => {
-    if (!status) return;
-    status.hidden = false;
-    button.disabled = true;
-    status.textContent = '正在获取最新安装包…';
-    try {
-      const response = await fetch('/api/client/releases/latest', { signal: AbortSignal.timeout(12000), cache: 'no-store' });
-      if (!response.ok) throw new Error('暂时无法获取安装包，请稍后重试。');
-      const { release } = await response.json();
-      if (!release) { status.textContent = '电视安装包尚未发布，请稍后再来。'; return; }
-      if (release.packageName !== 'com.molly.tv' || typeof release.url !== 'string' || typeof release.versionName !== 'string' || !Number.isSafeInteger(release.size) || release.size <= 0) throw new Error('安装包信息不完整，请稍后重试。');
-      const url = new URL(release.url, location.origin);
-      if (url.origin !== location.origin || !/^\/api\/client\/releases\/com\.molly\.tv\/\d+\/[a-f0-9]{64}\.apk$/.test(url.pathname) || url.search || url.hash) throw new Error('安装包地址无效，请稍后重试。');
-      const link = document.createElement('a');
-      link.href = url.href;
-      link.download = 'mollytime-tv.apk';
-      document.body.append(link); link.click(); link.remove();
-      status.textContent = `v${release.versionName} · ${(release.size / 1024 / 1024).toFixed(1)} MB · 已开始下载`;
-    } catch (error) {
-      status.textContent = error instanceof Error && error.name !== 'TimeoutError' ? error.message : '网络连接超时，请重试。';
-    } finally { button.disabled = false; }
-  });
+  const channels = [
+    { buttonId: 'download-android-button', statusId: 'download-android-status', packageName: 'com.molly.parent', label: 'Android 家长端', filename: 'mollytime-android.apk', path: /^\/api\/client\/releases\/com\.molly\.parent\/\d+\/[a-f0-9]{64}\.apk$/ },
+    { buttonId: 'download-button', statusId: 'download-status', packageName: 'com.molly.tv', label: '电视端', filename: 'mollytime-tv.apk', path: /^\/api\/client\/releases\/com\.molly\.tv\/\d+\/[a-f0-9]{64}\.apk$/ },
+  ];
+  for (const channel of channels) {
+    const button = document.getElementById(channel.buttonId) as HTMLButtonElement | null;
+    const status = document.getElementById(channel.statusId);
+    button?.addEventListener('click', async () => {
+      if (!status) return;
+      status.hidden = false;
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      status.textContent = `正在获取${channel.label}最新安装包…`;
+      try {
+        const response = await fetch(`/api/client/releases/latest?packageName=${channel.packageName}`, { signal: AbortSignal.timeout(12000), cache: 'no-store' });
+        if (!response.ok) throw new Error('暂时无法获取安装包，请稍后重试。');
+        const { release } = await response.json();
+        if (!release) { status.textContent = `${channel.label}安装包尚未发布，请稍后再来。`; return; }
+        if (release.packageName !== channel.packageName || typeof release.url !== 'string' || typeof release.versionName !== 'string' || !Number.isSafeInteger(release.size) || release.size <= 0) throw new Error('安装包信息不完整，请稍后重试。');
+        const url = new URL(release.url, location.origin);
+        if (url.origin !== location.origin || !channel.path.test(url.pathname) || url.username || url.password || url.search || url.hash) throw new Error('安装包地址无效，请稍后重试。');
+        const link = document.createElement('a');
+        link.href = url.href;
+        link.download = channel.filename;
+        document.body.append(link); link.click(); link.remove();
+        status.textContent = `${channel.label} v${release.versionName} · ${(release.size / 1024 / 1024).toFixed(1)} MB · 已开始下载`;
+      } catch (error) {
+        status.textContent = error instanceof Error && error.name !== 'TimeoutError' ? error.message : '网络连接超时，请重试。';
+      } finally { button.disabled = false; button.removeAttribute('aria-busy'); }
+    });
+  }
 </script>
