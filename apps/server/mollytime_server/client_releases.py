@@ -15,7 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .config import get_settings
 
-PackageName = Literal["com.molly.tv", "com.molly.tv.debug"]
+PackageName = Literal[
+    "com.molly.tv", "com.molly.tv.debug", "com.molly.parent", "com.molly.parent.debug"
+]
+PACKAGES = ("com.molly.tv", "com.molly.tv.debug", "com.molly.parent", "com.molly.parent.debug")
 MAX_APK_BYTES = 512 * 1024 * 1024
 
 
@@ -153,7 +156,7 @@ def inventory() -> tuple[list[ClientRelease], set[tuple[str, int, str]], int]:
         except (ValueError, OSError):
             invalid += 1
             logging.getLogger(__name__).warning("Invalid client release history record: %s", path)
-    for package in ("com.molly.tv", "com.molly.tv.debug"):
+    for package in PACKAGES:
         try:
             release = read_release(package)
             if release:

@@ -69,11 +69,11 @@ rollback requires a deliberate database reconciliation.
 
 Pushing a commit to `main` runs `.github/workflows/deploy.yml`. CI reads the
 current APK version and native-input fingerprint from Seoul using the restricted
-SSH command `apk-state`, builds the parent app, TV app, and official site, and builds a signed Android APK
-only when its native inputs changed (or `force_apk` was selected). It sends the
+SSH commands `apk-state` and `parent-apk-state`, builds the parent web app, TV web app, and official site, and builds each signed Android APK
+only when its own native inputs changed (or `force_apk` / `force_parent_apk` was selected). It sends the
 release to `ubuntu@43.133.227.83`. The public Seoul host key is pinned in
 `infra/seoul-known-hosts`; the existing `MOLLYTIME_DEPLOY_KEY` secret is reused.
-The CI public key is restricted to `check`, `apk-state`, and deployment commands
+The CI public key is restricted to `check`, `apk-state`, `parent-apk-state`, and deployment commands
 by `infra/github-deploy-seoul-gate.sh` on the Seoul host.
 
 The fixed host receiver `/usr/local/lib/mollytime-deploy-seoul.py` comes from
@@ -136,3 +136,22 @@ installed TV has upgraded. Check an installed TV's server address and playback,
 then observe that the legacy endpoint is no longer receiving client requests
 before stopping the Shanghai proxy. Keep the IP certificate valid while the
 relay is needed.
+
+## Android parent APK channel
+
+The parent client uses package `com.molly.parent`, its own native-input fingerprint,
+version history, publication plan and Actions artifact. The pipeline reuses existing
+TV signing Secrets; it never commits signing files. The parent release APK travels
+with the deployment archive while TV retains its artifact-download optimization.
+The receiver validates both plans before changing the running application, then
+publishes each required channel after API health checks. Publication is independent
+per channel; an already published APK is not downgraded if another channel fails.
+Rerun CI to allocate versions above all recorded history.
+
+Install the fixed receiver/gate upgrade once with `python3 tools/setup_parent_ci.py`
+using the existing Seoul management identity. This operation takes the deployment
+lock, retains the prior scripts, checks unchanged TV state, and adds only the
+restricted read-only `parent-apk-state` command. It does not deploy application code.
+APK payloads and release manifests remain under the existing validated storage
+prefix and package-specific paths. Parent API/upload/inventory support is delivered
+with the application release. See [Android client](../apps/android/README.md#apk-更新与流水线).

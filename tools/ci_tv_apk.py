@@ -12,20 +12,24 @@ from pathlib import Path
 MAX_VERSION = 2100000000
 
 
-def native_inputs(root):
-    settings = (root / "apps/tv/settings.gradle.kts").read_text()
+def native_inputs(root, target="tv"):
+    project = "apps/tv" if target == "tv" else "apps/android"
+    module = ":client" if target == "tv" else ":app"
+    settings = (root / project / "settings.gradle.kts").read_text()
     modules = set()
     for declaration in re.findall(r"include\s*\((.*?)\)", settings, re.DOTALL):
         modules.update(re.findall(r'"(:[A-Za-z0-9_:-]+)"', declaration))
-    if ":client" not in modules or "projectDir" in settings:
+    if module not in modules or "projectDir" in settings:
         raise ValueError(
             "Native fingerprint requires explicit Gradle module paths including :client"
         )
     directories = [
-        root / "apps/tv" / module.lstrip(":").replace(":", "/")
+        root / project / module.lstrip(":").replace(":", "/")
         for module in sorted(modules)
     ]
-    directories += [root / "apps/tv/buildSrc", root / "apps/tv/gradle"]
+    directories += [root / project / "gradle"]
+    if target == "tv" or (root / project / "buildSrc").is_dir():
+        directories.append(root / project / "buildSrc")
     files = []
     for directory in directories:
         if not directory.is_dir():
@@ -63,13 +67,13 @@ def native_inputs(root):
         "gradlew.bat",
         "detekt.yaml",
     ):
-        path = root / "apps/tv" / name
+        path = root / project / name
         if path.is_file():
             files.append(path)
     for name in (
         "ci_tv_apk.py",
-        "tv-apk-build.json",
-        "build-tv-client.sh",
+        "tv-apk-build.json" if target == "tv" else "parent-apk-build.json",
+        "build-tv-client.sh" if target == "tv" else "build-android.sh",
         "package-startup-sound.py",
         "android-env.sh",
     ):
@@ -80,9 +84,9 @@ def native_inputs(root):
     return sorted(set(files), key=lambda path: path.relative_to(root).as_posix())
 
 
-def fingerprint(root):
-    digest = hashlib.sha256(b"molly-tv-native-v1\0")
-    inputs = native_inputs(root)
+def fingerprint(root, target="tv"):
+    digest = hashlib.sha256(b"molly-tv-native-v1\0" if target == "tv" else b"molly-parent-native-v1\0")
+    inputs = native_inputs(root, target)
     for path in inputs:
         name = path.relative_to(root).as_posix().encode()
         digest.update(len(name).to_bytes(4, "big"))
@@ -94,9 +98,9 @@ def fingerprint(root):
     return digest.hexdigest(), [path.relative_to(root).as_posix() for path in inputs]
 
 
-def version_defaults(root):
+def version_defaults(root, target="tv"):
     values = {}
-    for line in (root / "apps/tv/client/version.properties").read_text().splitlines():
+    for line in (root / ("apps/tv/client/version.properties" if target == "tv" else "apps/android/app/version.properties")).read_text().splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         key, value = line.split("=", 1)
@@ -140,7 +144,7 @@ def release_version(state, default_name, epoch, release_date):
     return f"{major}.{month_index}.{sequence + 1}"
 
 
-def plan(root, state, commit, force=False, release_date=None):
+def plan(root, state, commit, force=False, release_date=None, target="tv"):
     if not re.fullmatch(r"[a-f0-9]{40}", commit):
         raise ValueError("CI source commit must be a full SHA")
     current = state.get("current")
@@ -157,9 +161,9 @@ def plan(root, state, commit, force=False, release_date=None):
         previous = current.get("sourceFingerprint")
         if previous is not None and not re.fullmatch(r"[a-f0-9]{64}", previous):
             raise ValueError("Invalid native fingerprint baseline")
-    digest, inputs = fingerprint(root)
+    digest, inputs = fingerprint(root, target)
     required = force or current is None or current.get("sourceFingerprint") != digest
-    minimum, name, epoch = version_defaults(root)
+    minimum, name, epoch = version_defaults(root, target)
     if release_date is None:
         release_date = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
     name = release_version(state, name, epoch, release_date) if required else current.get("versionName")
@@ -169,6 +173,7 @@ def plan(root, state, commit, force=False, release_date=None):
     if code > MAX_VERSION:
         raise ValueError("Android versionCode range is exhausted")
     return {
+        **({"packageName": "com.molly.parent"} if target == "parent" else {}),
         "schemaVersion": 1,
         "requiresApk": required,
         "sourceCommit": commit,
@@ -251,6 +256,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     build = commands.add_parser("plan")
+    build.add_argument("--target", choices=("tv", "parent"), default="tv")
     build.add_argument("--root", type=Path, default=Path.cwd())
     build.add_argument("--state", type=Path, required=True)
     build.add_argument("--commit", required=True)
@@ -261,6 +267,7 @@ def main():
     cleanup = commands.add_parser("cleanup-signing")
     cleanup.add_argument("--directory", type=Path, required=True)
     verify = commands.add_parser("verify-inputs")
+    verify.add_argument("--target", choices=("tv", "parent"), default="tv")
     verify.add_argument("--root", type=Path, default=Path.cwd())
     verify.add_argument("--plan", type=Path, required=True)
     args = parser.parse_args()
@@ -271,7 +278,7 @@ def main():
             (args.directory / name).unlink(missing_ok=True)
     elif args.command == "verify-inputs":
         expected = json.loads(args.plan.read_text())["sourceFingerprint"]
-        if fingerprint(args.root.resolve())[0] != expected:
+        if fingerprint(args.root.resolve(), args.target)[0] != expected:
             raise ValueError(
                 "Native inputs changed after CI planning; refuse to publish this APK"
             )
@@ -281,10 +288,11 @@ def main():
             json.loads(args.state.read_text()),
             args.commit,
             args.force == "true",
+            target=args.target,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2) + "\n")
-        recipe = json.loads((args.root / "tools/tv-apk-build.json").read_text())
+        recipe = json.loads((args.root / ("tools/tv-apk-build.json" if args.target == "tv" else "tools/parent-apk-build.json")).read_text())
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
                 handle.writelines(

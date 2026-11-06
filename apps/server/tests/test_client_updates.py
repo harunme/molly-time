@@ -348,3 +348,64 @@ def test_ci_does_not_publish_an_apk_with_wrong_version_or_channel(operator, tmp_
     with pytest.raises(ValueError, match="does not match"):
         publisher.publish(apk, "local", "CI", tmp_path, plan)
     assert publisher.read_release("com.molly.tv") is None
+
+
+@pytest.mark.parametrize("package", ["com.molly.parent", "com.molly.parent.debug"])
+def test_parent_discovery_download_and_inventory_are_separate(operator, package):
+    record()
+    release, apk = record(package=package)
+    response = operator.get("/api/client/releases/latest", params={"packageName": package})
+    assert response.status_code == 200
+    value = response.json()["release"]
+    assert value["packageName"] == package
+    download = operator.get(value["url"])
+    assert (
+        download.content == apk and "mollytime-android-" in download.headers["content-disposition"]
+    )
+    inventory = operator.get(
+        "/api/manage/operations/client-releases", params={"packageName": package}
+    ).json()
+    assert inventory["total"] == 1 and inventory["items"][0]["packageName"] == package
+    assert (
+        operator.get("/api/client/releases/latest").json()["release"]["packageName"]
+        == "com.molly.tv"
+    )
+
+
+def test_parent_ci_plan_cannot_publish_into_tv_channel(client, tmp_path, monkeypatch):
+    from mollytime_server.ci_release_plan import CiReleasePlan
+
+    apk = tmp_path / "parent.apk"
+    apk.write_bytes(b"parent apk")
+    metadata = {
+        "packageName": "com.molly.parent",
+        "versionCode": 3,
+        "versionName": "0.1.1",
+        "minSdk": 26,
+        "signerSha256": ["a" * 64],
+    }
+    monkeypatch.setattr(publisher, "inspect_apk", lambda *_: metadata.copy())
+    plan = CiReleasePlan(
+        schemaVersion=1,
+        packageName="com.molly.parent",
+        requiresApk=True,
+        sourceCommit="b" * 40,
+        sourceFingerprint="c" * 64,
+        versionCode=3,
+        versionName="0.1.1",
+        expectedRelease=None,
+        reason="no-baseline",
+        inputCount=1,
+    )
+    release = publisher.publish(apk, "local", "parent update", tmp_path, plan)
+    assert release.packageName == "com.molly.parent" and release.sourceCommit == "b" * 40
+    metadata.update(packageName="com.molly.tv", versionCode=4)
+    other = CiReleasePlan.model_validate(
+        {
+            **plan.model_dump(),
+            "versionCode": 4,
+            "expectedRelease": {"versionCode": 3, "sha256": release.sha256},
+        }
+    )
+    with pytest.raises(ValueError, match="metadata"):
+        publisher.publish(apk, "local", "wrong channel", tmp_path, other)

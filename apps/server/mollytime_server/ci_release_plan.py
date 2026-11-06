@@ -1,5 +1,7 @@
 """Validated CI provenance and compare-and-swap publication preconditions."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -11,6 +13,7 @@ class ExpectedRelease(BaseModel):
 
 class CiReleasePlan(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+    packageName: Literal["com.molly.tv", "com.molly.parent"] = "com.molly.tv"
     schemaVersion: int = Field(ge=1, le=1)
     requiresApk: bool
     sourceCommit: str = Field(pattern=r"^[a-f0-9]{40}$")

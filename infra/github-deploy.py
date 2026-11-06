@@ -28,7 +28,7 @@ FILES = {
     'apps/server/pyproject.toml', 'infra/Dockerfile.prebuilt',
     'infra/compose.production.yaml', 'infra/compose.tls.yaml', 'infra/nginx-tls.conf',
 }
-OPTIONAL_FILES = {'artifacts/tv-client-plan.json', 'artifacts/mollytime-tv-release.apk'}
+OPTIONAL_FILES = {'artifacts/tv-client-plan.json', 'artifacts/mollytime-tv-release.apk', 'artifacts/parent-client-plan.json', 'artifacts/mollytime-android-release.apk'}
 
 
 class ArtifactDownloadError(Exception):
@@ -102,7 +102,16 @@ def read_json(path):
     return result
 
 
-def release_state():
+def channel_files(package):
+    if package == 'com.molly.tv':
+        return 'tv-client-plan.json', 'mollytime-tv-release.apk', 'tv-release-notes.txt'
+    if package == 'com.molly.parent':
+        return 'parent-client-plan.json', 'mollytime-android-release.apk', 'parent-release-notes.txt'
+    raise ValueError('Unsupported CI APK channel')
+
+
+def release_state(package='com.molly.tv'):
+    channel_files(package)
     directory = ROOT / 'data/client-releases'
     if not directory.exists():
         return {'current': None, 'highestVersionCode': 0, 'versionNames': []}
@@ -111,8 +120,8 @@ def release_state():
         highest = 0
         names = set()
         current = None
-        latest = directory / 'com.molly.tv.json'
-        paths = list((directory / 'history/com.molly.tv').glob('*/*.json'))
+        latest = directory / (package + '.json')
+        paths = list((directory / 'history' / package).glob('*/*.json'))
         if latest.exists():
             paths.append(latest)
         for path in paths:
@@ -120,7 +129,7 @@ def release_state():
             code = record.get('versionCode')
             sha = record.get('sha256', '')
             fingerprint = record.get('sourceFingerprint')
-            if (record.get('packageName') != 'com.molly.tv' or type(code) is not int
+            if (record.get('packageName') != package or type(code) is not int
                     or not 0 < code <= 2100000000 or not re.fullmatch('[0-9a-f]{64}', sha)
                     or (fingerprint is not None and not re.fullmatch('[0-9a-f]{64}', fingerprint))):
                 raise ValueError('Invalid published TV release metadata')
@@ -135,9 +144,10 @@ def release_state():
         return {'current': current, 'highestVersionCode': highest, 'versionNames': sorted(names)}
 
 
-def validate_plan(destination, tag):
-    plan_file = destination / 'artifacts/tv-client-plan.json'
-    apk = destination / 'artifacts/mollytime-tv-release.apk'
+def validate_plan(destination, tag, package='com.molly.tv'):
+    plan_name, apk_name, _ = channel_files(package)
+    plan_file = destination / 'artifacts' / plan_name
+    apk = destination / 'artifacts' / apk_name
     if not plan_file.exists():
         if apk.exists():
             raise ValueError('APK must include a CI publication plan')
@@ -145,7 +155,7 @@ def validate_plan(destination, tag):
     plan = read_json(plan_file)
     required = plan.get('requiresApk')
     code = plan.get('versionCode')
-    if (plan.get('schemaVersion') != 1 or type(required) is not bool
+    if (plan.get('schemaVersion') != 1 or plan.get('packageName', 'com.molly.tv') != package or type(required) is not bool
             or plan.get('sourceCommit') != tag or type(code) is not int
             or not 0 < code <= 2100000000
             or not re.fullmatch('[0-9a-f]{64}', plan.get('sourceFingerprint', ''))
@@ -155,7 +165,7 @@ def validate_plan(destination, tag):
         raise ValueError('Invalid CI APK plan or artifact')
     if required and not 0 < apk.stat().st_size <= 512 * 1024 ** 2:
         raise ValueError('APK exceeds the publication limit')
-    state = release_state()
+    state = release_state() if package == 'com.molly.tv' else release_state(package)
     current = state['current']
     expected = None if current is None else {'versionCode': current['versionCode'], 'sha256': current['sha256']}
     if plan.get('expectedRelease') != expected:
@@ -168,22 +178,39 @@ def validate_plan(destination, tag):
     return plan
 
 
-def publish_apk(destination, tag, plan):
+def publish_apk(destination, tag, plan, package='com.molly.tv'):
     if not plan or not plan['requiresApk']:
-        validate_plan(destination, tag)
+        if package == 'com.molly.tv':
+            validate_plan(destination, tag)
+        else:
+            validate_plan(destination, tag, package)
         return
-    notes = plan.get('releaseNotes') or '电视客户端更新'
+    plan_name, apk_name, notes_name = channel_files(package)
+    notes = plan.get('releaseNotes') or ('Android 家长端版本更新' if package == 'com.molly.parent' else '电视客户端更新')
     if not isinstance(notes, str) or len(notes) > 4000:
         raise ValueError('Invalid TV release notes')
-    notes_file = destination / 'artifacts/tv-release-notes.txt'
+    notes_file = destination / 'artifacts' / notes_name
     notes_file.write_text(notes, encoding='utf-8')
     compose(destination, tag, 'run', '--rm', '--no-deps',
             '-v', str(destination / 'artifacts') + ':/ci-release:ro',
             'mollytime-server', 'python', '-m',
             'mollytime_server.scripts.publish_tv_release',
-            '/ci-release/mollytime-tv-release.apk', '--build-tools', '/usr/bin',
-            '--storage', 'auto', '--ci-plan-file', '/ci-release/tv-client-plan.json',
-            '--notes-file', '/ci-release/tv-release-notes.txt')
+            '/ci-release/' + apk_name, '--build-tools', '/usr/bin',
+            '--storage', 'auto', '--ci-plan-file', '/ci-release/' + plan_name,
+            '--notes-file', '/ci-release/' + notes_name)
+
+
+def validate_parent_plan(destination, tag):
+    # Optional for old workflows; never permit an unplanned parent APK.
+    plan, apk, _ = channel_files('com.molly.parent')
+    if not any((destination / 'artifacts' / name).exists() for name in (plan, apk)):
+        return None
+    return validate_plan(destination, tag, 'com.molly.parent')
+
+
+def publish_parent_apk(destination, tag, plan):
+    if plan is not None:
+        publish_apk(destination, tag, plan, 'com.molly.parent')
 
 
 def run(args, env=None):
@@ -231,8 +258,8 @@ def unpack(archive, destination):
 
 
 def main():
-    if sys.argv[1:] == ['--apk-state']:
-        print(json.dumps(release_state()))
+    if sys.argv[1:] in (['--apk-state'], ['--parent-apk-state']):
+        print(json.dumps(release_state('com.molly.parent') if sys.argv[1:] == ['--parent-apk-state'] else release_state()))
         return
     if len(sys.argv) not in (2, 4):
         raise ValueError('Invalid deployment arguments')
@@ -272,6 +299,7 @@ def main():
         if shutil.disk_usage(str(ROOT)).free < 2 * 1024 ** 3 + archive.stat().st_size * 3:
             raise RuntimeError('Insufficient space to stage the APK release')
         plan = validate_plan(destination, tag)
+        parent_plan = validate_parent_plan(destination, tag)
         for name in ('.env', 'data', 'tls'):
             (destination / name).symlink_to(ROOT / name)
         (destination / '.dockerignore').write_text('.env\ndata\ntls\nartifacts\nrelease.tar.gz\n')
@@ -306,6 +334,7 @@ def main():
                 atomic_write(env, '\n'.join(lines) + '\n')
                 atomic_write(STATE, json.dumps({'path': str(destination), 'tag': tag}, indent=2) + '\n')
                 publish_apk(destination, tag, plan)
+                publish_parent_apk(destination, tag, parent_plan)
             except Exception:
                 atomic_write(env, original_env)
                 if original_state is None:

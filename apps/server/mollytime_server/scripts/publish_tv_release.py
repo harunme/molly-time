@@ -86,7 +86,7 @@ def publish(
     directory.mkdir(parents=True, exist_ok=True)
     # Serialize publishers and inspect/hash/upload the same frozen snapshot.
     with publication_lock():
-        previous = read_release("com.molly.tv") if ci_plan else None
+        previous = read_release(ci_plan.packageName) if ci_plan else None
         if ci_plan and (not ci_plan.requiresApk or not ci_plan.matches(previous)):
             raise ValueError("Published APK changed after CI planning; rerun the workflow")
         if not apk.is_file() or not 0 < apk.stat().st_size <= MAX_APK_BYTES:
@@ -96,7 +96,7 @@ def publish(
             shutil.copyfile(apk, snapshot)
             metadata = inspect_apk(snapshot, build_tools)
             if ci_plan and (
-                metadata["packageName"] != "com.molly.tv"
+                metadata["packageName"] != ci_plan.packageName
                 or metadata["versionCode"] != ci_plan.versionCode
                 or metadata["versionName"] != ci_plan.versionName
             ):

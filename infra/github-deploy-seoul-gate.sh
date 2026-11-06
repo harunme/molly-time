@@ -2,6 +2,8 @@
 set -euo pipefail
 if [[ "${SSH_ORIGINAL_COMMAND:-}" == check ]]; then
   printf 'MollyTime Seoul deployment key ready\n'
+elif [[ "${SSH_ORIGINAL_COMMAND:-}" == parent-apk-state ]]; then
+  exec sudo -n /usr/bin/python3 /usr/local/lib/mollytime-deploy-seoul.py --parent-apk-state
 elif [[ "${SSH_ORIGINAL_COMMAND:-}" == apk-state ]]; then
   exec sudo -n /usr/bin/python3 /usr/local/lib/mollytime-deploy-seoul.py --apk-state
 elif [[ "${SSH_ORIGINAL_COMMAND:-}" =~ ^deploy\ ([0-9a-f]{40})$ ]]; then

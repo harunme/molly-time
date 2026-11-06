@@ -38,11 +38,7 @@ def discover(packageName: PackageName = "com.molly.tv"):
 @router.get("/{package}/{version}/{digest}.apk")
 def download(package: PackageName, version: int, digest: str):
     release = latest(package)
-    if (
-        release is None
-        or release.versionCode != version
-        or release.sha256 != digest
-    ):
+    if release is None or release.versionCode != version or release.sha256 != digest:
         raise HTTPException(404)
     try:
         path = download_apk(release)
@@ -52,5 +48,5 @@ def download(package: PackageName, version: int, digest: str):
     return FileResponse(
         path,
         media_type="application/vnd.android.package-archive",
-        filename=f"mollytime-tv-{release.versionName}.apk",
+        filename=f"mollytime-{'android' if release.packageName.startswith('com.molly.parent') else 'tv'}-{release.versionName}.apk",
     )

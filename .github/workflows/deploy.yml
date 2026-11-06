@@ -10,6 +10,11 @@ on:
         type: boolean
         default: false
 
+      force_parent_apk:
+        description: Force a new signed Android parent APK even when native inputs are unchanged
+        type: boolean
+        default: false
+
 permissions:
   contents: read
   actions: read
@@ -71,20 +76,32 @@ jobs:
           python tools/ci_tv_apk.py plan --state "$RUNNER_TEMP/tv-apk-state.json" \
             --commit "$GITHUB_SHA" --force "$FORCE_APK" \
             --output artifacts/tv-client-plan.json
+      - name: Decide whether a parent APK is required
+        id: parent_plan
+        env:
+          FORCE_APK: ${{ inputs.force_parent_apk || 'false' }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            ubuntu@43.133.227.83 parent-apk-state > "$RUNNER_TEMP/parent-apk-state.json"
+          python tools/ci_tv_apk.py plan --target parent --state "$RUNNER_TEMP/parent-apk-state.json" \
+            --commit "$GITHUB_SHA" --force "$FORCE_APK" \
+            --output artifacts/parent-client-plan.json
       - uses: actions/setup-java@v6
-        if: steps.native_plan.outputs.required == 'true'
+        if: steps.native_plan.outputs.required == 'true' || steps.parent_plan.outputs.required == 'true'
         with:
           distribution: temurin
-          java-version: ${{ steps.native_plan.outputs.java_version }}
+          java-version: ${{ steps.native_plan.outputs.java_version || steps.parent_plan.outputs.java_version }}
       - uses: android-actions/setup-android@v4
-        if: steps.native_plan.outputs.required == 'true'
+        if: steps.native_plan.outputs.required == 'true' || steps.parent_plan.outputs.required == 'true'
         with:
           log-accepted-android-sdk-licenses: false
       - name: Prepare Android SDK and private signing material
-        if: steps.native_plan.outputs.required == 'true'
+        if: steps.native_plan.outputs.required == 'true' || steps.parent_plan.outputs.required == 'true'
         env:
-          BUILD_TOOLS: ${{ steps.native_plan.outputs.build_tools }}
-          COMPILE_SDK: ${{ steps.native_plan.outputs.compile_sdk }}
+          BUILD_TOOLS: ${{ steps.native_plan.outputs.build_tools || steps.parent_plan.outputs.build_tools }}
+          COMPILE_SDK: ${{ steps.native_plan.outputs.compile_sdk || steps.parent_plan.outputs.compile_sdk }}
           MOLLYTIME_TV_KEYSTORE_BASE64: ${{ secrets.MOLLYTIME_TV_KEYSTORE_BASE64 }}
           MOLLYTIME_TV_STORE_PASSWORD: ${{ secrets.MOLLYTIME_TV_STORE_PASSWORD }}
           MOLLYTIME_TV_KEY_PASSWORD: ${{ secrets.MOLLYTIME_TV_KEY_PASSWORD }}
@@ -115,6 +132,30 @@ jobs:
           bash tools/build-tv-client.sh release \
             "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME"
           python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
+      - name: Build and verify signed Android parent APK
+        if: steps.parent_plan.outputs.required == 'true'
+        env:
+          PARENT_VERSION_CODE: ${{ steps.parent_plan.outputs.version_code }}
+          PARENT_VERSION_NAME: ${{ steps.parent_plan.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          export MOLLYTIME_ANDROID_HOME="$ANDROID_HOME"
+          export MOLLYTIME_JAVA_HOME="$JAVA_HOME"
+          export MOLLYTIME_SIGNING_PROPERTIES="$RUNNER_TEMP/molly-tv-signing/release.properties"
+          python tools/ci_tv_apk.py verify-inputs --target parent --plan artifacts/parent-client-plan.json
+          bash tools/build-android.sh release \
+            "-PmollyVersionCode=$PARENT_VERSION_CODE" "-PmollyVersionName=$PARENT_VERSION_NAME"
+          python tools/ci_tv_apk.py verify-inputs --target parent --plan artifacts/parent-client-plan.json
+      - name: Save Android parent APK and publication plan
+        if: steps.parent_plan.outputs.required == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mollytime-android-${{ steps.parent_plan.outputs.version_code }}
+          path: |
+            artifacts/mollytime-android-release.apk
+            artifacts/parent-client-plan.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Generate TV release notes
         if: steps.native_plan.outputs.required == 'true'
         env:
@@ -136,21 +177,28 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Package release
+        env:
+          PARENT_APK_REQUIRED: ${{ steps.parent_plan.outputs.required }}
         run: |
           set -euo pipefail
+          parent_release=(artifacts/parent-client-plan.json)
+          if [[ "$PARENT_APK_REQUIRED" == true ]]; then parent_release+=(artifacts/mollytime-android-release.apk); fi
           tar --exclude='__pycache__' --exclude='*.pyc' -czf /tmp/mollytime-release.tar.gz \
             apps/server/pyproject.toml apps/server/mollytime_server \
             apps/web/dist apps/tv/web/dist \
             infra/Dockerfile.prebuilt infra/compose.seoul.yaml \
             infra/Caddyfile.seoul infra/backup-seoul.sh tools/upload_mysql_backup.py \
-            artifacts/tv-client-plan.json
+            artifacts/tv-client-plan.json "${parent_release[@]}"
       - name: Deploy application
         env:
+          PARENT_APK_REQUIRED: ${{ steps.parent_plan.outputs.required }}
           RELEASE_SHA: ${{ github.sha }}
           APK_ARTIFACT_ID: ${{ steps.apk_artifact.outputs.artifact-id }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          parent_release=(artifacts/parent-client-plan.json)
+          if [[ "$PARENT_APK_REQUIRED" == true ]]; then parent_release+=(artifacts/mollytime-android-release.apk); fi
           ssh_options=(-i ~/.ssh/mollytime-deploy -o BatchMode=yes -o IdentitiesOnly=yes
             -o StrictHostKeyChecking=yes -o ConnectTimeout=15
             -o ServerAliveInterval=30 -o ServerAliveCountMax=20)
@@ -161,7 +209,7 @@ jobs:
               apps/web/dist apps/tv/web/dist \
               infra/Dockerfile.prebuilt infra/compose.seoul.yaml \
               infra/Caddyfile.seoul infra/backup-seoul.sh tools/upload_mysql_backup.py \
-              artifacts/tv-client-plan.json artifacts/mollytime-tv-release.apk
+              artifacts/tv-client-plan.json artifacts/mollytime-tv-release.apk "${parent_release[@]}"
             ssh "${ssh_options[@]}" ubuntu@43.133.227.83 \
               "deploy $RELEASE_SHA" < /tmp/mollytime-release.tar.gz
           }

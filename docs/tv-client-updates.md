@@ -106,3 +106,12 @@ Java 路径按实际安装位置填写，也可以使用服务端已有的 `JAVA
 反向代理需允许 512 MiB 请求体，并给上传与校验留出时间。例如 Nginx 的对应 API location 可配置 `client_max_body_size 512m`、`proxy_read_timeout 1200s` 和 `proxy_send_timeout 1200s`。选择 OSS 时先在“文件存储”配置访问凭据与 `releases/tv/*` 的读写权限。
 
 上传接口：`GET .../upload-options` 查询能力，`POST .../uploads` 创建超管所属任务，`PUT .../uploads/<id>` 流式上传并发布，`DELETE .../uploads/<id>` 取消尚未开始的任务。所有写入接口校验登录会话、超管权限、请求来源和 CSRF；任务有效期一小时。APK 临时文件在正常结束、失败或传输取消后清理。发布和存储配置修改共享文件锁，防止上传过程中切换 Bucket。
+
+## Android 家长端渠道
+
+同一更新服务和发布验证现已支持 `com.molly.parent` 与 `com.molly.parent.debug`。
+两个客户端的版本、历史、证书连续性与发布指针按包名隔离；原有 TV 查询默认值不变。
+运营后台可分别筛选 TV／家长端的正式及 Debug 渠道。为复用现有 OSS RAM 权限，
+家长端安装包仍使用 `releases/tv/<家长端包名>/…` 存储路径；不会作为 TV 的更新包下发。
+流水线有独立的家长端构建判断和 `force_parent_apk` 开关，详见
+[家长端更新与流水线](../apps/android/README.md#apk-更新与流水线)。

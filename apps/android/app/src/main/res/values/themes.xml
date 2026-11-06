@@ -1,0 +1,11 @@
+<resources>
+    <color name="startup_background">#211F1B</color>
+    <bool name="light_status_bar">true</bool>
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/startup_background</item>
+        <item name="colorAccent">#8A633B</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">@bool/light_status_bar</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

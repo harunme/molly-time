@@ -135,6 +135,7 @@ def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = 
         if shutil.disk_usage(ROOT).free < 2 * 1024**3 + archive.stat().st_size * 3:
             raise RuntimeError("Insufficient space to stage the release")
         plan = common.validate_plan(destination, tag)
+        parent_plan = common.validate_parent_plan(destination, tag)
         for name in (".env", ".env.mysql", "data", "mysql-data", "caddy-data", "caddy-config"):
             (destination / name).symlink_to(ROOT / name)
         (destination / ".dockerignore").write_text(
@@ -153,6 +154,7 @@ def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = 
             common.atomic_write(STATE, json.dumps({"path": str(destination), "tag": tag}) + "\n")
             print("Publishing TV APK" if plan and plan["requiresApk"] else "TV APK unchanged; skipping publication", flush=True)
             common.publish_apk(destination, tag, plan)
+            common.publish_parent_apk(destination, tag, parent_plan)
             backup_script = ROOT / "infra/backup-seoul.sh"
             temporary = backup_script.with_suffix(".next")
             shutil.copy2(destination / "infra/backup-seoul.sh", temporary)
@@ -171,6 +173,9 @@ def receive(tag: str, encoded_apk_url: str | None = None, apk_sha: str | None = 
 
 
 def main() -> None:
+    if sys.argv[1:] == ["--parent-apk-state"]:
+        print(json.dumps(common.release_state("com.molly.parent")))
+        return
     if sys.argv[1:] == ["--apk-state"]:
         print(json.dumps(common.release_state()))
         return

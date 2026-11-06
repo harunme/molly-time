@@ -65,7 +65,7 @@ test('superadmin browses release history, filters channels and downloads an old 
   await expect(details).toHaveCount(0);
   await expect(detailsButton).toBeFocused();
   const downloaded = page.waitForEvent('download');
-  await page.getByRole('button', { name: '下载 正式版 0.3.0', exact: true }).click();
+  await page.getByRole('button', { name: '下载 TV · 正式版 0.3.0', exact: true }).click();
   expect((await downloaded).suggestedFilename()).toBe('mollytime-tv-0.3.0.apk');
   await chooseSelect(page.getByLabel('发布渠道', { exact: true }), 'com.molly.tv.debug');
   await expect(table.locator('tbody tr')).toHaveCount(1);
@@ -104,4 +104,28 @@ test('client releases render empty and failed inventory states and recover when 
   await chooseSelect(page.getByLabel('发布渠道', { exact: true }), '');
   await expect(page.getByText(/暂无安装包/)).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+
+test('parent APK channels show their identity and download the Android package', async ({ page }) => {
+  let selected = '';
+  const sha = 'a'.repeat(64);
+  await page.route('**/api/manage/operations/client-releases?*', route => {
+    selected = new URL(route.request().url()).searchParams.get('packageName') || '';
+    return route.fulfill({ json: { items: [{ packageName: 'com.molly.parent', versionCode: 3, versionName: '0.1.1', minSdk: 26, size: 4, sha256: sha, notes: '家长端更新', storage: 'local', key: `releases/tv/com.molly.parent/3/${sha}.apk`, publishedAt: null, isCurrent: true, canDownload: true }], total: 1, invalidRecords: 0 } });
+  });
+  await page.route('**/api/manage/operations/client-releases/com.molly.parent/3/*/download-url', route => route.fulfill({ json: { url: '/api/client/releases/parent-fixture.apk' } }));
+  await page.route('**/api/client/releases/parent-fixture.apk', route => route.fulfill({ body: 'test', contentType: 'application/vnd.android.package-archive', headers: { 'Content-Disposition': 'attachment; filename="mollytime-android-0.1.1.apk"' } }));
+  await page.goto('/manage/');
+  await page.getByLabel('账号', { exact: true }).fill('operator@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('operator-e2e');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('navigation').getByRole('link', { name: '运营设置' }).click();
+  await page.getByRole('tab', { name: '客户端版本' }).click();
+  await chooseSelect(page.getByLabel('发布渠道', { exact: true }), 'com.molly.parent');
+  await expect.poll(() => selected).toBe('com.molly.parent');
+  await expect(page.locator('.client-releases-table')).toContainText('家长端 · 正式版');
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下载 家长端 · 正式版 0.1.1', exact: true }).click();
+  expect((await downloaded).suggestedFilename()).toBe('mollytime-android-0.1.1.apk');
 });

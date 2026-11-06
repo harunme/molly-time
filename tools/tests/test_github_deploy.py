@@ -236,3 +236,26 @@ def test_apk_publication_failure_restores_application_state(tmp_path, failure, r
             deploy.main()
             assert any(args[0] == 'run' for _, args in calls)
             assert json.loads((root / 'deployment-state.json').read_text())['tag'] == tag
+
+
+def test_parent_state_and_cas_are_separate_from_tv(tmp_path):
+    root=tmp_path/'server';directory=root/'data/client-releases';directory.mkdir(parents=True)
+    record={'packageName':'com.molly.parent','versionCode':3,'versionName':'0.1.1','sha256':'a'*64,'sourceFingerprint':'b'*64}
+    (directory/'com.molly.parent.json').write_text(json.dumps(record))
+    release=tmp_path/'release';(release/'artifacts').mkdir(parents=True)
+    plan={'schemaVersion':1,'packageName':'com.molly.parent','requiresApk':True,'sourceCommit':'c'*40,'sourceFingerprint':'d'*64,'versionCode':4,'versionName':'0.1.2','expectedRelease':{'versionCode':3,'sha256':'a'*64}}
+    (release/'artifacts/parent-client-plan.json').write_text(json.dumps(plan));(release/'artifacts/mollytime-android-release.apk').write_bytes(b'apk')
+    with patch.object(deploy,'ROOT',root):
+        assert deploy.release_state()['current'] is None
+        assert deploy.release_state('com.molly.parent')['highestVersionCode']==3
+        assert deploy.validate_parent_plan(release,'c'*40)==plan
+        plan['expectedRelease']=None
+        (release/'artifacts/parent-client-plan.json').write_text(json.dumps(plan))
+        with pytest.raises(ValueError,match='changed during CI'):
+            deploy.validate_parent_plan(release,'c'*40)
+
+
+def test_parent_apk_without_plan_is_rejected(tmp_path):
+    (tmp_path/'artifacts').mkdir();(tmp_path/'artifacts/mollytime-android-release.apk').write_bytes(b'apk')
+    with pytest.raises(ValueError,match='publication plan'):
+        deploy.validate_parent_plan(tmp_path,'a'*40)

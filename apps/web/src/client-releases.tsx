@@ -12,7 +12,7 @@ import { api, bytes } from "./api";
 import { Pagination } from "./pagination";
 
 type Release = {
-  packageName: "com.molly.tv" | "com.molly.tv.debug";
+  packageName: "com.molly.tv" | "com.molly.tv.debug" | "com.molly.parent" | "com.molly.parent.debug";
   versionCode: number;
   versionName: string;
   minSdk: number;
@@ -27,6 +27,7 @@ type Release = {
 };
 type Inventory = { items: Release[]; total: number; invalidRecords: number; };
 const pageSize = 20;
+const channelLabel = (name: Release["packageName"]) => `${name.startsWith("com.molly.parent") ? "家长端" : "TV"} · ${name.endsWith(".debug") ? "Debug 测试版" : "正式版"}`;
 
 export function ClientReleases() {
   const [channel, setChannel] = useState("");
@@ -62,7 +63,7 @@ export function ClientReleases() {
       if (target.protocol !== "https:" && target.origin !== location.origin) throw new Error("安装包下载地址无效");
       const link = document.createElement("a");
       link.href = target.href;
-      link.download = `mollytime-tv${release.packageName.endsWith(".debug") ? "-debug" : ""}-${release.versionName}.apk`;
+      link.download = `mollytime-${release.packageName.startsWith("com.molly.parent") ? "android" : "tv"}${release.packageName.endsWith(".debug") ? "-debug" : ""}-${release.versionName}.apk`;
       link.rel = "noopener";
       document.body.appendChild(link); link.click(); link.remove();
     } catch (failure) {
@@ -76,7 +77,7 @@ export function ClientReleases() {
   return <Card className="settings-card client-releases-card">
     <h2>客户端版本</h2>
     <div className="client-releases-toolbar">
-      <SelectField className="w-48" aria-label="发布渠道" value={channel} onValueChange={(value) => { setChannel(value); setPage(1); }} options={[({ value: "", label: <> 全部渠道 </> }), ({ value: "com.molly.tv", label: <> 正式版 </> }), ({ value: "com.molly.tv.debug", label: <> Debug 测试版 </> })]} />
+      <SelectField className="w-48" aria-label="发布渠道" value={channel} onValueChange={(value) => { setChannel(value); setPage(1); }} options={[({ value: "", label: <> 全部渠道 </> }), ...(["com.molly.tv", "com.molly.tv.debug", "com.molly.parent", "com.molly.parent.debug"] as const).map(value => ({ value, label: channelLabel(value) }))]} />
       {data && <span className="muted">共 {data.total} 个安装包</span>}
     </div>
     {error && <Alert variant="destructive" role="alert" className="error"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -87,19 +88,19 @@ export function ClientReleases() {
         <TableHead scope="col">版本</TableHead><TableHead scope="col">渠道</TableHead><TableHead scope="col">发布状态</TableHead><TableHead scope="col">发布时间</TableHead><TableHead scope="col">大小</TableHead><TableHead scope="col">存储位置</TableHead><TableHead scope="col">操作</TableHead>
       </TableRow></TableHeader><TableBody>{data.items.map((release) => <TableRow className="hover:bg-transparent" key={`${release.packageName}-${release.versionCode}-${release.sha256}`}>
         <TableCell><div className="client-release-inline"><strong>{release.versionName}</strong><small className="muted">构建号 {release.versionCode}</small></div></TableCell>
-        <TableCell>{release.packageName === "com.molly.tv" ? "正式版" : "Debug 测试版"}</TableCell>
+        <TableCell>{channelLabel(release.packageName)}</TableCell>
         <TableCell><div className="client-release-inline"><Badge variant={release.isCurrent ? "default" : "secondary"}>{release.isCurrent ? "当前发布" : "历史版本"}</Badge>
           {!release.canDownload && <small className="error">文件缺失</small>}</div></TableCell>
         <TableCell>{release.publishedAt ? new Date(release.publishedAt).toLocaleString("zh-CN", { hour12: false }) : "未记录"}</TableCell>
         <TableCell>{bytes(release.size)}</TableCell><TableCell>{release.storage === "local" ? "服务器" : "私有 OSS"}</TableCell>
         <TableCell><div className="flex items-center gap-2">
-          <Button variant="bordered" disabled={!release.canDownload || !!downloading} aria-label={`下载 ${release.packageName === "com.molly.tv" ? "正式版" : "Debug"} ${release.versionName}`} onClick={() => { void download(release); }}>{downloading === release.sha256 ? "准备下载…" : "下载 APK"}</Button>
+          <Button variant="bordered" disabled={!release.canDownload || !!downloading} aria-label={`下载 ${channelLabel(release.packageName)} ${release.versionName}`} onClick={() => { void download(release); }}>{downloading === release.sha256 ? "准备下载…" : "下载 APK"}</Button>
           <Dialog>
             <DialogTrigger asChild><Button variant="bordered">更新说明与校验信息</Button></DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>更新说明与校验信息</DialogTitle>
-                <DialogDescription>{release.packageName === "com.molly.tv" ? "正式版" : "Debug 测试版"} {release.versionName} · 构建号 {release.versionCode}</DialogDescription>
+                <DialogDescription>{channelLabel(release.packageName)} {release.versionName} · 构建号 {release.versionCode}</DialogDescription>
               </DialogHeader>
               <DialogBody className="client-release-details min-w-0">
                 <p>{release.notes || "未填写更新说明"}</p>

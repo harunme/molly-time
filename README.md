@@ -17,6 +17,7 @@ apps/
 ├── server/       业务与媒体后台
 ├── web/          家长管理网页
 ├── ios/          SwiftUI 家长端（iOS 17+，含手机播放）
+├── android/      Kotlin 原生手机／平板家长端（Android 8+，初版）
 ├── site/         AstroWind 改造的官网静态页面
 └── tv/           电视端
     ├── web/      TV 网页界面
@@ -120,6 +121,7 @@ docker compose -f infra/compose.yaml --profile tools run --rm admin-tools create
 - [TV 网页与热更新](apps/tv/web/README.md)
 - [家长管理后台使用说明](apps/web/README.md)
 - [iOS 家长端工程与运行说明](apps/ios/README.md)
+- [Android 手机／平板家长端工程与验证范围](apps/android/README.md)
 - [家长后台设计与验证](docs/parent-admin-validation.md)
 - [架构与分阶段验收](docs/architecture.md)
 - [MollyTime Server 设计](docs/server.md)

@@ -207,3 +207,17 @@ def test_oss_upload_and_failed_publication_keep_current_version(
     response = operator.put(PREFIX + "/uploads/" + identifier, content=b"valid-fixture-apk")
     assert response.status_code == 503 and "test-secret" not in response.text
     assert read_release("com.molly.tv") == original
+
+
+def test_parent_upload_accepts_own_channel_and_rejects_signer_changes(operator, upload_enabled):
+    upload_enabled.update(packageName="com.molly.parent", minSdk=26)
+    identifier = begin(operator, b"parent apk")
+    assert operator.put(PREFIX + "/uploads/" + identifier, content=b"parent apk").status_code == 200
+    original = read_release("com.molly.parent")
+    assert original and read_release("com.molly.tv") is None
+    upload_enabled.update(versionCode=5, signerSha256=["b" * 64])
+    identifier = begin(operator, b"wrong signer")
+    assert (
+        operator.put(PREFIX + "/uploads/" + identifier, content=b"wrong signer").status_code == 422
+    )
+    assert read_release("com.molly.parent") == original
