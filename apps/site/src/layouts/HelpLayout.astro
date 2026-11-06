@@ -1,0 +1,55 @@
+---
+import Layout from '~/layouts/LandingLayout.astro';
+import { Icon } from 'astro-icon/components';
+import '~/assets/styles/help.css';
+interface Props {
+  title: string;
+  description: string;
+  intro: string;
+  eyebrow: string;
+  current: 'terms' | 'privacy';
+  sections: { id: string; label: string; number?: string }[];
+}
+const { title, description, intro, eyebrow, current, sections } = Astro.props;
+---
+<Layout metadata={{ title, description }}>
+  <article class="help-page page-width">
+    <header class="help-heading">
+      <a class="help-back caption-1" href="/"><Icon name="ph:arrow-left-bold" aria-hidden="true" />返回 MollyTime 首页</a>
+      <p class="help-eyebrow caption-1">{eyebrow}</p>
+      <h1 class="heading-1">{title}</h1>
+      <p class="help-intro body-3 muted">{intro}</p>
+      <nav class="help-pages" aria-label="说明页面">
+        <a class="title-4" href="/terms" aria-current={current === 'terms' ? 'page' : undefined}>使用说明</a>
+        <a class="title-4" href="/privacy" aria-current={current === 'privacy' ? 'page' : undefined}>隐私与数据</a>
+      </nav>
+    </header>
+    <div class="help-body">
+      <aside class="help-sidebar">
+        <p class="caption-1 muted">本页目录</p>
+        <nav aria-label="本页目录">{sections.map(section => <a class="title-4" href={`#${section.id}`} data-help-anchor>{section.number && <span>{section.number}</span>}{section.label}</a>)}</nav>
+      </aside>
+      <details class="help-mobile-toc">
+        <summary class="title-3"><span><Icon name="ph:list-bold" aria-hidden="true" />跳到需要的部分</span><Icon name="ph:caret-down-bold" aria-hidden="true" /></summary>
+        <nav aria-label="手机本页目录">{sections.map(section => <a class="title-3" href={`#${section.id}`} data-help-anchor>{section.number && <span>{section.number}</span>}{section.label}</a>)}</nav>
+      </details>
+      <div class="help-content"><slot /></div>
+    </div>
+    <div class="help-bottom">
+      <a class="help-back title-3" href={current === 'terms' ? '/privacy' : '/terms'}>{current === 'terms' ? '再了解隐私与数据' : '打开一步步使用说明'}<Icon name="ph:arrow-right-bold" aria-hidden="true" /></a>
+      <a class="help-back caption-1 muted" href="#main-content">回到顶部<Icon name="ph:arrow-up-bold" aria-hidden="true" /></a>
+    </div>
+  </article>
+</Layout>
+<script>
+  const mobileContents = document.querySelector<HTMLDetailsElement>('.help-mobile-toc');
+  mobileContents?.querySelectorAll('a').forEach(link => link.addEventListener('click', () => { mobileContents.open = false; }));
+  const links = document.querySelectorAll<HTMLAnchorElement>('[data-help-anchor]');
+  const targets = Array.from(new Set(Array.from(links).map(link => link.hash))).map(hash => document.getElementById(hash.slice(1))).filter((target): target is HTMLElement => !!target);
+  const observer = new IntersectionObserver(entries => {
+    const active = entries.filter(entry => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+    if (!active) return;
+    links.forEach(link => { if (link.hash === `#${active.target.id}`) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current'); });
+  }, { rootMargin: '-10% 0px -65% 0px' });
+  targets.forEach(target => observer.observe(target));
+</script>

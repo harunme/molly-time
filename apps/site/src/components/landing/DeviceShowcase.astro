@@ -1,0 +1,79 @@
+---
+import { getImage } from 'astro:assets';
+import parentImage from '~/assets/images/parent-ios.png';
+import televisionImage from '~/assets/images/tv-home.png';
+import parentDarkImage from '~/assets/images/parent-ios-dark.png';
+import { Icon } from 'astro-icon/components';
+const phonePoster = await getImage({ src: parentImage, width: 480, format: 'webp' });
+const phoneDarkPoster = await getImage({ src: parentDarkImage, width: 480, format: 'webp' });
+const televisionPoster = await getImage({ src: televisionImage, width: 1280, format: 'webp' });
+---
+<div class="device-showcase" data-device-demo>
+  <figure class="phone-showcase reveal">
+    <div class="iphone-device">
+      <span class="iphone-buttons" aria-hidden="true"></span>
+      <div class="iphone-screen">
+        <video data-demo-video data-poster-light={phonePoster.src} data-poster-dark={phoneDarkPoster.src} poster={phonePoster.src} muted loop playsinline preload="none" aria-label="iOS 家长端真实录屏：缓慢切换资料库与电视页面"><source data-light-src="/site/demos/parent-light.mp4" data-dark-src="/site/demos/parent-dark.mp4" data-light-webm="/site/demos/parent-light.webm" data-dark-webm="/site/demos/parent-dark.webm" type="video/mp4" /></video>
+        <span class="home-indicator" aria-hidden="true"></span>
+      </div>
+    </div>
+    <figcaption><h3 class="title-1">家长手机</h3><p class="caption-2 muted">挑选内容，安排观看。</p></figcaption>
+  </figure>
+  <figure class="tv-showcase reveal">
+    <div class="television-device">
+      <div class="television-screen"><video data-demo-video poster={televisionPoster.src} muted loop playsinline preload="none" aria-label="电视端真实录屏：浏览家庭媒体库"><source data-light-src="/site/demos/tv.mp4" data-dark-src="/site/demos/tv.mp4" data-light-webm="/site/demos/tv.webm" data-dark-webm="/site/demos/tv.webm" type="video/mp4" /></video></div>
+      <div class="television-chin" aria-hidden="true"><span></span></div>
+    </div>
+    <div class="television-feet" aria-hidden="true"><span></span><span></span></div>
+    <figcaption><h3 class="title-1">孩子电视</h3><p class="caption-2 muted">打开就看，接着上次。</p></figcaption>
+  </figure>
+</div>
+
+<div class="demo-controls"><button type="button" class="demo-toggle caption-2 muted" data-demo-toggle data-paused="false"><Icon name="ph:pause-bold" class="demo-pause" aria-hidden="true" /><Icon name="ph:play-bold" class="demo-play" aria-hidden="true" /><span>暂停演示</span></button></div>
+<script>
+  const showcase = document.querySelector<HTMLElement>('[data-device-demo]');
+  const toggle = document.querySelector<HTMLButtonElement>('[data-demo-toggle]');
+  if (showcase && toggle) {
+    const videos = Array.from(showcase.querySelectorAll<HTMLVideoElement>('[data-demo-video]'));
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    let visible = false, paused = false;
+    const canPlay = () => visible && !document.hidden && !reduced.matches && !paused;
+    const update = () => {
+      toggle.hidden = reduced.matches;
+      toggle.dataset.paused = String(paused);
+      toggle.querySelector('span')!.textContent = paused ? '播放演示' : '暂停演示';
+      const dark = document.documentElement.classList.contains('dark');
+      videos.forEach(video => {
+        const source = video.querySelector('source')!;
+        const webm = !video.canPlayType('video/mp4; codecs="avc1.64001F"');
+        const media = dark ? (webm ? source.dataset.darkWebm! : source.dataset.darkSrc!) : (webm ? source.dataset.lightWebm! : source.dataset.lightSrc!);
+        source.type = webm ? 'video/webm' : 'video/mp4';
+        const poster = dark ? video.dataset.posterDark : video.dataset.posterLight;
+        if (poster) video.poster = poster;
+        if (video.dataset.media !== media) {
+          video.dataset.resumeTime = String(video.currentTime);
+          video.pause(); source.removeAttribute('src');
+          video.dataset.media = media; delete video.dataset.loaded;
+          video.load();
+        }
+        if (!canPlay()) { video.pause(); return; }
+        if (!video.dataset.loaded) {
+          source.src = media; video.muted = true;
+          video.load(); video.dataset.loaded = 'true';
+        }
+        void video.play().catch(() => { /* Keep the theme-matched poster when autoplay is unavailable. */ });
+      });
+    };
+    videos.forEach(video => video.addEventListener('loadedmetadata', () => {
+      const position = Number(video.dataset.resumeTime || 0);
+      if (position > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(position, Math.max(0, video.duration - 0.1));
+      delete video.dataset.resumeTime;
+    }));
+    toggle.addEventListener('click', () => { paused = !paused; update(); });
+    new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; update(); }, { threshold: 0.1 }).observe(showcase);
+    new MutationObserver(update).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    document.addEventListener('visibilitychange', update);
+    reduced.addEventListener('change', update);
+    update();
+  }
+</script>

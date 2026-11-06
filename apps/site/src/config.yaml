@@ -6,7 +6,7 @@ site:
 metadata:
   title:
     default: MollyTime
-    template: '%s — MollyTime'
+    template: '%s｜MollyTime'
   description: 'MollyTime 是给孩子的家庭视频空间。家长上传和整理内容，安排电视首页，查看观看记录，让每一次打开电视，都有你选好的故事。'
   robots:
     index: true
@@ -42,4 +42,4 @@ analytics:
     googleAnalytics:
       id: null
 ui:
-  theme: 'light'
+  theme: 'system'

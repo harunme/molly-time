@@ -3,6 +3,7 @@ WORKDIR /tv-web
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 # All three frontend stylesheets import the same brand palette above their app root.
 COPY assets/brand/mollytime-flower/palette.css /assets/brand/mollytime-flower/palette.css
+COPY assets/brand/mollytime-animated.svg /assets/brand/mollytime-animated.svg
 COPY apps/tv/web/package.json apps/tv/web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY apps/tv/web/index.html apps/tv/web/tsconfig.json apps/tv/web/vite.config.ts ./

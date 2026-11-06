@@ -57,8 +57,7 @@ for (const app of ['web', 'tv/web']) {
   await copy('web/favicon.svg', `apps/${app}/public/favicon.svg`);
   await copy('web/favicon.ico', `apps/${app}/public/favicon.ico`);
 }
-await copy('web/favicon.svg', 'apps/site/src/assets/favicons/favicon.svg');
-await copy('web/favicon.ico', 'apps/site/src/assets/favicons/favicon.ico');
+await import('./generate-site-favicon.mjs');
 await copy('web/apple-touch-icon.png', 'apps/site/src/assets/favicons/apple-touch-icon.png');
 await copy('digital/mollytime-symbol-black.svg', 'apps/site/src/assets/favicons/mask-icon.svg');
 for (const [from, to] of Object.entries({

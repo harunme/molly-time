@@ -1,0 +1,57 @@
+---
+import Layout from '~/layouts/HelpLayout.astro';
+import { Icon } from 'astro-icon/components';
+const sections = [
+  { id: 'what-data', label: '会保存什么' },
+  { id: 'who-sees', label: '谁能看到内容' },
+  { id: 'stored-where', label: '资料保存在哪里' },
+  { id: 'permissions', label: '手机权限做什么用' },
+  { id: 'manage-data', label: '如何管理和删除' },
+  { id: 'data-help', label: '还有问题怎么办' },
+];
+---
+<Layout title="隐私与数据" eyebrow="关于你的家庭资料" intro="哪些资料会保存、用来做什么，以及你可以在哪里管理。" description="了解 MollyTime 的账号、家庭视频、观看记录和设备信息如何用于产品，以及删除内容、管理权限与解除电视绑定的方法。" current="privacy" sections={sections}>
+  <div class="privacy-highlights">
+    <div><Icon name="ph:house-simple-duotone" aria-hidden="true" /><h2 class="title-3">按家庭管理</h2><p class="caption-2 muted">账号权限区分家庭内容。</p></div>
+    <div><Icon name="ph:eye-duotone" aria-hidden="true" /><h2 class="title-3">由家长开放</h2><p class="caption-2 muted">孩子看到已允许观看的内容。</p></div>
+    <div><Icon name="ph:trash-duotone" aria-hidden="true" /><h2 class="title-3">有管理入口</h2><p class="caption-2 muted">可以删除内容、解除电视绑定。</p></div>
+  </div>
+
+  <section id="what-data" class="help-section" aria-labelledby="what-data-title">
+    <h2 id="what-data-title" class="heading-4" tabindex="-1">会保存什么，为什么需要</h2>
+    <div class="data-table-wrap"><table class="data-table body-3"><caption class="sr-only">MollyTime 数据类型与用途</caption><thead><tr><th scope="col" class="title-3">资料</th><th scope="col" class="title-3">用来做什么</th></tr></thead><tbody><tr><th scope="row" class="title-3">账号与家庭资料</th><td>邮箱、账号、家庭与儿童档案，用于登录、区分家庭成员和保存各自的使用状态。</td></tr><tr><th scope="row" class="title-3">你添加的内容</th><td>视频、名称、封面和字幕，用于整理资料库、安排电视首页和播放。</td></tr><tr><th scope="row" class="title-3">播放与观看记录</th><td>播放进度、观看时间等，用于继续观看、查看时长和执行观看安排。</td></tr><tr><th scope="row" class="title-3">电视与运行信息</th><td>电视名称、绑定与连接状态用于连接和管理设备；应用版本、设备及错误信息用于排查问题。</td></tr></tbody></table></div>
+    <p class="help-note body-3"><strong>观看记录不是监控画面。</strong>记录反映设备的播放情况，不能证明孩子一直坐在屏幕前。</p>
+  </section>
+
+  <section id="who-sees" class="help-section" aria-labelledby="who-sees-title">
+    <h2 id="who-sees-title" class="heading-4" tabindex="-1">谁能看到这些内容</h2>
+    <dl class="privacy-explanations body-3"><div><dt class="title-2">家长与家庭成员</dt><dd class="muted">资料库按家庭和账号权限管理。能查看或操作哪些内容，取决于账号的权限。</dd></div><div><dt class="title-2">孩子和已绑定的电视</dt><dd class="muted">只有开放给孩子的内容，才会出现在孩子使用的电视中。视频和所在合集都需要允许孩子观看。</dd></div><div><dt class="title-2">主动分享的内容</dt><dd class="muted">你使用分享功能后，接收方可按分享规则访问选中的内容。分享链接和邀请码请只交给你希望邀请的人。</dd></div><div><dt class="title-2">服务管理人员</dt><dd class="muted">管理员负责存储、备份与故障排查。家庭内的权限控制，不等于文件只保存在你的手机上。</dd></div></dl>
+  </section>
+
+  <section id="stored-where" class="help-section" aria-labelledby="stored-where-title">
+    <h2 id="stored-where-title" class="heading-4" tabindex="-1">资料会保存在哪里</h2>
+    <div class="privacy-storage-grid"><div><Icon name="ph:cloud-duotone" aria-hidden="true" /><h3 class="title-1">家庭连接的服务上</h3><p class="body-3 muted">上传的视频和账号资料会由你连接的 MollyTime 服务保存，让家长端和电视端可以读取。实际存储与备份由服务管理员配置。</p></div><div><Icon name="ph:device-mobile-duotone" aria-hidden="true" /><h3 class="title-1">你的手机或浏览器里</h3><p class="body-3 muted">设备会保存登录状态，也可能缓存封面或播放过的视频，以减少重复加载。官网会在浏览器里记住深浅色偏好。</p></div></div>
+    <p class="help-note body-3"><strong>退出登录，不等于删除视频。</strong>清理手机缓存，也不等于删除服务上的家庭内容。要删除内容，请使用资料库中的删除入口。</p>
+    <p class="body-3 muted">点击官网下载按钮时，页面会读取对应客户端的版本信息。官网演示录屏用于介绍界面，不代表应用自带其中的影片。</p>
+  </section>
+
+  <section id="permissions" class="help-section" aria-labelledby="permissions-title">
+    <h2 id="permissions-title" class="heading-4" tabindex="-1">手机权限，分别做什么用</h2>
+    <dl class="privacy-explanations body-3"><div><dt class="title-2">相册和文件选择</dt><dd class="muted">用于读取你主动选中的视频或封面。选好文件后，应用才能上传对应内容。</dd></div><div><dt class="title-2">相机</dt><dd class="muted">扫描电视二维码时使用。不方便授权相机，也可以手动输入电视上的四位绑定码。</dd></div><div><dt class="title-2">安卓上传通知</dt><dd class="muted">安卓可能请求通知权限，用来显示上传进度。是否允许，由你在系统提示中选择。</dd></div></dl>
+    <p class="body-3 muted">权限可以在手机系统的「设置」中管理。关闭某项权限后，需要它的操作可能无法完成；例如无法扫码时，可以改用四位码连接电视。</p>
+  </section>
+
+  <section id="manage-data" class="help-section" aria-labelledby="manage-data-title">
+    <h2 id="manage-data-title" class="heading-4" tabindex="-1">想管理或删除，去哪里找</h2>
+    <div class="privacy-actions"><article><span class="privacy-action-number caption-1">01</span><div><h3 class="title-1">暂时不让孩子看</h3><p class="body-3 muted">在「资料库」长按对应合集或视频，在管理菜单里选择「改为仅家长可看」。内容仍留在家庭资料库里。</p></div></article><article><span class="privacy-action-number caption-1">02</span><div><h3 class="title-1">删除视频或合集</h3><p class="body-3 muted">在内容管理菜单中选择删除。删除的内容会移入「我的 → 最近删除」，可在那里恢复，或选择彻底删除。</p></div></article><article><span class="privacy-action-number caption-1">03</span><div><h3 class="title-1">让一台电视停止访问</h3><p class="body-3 muted">打开「电视」，找到对应设备，在它的更多操作中点「解绑电视」，确认解绑。以后重新使用，需要再次连接。</p></div></article></div>
+    <aside class="help-note help-note-important body-3"><strong>彻底删除前，请先确认。</strong>彻底删除后，内容无法从「最近删除」恢复。最近删除的保留时间，以应用页面显示为准。</aside>
+    <p class="body-3 muted">退出登录、删除应用和解除电视绑定，都不等于删除家庭账号或所有服务端资料。账号、备份或日志的处理，请联系服务管理员确认。</p>
+  </section>
+
+  <section id="data-help" class="privacy-contact" aria-labelledby="data-help-title">
+    <Icon name="ph:chat-circle-text-duotone" aria-hidden="true" />
+    <h2 id="data-help-title" class="heading-4" tabindex="-1">还有数据方面的问题？</h2>
+    <p class="body-3">联系给你提供邀请码的管理员，说明需要查询、修改或删除什么，以及涉及的账号。</p>
+    <p class="caption-2 muted">说明问题即可，不需要提供登录密码或家长密码。</p>
+  </section>
+</Layout>

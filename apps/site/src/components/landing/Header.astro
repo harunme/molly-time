@@ -1,0 +1,18 @@
+---
+import Logo from '~/components/Logo.astro';
+import { Icon } from 'astro-icon/components';
+---
+<a class="skip-link button-md" href="#main-content">跳到正文</a>
+<header class="landing-header">
+  <a href="/" class="brand-link" aria-label="MollyTime 首页"><Logo /></a>
+  <button type="button" class="icon-button" aria-label="切换深浅色主题" data-landing-theme>
+    <Icon name="ph:moon-stars-bold" class="theme-moon" aria-hidden="true" />
+    <Icon name="ph:sun-bold" class="theme-sun" aria-hidden="true" />
+  </button>
+</header>
+<script>
+  document.querySelector('[data-landing-theme]')?.addEventListener('click', () => {
+    const dark = document.documentElement.classList.toggle('dark');
+    localStorage.theme = dark ? 'dark' : 'light';
+  });
+</script>

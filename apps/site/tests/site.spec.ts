@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Content checks wait for the real entrance to finish; lifecycle cases live in startup.spec.ts.
+async function visit(page: Page, path: string) {
+  await page.goto(path);
+  await expect(page.locator('#startup-intro')).toBeHidden({ timeout: 6000 });
+}
+
 async function capture(page: Page, path: string) {
   await page.evaluate(async () => {
     document.querySelectorAll<HTMLImageElement>('img').forEach((image) => { image.loading = 'eager'; });
@@ -15,26 +21,25 @@ async function capture(page: Page, path: string) {
   await page.screenshot({ path, fullPage: true });
 }
 
-test('homepage has working navigation, metadata, FAQ and no browser errors', async ({ page }) => {
+test('homepage has minimal header, download entries, metadata and no browser errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('让孩子的每次观看，都有你的用心在里面。');
+  await visit(page, '/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('你挑的好故事，孩子的小世界。');
   await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', 'https://mollytime.app');
-  await expect(page.getByRole('link', { name: '使用网页版家长后台' })).toHaveAttribute('href', '/manage/');
-  await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('background-color', 'rgb(248, 222, 126)');
-  await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('color', 'rgb(63, 58, 50)');
+  await expect(page.getByRole('link', { name: '使用网页版家长后台' })).toHaveCount(0);
+  await expect(page.locator('#download-android-button')).toHaveCSS('background-color', 'rgb(248, 222, 126)');
+  await expect(page.locator('#download-android-button')).toHaveCSS('color', 'rgb(63, 58, 50)');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 244)');
-  await page.getByRole('navigation', { name: '主要导航', exact: true }).getByRole('link', { name: '产品功能' }).click();
-  await expect(page).toHaveURL(/#features$/);
-  await expect(page.locator('#features > div').last()).toHaveCSS('opacity', '1');
-  await page.locator('#faqs summary').filter({ hasText: '哪些电视可以使用？' }).click();
-  await expect(page.locator('#faqs details').nth(1)).toHaveAttribute('open', '');
-  await expect(page.locator('#faqs details').first()).not.toHaveAttribute('open', '');
+  await expect(page.locator('header a')).toHaveCount(1);
+  await expect(page.locator('header button')).toHaveCount(1);
+  await expect(page.locator('header nav')).toHaveCount(0);
+  await page.locator('#features').scrollIntoViewIfNeeded();
+  await expect(page.locator('#features .section-heading')).toHaveCSS('opacity', '1');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
-  await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('color', 'rgb(63, 58, 50)');
-  await expect(page.getByRole('button', { name: '下载电视端' })).toHaveCSS('color', 'rgb(234, 229, 217)');
+  await expect(page.locator('#download-android-button')).toHaveCSS('color', 'rgb(63, 58, 50)');
+  await expect(page.getByRole('button', { name: '下载电视端' })).toHaveCSS('color', 'rgb(246, 244, 233)');
   await capture(page, 'test-results/dark.png');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
@@ -42,67 +47,76 @@ test('homepage has working navigation, metadata, FAQ and no browser errors', asy
   const share = await page.request.get('/site/share.png');
   expect(share.status()).toBe(200);
   expect(share.headers()['content-type']).toContain('image/png');
-  await page.goto('/');
+  await visit(page, '/');
   await capture(page, 'test-results/desktop.png');
 });
 
-test('mobile menu, anchors and layout at narrow phone widths', async ({ page }) => {
+test('minimal header and download remain usable at narrow phone widths', async ({ page }) => {
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
-    await page.goto('/');
+    await visit(page, '/');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const cta = await page.locator('#download-android-button').boundingBox();
+    expect(cta && cta.y + cta.height).toBeLessThan(844);
+    for (const entry of [page.locator('#download-button')]) {
+      const bounds = await entry.boundingBox();
+      expect(bounds && bounds.y + bounds.height).toBeLessThan(844);
+    }
+    await expect(page.locator('header a')).toHaveCount(1);
+    await expect(page.locator('header button')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '打开导航菜单' })).toHaveCount(0);
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await page.getByRole('button', { name: '打开导航菜单' }).click();
-  await page.getByRole('navigation', { name: '主要导航' }).getByRole('link', { name: '如何开始' }).click();
-  await expect(page).toHaveURL(/#how-it-works$/);
-  await expect(page.locator('#header')).not.toHaveClass(/expanded/);
-  await page.getByRole('button', { name: '打开导航菜单' }).click();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#header')).not.toHaveClass(/expanded/);
-  await page.goto('/');
+  await visit(page, '/');
+  await page.getByRole('button', { name: '切换深浅色主题' }).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.reload();
+  await expect(page.locator('#startup-intro')).toBeHidden({ timeout: 6000 });
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.getByRole('button', { name: '切换深浅色主题' }).click();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
   await capture(page, 'test-results/mobile.png');
 });
 
-test('explorer floats independently of copy, responds to the pointer and pauses offscreen', async ({ page }) => {
+test('story garden floats independently of copy and pauses offscreen', async ({ page }) => {
+  await page.setViewportSize({width:1440,height:700});
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto('/');
-  const image = page.locator('.hero-drift img');
-  await image.evaluate((element: HTMLImageElement) => element.decode());
-  const initial = await image.boundingBox();
-  if (!initial) throw new Error('Explorer image is not visible');
+  await visit(page, '/');
+  const art = page.locator('.story-garden');
+  await art.locator('img').evaluate((element: HTMLImageElement) => element.decode());
+  // Entry may finish near the float's resting crest; measure from a known phase.
+  await art.evaluate(element => element.getAnimations().forEach(animation => { animation.currentTime = 0; }));
+  const initial = await art.boundingBox();
+  if (!initial) throw new Error('Story garden is not visible');
   const copy = await page.locator('.hero-copy').boundingBox();
-  const buttons = await page.locator('.hero-actions').boundingBox();
-  await expect.poll(async () => Math.abs((await image.boundingBox())!.y - initial.y)).toBeGreaterThan(3);
+  const button = await page.locator('#download-android-button').boundingBox();
+  await expect.poll(async () => Math.abs((await art.boundingBox())!.y - initial.y), { timeout: 10000 }).toBeGreaterThan(3);
   expect(await page.locator('.hero-copy').boundingBox()).toEqual(copy);
-  expect(await page.locator('.hero-actions').boundingBox()).toEqual(buttons);
-
-  const art = page.locator('.hero-art');
-  const rest = await art.evaluate((element) => getComputedStyle(element).transform);
-  await page.mouse.move(1250, 500);
-  await expect.poll(() => art.evaluate((element) => getComputedStyle(element).transform)).not.toBe(rest);
-  await page.mouse.move(0, 0);
-  await expect.poll(() => art.evaluate((element) => getComputedStyle(element).transform)).toBe(rest);
-  await page.keyboard.press('End');
-  await expect(page.locator('.hero-drift')).toHaveCSS('animation-play-state', 'paused');
+  expect(await page.locator('#download-android-button').boundingBox()).toEqual(button);
+  await page.locator('footer').scrollIntoViewIfNeeded();
+  await expect.poll(() => art.evaluate(element => element.getBoundingClientRect().bottom)).toBeLessThanOrEqual(0);
+  await expect(art).toHaveCSS('animation-play-state', 'paused');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(art).toHaveCSS('animation-name', 'none');
+  await expect(art).toHaveCSS('transform', 'none');
 });
 
-test('reduced-motion preference stops floating and pointer depth, including changes while open', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto('/');
-  await page.mouse.move(1250, 500);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(page.locator('.hero-drift')).toHaveCSS('animation-name', 'none');
-  await expect(page.locator('.hero-art')).toHaveCSS('transform', 'none');
-  await page.mouse.move(200, 200);
-  await expect(page.locator('.hero-art')).toHaveCSS('transform', 'none');
-  await expect(page.locator('.hero-shadow')).toHaveCSS('animation-name', 'none');
+test('keyboard entry and supporting pages have a usable route back', async ({ page }) => {
+  await visit(page, '/');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: '跳到正文' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('main')).toBeFocused();
+  for (const [path, title] of [['/privacy', '隐私与数据'], ['/terms', '使用说明'], ['/404', '这个故事，还没找到。']]) {
+    await visit(page, path);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+    await expect(page.locator('main').getByRole('link', { name: /(返回.*|回到)首页/ })).toHaveAttribute('href', '/');
+  }
 });
 
 for (const channel of [
-  { name: '下载 Android 家长端', packageName: 'com.molly.parent', status: '#download-android-status', filename: 'mollytime-android.apk' },
-  { name: '下载电视端', packageName: 'com.molly.tv', status: '#download-status', filename: 'mollytime-tv.apk' },
+  { name: '下载 Android 家长端', packageName: 'com.molly.parent', button: '#download-android-button', status: '#download-android-button-status', filename: 'mollytime-android.apk' },
+  { name: '下载电视端', packageName: 'com.molly.tv', button: '#download-button', status: '#download-button-status', filename: 'mollytime-tv.apk' },
 ]) {
   test(`${channel.packageName}: absence and server failure permit retry`, async ({ page }) => {
     let attempts = 0;
@@ -111,8 +125,8 @@ for (const channel of [
       attempts++;
       return route.fulfill(attempts === 1 ? { json: { release: null } } : { status: 503, body: 'unavailable' });
     });
-    await page.goto('/#download');
-    const button = page.getByRole('button', { name: channel.name });
+    await visit(page, '/#download');
+    const button = page.locator(channel.button);
     await button.click();
     await expect(page.locator(channel.status)).toContainText('尚未发布');
     await expect(button).toBeEnabled();
@@ -132,8 +146,8 @@ for (const channel of [
       } });
     });
     await page.route(`**${path}`, (route) => route.fulfill({ body: 'apk-fixture', contentType: 'application/vnd.android.package-archive', headers: { 'Content-Disposition': `attachment; filename="${channel.filename}"` } }));
-    await page.goto('/#download');
-    const button = page.getByRole('button', { name: channel.name });
+    await visit(page, '/#download');
+    const button = page.locator(channel.button);
     const pending = page.waitForEvent('download');
     await button.click();
     expect((await pending).suggestedFilename()).toBe(channel.filename);
@@ -151,3 +165,75 @@ for (const channel of [
     await expect(button).toBeEnabled();
   });
 }
+
+test('Android download disables while pending without blocking the TV channel', async ({ page }) => {
+  let releaseResponse: (() => void) | undefined;
+  await page.route('**/api/client/releases/latest?*', async route => {
+    expect(new URL(route.request().url()).searchParams.get('packageName')).toBe('com.molly.parent');
+    await new Promise<void>(resolve => { releaseResponse = resolve; });
+    await route.fulfill({ json: { release: null } });
+  });
+  await visit(page, '/');
+  const button = page.locator('#download-android-button');
+  await button.click();
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('#download-button')).toBeEnabled();
+  await expect(page.locator('#download-android-button-status')).toContainText('正在获取');
+  await expect.poll(() => Boolean(releaseResponse)).toBe(true);
+  releaseResponse!();
+  await expect(button).toBeEnabled();
+  await expect(page.locator('#download-android-button-status')).toContainText('尚未发布');
+  await expect(page.locator('#download-button-status')).toBeHidden();
+});
+
+test('real recordings pause, resume and switch phone themes while preserving reduced motion', async ({ page }) => {
+  await visit(page, '/');
+  const phone = page.locator('.iphone-screen video');
+  const recordings = page.locator('[data-demo-video]');
+  await expect(recordings).toHaveCount(2);
+  await expect.poll(() => phone.evaluate((video: HTMLVideoElement) => video.paused && !video.currentSrc)).toBe(true);
+  await page.getByRole('button', { name: '切换深浅色主题' }).click();
+  await expect.poll(() => phone.evaluate((video: HTMLVideoElement) => video.getAttribute('poster') === video.dataset.posterDark)).toBe(true);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.locator('.device-showcase').scrollIntoViewIfNeeded();
+  await expect.poll(() => phone.evaluate((video: HTMLVideoElement) => /\/parent-dark\.(mp4|webm)$/.test(video.currentSrc) && video.currentTime > 0.1 && !video.paused)).toBe(true);
+  await page.getByRole('button', { name: '暂停演示' }).click();
+  await expect.poll(() => recordings.evaluateAll(videos => videos.every(video => (video as HTMLVideoElement).paused))).toBe(true);
+  await page.getByRole('button', { name: '播放演示' }).click();
+  await expect.poll(() => phone.evaluate((video: HTMLVideoElement) => !video.paused)).toBe(true);
+  await page.getByRole('button', { name: '切换深浅色主题' }).click();
+  await expect.poll(() => phone.evaluate((video: HTMLVideoElement) => video.getAttribute('poster') === video.dataset.posterLight)).toBe(true);
+  await page.locator('.device-showcase').scrollIntoViewIfNeeded();
+  await expect.poll(() => phone.evaluate((video: HTMLVideoElement) => /\/parent-light\.(mp4|webm)$/.test(video.currentSrc) && !video.paused)).toBe(true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => recordings.evaluateAll(videos => videos.every(video => (video as HTMLVideoElement).paused))).toBe(true);
+  await expect(page.getByRole('button', { name: '暂停演示' })).toBeHidden();
+});
+
+test('a mobile parent can jump to a task, read a fix and move between help pages', async ({ page }) => {
+  await page.setViewportSize({width:390,height:844});
+  await visit(page, '/terms');
+  await page.locator('.help-mobile-toc summary').click();
+  await page.getByRole('navigation', {name:'手机本页目录'}).getByRole('link', {name:'03 添加第一段视频'}).click();
+  await expect(page).toHaveURL(/#add-video$/);
+  await expect(page.locator('.help-mobile-toc')).not.toHaveAttribute('open','');
+  await expect(page.getByRole('heading', {name:'添加第一段视频',exact:true})).toBeInViewport();
+  await expect(page.locator('#add-video')).toContainText('上传后允许孩子观看');
+  await expect(page.locator('#add-video')).toContainText('长按存放视频的合集');
+  await page.getByRole('button', {name:'切换深浅色主题'}).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.getByRole('link', {name:'再了解隐私与数据'}).click();
+  await expect(page.getByRole('heading', {level:1})).toHaveText('隐私与数据');
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.locator('.help-mobile-toc summary').click();
+  await page.getByRole('navigation', {name:'手机本页目录'}).getByRole('link', {name:'如何管理和删除'}).click();
+  await expect(page).toHaveURL(/#manage-data$/);
+  await expect(page.getByRole('heading', {name:'想管理或删除，去哪里找'})).toBeInViewport();
+  await expect(page.locator('#manage-data')).toContainText('最近删除');
+  for (const route of ['/terms','/privacy']) {
+    await page.setViewportSize({width:320,height:740});
+    await page.goto(route);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
+});

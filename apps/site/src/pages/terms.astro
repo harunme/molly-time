@@ -1,0 +1,95 @@
+---
+import Layout from '~/layouts/HelpLayout.astro';
+import DownloadButton from '~/components/landing/DownloadButton.astro';
+import DownloadController from '~/components/landing/DownloadController.astro';
+import Image from '~/components/common/Image.astro';
+import { Icon } from 'astro-icon/components';
+const sections = [
+  { id: 'install-phone', number: '01', label: '安装手机端' },
+  { id: 'sign-in', number: '02', label: '登录你的账号' },
+  { id: 'add-video', number: '03', label: '添加第一段视频' },
+  { id: 'connect-tv', number: '04', label: '连接你的电视' },
+  { id: 'watch-time', number: '05', label: '安排观看时间' },
+  { id: 'updates', number: '06', label: '以后怎么更新' },
+  { id: 'need-help', label: '遇到问题看这里' },
+];
+---
+<Layout title="使用说明" eyebrow="家长上手指南" intro="先拿一段短视频试一次。跟着前四步，就能在电视上看。" description="从安装、邀请码注册、添加视频到绑定电视，一步步开始使用 MollyTime。附观看安排、应用更新与常见问题处理。" current="terms" sections={sections}>
+  <section class="help-preparation" aria-labelledby="prepare-title">
+    <h2 id="prepare-title" class="title-1">开始前，准备好这三样</h2>
+    <ul class="preparation-list body-3"><li><Icon name="ph:check-bold" aria-hidden="true" />一个已有账号，或收到的注册邀请码</li><li><Icon name="ph:check-bold" aria-hidden="true" />一段你有权使用的 MP4 视频</li><li><Icon name="ph:check-bold" aria-hidden="true" />能安装安卓应用的电视或电视盒子</li></ul>
+    <p class="caption-2 muted">MollyTime 不自带影片，需要由家长添加。第一次先试一段，确认能播放后再整理更多。</p>
+  </section>
+
+  <section id="install-phone" class="guide-step" aria-labelledby="install-phone-title">
+    <header class="guide-step-heading"><span class="step-index title-2" aria-hidden="true">01</span><h2 id="install-phone-title" class="heading-4" tabindex="-1">先在手机上安装家长端</h2></header>
+    <p class="body-3 muted">下面的安装步骤适用于 Android 8.0 及以上的安卓手机。</p>
+    <div class="guide-download"><DownloadButton id="guide-download-parent" /></div>
+    <ol class="instruction-list body-3"><li><span>用安卓手机打开本页，点上面的<strong>「下载 Android 家长端」</strong>。</span></li><li><span>下载完成后，点开下载通知，或到手机的<strong>「下载」</strong>文件夹里打开安装包。</span></li><li><span>如果系统提示不允许安装，按提示进入设置，允许本次使用的浏览器安装应用，再返回继续。</span></li><li><span>点<strong>「安装」</strong>，完成后打开 MollyTime。</span></li></ol>
+    <p class="step-result body-3"><Icon name="ph:check-circle-fill" aria-hidden="true" />看到登录页面，就可以继续下一步。</p>
+    <aside class="help-note body-3"><strong>用 iPhone？</strong>安卓安装包不能装到 iPhone 上。已经装好 iOS 家长端的家长，可以直接从第 2 步开始。</aside>
+  </section>
+
+  <section id="sign-in" class="guide-step" aria-labelledby="sign-in-title">
+    <header class="guide-step-heading"><span class="step-index title-2" aria-hidden="true">02</span><h2 id="sign-in-title" class="heading-4" tabindex="-1">登录你的账号</h2></header>
+    <p class="help-note body-3"><strong>已有账号：</strong>填写邮箱或账号、登录密码，点「登录」。不用再次输入邀请码。</p>
+    <h3 class="title-2 guide-subtitle">第一次用，按下面注册</h3>
+    <ol class="instruction-list body-3"><li><span>在登录页点<strong>「使用邀请码开通」</strong>。iPhone 上的按钮叫「使用邀请码加入」。</span></li><li><span>输入你收到的<strong>十二位注册邀请码</strong>，点<strong>「继续」</strong>。</span></li><li><span>核对邮箱，设置自己的登录密码。密码至少 8 个字符，请记好。</span></li><li><span>点<strong>「创建账号并登录」</strong>。iPhone 上按页面的创建账号提示完成。</span></li></ol>
+    <p class="step-result body-3"><Icon name="ph:check-circle-fill" aria-hidden="true" />看到「资料库」，说明已经登录成功。</p>
+    <aside class="help-note body-3"><strong>两种码别混淆：</strong>注册邀请码用来开通账号；电视上的四位数字，用来在第 4 步连接电视。</aside>
+  </section>
+
+  <section id="add-video" class="guide-step" aria-labelledby="add-video-title">
+    <header class="guide-step-heading"><span class="step-index title-2" aria-hidden="true">03</span><h2 id="add-video-title" class="heading-4" tabindex="-1">添加第一段视频</h2></header>
+    <figure class="guide-visual"><div class="guide-screen-viewport"><div class="guide-screen-inner"><Image src="~/assets/images/parent-ios.png" alt="家长端资料库右上角的加号按钮" width={480} format="webp" layout="none" class="guide-image-light" /><Image src="~/assets/images/parent-ios-dark.png" alt="家长端资料库右上角的加号按钮，深色界面" width={480} format="webp" layout="none" class="guide-image-dark" /><span class="guide-tap-marker" aria-hidden="true"></span></div></div><figcaption class="caption-2 muted">找到资料库右上角的「＋」。图为 iPhone，安卓入口也在右上角。</figcaption></figure>
+    <ol class="instruction-list body-3"><li><span>打开手机家长端，点底部<strong>「资料库」</strong>。</span></li><li><span>点右上角<strong>「＋」</strong>，再点<strong>「上传视频」</strong>。</span></li><li><span>点<strong>「从相册选择」</strong>或<strong>「从文件选择」</strong>，选一段视频。</span></li><li><span>检查视频名称。<strong>「放入合集」</strong>可以先保持默认；合集就像文件夹，用来把同一系列的视频放在一起。</span></li><li><span>打开<strong>「上传后允许孩子观看」</strong>，再点<strong>「开始上传」</strong>。</span></li><li><span>等上传和处理都完成，再到资料库查看。</span></li><li><span>长按存放视频的合集，点<strong>「允许孩子观看」</strong>并确认。已经开放的合集可以跳过。</span></li></ol>
+    <p class="step-result body-3"><Icon name="ph:check-circle-fill" aria-hidden="true" />视频处理完成后，就能在手机里点开观看。</p>
+    <aside class="help-note help-note-important body-3"><strong>找不到「允许孩子观看」？</strong>如果菜单写的是「改为仅家长可看」，说明已经开放，不用再改。电视仍看不到时，再检查视频和所在合集是否都已开放。</aside>
+    <details class="help-detail"><summary class="title-3">已经有很多视频，想整理成合集？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">在「资料库」点「＋」→「新建合集」，输入名称并保存。进入这个合集再上传，或在视频的管理菜单里调整位置。</p></details>
+  </section>
+
+  <section id="connect-tv" class="guide-step" aria-labelledby="connect-tv-title">
+    <header class="guide-step-heading"><span class="step-index title-2" aria-hidden="true">04</span><h2 id="connect-tv-title" class="heading-4" tabindex="-1">让电视加入你的家庭</h2></header>
+    <h3 class="title-2 guide-subtitle">先安装电视端</h3>
+    <p class="body-3 muted">下面以「电脑下载，再用 U 盘安装」为例。先确认电视或盒子允许安装安卓安装包。</p>
+    <div class="guide-download"><DownloadButton id="guide-download-tv" channel="tv" secondary /></div>
+    <ol class="instruction-list body-3"><li><span>在电脑上点上面的<strong>「下载电视端」</strong>，把下载的安装包复制到 U 盘。</span></li><li><span>把 U 盘插入电视或盒子，打开设备的<strong>文件管理器或应用安装工具</strong>。</span></li><li><span>找到刚下载的电视端文件，名字以<strong> .apk </strong>结尾。选择安装；有权限提示时按设备提示操作。</span></li><li><span>安装完成后，在电视上打开 MollyTime。</span></li></ol>
+    <p class="caption-2 muted guide-small-note">不同品牌的安装入口不同。没有 U 盘安装功能时，需要使用设备支持的传文件、安装方式；不能安装安卓应用的设备无法直接安装电视端。</p>
+    <h3 class="title-2 guide-subtitle">再用四位数字连接</h3>
+    <div class="pairing-flow" role="img" aria-label="把电视上的四位绑定码填到手机中"><div><Icon name="ph:television-duotone" aria-hidden="true" /><span class="caption-1">看电视上的<br />四位绑定码</span></div><Icon name="ph:arrow-right-bold" class="pairing-arrow" aria-hidden="true" /><div><Icon name="ph:device-mobile-duotone" aria-hidden="true" /><span class="caption-1">填到手机里<br />点「查找电视」</span></div></div>
+    <ol class="instruction-list body-3"><li><span>让手机和电视都能上网。电视打开 MollyTime 后，停在显示<strong>四位绑定码和二维码</strong>的页面。</span></li><li><span>手机家长端点底部<strong>「电视」</strong>，再点右上角<strong>「＋」</strong>。</span></li><li><span>把<strong>电视上的四位数字</strong>填到手机里，点<strong>「查找电视」</strong>。也可以点「扫描电视二维码」。</span></li><li><span>核对电视名称，点<strong>「确认绑定」</strong>。</span></li></ol>
+    <p class="step-result body-3"><Icon name="ph:check-circle-fill" aria-hidden="true" />电视会自动进入首页，手机的电视列表里也会出现它。</p>
+    <p class="body-3">现在拿起遥控器，用方向键选内容，按<strong>「确定」</strong>就能打开。</p>
+  </section>
+
+  <section id="watch-time" class="guide-step" aria-labelledby="watch-time-title">
+    <header class="guide-step-heading"><span class="step-index title-2" aria-hidden="true">05</span><h2 id="watch-time-title" class="heading-4" tabindex="-1">安排每天看多久</h2></header>
+    <p class="body-3 muted">这一步可以稍后再做。比如，你想让孩子每天看 20 分钟。</p>
+    <ol class="instruction-list body-3"><li><span>手机点<strong>「电视」</strong>，找到刚才绑定的设备，点<strong>「观看安排」</strong>。如果按钮在更多操作里，点「…」→「每天的观看安排」。</span></li><li><span>打开<strong>「安排每天的观看额度」</strong>。</span></li><li><span>选<strong>「按分钟」</strong>，再选<strong>「20 分钟」</strong>。想按集数安排，就改选「按集数」。</span></li><li><span>第一次开启时，设置一个<strong>四位数字家长密码</strong>，由家长保管。</span></li><li><span>点<strong>「保存安排」</strong>。</span></li></ol>
+    <aside class="help-note body-3"><strong>什么时候生效？</strong>首次开启后今天就能用；之后调整每天的额度，从明天起生效。每天北京时间 0 点恢复额度。</aside>
+    <div class="guide-two-notes"><div><h3 class="title-3">今天临时多看一点</h3><p class="body-3 muted">回到「电视」页，点「加看 10 分钟」或「加看 1 集」。</p></div><div><h3 class="title-3">看完这一集就休息</h3><p class="body-3 muted">电视正在播放时，按页面提供的「这集看完休息」操作。</p></div></div>
+    <p class="caption-2 muted guide-small-note">家长密码用于电视上的家长操作，和手机登录密码不是同一个密码。</p>
+  </section>
+
+  <section id="updates" class="guide-step" aria-labelledby="updates-title">
+    <header class="guide-step-heading"><span class="step-index title-2" aria-hidden="true">06</span><h2 id="updates-title" class="heading-4" tabindex="-1">以后这样更新应用</h2></header>
+    <ol class="instruction-list body-3"><li><span>安卓手机打开家长端，点底部<strong>「我的」</strong>。</span></li><li><span>找到并点开<strong>「版本更新」</strong>。</span></li><li><span>有新版时，按提示下载，完成后按系统提示安装。</span></li></ol>
+    <p class="step-result body-3"><Icon name="ph:check-circle-fill" aria-hidden="true" />同一正式版直接覆盖更新，会保留应用数据。</p>
+    <p class="body-3 muted">电视端在右上角「设置」里查看更新。首次安装电视端，仍使用第 4 步的安装方法。</p>
+    <details class="help-detail"><summary class="title-3">以前装过测试版，现在怎么换？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">名字带 Debug 的测试版与正式版是两个应用。安装正式版后重新登录；原来账号的家庭内容仍在服务上。普通更新直接使用应用内入口即可。</p></details>
+  </section>
+
+  <section id="need-help" class="help-section" aria-labelledby="need-help-title">
+    <h2 id="need-help-title" class="heading-4" tabindex="-1">卡住了，先看这里</h2>
+    <div class="help-questions">
+      <details class="help-detail" name="guide-problems"><summary class="title-3">没有注册邀请码，或者提示过期了？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">联系邀请你使用 MollyTime 的人，确认注册邀请码。电视上的四位数字只用来连接电视，不能用来注册。</p></details>
+      <details class="help-detail" name="guide-problems"><summary class="title-3">电视已经连上，但看不到视频？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">先在手机确认视频已处理完成，再检查视频和所在合集是否都设为「允许孩子观看」。同时确认电视绑定的是当前账号所在的家庭。</p></details>
+      <details class="help-detail" name="guide-problems"><summary class="title-3">绑定码提示失效，或者手机显示电视离线？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">先打开电视上的 MollyTime，并确认电视能正常上网。绑定码失效时，使用电视当前显示的新码，再到手机里查找。已经绑定的电视，开机联网后稍等设备状态更新。</p></details>
+      <details class="help-detail" name="guide-problems"><summary class="title-3">上传停住了，怎么办？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">先保留手机里的原视频。回到家长端的上传页面，确认网络后，按「继续上传」「重试处理」或页面提示操作。先别重复添加同一段视频。</p></details>
+      <details class="help-detail" name="guide-problems"><summary class="title-3">文件是 MP4，电视却播不了？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">MP4 文件内部也可能使用电视不支持的视频格式。先换一段视频测试；如果只有某个文件不能播，需要换一份兼容的文件。不要一次上传很多段再测试。</p></details>
+      <details class="help-detail" name="guide-problems"><summary class="title-3">找不到上传、观看安排这些按钮？<Icon name="ph:plus-bold" aria-hidden="true" /></summary><p class="body-3 muted">先确认登录的是家庭管理员账号，并使用较新的家长端和电视端。普通成员的管理入口可能较少；仍找不到时，联系给你邀请码的管理员。</p></details>
+    </div>
+    <p class="body-3 muted guide-small-note">需要帮忙时，可以发送出问题的页面截图和设备型号。登录密码、家长密码和完整邀请码请自己保管。</p>
+  </section>
+  <DownloadController />
+</Layout>

@@ -13,7 +13,7 @@ export default defineConfig({
   devToolbar: { enabled: false },
   integrations: [
     sitemap(),
-    icon({ include: { tabler: ['*'], 'flat-color-icons': ['*'] } }),
+    icon({ include: { ph: ['*'], tabler: ['*'], 'flat-color-icons': ['*'] } }),
     astrowind({ config: './src/config.yaml' }),
     {
       name: 'dev-app-routes',

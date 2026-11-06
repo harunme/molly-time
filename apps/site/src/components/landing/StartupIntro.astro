@@ -1,0 +1,42 @@
+---
+// Approved brand animation, also used as the reference for the native startup views.
+import logo from '../../../../../assets/brand/mollytime-animated.svg?raw';
+import config from '~/assets/startup/config.json';
+const startupConfig: { configured: boolean; durationMs?: number } = config;
+const sounds = import.meta.glob<string>('../../assets/startup/*.mp3', { eager: true, query: '?url', import: 'default' });
+const sound = startupConfig.configured ? sounds['../../assets/startup/sound.mp3'] : undefined;
+---
+<div id="startup-intro" class="startup-intro" role="status" aria-label="MollyTime 正在启动" hidden data-sound={sound} data-duration={startupConfig.configured ? startupConfig.durationMs : undefined}>
+  <div class="startup-backdrop" aria-hidden="true"></div>
+  <div class="startup-symbol" aria-hidden="true" set:html={logo} />
+</div>
+<!-- Activate only with JS; an independent watchdog restores the page if the module fails to load. -->
+<script is:inline>
+  (() => {
+    const intro = document.getElementById('startup-intro');
+    if (document.hidden || new URLSearchParams(location.search).get('preview') === 'share') return;
+    intro.hidden = false;
+    document.documentElement.classList.add('startup-active');
+    window.setTimeout(() => {
+      if (intro.dataset.ready) return;
+      intro.hidden = true;
+      document.documentElement.classList.remove('startup-active');
+    }, 3000);
+  })();
+</script>
+<script>
+  import { startIntro } from '~/scripts/startup-intro';
+  const intro = document.getElementById('startup-intro');
+  if (intro instanceof HTMLElement && !intro.hidden) startIntro(intro);
+</script>
+<style is:global>
+  /* Shade the reserved scrollbar gutter with the same opacity as the overlay. */
+  html.startup-active { overflow: hidden; background: color-mix(in srgb,var(--night-page) calc(var(--startup-shade,1) * 100%),var(--page)); }
+  .startup-intro[hidden], .startup-intro [hidden] { display: none; }
+  .startup-intro { position: fixed; inset: 0; z-index: 100; color: #f8de7e; }
+  .startup-backdrop { position: absolute; inset: 0; background: var(--night-page); will-change: opacity; }
+  .startup-symbol { position: absolute; left: 50%; top: 50%; width: 44vmin; transform: translate(-50%,-50%); will-change: opacity; }
+  .startup-symbol svg { display: block; width: 100%; height: auto; }
+  .startup-symbol svg * { animation-play-state: paused !important; }
+  @media (min-width: 768px) { .startup-symbol { width: 27vmin; } }
+</style>

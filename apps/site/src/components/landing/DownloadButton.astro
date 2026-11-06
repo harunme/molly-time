@@ -1,0 +1,12 @@
+---
+import { Icon } from 'astro-icon/components';
+interface Props { id: string; channel?: 'parent' | 'tv'; secondary?: boolean; }
+const { id, channel = 'parent', secondary = false } = Astro.props;
+const label = channel === 'parent' ? '下载 Android 家长端' : '下载电视端';
+---
+<div class="download-control">
+  <button id={id} type="button" class:list={['landing-button button-md', secondary ? 'button-secondary' : 'button-primary']} data-client-download data-package={channel === 'parent' ? 'com.molly.parent' : 'com.molly.tv'} aria-describedby={`${id}-status`}>
+    <span>{label}</span><Icon name="ph:download-simple-bold" class="button-icon" aria-hidden="true" />
+  </button>
+  <p id={`${id}-status`} class="download-state caption-2" role="status" hidden></p>
+</div>

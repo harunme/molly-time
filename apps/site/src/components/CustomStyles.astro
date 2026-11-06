@@ -1,14 +1,12 @@
 ---
-// Font family is provided by Astro's native Fonts API (see `fonts` in
-// astro.config.ts and <Font /> in Layout.astro), exposed as `--font-inter`.
-// To switch typefaces, change the `fonts` entry and repoint `--aw-font-*` below.
+// Manrope is self-hosted; the system font supplies Chinese glyphs.
 ---
 
 <style is:inline>
   :root {
-    --aw-font-sans: var(--font-inter);
-    --aw-font-serif: var(--font-inter);
-    --aw-font-heading: var(--font-inter);
+    --aw-font-sans: var(--font-manrope);
+    --aw-font-serif: var(--font-manrope);
+    --aw-font-heading: var(--font-manrope);
 
     --aw-color-primary: var(--molly-primary);
     --aw-color-primary-hover: var(--molly-primary-hover);
@@ -33,9 +31,9 @@
   }
 
   .dark {
-    --aw-font-sans: var(--font-inter);
-    --aw-font-serif: var(--font-inter);
-    --aw-font-heading: var(--font-inter);
+    --aw-font-sans: var(--font-manrope);
+    --aw-font-serif: var(--font-manrope);
+    --aw-font-heading: var(--font-manrope);
 
     --aw-color-primary: var(--molly-primary);
     --aw-color-primary-hover: var(--molly-primary-hover);

@@ -1,0 +1,19 @@
+---
+import Layout from './Layout.astro';
+import Header from '~/components/landing/Header.astro';
+import Footer from '~/components/landing/Footer.astro';
+import StartupIntro from '~/components/landing/StartupIntro.astro';
+import '~/assets/styles/landing.css';
+import type { MetaData } from '~/types';
+interface Props { metadata?: MetaData; }
+const { metadata } = Astro.props;
+---
+<Layout metadata={metadata}>
+  <slot name="head" slot="head" />
+  {Astro.url.pathname === '/' && <StartupIntro />}
+  <div data-site-content style="display: contents">
+    <Header />
+    <main id="main-content" tabindex="-1"><slot /></main>
+    <Footer />
+  </div>
+</Layout>

@@ -1,0 +1,7 @@
+---
+import Layout from '~/layouts/LandingLayout.astro';
+import Image from '~/components/common/Image.astro';
+---
+<Layout metadata={{ title: '这个故事还没找到', robots: { index: false, follow: true } }}>
+  <section class="not-found"><Image src="~/assets/images/story-garden.png" alt="小花园里的电视和两个黏土小伙伴" width={480} format="webp" /><span class="caption-1 muted">404</span><h1 class="heading-3">这个故事，还没找到。</h1><p class="body-3 muted">页面可能搬家了。回到首页，继续看看。</p><a class="landing-button button-primary button-md" href="/">回到首页</a></section>
+</Layout>
