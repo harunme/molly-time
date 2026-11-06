@@ -10,8 +10,13 @@ python3 "$MOLLYTIME_ROOT/tools/package-startup-sound.py" "${startup_args[@]}" \
 BUILD_TYPE=debug
 if [[ "${1:-}" == debug || "${1:-}" == release ]]; then BUILD_TYPE="$1"; shift; fi
 case "$BUILD_TYPE" in
-  debug) TASKS=(:app:testDebugUnitTest :app:lintDebug :app:assembleDebug) ;;
-  release) TASKS=(:app:testDebugUnitTest :app:lintRelease :app:assembleRelease) ;;
+  debug) TASKS=(:app:lintDebug :app:assembleDebug) ;;
+  release) TASKS=(:app:lintRelease :app:assembleRelease) ;;
+esac
+case "${MOLLYTIME_ANDROID_RUN_TESTS:-0}" in
+  1) TASKS=(:app:testDebugUnitTest "${TASKS[@]}") ;;
+  0) ;;
+  *) echo "MOLLYTIME_ANDROID_RUN_TESTS must be 0 or 1" >&2; exit 2 ;;
 esac
 cd "$MOLLYTIME_ROOT/apps/android"
 ./gradlew "${TASKS[@]}" "$@"

@@ -9,3 +9,5 @@
 - Use `bash tools/build-android.sh` so startup audio is snapshotted and verified exactly like the iOS build. Do not silently package missing or stale audio.
 
 - The user explicitly authorized native Android APK self-updates and CI publication. Preserve this Android-specific exception to iOS UI parity: separate parent channels, fixed signing identity, increasing version codes, verified downloads and Android installation consent. Do not substitute TV web hot updates.
+
+- The user explicitly requested that APK CI builds do not run unit tests. Build defaults and CI use `MOLLYTIME_ANDROID_RUN_TESTS=0`; local tests are opt-in with `MOLLYTIME_ANDROID_RUN_TESTS=1`. Keep compilation, Lint, signing and publication validation.

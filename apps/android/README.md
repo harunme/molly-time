@@ -10,7 +10,7 @@ Android 8.0（API 26）及以上的原生家长端，使用 Jetpack Compose / Ma
 bash tools/build-android.sh
 ```
 
-入口复用仓库的 JDK 21 / Android SDK 36，校验并打包同源启动音效，运行单元测试、Android Lint 和 Debug 构建，输出 `artifacts/mollytime-android-debug.apk`。也可使用 Android Studio 打开 `apps/android`。
+入口复用仓库的 JDK 21 / Android SDK 36，校验并打包同源启动音效，运行 Android Lint 和 Debug 构建，输出 `artifacts/mollytime-android-debug.apk`。也可使用 Android Studio 打开 `apps/android`。
 
 ```bash
 source tools/android-env.sh
@@ -67,7 +67,7 @@ bash tools/build-android.sh release
 
 签名复用现有 TV 工程的 `.local/signing/release.properties`，也可通过 `MOLLYTIME_SIGNING_PROPERTIES` 指定同格式文件；缺少签名时正式构建明确失败。版本默认值在 `app/version.properties`，CI 通过 `mollyVersionCode` / `mollyVersionName` 注入发布版本。私钥和密码不进入源码或 APK。
 
-仓库 `.github/workflows/deploy.yml` 对 TV 和家长端分别读取已发布历史与输入指纹。家长端使用 `com.molly.parent`、`artifacts/parent-client-plan.json`、`tools/parent-apk-build.json`。有原生变更才构建、测试、Lint、签名；构建号高于全部历史版本，名称遵循现有按月发布规则，支持 `force_parent_apk` 手动重建。共享构建工具变化可能同时触发两个客户端。
+仓库 `.github/workflows/deploy.yml` 对 TV 和家长端分别读取已发布历史与输入指纹。家长端使用 `com.molly.parent`、`artifacts/parent-client-plan.json`、`tools/parent-apk-build.json`。有原生变更才构建、Lint、签名；构建号高于全部历史版本，名称遵循现有按月发布规则，支持 `force_parent_apk` 手动重建。共享构建工具变化可能同时触发两个客户端。
 
 CI 复用现有四个 `MOLLYTIME_TV_*` 签名 Secrets，正式包输出 `mollytime-android-release.apk` 并归档到 Actions 的 `mollytime-android-<构建号>` artifact，保留 30 天。发布包携带家长端 APK 与计划，经固定接收器校验提交、渠道、指纹和版本基线后复用发布工具，存入私有 OSS 或当前渠道所用服务器存储。APK 存储沿用 `releases/tv/<包名>/…` 前缀以兼容现有 OSS 权限，包名仍严格隔离。
 
@@ -76,3 +76,13 @@ CI 复用现有四个 `MOLLYTIME_TV_*` 签名 Secrets，正式包输出 `mollyti
 更新服务：`GET /api/client/releases/latest?packageName=com.molly.parent`；Debug 使用 `com.molly.parent.debug`。运营后台的客户端版本列表支持两个客户端各自的正式／Debug 渠道。命令行手工发布仍使用通用实现所在的 `mollytime_server.scripts.publish_tv_release`；名称保留兼容，验证已扩展到家长端。
 
 CI 正式生效需要把代码推送到 `main`；该工作流会同时部署生产 API 和网页，APK 在服务健康检查通过后发布。固定接收器升级与本地出包不等于已经完成首次 CI 发布。系统安装授权、取消和覆盖后的实际保留仍应在真实设备完成验收。
+
+### 按需运行本地测试
+
+APK 出包和 CI 默认不运行单元测试。需要验证时在本地显式执行：
+
+```bash
+MOLLYTIME_ANDROID_RUN_TESTS=1 bash tools/build-android.sh debug
+```
+
+流水线显式设置 `MOLLYTIME_ANDROID_RUN_TESTS=0`，保留编译、Lint、签名校验和发布验证。测试源码及已有测试结果保留；不将跳过测试表述为测试通过。
