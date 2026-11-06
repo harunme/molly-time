@@ -44,7 +44,8 @@ internal fun DetailFrame(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+                title = { Text(title, style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = { if (!busy) back() }) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回")

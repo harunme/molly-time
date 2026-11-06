@@ -30,9 +30,11 @@ struct ResourceActionsView: View {
                     }
                 } footer: {
                     if item.isFolder {
-                        Text("调整合集只改变整个合集的可见性，里面的视频保留各自的观看设置。")
+                        Text("隐藏合集不改变视频的观看设置。")
+                            .fixedSize(horizontal: false, vertical: true)
                     } else if let hidden = item.hiddenByFolder {
                         Text("所在合集「\(hidden.name)」也需允许孩子观看。")
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Section {

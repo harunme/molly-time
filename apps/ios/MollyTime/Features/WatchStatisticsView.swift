@@ -4,6 +4,8 @@ import MollyCore
 struct WatchStatisticsCard: View {
     let watch: WatchStatistics
     @State private var selectedPeriod: WatchReportPeriod?
+    @ScaledMetric(relativeTo: .caption2) private var dayHeight: CGFloat = 16
+    @ScaledMetric(relativeTo: .caption2) private var dayLabelWidth: CGFloat = 12
     private var today: String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -31,8 +33,8 @@ struct WatchStatisticsCard: View {
                     VStack(spacing: 4) {
                         ForEach(0..<7) { day in
                             Text(["一", "", "三", "", "五", "", "日"][day])
-                                .font(.system(size: 10)).foregroundStyle(.tertiary)
-                                .frame(width: 12, height: 16)
+                                .font(.caption2).foregroundStyle(.tertiary)
+                                .frame(width: dayLabelWidth, height: dayHeight)
                         }
                     }.accessibilityHidden(true)
                     ForEach(Array(watch.recentWeeks.enumerated()), id: \.offset) { _, week in
@@ -40,7 +42,7 @@ struct WatchStatisticsCard: View {
                             ForEach(0..<7) { row in
                                 WatchDayDot(color: week[row].map { color($0.level) } ?? .clear,
                                             isToday: week[row]?.date == today)
-                                    .frame(height: 16)
+                                    .frame(height: dayHeight)
                             }
                         }.frame(maxWidth: .infinity)
                     }

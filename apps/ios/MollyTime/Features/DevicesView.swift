@@ -316,6 +316,9 @@ struct WatchCommand: Encodable {
 struct WatchResult: Decodable {} // Version is refetched after each command.
 
 struct WatchSettingsView: View {
+    @ScaledMetric(relativeTo: .body) private var amountWidth: CGFloat = 64
+    @ScaledMetric(relativeTo: .subheadline) private var presetWidth: CGFloat = 72
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let control: WatchControls.Control
     let hasPin: Bool
     @Environment(SessionStore.self) private var store
@@ -336,6 +339,32 @@ struct WatchSettingsView: View {
         return value
     }
     private var presets: [Int] { mode == "episodes" ? [1, 2, 3, 4, 5, 6] : [10, 15, 20, 30, 45, 60] }
+    @ViewBuilder private var amountInput: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("每天可看（\(unit)）").font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                amountField
+            }
+        } else {
+            HStack(spacing: 10) { Text("每天"); amountField; Text(unit).font(.subheadline) }
+        }
+    }
+    private var amountField: some View {
+        TextField("数量", text: $amountText)
+            .keyboardType(.numberPad).focused($editingAmount)
+            .multilineTextAlignment(.center).monospacedDigit()
+            .padding(.vertical, 8).frame(width: amountWidth).frame(minHeight: 44)
+            .background(Palette.input, in: Capsule())
+            .accessibilityLabel("每天观看\(unit)，可直接输入")
+    }
+    private var amountStepper: some View {
+        Stepper("每次调整\(adjustmentStep)\(unit)", onIncrement: {
+            selectAmount(min(limit, (validAmount ?? amount) + adjustmentStep))
+        }, onDecrement: {
+            selectAmount(max(1, (validAmount ?? amount) - adjustmentStep))
+        }).labelsHidden().fixedSize().disabled(validAmount == nil)
+    }
     @State private var failure: String?
     @State private var busy = false
     @State private var version = 0
@@ -353,10 +382,12 @@ struct WatchSettingsView: View {
                 }
                 if enabled {
                     Section {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 10) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: presetWidth), spacing: 8)], spacing: 10) {
                             ForEach(presets, id: \.self) { value in
                                 Button { selectAmount(value); editingAmount = false } label: {
                                     Text("\(value) \(unit)").font(.subheadline.weight(.semibold))
+                                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 8).padding(.vertical, 8)
                                         .frame(maxWidth: .infinity, minHeight: 44)
                                         .foregroundStyle(validAmount == value ? Color.black.opacity(0.85) : Palette.ink)
                                         .background(validAmount == value ? Palette.yellow : Palette.input, in: Capsule())
@@ -364,21 +395,12 @@ struct WatchSettingsView: View {
                                     .accessibilityAddTraits(validAmount == value ? .isSelected : [])
                             }
                         }.padding(.vertical, 6)
-                        HStack(spacing: 10) {
-                            Text("每天")
-                            TextField("数量", text: $amountText)
-                                .keyboardType(.numberPad).focused($editingAmount)
-                                .multilineTextAlignment(.center).monospacedDigit()
-                                .frame(width: 64, height: 44)
-                                .background(Palette.input, in: Capsule())
-                                .accessibilityLabel("每天观看\(unit)，可直接输入")
-                            Text(unit).font(.subheadline)
-                            Spacer(minLength: 0)
-                            Stepper("每次调整\(adjustmentStep)\(unit)", onIncrement: {
-                                selectAmount(min(limit, (validAmount ?? amount) + adjustmentStep))
-                            }, onDecrement: {
-                                selectAmount(max(1, (validAmount ?? amount) - adjustmentStep))
-                            }).labelsHidden().fixedSize().disabled(validAmount == nil)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) { amountInput; Spacer(minLength: 0); amountStepper }
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 10) { amountInput }
+                                amountStepper
+                            }
                         }
                         if validAmount == nil {
                             Text("请输入 1～\(limit) 的整数").font(.footnote).foregroundStyle(.red)

@@ -539,7 +539,7 @@ class PlayerActivity : ComponentActivity() {
             }
             if (options.isNotEmpty())
                 ModalBottomSheet(onDismissRequest = { options = "" }) {
-                    Column(Modifier.padding(24.dp).navigationBarsPadding()) {
+                    SheetContent {
                         Text(
                             if (options == "speed") "播放速度" else "字幕",
                             style = MaterialTheme.typography.titleLarge,

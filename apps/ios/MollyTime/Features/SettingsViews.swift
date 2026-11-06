@@ -11,12 +11,12 @@ struct SettingsRow: View {
     var detail = ""
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: icon).frame(width: 24).accessibilityHidden(true)
+            Image(systemName: icon).font(.system(size: 20)).frame(width: 24).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.subheadline.weight(.semibold))
                 if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
-            }
-            Spacer(minLength: 8)
+            }.fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
         }.foregroundStyle(Palette.ink).padding(20).frame(minHeight: 64).contentShape(Rectangle())
     }

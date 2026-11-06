@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
@@ -31,10 +32,14 @@ fun WatchStatisticsCard(watch: WatchStatistics, open: (String) -> Unit) {
             Modifier.fillMaxWidth().padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
                 listOf("today" to "今日观看", "recentWeek" to "近一周观看").forEach { (period, label) ->
                     Column(
-                        Modifier.weight(1f).clickable { open(period) }.padding(vertical = 8.dp),
+                        Modifier.widthIn(min = with(LocalDensity.current) { 100.sp.toDp() })
+                            .weight(1f).clickable { open(period) }.padding(vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
@@ -60,13 +65,15 @@ fun WatchStatisticsCard(watch: WatchStatistics, open: (String) -> Unit) {
             val today =
                 runCatching { LocalDate.now(ZoneId.of(watch.timezone)) }
                     .getOrDefault(LocalDate.now())
+            val dayHeight = with(LocalDensity.current) { 20.sp.toDp() }
+            val dayLabelWidth = with(LocalDensity.current) { 12.sp.toDp() }
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("一", "", "三", "", "五", "", "日").forEach {
                         Text(
                             it,
-                            fontSize = 10.sp,
-                            modifier = Modifier.height(16.dp).width(12.dp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                            modifier = Modifier.height(dayHeight).width(dayLabelWidth),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -75,7 +82,7 @@ fun WatchStatisticsCard(watch: WatchStatistics, open: (String) -> Unit) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         week.forEach { day ->
                             Box(
-                                Modifier.height(16.dp).fillMaxWidth().semantics {
+                                Modifier.height(dayHeight).fillMaxWidth().semantics {
                                     day?.let {
                                         contentDescription =
                                             "${it.date}，${WatchStatistics.duration(it.playedMs)}"

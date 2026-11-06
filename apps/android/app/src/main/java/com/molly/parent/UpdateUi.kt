@@ -2,6 +2,8 @@ package com.molly.parent
 
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,7 +23,7 @@ internal fun UpdateUi(updater: UpdateViewModel, source: String, ready: Boolean) 
         onDismissRequest = { if (updater.stage != "installing") updater.dismiss() },
         title = { Text(updater.release?.let { "更新到 ${it.versionName}" } ?: "版本更新") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("当前版本 ${BuildConfig.VERSION_NAME}")
                 updater.release?.notes?.takeIf { it.isNotBlank() }?.let { Text(it) }
                 Text(updater.message)

@@ -1053,10 +1053,7 @@ internal fun LibraryScreen(
     }
     contextItem?.let { item ->
         ModalBottomSheet(onDismissRequest = { contextItem = null }) {
-            Column(
-                Modifier.navigationBarsPadding().padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+            SheetContent {
                 Text(item.getString("name"), style = MaterialTheme.typography.titleLarge)
                 SettingsRow(
                     Icons.Outlined.OpenInNew,
@@ -1471,9 +1468,10 @@ internal fun AccountScreen(
                                 color = MaterialTheme.colorScheme.secondary,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                             )
-                        Row(
+                        FlowRow(
                             Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             if (storage.optLong("reservedBytes") > 0)
                                 Text(
@@ -1794,13 +1792,29 @@ internal fun SheetHeading(title: String, subtitle: String = "") {
 }
 
 @Composable
-internal fun SurfaceBlock(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(content = content)
+internal fun SurfaceBlock(footer: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(content = content)
+        }
+        if (!footer.isNullOrEmpty())
+            Hint(footer, Modifier.padding(horizontal = 20.dp))
+    }
+}
+
+@Composable
+internal fun SheetContent(content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxWidth().imePadding(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier.widthIn(max = 560.dp).fillMaxWidth()
+                .verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            content = content,
+        )
     }
 }
 
@@ -1829,7 +1843,8 @@ internal fun SettingsRow(
             tint = if (destructive) color else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = color)
+            Text(title, style = MaterialTheme.typography.bodyLarge.copy(
+                lineBreak = androidx.compose.ui.text.style.LineBreak.Heading), color = color)
             if (!detail.isNullOrEmpty())
                 Text(
                     detail,
@@ -1861,7 +1876,7 @@ internal fun PrimaryAction(
         shape = RoundedCornerShape(28.dp),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
     ) {
-        Text(title)
+        Text(title, Modifier.weight(1f, fill = false), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (icon != null) {
             Spacer(Modifier.width(10.dp))
             Icon(icon, null, Modifier.size(20.dp))
@@ -1883,11 +1898,12 @@ internal fun QuietAction(title: String, enabled: Boolean = true, onClick: () -> 
 }
 
 @Composable
-internal fun Hint(value: String) {
+internal fun Hint(value: String, modifier: Modifier = Modifier) {
     Text(
         value,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
     )
 }
 

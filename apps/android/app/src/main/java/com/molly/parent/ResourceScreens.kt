@@ -67,15 +67,13 @@ internal fun FolderPicker(
         onDismissRequest = dismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
-        Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(parent?.getString("name") ?: "选择目标合集", style = MaterialTheme.typography.titleLarge)
+        SheetContent {
+            Text(parent?.getString("name") ?: "选择目标合集", style = MaterialTheme.typography.titleLarge,
+                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             if (path.isNotEmpty()) QuietAction("返回上一级") { path = path.dropLast(1) }
             if (loading) StorageSkeleton()
             failure?.let { ErrorMessage(it) }
-            LazyColumn(Modifier.weight(1f, false).heightIn(max = 400.dp)) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                 items(folders.size) { index ->
                     val child = folders[index]
                     SettingsRow(
@@ -165,22 +163,7 @@ internal fun ResourceActions(model: ParentViewModel, item: JSONObject, done: () 
             action = if (!busy && model.canManage) ({ action = "move" }) else null,
         )
     }
-    SurfaceBlock {
-        val published = item.optString("status") == "published"
-        SettingsRow(
-            if (published) Icons.Outlined.PersonOutline else Icons.Outlined.Tv,
-            if (published) "仅家长可看" else "允许孩子观看",
-            action =
-                if (!busy && model.canManage)
-                    ({ perform(if (published) "unpublish" else "publish") })
-                else null,
-        )
-        if (item.optString("type") != "Episode") Hint("调整合集只改变整个合集的可见性，里面的视频保留各自的观看设置。")
-        else
-            item.optJSONObject("hiddenByFolder")?.let {
-                Hint("所在合集「${it.getString("name")}」也需允许孩子观看。")
-            }
-    }
+    ResourceVisibilitySection(item, !busy && model.canManage) { perform(it) }
     SurfaceBlock {
         SettingsRow(
             Icons.Outlined.DeleteOutline,
@@ -231,6 +214,23 @@ internal fun ResourceActions(model: ParentViewModel, item: JSONObject, done: () 
             },
             dismissButton = { QuietAction("取消") { action = "" } },
         )
+}
+
+@Composable
+internal fun ResourceVisibilitySection(item: JSONObject, enabled: Boolean, change: (String) -> Unit) {
+    val footer = if (item.optString("type") != "Episode") "隐藏合集不改变视频的观看设置。"
+        else item.optJSONObject("hiddenByFolder")?.let { "所在合集「${it.getString("name")}」也需允许孩子观看。" }
+    SurfaceBlock(footer = footer) {
+        val published = item.optString("status") == "published"
+        SettingsRow(
+            if (published) Icons.Outlined.PersonOutline else Icons.Outlined.Tv,
+            if (published) "仅家长可看" else "允许孩子观看",
+            action =
+                if (enabled)
+                    ({ change(if (published) "unpublish" else "publish") })
+                else null,
+        )
+    }
 }
 
 @Composable
@@ -302,12 +302,7 @@ internal fun VideoDetailsScreen(model: ParentViewModel, resource: JSONObject, ba
     }
     if (managing)
         ModalBottomSheet(onDismissRequest = { managing = false }) {
-            Column(
-                Modifier.verticalScroll(rememberScrollState())
-                    .padding(24.dp)
-                    .navigationBarsPadding(),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
+            SheetContent {
                 ResourceActions(model, item) {
                     managing = false
                     revision++

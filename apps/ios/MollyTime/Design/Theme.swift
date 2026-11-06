@@ -79,28 +79,34 @@ struct RootPageHeader: View {
     let subtitle: String
     var editable = false
     var avatarData: Data? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .title3) private var height = 60
     var body: some View {
         HStack(spacing: 16) {
-            Group {
-                if let avatarData, let avatar = UIImage(data: avatarData) {
-                    Image(uiImage: avatar).resizable().scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                } else {
-                    PageBrandMark()
-                }
-            }.frame(width: 48, height: 48).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.system(.title3, design: .rounded, weight: .bold))
-                    .lineLimit(1).truncationMode(.tail)
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.tail)
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+                : AnyLayout(HStackLayout(spacing: 16))
+            layout {
+                Group {
+                    if let avatarData, let avatar = UIImage(data: avatarData) {
+                        Image(uiImage: avatar).resizable().scaledToFill()
+                            .frame(width: 48, height: 48)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    } else {
+                        PageBrandMark()
+                    }
+                }.frame(width: 48, height: 48).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title).font(.system(.title3, design: .rounded, weight: .bold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.tertiary).frame(width: 12)
                 .opacity(editable ? 1 : 0).accessibilityHidden(true)
-        }.frame(height: height).contentShape(Rectangle())
+        }.frame(minHeight: height).contentShape(Rectangle())
     }
 }
 
@@ -126,6 +132,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.headline).foregroundStyle(foreground)
+            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity).padding(.vertical, 16)
             .background(background.opacity(configuration.isPressed ? 0.7 : 1), in: Capsule())
             .opacity(enabled ? 1 : 0.45)
@@ -228,6 +235,7 @@ struct InlineFailure: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(message, systemImage: "exclamationmark.circle").font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
             if let retry { Button("重新加载", action: retry).font(.subheadline.bold()) }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(Palette.paper, in: RoundedRectangle(cornerRadius: 16))

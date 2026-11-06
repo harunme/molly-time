@@ -286,33 +286,49 @@ struct PlayerView: View {
             }
     }
     private var transportBar: some View {
-        HStack(spacing: 12) {
-            Text(time(scrubbing ? scrubPosition : model.position)).font(.caption.monospacedDigit())
-            Slider(value: Binding(get: { scrubbing ? scrubPosition : min(model.position, max(1, model.duration)) },
-                                  set: { scrubPosition = $0 }), in: 0...max(1, model.duration)) { editing in
-                if editing && !scrubbing {
-                    scrubPosition = model.position
-                    resumeAfterScrubbing = model.isPlaying
-                    model.pause()
-                } else if !editing && scrubbing {
-                    model.seek(to: scrubPosition)
-                    if resumeAfterScrubbing { model.player.playImmediately(atRate: model.speed) }
-                }
-                scrubbing = editing; showControls()
-            }.tint(.white).disabled(model.duration <= 0)
-                .accessibilityLabel("播放进度")
-                .accessibilityValue("\(time(model.position))，总时长 \(time(model.duration))")
-            Text(time(model.duration)).font(.caption.monospacedDigit())
-            Button { speedOptions = true; showControls() } label: {
-                Text("\(model.speed.formatted())×").font(.caption.weight(.semibold))
-                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("播放速度")
-            PlayerRoutePicker().frame(width: 44, height: 44).contentShape(Rectangle()).accessibilityLabel("AirPlay")
-        }.foregroundStyle(.white).frame(height: 52).padding(.horizontal, 20)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) { elapsedTime; seekSlider.frame(minWidth: 80); totalTime; speedControl; routeControl }
+            VStack(spacing: 8) {
+                seekSlider
+                HStack { elapsedTime; Spacer(minLength: 8); totalTime }
+                HStack { speedControl; Spacer(minLength: 8); routeControl }
+            }
+        }.foregroundStyle(.white).frame(minHeight: 52).padding(.horizontal, 20)
             .background(alignment: .bottom) {
                 LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
                     .padding(.top, -24).ignoresSafeArea(edges: .bottom).allowsHitTesting(false)
             }
+    }
+    private var elapsedTime: some View {
+        Text(time(scrubbing ? scrubPosition : model.position)).font(.caption.monospacedDigit()).fixedSize()
+    }
+    private var totalTime: some View {
+        Text(time(model.duration)).font(.caption.monospacedDigit()).fixedSize()
+    }
+    private var seekSlider: some View {
+        Slider(value: Binding(get: { scrubbing ? scrubPosition : min(model.position, max(1, model.duration)) },
+                              set: { scrubPosition = $0 }), in: 0...max(1, model.duration)) { editing in
+            if editing && !scrubbing {
+                scrubPosition = model.position
+                resumeAfterScrubbing = model.isPlaying
+                model.pause()
+            } else if !editing && scrubbing {
+                model.seek(to: scrubPosition)
+                if resumeAfterScrubbing { model.player.playImmediately(atRate: model.speed) }
+            }
+            scrubbing = editing; showControls()
+        }.tint(.white).disabled(model.duration <= 0)
+            .accessibilityLabel("播放进度")
+            .accessibilityValue("\(time(model.position))，总时长 \(time(model.duration))")
+    }
+    private var speedControl: some View {
+        Button { speedOptions = true; showControls() } label: {
+            Text("\(model.speed.formatted())×").font(.caption.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel("播放速度")
+    }
+    private var routeControl: some View {
+        PlayerRoutePicker().frame(width: 44, height: 44).contentShape(Rectangle()).accessibilityLabel("AirPlay")
     }
     private func time(_ seconds: Double) -> String {
         let value = Int(max(0, seconds.isFinite ? seconds : 0))
