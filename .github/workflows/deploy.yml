@@ -133,6 +133,7 @@ jobs:
             "-PmollyVersionCode=$TV_VERSION_CODE" "-PmollyVersionName=$TV_VERSION_NAME"
           python tools/ci_tv_apk.py verify-inputs --plan artifacts/tv-client-plan.json
       - name: Build and verify signed Android parent APK
+        timeout-minutes: 18
         if: steps.parent_plan.outputs.required == 'true'
         env:
           PARENT_VERSION_CODE: ${{ steps.parent_plan.outputs.version_code }}
@@ -146,6 +147,17 @@ jobs:
           bash tools/build-android.sh release \
             "-PmollyVersionCode=$PARENT_VERSION_CODE" "-PmollyVersionName=$PARENT_VERSION_NAME"
           python tools/ci_tv_apk.py verify-inputs --target parent --plan artifacts/parent-client-plan.json
+      - name: Save Android parent test reports
+        if: always() && steps.parent_plan.outputs.required == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mollytime-android-tests-${{ github.run_id }}
+          path: |
+            apps/android/app/build/test-results/
+            apps/android/app/build/reports/tests/
+            apps/android/app/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Save Android parent APK and publication plan
         if: steps.parent_plan.outputs.required == 'true'
         uses: actions/upload-artifact@v4

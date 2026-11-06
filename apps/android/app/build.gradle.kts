@@ -1,6 +1,7 @@
 import java.security.MessageDigest
 import java.io.File
 import java.util.Properties
+import java.time.Duration
 
 plugins { id("com.android.application"); kotlin("android"); id("org.jetbrains.kotlin.plugin.compose") }
 val clientVersion = Properties().apply { file("version.properties").inputStream().use { load(it) } }
@@ -110,4 +111,15 @@ tasks.named("preBuild").configure { dependsOn(validateStartupAssets) }
 
 tasks.configureEach {
     if(name=="preReleaseBuild"||name=="validateSigningRelease")dependsOn(validateReleaseSigning)
+}
+
+// Robolectric downloads its Android runtimes separately from Gradle dependencies.
+// Use the canonical Central host and bound CI waits; never leave a test task silent.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+    timeout.set(Duration.ofMinutes(8))
+    testLogging {
+        events("started", "passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
