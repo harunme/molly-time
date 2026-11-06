@@ -6,6 +6,7 @@ import Steps from '~/components/widgets/Steps.astro';
 import FAQs from '~/components/widgets/FAQs.astro';
 import Download from '~/components/widgets/Download.astro';
 import StructuredData from '~/components/common/StructuredData.astro';
+import Image from '~/components/common/Image.astro';
 
 const metadata = { title: 'MollyTime — 给孩子的家庭视频空间', ignoreTitleTemplate: true };
 const schema = {
@@ -22,8 +23,10 @@ const schema = {
       { id: 'download-android-button', variant: 'primary', type: 'button', text: '下载 Android 家长端', icon: 'tabler:download', 'aria-describedby': 'download-android-status' },
       { id: 'download-button', type: 'button', text: '下载电视端', icon: 'tabler:download', 'aria-describedby': 'download-status' },
     ]}
-    image={{ src: '~/assets/images/hero-image.png', alt: '色彩斑斓的探索者，走向新的世界' }}
   >
+    <div slot="bg" class="hero-backdrop">
+      <Image src="~/assets/images/hero-image.png" alt="" widths={[768, 1440, 2040]} sizes="100vw" layout="cover" format="webp" loading="eager" fetchpriority="high" />
+    </div>
     <Fragment slot="title">让孩子的每次观看，<br class="hidden sm:block" />都有<span class="underline decoration-primary decoration-[0.08em] underline-offset-[0.13em]">你的用心</span>在里面。</Fragment>
     <Fragment slot="subtitle"><span class="font-semibold">MollyTime</span> 把你选好的故事，带到孩子面前。<br class="hidden sm:block" />家长整理内容，孩子在电视上看，让每一次打开大屏，都有值得发现的新世界。</Fragment>
     <Download slot="content" />
@@ -53,3 +56,46 @@ const schema = {
   ]} />
 
 </Layout>
+
+<style>
+  :global(#download) {
+    display: grid;
+    align-items: center;
+    min-block-size: calc(100svh - 70px);
+  }
+
+  :global(#download > .relative) {
+    width: 100%;
+  }
+
+  .hero-backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .hero-backdrop :global(img) {
+    opacity: 0.5;
+    object-position: 37% center;
+  }
+
+  .hero-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to bottom, var(--aw-color-bg-page), transparent 20%, transparent 75%, var(--aw-color-bg-page)),
+      radial-gradient(ellipse at center, color-mix(in srgb, var(--aw-color-bg-page) 88%, transparent) 10%, color-mix(in srgb, var(--aw-color-bg-page) 70%, transparent) 48%, transparent 100%);
+  }
+
+  @media (min-width: 768px) {
+    :global(#download) {
+      min-block-size: 100svh;
+    }
+
+    .hero-backdrop :global(img) {
+      object-position: center;
+    }
+  }
+</style>
