@@ -1,0 +1,168 @@
+---
+import Image from '~/components/common/Image.astro';
+import Button from '~/components/ui/Button.astro';
+import Download from '~/components/widgets/Download.astro';
+---
+
+<section id="download" class="home-hero">
+  <div class="hero-art" aria-hidden="true">
+    <Image src="~/assets/images/hero-image.png" alt="" widths={[768, 1440, 2040]} sizes="(min-width: 1100px) 70vw, 100vw" layout="none" format="webp" loading="eager" fetchpriority="high" />
+  </div>
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <p class="hero-eyebrow">给孩子的家庭视频空间</p>
+      <h1><span>让孩子的每次观看，</span><span>都有<span class="hero-emphasis">你的用心</span>在里面。</span></h1>
+      <p class="hero-description"><strong>MollyTime</strong> 把你选好的故事，带到孩子面前。<br />家长在手机上整理内容，孩子在电视上接着看。</p>
+      <div class="hero-actions">
+        <Button id="download-android-button" variant="primary" type="button" text="下载 Android 家长端" icon="tabler:download" aria-describedby="download-android-status" />
+        <Button id="download-button" type="button" text="下载电视端" icon="tabler:download" aria-describedby="download-status" />
+      </div>
+      <Download />
+    </div>
+  </div>
+</section>
+
+<style>
+  .home-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .hero-inner {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 80rem);
+    margin-inline: auto;
+    padding: 44px 24px 300px;
+  }
+
+  .hero-copy {
+    max-width: 660px;
+  }
+
+  .hero-eyebrow {
+    margin-bottom: 20px;
+    color: var(--aw-color-text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+
+  h1 {
+    margin: 0;
+    color: var(--aw-color-text-heading);
+    font-size: clamp(28px, 8.2vw, 56px);
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1.23;
+    text-wrap: balance;
+  }
+
+  h1 > span {
+    display: block;
+  }
+
+  .hero-emphasis {
+    text-decoration: underline;
+    text-decoration-color: var(--aw-color-primary);
+    text-decoration-thickness: 0.085em;
+    text-underline-offset: 0.12em;
+  }
+
+  .hero-description {
+    max-width: 32em;
+    margin-block: 28px 30px;
+    color: var(--aw-color-text-muted);
+    font-size: 16px;
+    line-height: 1.85;
+    text-wrap: pretty;
+  }
+
+  .hero-description strong {
+    color: var(--aw-color-text-default);
+    font-weight: 600;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .hero-actions :global(button) {
+    min-height: 52px;
+  }
+
+  .hero-actions :global(#download-button) {
+    color: var(--aw-color-text-default);
+    border-color: color-mix(in srgb, var(--aw-color-text-default) 40%, transparent);
+  }
+
+  .hero-art {
+    position: absolute;
+    z-index: 0;
+    bottom: -24px;
+    right: -140px;
+    width: 600px;
+    height: 340px;
+    pointer-events: none;
+  }
+
+  .hero-art :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  @media (min-width: 640px) {
+    .hero-inner {
+      padding: 64px 48px 420px;
+    }
+
+    .hero-description {
+      font-size: 18px;
+    }
+
+    .hero-actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+
+    .hero-art {
+      right: -80px;
+      width: 800px;
+      height: 460px;
+    }
+  }
+
+  @media (min-width: 1100px) {
+    .hero-inner {
+      display: flex;
+      align-items: center;
+      min-height: calc(100svh - 76px);
+      padding: 64px 1.5rem;
+    }
+
+    .hero-copy {
+      width: 56%;
+    }
+
+    h1 {
+      font-size: clamp(44px, 4.2vw, 64px);
+    }
+
+    .hero-description {
+      max-width: 29em;
+      margin-block: 32px 36px;
+    }
+
+    .hero-art {
+      inset-block: 0;
+      right: -10vw;
+      width: min(70vw, 1300px);
+      height: auto;
+    }
+  }
+</style>

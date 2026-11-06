@@ -34,6 +34,7 @@ test('homepage has working navigation, metadata, FAQ and no browser errors', asy
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect(page.getByRole('button', { name: '下载 Android 家长端' })).toHaveCSS('color', 'rgb(63, 58, 50)');
+  await expect(page.getByRole('button', { name: '下载电视端' })).toHaveCSS('color', 'rgb(234, 229, 217)');
   await capture(page, 'test-results/dark.png');
   await page.getByRole('button', { name: '切换深浅色主题' }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
