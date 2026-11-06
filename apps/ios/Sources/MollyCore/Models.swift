@@ -72,6 +72,7 @@ public struct FamilySettings: Decodable, Sendable {
         public let limitBytes: Int64
     }
     public let familyName: String
+    public var defaultSubtitle: String?
     public let storage: Storage
 }
 public struct Playback: Decodable, Sendable {

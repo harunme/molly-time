@@ -4,9 +4,9 @@ import Testing
 
 @MainActor
 struct FamilyStorageStoreTests {
-    private func value(_ bytes: Int64) throws -> FamilySettings {
+    private func value(_ bytes: Int64, subtitle: String = "zh") throws -> FamilySettings {
         try JSONDecoder().decode(FamilySettings.self, from: Data("""
-        {"familyName":"family","storage":{"usedBytes":\(bytes),"reservedBytes":0,"limitBytes":0}}
+        {"familyName":"family","defaultSubtitle":"\(subtitle)","storage":{"usedBytes":\(bytes),"reservedBytes":0,"limitBytes":0}}
         """.utf8))
     }
 
@@ -24,6 +24,7 @@ struct FamilyStorageStoreTests {
         _ = await (first, second)
         await store.refresh(load: load)
         #expect(requests == 1)
+        #expect(store.settings?.defaultSubtitle == "zh")
         #expect(store.settings?.storage.usedBytes == 19922311)
     }
 
@@ -72,6 +73,32 @@ struct FamilyStorageStoreTests {
         #expect(store.settings?.storage.usedBytes == 1000)
         await store.refresh { after }
         #expect(store.settings?.storage.usedBytes == 2000)
+    }
+
+    @Test func savedPreferenceIsImmediateAndRejectsAnOlderRead() async throws {
+        let store = FamilyStorageStore()
+        let before = try value(1000), after = try value(1000, subtitle: "en")
+        await store.refresh { before }
+        store.invalidate()
+        let gate = StorageGate()
+        var reads = 0
+        let reading = Task {
+            await store.refresh {
+                reads += 1
+                if reads == 1 { return await gate.load() }
+                return after
+            }
+        }
+        await gate.started()
+        let saved = try JSONDecoder().decode(PlaybackPreferences.self, from: Data(#"{"defaultSubtitle":"en"}"#.utf8))
+        store.applyPlaybackPreferences(saved)
+        #expect(store.settings?.defaultSubtitle == "en")
+        gate.finish(before)
+        await reading.value
+        #expect(reads == 2)
+        #expect(store.settings?.defaultSubtitle == "en")
+        store.reset()
+        #expect(store.settings == nil)
     }
 
     @Test func foregroundRevalidationPicksUpAnotherDeviceChanges() async throws {

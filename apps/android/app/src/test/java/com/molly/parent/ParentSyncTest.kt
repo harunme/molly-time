@@ -51,6 +51,7 @@ class ParentSyncTest {
                                         api.onMutation?.invoke(ParentInvalidation(storage = true))
                                     }
                                     json(
+                                            "defaultSubtitle" to if (request.method == "PUT") "en" else "zh",
                                             "storage" to
                                                 json(
                                                     "usedBytes" to storageCalls,
@@ -193,6 +194,16 @@ class ParentSyncTest {
                 model.foreground(false)
             }
         }
+
+    @Test
+    fun savedPlaybackPreferenceUpdatesTheSharedCache() = runTest(dispatcher) {
+        model.loadStorage()
+        runCurrent()
+        assertEquals("zh", model.settings?.getString("defaultSubtitle"))
+        model.savePlaybackPreference("en")
+        assertEquals("en", model.settings?.getString("defaultSubtitle"))
+        assertEquals(1, requests.count { it.url.encodedPath == "/api/manage/settings" && it.method == "GET" })
+    }
 
     @Test
     fun returningToFolderReusesSnapshotWithoutLoadingFlash() =

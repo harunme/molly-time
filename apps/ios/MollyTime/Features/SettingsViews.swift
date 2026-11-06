@@ -189,6 +189,10 @@ struct PlaybackPreferencesView: View {
     @State private var loaded = false
     @State private var busy = false
     @State private var failure: String?
+    init(subtitle: String? = nil) {
+        _subtitle = State(initialValue: subtitle ?? "zh")
+        _loaded = State(initialValue: subtitle != nil)
+    }
     private let choices = [("zh", "中文"), ("en", "英文"), ("zh-en", "中英文"), ("off", "关闭字幕")]
     var body: some View {
         SettingsPage(title: "播放偏好") {
@@ -228,22 +232,30 @@ struct PlaybackPreferencesView: View {
                     Button(busy ? "正在保存…" : "保存偏好") { Task { await save() } }
                         .buttonStyle(PrimaryButtonStyle()).disabled(busy)
                 } else { Text("由家庭管理员调整播放偏好。").font(.footnote).foregroundStyle(.secondary) }
-            } else if failure == nil { ProgressView("正在读取偏好…").frame(maxWidth: .infinity) }
+            } else if failure == nil { PlaybackLoadingPlaceholder() }
             if let failure { InlineFailure(message: failure, retry: loaded ? nil : { Task { await load() } }) }
         }.task { await load() }.interactiveDismissDisabled(busy)
     }
     private func load() async {
+        guard !loaded else { return }
         failure = nil
-        do {
-            let settings: PlaybackPreferences = try await store.api.request("/api/manage/settings")
-            subtitle = settings.defaultSubtitle; loaded = true
-        } catch { failure = error.localizedDescription }
+        let account = store.sessionGeneration
+        if store.storage.settings?.defaultSubtitle == nil { await store.refreshStorage() }
+        guard account == store.sessionGeneration, !Task.isCancelled else { return }
+        guard let cached = store.storage.settings?.defaultSubtitle else {
+            failure = store.storage.failure ?? "暂时无法读取播放偏好，请重试。"
+            return
+        }
+        subtitle = cached; loaded = true
     }
     private func save() async {
         guard store.canManage, !busy else { return }
         busy = true; failure = nil; defer { busy = false }
         do {
-            let _: PlaybackPreferences = try await store.api.send("/api/manage/settings", method: "PUT", body: ["defaultSubtitle": subtitle])
+            let account = store.sessionGeneration
+            let saved: PlaybackPreferences = try await store.api.send("/api/manage/settings", method: "PUT", body: ["defaultSubtitle": subtitle])
+            guard account == store.sessionGeneration else { return }
+            store.storage.applyPlaybackPreferences(saved)
             dismiss()
         } catch { failure = error.localizedDescription }
     }

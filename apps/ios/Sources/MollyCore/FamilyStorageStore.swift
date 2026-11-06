@@ -6,6 +6,7 @@ import Observation
 public final class FamilyStorageStore {
     public private(set) var settings: FamilySettings?
     public private(set) var loading = false
+    public private(set) var failure: String?
     private var revision = 0
     private var appliedRevision = -1
     private var generation = UUID()
@@ -17,10 +18,15 @@ public final class FamilyStorageStore {
 
     public func invalidate() { revision += 1 }
 
+    public func applyPlaybackPreferences(_ value: PlaybackPreferences) {
+        revision += 1 // Reject any read that started before the save completed.
+        settings?.defaultSubtitle = value.defaultSubtitle
+    }
+
     public func reset() {
         generation = UUID()
         task?.cancel(); task = nil
-        settings = nil; loading = false; updatedAt = nil
+        settings = nil; loading = false; updatedAt = nil; failure = nil
         revision = 0; appliedRevision = -1
     }
 
@@ -29,7 +35,7 @@ public final class FamilyStorageStore {
         guard settings == nil || revision != appliedRevision
                 || now().timeIntervalSince(updatedAt ?? .distantPast) >= 60 else { return }
         let current = generation
-        loading = true
+        loading = true; failure = nil
         let work = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -43,6 +49,7 @@ public final class FamilyStorageStore {
                     // An upload completed while this request was in flight.
                     // Discard the older answer and fetch the committed result.
                     guard target == self.revision else { continue }
+                    self.failure = nil
                     self.settings = value
                     self.appliedRevision = target
                     self.updatedAt = self.now()
@@ -50,6 +57,7 @@ public final class FamilyStorageStore {
                 } catch {
                     guard self.generation == current, !Task.isCancelled else { return }
                     if target != self.revision { continue }
+                    self.failure = error.localizedDescription
                     // Keep the last value on transient failure; foreground sync retries.
                     return
                 }

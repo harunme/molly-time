@@ -21,6 +21,7 @@ class ParityNavigationTest {
     @Test
     fun profileNavigationSurvivesUiRecreationAndSettingsAreReachable() {
         val app = ApplicationProvider.getApplicationContext<ParentApplication>()
+        val settingsReads = java.util.concurrent.atomic.AtomicInteger()
         val api =
             ParentApi(
                 Endpoint("https://fixture.example"),
@@ -29,6 +30,7 @@ class ParityNavigationTest {
                 OkHttpClient.Builder()
                     .addInterceptor { chain ->
                         val r = chain.request()
+                        if (r.url.encodedPath == "/api/manage/settings" && r.method == "GET") settingsReads.incrementAndGet()
                         val body =
                             when (r.url.encodedPath) {
                                 "/api/manage/resources" ->
@@ -105,16 +107,27 @@ class ParityNavigationTest {
         compose.onNodeWithText("个人信息").assertExists()
         compose.onNodeWithText("修改登录密码").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
+        compose.waitUntil(5000) { model.settings != null }
+        val prefetchedReads = settingsReads.get()
         compose.onNodeWithText("播放偏好").performScrollTo().performClick()
         compose.waitUntil(5000) {
             compose.onAllNodesWithText("关闭字幕").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("中英文").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithText("播放偏好").performScrollTo().performClick()
+        compose.onNodeWithText("中英文").assertExists()
+        assertEquals(prefetchedReads, settingsReads.get())
+        compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithText("最近删除").performScrollTo().performClick()
         compose.waitUntil(5000) {
             compose.onAllNodesWithText("最近没有删除内容").fetchSemanticsNodes().isNotEmpty()
         }
+        compose.onNodeWithContentDescription("返回").performClick()
+        assertNotNull(model.trashSnapshot)
+        compose.onNodeWithText("最近删除").performScrollTo().performClick()
+        compose.onNodeWithText("最近没有删除内容").assertExists()
+        compose.onNodeWithContentDescription("正在载入最近删除").assertDoesNotExist()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithText("资料库").performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.onNodeWithContentDescription("添加内容").performClick()

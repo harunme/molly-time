@@ -373,3 +373,28 @@ struct UploadStatusRow: View {
         }.padding(16).background(Palette.paper, in: RoundedRectangle(cornerRadius: 20))
     }
 }
+
+struct PlaybackLoadingPlaceholder: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack {
+                    LoadingShape().frame(width: 80, height: 18)
+                    Spacer()
+                    LoadingShape(radius: 12).frame(width: 24, height: 24)
+                }.padding(.horizontal, 20).frame(height: 60)
+            }
+        }.background(Palette.paper, in: RoundedRectangle(cornerRadius: 24))
+            .modifier(QuietLoading(label: "正在载入播放偏好"))
+    }
+}
+
+struct TrashLoadingPlaceholder: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LoadingShape().frame(width: 140, height: 20)
+            LoadingShape().frame(width: 220, height: 14)
+            LoadingShape().frame(width: 80, height: 32)
+        }.padding(.vertical, 8).modifier(QuietLoading(label: "正在载入最近删除"))
+    }
+}

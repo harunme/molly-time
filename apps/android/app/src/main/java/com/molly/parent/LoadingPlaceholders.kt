@@ -115,3 +115,32 @@ fun StorageSkeleton(loading: Boolean = true) {
         LoadingShape(Modifier.width(186.dp).height(16.dp))
     }
 }
+
+@Composable
+fun PlaybackSkeleton() {
+    SurfaceBlock {
+        QuietPlaceholder("正在载入播放偏好", Modifier.fillMaxWidth()) {
+            repeat(4) {
+                Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 20.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    LoadingShape(Modifier.width(80.dp).height(18.dp))
+                    Spacer(Modifier.weight(1f))
+                    LoadingShape(Modifier.size(24.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrashSkeleton() {
+    SurfaceBlock {
+        QuietPlaceholder("正在载入最近删除", Modifier.fillMaxWidth().padding(20.dp)) {
+            LoadingShape(Modifier.width(140.dp).height(20.dp))
+            Spacer(Modifier.height(16.dp))
+            LoadingShape(Modifier.width(220.dp).height(14.dp))
+            Spacer(Modifier.height(16.dp))
+            LoadingShape(Modifier.width(80.dp).height(32.dp))
+        }
+    }
+}

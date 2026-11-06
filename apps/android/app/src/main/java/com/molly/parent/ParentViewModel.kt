@@ -90,6 +90,8 @@ constructor(
         private set
 
     private var conflictNeedsRebase = false
+    internal var trashSnapshot: TrashSnapshot? = null
+
     var settings by mutableStateOf<JSONObject?>(null)
         private set
 
@@ -616,6 +618,18 @@ constructor(
             }
     }
 
+    suspend fun savePlaybackPreference(subtitle: String) {
+        val client = api ?: return
+        val saved = withContext(io) {
+            client.request("/api/manage/settings", "PUT", json("defaultSubtitle" to subtitle))
+        }
+        if (api !== client) throw CancellationException()
+        storageRevision++ // An older in-flight read must not overwrite this save.
+        settings = settings?.let {
+            JSONObject(it.toString()).put("defaultSubtitle", saved.getString("defaultSubtitle"))
+        }
+    }
+
     fun loadStorage() {
         if (storageJob?.isActive == true) return
         if (
@@ -698,6 +712,7 @@ constructor(
         resources = emptyList()
         devices = emptyList()
         settings = null
+        trashSnapshot = null
         page = 0
         folder = null
         parents.clear()
@@ -854,6 +869,7 @@ constructor(
         folder = null
         parents.clear()
         settings = null
+        trashSnapshot = null
         storageRevision = 0
         storageAppliedRevision = -1
         storageUpdatedAt = 0

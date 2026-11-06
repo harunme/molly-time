@@ -49,6 +49,7 @@ final class SessionStore {
     let videoDisk = VideoDiskCache()
     let library = LibraryStore()
     let trashDeletions = TrashDeletionStore()
+    var recentlyDeleted: DeletedSnapshot?
     private var restoreTask: Task<Void, Never>?
     var restoring = true
     var message: String?
@@ -229,6 +230,7 @@ final class SessionStore {
         artworkUploads.reset()
         library.reset()
         trashDeletions.reset()
+        recentlyDeleted = nil
         upload.pause(); upload = UploadModel()
         reminderUpload.pause(); reminderUpload = UploadModel()
         parentPINConfigured = false

@@ -68,12 +68,12 @@ struct ParentTabs: View {
             }
             .navigationDestination(for: SettingsDestination.self) { destination in
                 switch destination {
-                case .playback: PlaybackPreferencesView()
+                case .playback: PlaybackPreferencesView(subtitle: store.storage.settings?.defaultSubtitle)
                 case .reminder: RestReminderView()
                 case .parentPIN: ParentPINView()
                 case .viewingInfo: ViewingInfoView()
                 case .disclaimer: DisclaimerView()
-                case .recentlyDeleted: RecentlyDeletedView()
+                case .recentlyDeleted: RecentlyDeletedView(snapshot: store.recentlyDeleted)
                 }
             }
             .task(id: scenePhase) {

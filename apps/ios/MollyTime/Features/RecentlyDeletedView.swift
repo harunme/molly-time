@@ -1,7 +1,7 @@
 import SwiftUI
 import MollyCore
 
-private struct DeletedResource: Decodable, Identifiable {
+struct DeletedResource: Decodable, Identifiable {
     let id: String
     let name: String
     let type: String
@@ -18,6 +18,13 @@ private struct DeletedPage: Decodable {
     let retentionDays: Int
 }
 
+struct DeletedSnapshot {
+    let items: [DeletedResource]
+    let page: Int
+    let total: Int
+    let retentionDays: Int
+}
+
 struct RecentlyDeletedView: View {
     @Environment(SessionStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
@@ -30,11 +37,20 @@ struct RecentlyDeletedView: View {
     @State private var failure: String?
     @State private var generation = UUID()
     @State private var deleting: DeletedResource?
+    init(snapshot: DeletedSnapshot? = nil) {
+        _items = State(initialValue: snapshot?.items ?? [])
+        _page = State(initialValue: snapshot?.page ?? 0)
+        _total = State(initialValue: snapshot?.total ?? 0)
+        _retentionDays = State(initialValue: snapshot?.retentionDays ?? 7)
+    }
+    private func cache() {
+        store.recentlyDeleted = DeletedSnapshot(items: items, page: page, total: total, retentionDays: retentionDays)
+    }
     var body: some View {
         MollyList {
             Section {
-                if page == 0 && failure == nil { ProgressView("正在读取…") }
-                else if items.isEmpty { Text("最近没有删除内容").foregroundStyle(.secondary) }
+                if page == 0 && failure == nil { TrashLoadingPlaceholder() }
+                else if page > 0 && items.isEmpty { Text("最近没有删除内容").foregroundStyle(.secondary) }
                 ForEach(items) { item in
                     let job = store.trashDeletions.jobs[item.id]
                     let pending = job?.pending ?? (item.deleting && item.error.isEmpty)
@@ -67,7 +83,7 @@ struct RecentlyDeletedView: View {
                 }
                 if items.count < total { Button("加载更多") { Task { await load(reset: false) } }.disabled(loading) }
             } footer: {
-                Text((retentionDays == 0 ? "已删除的内容保留至手动清理。" : "删除后保留 \(retentionDays) 天，到期自动清理。") + "恢复后沿用删除前的观看设置。")
+                if page > 0 { Text((retentionDays == 0 ? "已删除的内容保留至手动清理。" : "删除后保留 \(retentionDays) 天，到期自动清理。") + "恢复后沿用删除前的观看设置。") }
             }
             if let failure { Section { InlineFailure(message: failure, retry: { Task { await load(reset: true) } }) } }
         }
@@ -103,6 +119,7 @@ struct RecentlyDeletedView: View {
                 // Keep all loaded pages visible while refreshing after a completed job.
                 if number == lastPage || number * result.pageSize >= result.total {
                     items = collected; total = result.total; page = result.page; retentionDays = result.retentionDays
+                    cache()
                     break
                 }
             }
@@ -129,10 +146,12 @@ struct RecentlyDeletedView: View {
                 store.trashDeletions.track(item.id)
                 if let index = items.firstIndex(where: { $0.id == item.id }) {
                     items[index].deleting = true; items[index].error = ""
+                    cache()
                 }
             } else {
                 // Also supports a server running the previous synchronous API.
                 items.removeAll { $0.id == item.id }; total = max(items.count, total - 1)
+                cache()
                 store.storage.invalidate()
                 await store.refreshStorage()
             }

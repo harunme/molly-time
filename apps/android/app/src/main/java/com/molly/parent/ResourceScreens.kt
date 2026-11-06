@@ -347,20 +347,30 @@ internal fun VideoDetailsScreen(model: ParentViewModel, resource: JSONObject, ba
         )
 }
 
+internal data class TrashSnapshot(
+    val items: List<JSONObject>,
+    val page: Int,
+    val total: Int,
+    val more: Boolean,
+    val retention: Int,
+)
+
 @Composable
 internal fun TrashScreen(model: ParentViewModel, back: () -> Unit) {
-    var items by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
-    var page by remember { mutableIntStateOf(0) }
-    var total by remember { mutableIntStateOf(0) }
-    var more by remember { mutableStateOf(false) }
-    var retention by remember { mutableIntStateOf(7) }
+    val api = model.api!!
+    val cached = remember(api) { model.trashSnapshot }
+    var items by remember(api) { mutableStateOf(cached?.items ?: emptyList()) }
+    var page by remember { mutableIntStateOf(cached?.page ?: 0) }
+    var total by remember(api) { mutableIntStateOf(cached?.total ?: 0) }
+    var more by remember(api) { mutableStateOf(cached?.more ?: false) }
+    var retention by remember(api) { mutableIntStateOf(cached?.retention ?: 7) }
     var failure by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<JSONObject?>(null) }
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<Set<String>>(emptySet()) }
     var loading by remember { mutableStateOf(false) }
     var requestGeneration by remember { mutableIntStateOf(0) }
-    val api = model.api!!
+    var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     suspend fun load(next: Int) {
         if (next > 1 && loading) return
@@ -390,6 +400,7 @@ internal fun TrashScreen(model: ParentViewModel, back: () -> Unit) {
             total = response.getInt("total")
             retention = response.getInt("retentionDays")
             more = page * response.getInt("pageSize") < total
+            model.trashSnapshot = TrashSnapshot(items, page, total, more, retention)
             failure = null
         } catch (e: CancellationException) {
             throw e
@@ -400,8 +411,13 @@ internal fun TrashScreen(model: ParentViewModel, back: () -> Unit) {
         }
     }
     LaunchedEffect(api, revision, model.deletionChange) { load(1) }
-    DetailFrame("最近删除", back, refreshing = loading && page > 0, onRefresh = { revision++ }) {
-        if (page == 0 && failure == null) StorageSkeleton()
+    DetailFrame("最近删除", back, refreshing = refreshing, onRefresh = {
+        scope.launch {
+            refreshing = true
+            try { load(1) } finally { refreshing = false }
+        }
+    }) {
+        if (page == 0 && failure == null) TrashSkeleton()
         if (page > 0 && items.isEmpty()) Hint("最近没有删除内容")
         items.forEach { item ->
             val id = item.getString("id")
@@ -461,7 +477,7 @@ internal fun TrashScreen(model: ParentViewModel, back: () -> Unit) {
             }
         }
         if (more) QuietAction("加载更多", !loading) { scope.launch { load(page + 1) } }
-        Hint(
+        if (page > 0) Hint(
             (if (retention == 0) "已删除的内容保留至手动清理。" else "删除后保留 $retention 天，到期自动清理。") +
                 "恢复后沿用删除前的观看设置。"
         )

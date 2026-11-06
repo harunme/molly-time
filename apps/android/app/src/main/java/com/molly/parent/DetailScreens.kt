@@ -529,29 +529,22 @@ private fun PINScreen(model: ParentViewModel, back: () -> Unit) {
 
 @Composable
 private fun PlaybackPreferencesScreen(model: ParentViewModel, back: () -> Unit) {
-    var selected by remember { mutableStateOf<String?>(null) }
+    val api = model.api!!
+    var selected by remember(api) { mutableStateOf(model.settings?.optString("defaultSubtitle")?.takeIf { it.isNotEmpty() }) }
     var failure by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var revision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val api = model.api!!
-    LaunchedEffect(api, revision) {
-        try {
-            selected =
-                withContext(Dispatchers.IO) {
-                    api.request("/api/manage/settings").getString("defaultSubtitle")
-                }
-            failure = null
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            failure = e.message
-        }
+    LaunchedEffect(api) {
+        if (model.settings == null) model.loadStorage()
+    }
+    LaunchedEffect(api, model.settings) {
+        // Initialize once: a background sync must not overwrite an unsaved selection.
+        if (selected == null) selected = model.settings?.optString("defaultSubtitle")?.takeIf { it.isNotEmpty() }
     }
     DetailFrame("播放偏好", back, busy = busy) {
         Text("默认字幕", style = MaterialTheme.typography.titleLarge)
         Hint("选一种习惯的字幕，手机和电视一起记住。")
-        if (selected == null && failure == null) StorageSkeleton()
+        if (selected == null && model.storageError == null) PlaybackSkeleton()
         if (selected != null)
             SurfaceBlock {
                 listOf("zh" to "中文", "en" to "英文", "zh-en" to "中英文", "off" to "关闭字幕").forEach {
@@ -568,19 +561,15 @@ private fun PlaybackPreferencesScreen(model: ParentViewModel, back: () -> Unit) 
                 }
             }
         Hint("下次播放生效。没有匹配的字幕时不显示；中英文需要视频提供双语字幕。")
-        failure?.let { RetryMessage(it) { revision++ } }
+        if (selected == null) model.storageError?.let { RetryMessage(it) { model.loadStorage() } }
+        failure?.let { ErrorMessage(it) }
         if (model.canManage)
             PrimaryAction("保存偏好", enabled = !busy && selected != null) {
                 scope.launch {
                     busy = true
                     try {
-                        withContext(Dispatchers.IO) {
-                            api.request(
-                                "/api/manage/settings",
-                                "PUT",
-                                json("defaultSubtitle" to selected),
-                            )
-                        }
+                        failure = null
+                        model.savePlaybackPreference(requireNotNull(selected))
                         back()
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
