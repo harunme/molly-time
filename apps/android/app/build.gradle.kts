@@ -61,6 +61,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/startupSoundAssets"))
     sourceSets.getByName("main").java.srcDir("../../shared/android")
+    sourceSets.getByName("test").java.srcDir("../../shared/android-test")
     androidResources { noCompress += "mp3" }
     buildFeatures { compose = true; buildConfig = true }
     testOptions { unitTests.isIncludeAndroidResources = true }
@@ -82,6 +83,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.9.4")
     testImplementation("androidx.compose.ui:ui-test-junit4:1.9.4")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
@@ -91,6 +93,8 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }
 

@@ -80,6 +80,7 @@ android {
     sourceSets.getByName("main").assets.srcDir(prepareTvWebAssets.map { it.destinationDir })
     sourceSets.getByName("main").assets.srcDir(startupAssets)
     sourceSets.getByName("main").java.srcDir("../../shared/android")
+    sourceSets.getByName("test").java.srcDir("../../shared/android-test")
     androidResources { noCompress += "mp3" }
     signingConfigs {
         if (hasReleaseSigning) {
@@ -129,7 +130,9 @@ dependencies {
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui)
     implementation(libs.okhttp)
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }

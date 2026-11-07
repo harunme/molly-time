@@ -176,7 +176,11 @@ final class SessionStore {
     }
     func login(username: String, password: String, server: String) async throws {
         guard !switchingAccount else { throw APIError.http(409, "正在切换账号，请稍候。") }
-        switchingAccount = true; defer { switchingAccount = false }
+        switchingAccount = true
+        defer {
+            switchingAccount = false
+            OfficialDNS.shared.configure(for: api.endpoint.origin)
+        }
         let requestEpoch = epoch
         let candidate = APIClient(endpoint: try Endpoint(server))
         let value = try await AccountAuthentication.login(username: username, password: password, client: candidate)
@@ -185,7 +189,11 @@ final class SessionStore {
     func switchAccount(_ account: SavedAccount) async throws {
         guard !switchingAccount else { throw APIError.http(409, "正在切换账号，请稍候。") }
         guard activeAccountID != account.id || session == nil else { return }
-        switchingAccount = true; defer { switchingAccount = false }
+        switchingAccount = true
+        defer {
+            switchingAccount = false
+            OfficialDNS.shared.configure(for: api.endpoint.origin)
+        }
         let requestEpoch = epoch
         let candidate = APIClient(endpoint: try Endpoint(account.server))
         do {

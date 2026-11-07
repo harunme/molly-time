@@ -79,7 +79,7 @@ class ParentApi(
     val artwork by lazy { ArtworkStore(this) }
     val artworkUploads by lazy { ArtworkUploadQueue(this) }
     val anonymous =
-        (transport?.newBuilder() ?: OkHttpClient.Builder())
+        (transport?.newBuilder() ?: com.molly.network.MollyHttp.newBuilder())
             .followRedirects(false)
             .followSslRedirects(false)
             .connectTimeout(20, TimeUnit.SECONDS)

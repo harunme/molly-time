@@ -73,7 +73,10 @@ struct InvitationRegistrationView: View {
                     do { flow = InvitationRegistration(api: APIClient(endpoint: try Endpoint(server))) }
                     catch { setupFailure = error.localizedDescription }
                 }
-                .onDisappear { flow?.password = "" }
+                .onDisappear {
+                    flow?.password = ""
+                    OfficialDNS.shared.configure(for: store.api.endpoint.origin)
+                }
                 .alert("创建并切换账号？", isPresented: $confirmingSwitch) {
                     Button("取消", role: .cancel) {}
                     Button("继续") { switchApproved = true; if let flow { act(flow) } }

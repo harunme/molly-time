@@ -131,7 +131,7 @@ class LiveTvActivity : AppCompatActivity() {
         owner.connect({ looper ->
             // Separate unauthenticated client: redirects, manifests, keys and segments
             // must never receive MollyTime's Authorization or Cookie headers.
-            val http = okhttp3.OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
+            val http = com.molly.network.MollyHttp.newBuilder().connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS).followRedirects(true).build()
             val factory = DefaultDataSource.Factory(applicationContext, OkHttpDataSource.Factory(http))
             ExoPlayer.Builder(applicationContext).setLooper(looper)

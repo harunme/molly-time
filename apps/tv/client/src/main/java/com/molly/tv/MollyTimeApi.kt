@@ -29,7 +29,7 @@ class MollyTimeApi(private val session: SessionStore, private val deviceName: ()
     private var pairingCode = ""
     private var pairingServer = ""
     @Volatile var homeSchemaVersion = 1
-    val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
+    val http = com.molly.network.MollyHttp.newBuilder().connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS).followRedirects(false).build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 

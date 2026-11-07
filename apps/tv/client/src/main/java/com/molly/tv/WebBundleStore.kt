@@ -19,7 +19,7 @@ class WebBundleStore(context: Context) {
 
     private val root = File(context.filesDir, "tv-web").apply { mkdirs() }
     private val assets = context.assets
-    private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
+    private val http = com.molly.network.MollyHttp.newBuilder().connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS).callTimeout(3, TimeUnit.MINUTES)
         .followRedirects(false).followSslRedirects(false).build()
     private var selectedDirectory: File? = null

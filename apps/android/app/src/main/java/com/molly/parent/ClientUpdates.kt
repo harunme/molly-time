@@ -17,7 +17,7 @@ class ClientUpdates(private val context: Context, transport: OkHttpClient? = nul
     // APK downloads must not block token refresh, playback or watch-event delivery.
     val executor = Executors.newSingleThreadExecutor()
     private val http =
-        (transport?.newBuilder() ?: OkHttpClient.Builder())
+        (transport?.newBuilder() ?: com.molly.network.MollyHttp.newBuilder())
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(10, TimeUnit.MINUTES)

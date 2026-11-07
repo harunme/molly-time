@@ -182,6 +182,7 @@ class ParentApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.molly.network.MollyHttp.initialize(this)
         diagnostics = com.molly.diagnostics.ClientDiagnostics(this, "android-parent", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         diagnostics.install()
         vault = SessionVault(this)

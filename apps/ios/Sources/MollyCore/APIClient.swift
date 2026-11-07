@@ -18,9 +18,12 @@ public final class APIClient {
     public var onLibraryChange: (() -> Void)?
     public var onDiagnostic: ((Error, String) -> Void)?
     private let session: URLSession
+    private let dns: OfficialDNS?
 
-    public init(endpoint: Endpoint, session: URLSession? = nil) {
+    public init(endpoint: Endpoint, session: URLSession? = nil, dns: OfficialDNS? = nil) {
         self.endpoint = endpoint
+        self.dns = dns ?? (session == nil ? .shared : nil)
+        self.dns?.configure(for: endpoint.origin)
         let config = URLSessionConfiguration.ephemeral
         config.httpShouldSetCookies = false
         config.httpCookieStorage = nil
@@ -51,10 +54,20 @@ public final class APIClient {
         var request = try authenticatedRequest(path, method: method, query: query, body: body, headers: headers)
         if let timeout { request.timeoutInterval = timeout }
         let data: Data, response: URLResponse
+        await dns?.ready()
         do { (data, response) = try await session.data(for: request) }
         catch {
-            if path != "/api/client/error-logs" { onDiagnostic?(error, "API_TRANSPORT_ERROR") }
-            throw error
+            if let dns, OfficialDNS.mayRetry(request, after: error),
+               await dns.recover(for: endpoint.origin) {
+                do { (data, response) = try await session.data(for: request) }
+                catch {
+                    if path != "/api/client/error-logs" { onDiagnostic?(error, "API_TRANSPORT_ERROR") }
+                    throw error
+                }
+            } else {
+                if path != "/api/client/error-logs" { onDiagnostic?(error, "API_TRANSPORT_ERROR") }
+                throw error
+            }
         }
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {

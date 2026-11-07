@@ -31,6 +31,7 @@ class MollyTimeApplication : Application() {
     val io = Executors.newSingleThreadExecutor()
     override fun onCreate() {
         super.onCreate()
+        com.molly.network.MollyHttp.initialize(this)
         diagnostics = com.molly.diagnostics.ClientDiagnostics(this, "tv-android", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         diagnostics.install()
         session = SessionStore(this) {

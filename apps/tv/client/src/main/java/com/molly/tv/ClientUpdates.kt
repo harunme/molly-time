@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ClientUpdates(private val context: Context) {
     // APK downloads must not block token refresh, playback or watch-event delivery.
     val executor = Executors.newSingleThreadExecutor()
-    private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
+    private val http = com.molly.network.MollyHttp.newBuilder().connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS).callTimeout(10, TimeUnit.MINUTES)
         .followRedirects(false).followSslRedirects(false).build()
     private val directory get() = File(context.filesDir, "client-updates").apply { mkdirs() }
